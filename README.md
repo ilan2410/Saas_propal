@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 SaaS Propositions Commerciales
 
-## Getting Started
+Plateforme SaaS multi-tenant pour automatiser la génération de propositions commerciales dans les secteurs de la téléphonie et de la bureautique.
 
-First, run the development server:
+## 🎯 Fonctionnalités principales
+
+- **Extraction automatique** : Utilise Claude AI pour extraire les données des documents clients (factures, contrats)
+- **Génération intelligente** : Remplit automatiquement les templates Office (Word, Excel, PDF) en préservant la mise en forme
+- **Multi-tenant** : Gestion de plusieurs clients avec configuration personnalisée
+- **Système de crédits** : Paiement par proposition via Stripe
+- **Analytics** : Suivi détaillé de l'utilisation et des coûts
+
+## 🏗️ Stack technique
+
+- **Frontend/Backend** : Next.js 14+ (App Router) + TypeScript
+- **Base de données** : Supabase (PostgreSQL + Auth + Storage)
+- **IA** : Anthropic Claude 3.5 Sonnet
+- **Paiement** : Stripe
+- **UI** : TailwindCSS + shadcn/ui
+- **Documents** : docxtemplater, exceljs, pdf-lib
+
+## 📦 Installation
 
 ```bash
+# Installer les dépendances
+npm install
+
+# Copier le fichier d'environnement
+cp .env.example .env.local
+
+# Configurer les variables d'environnement dans .env.local
+# - Supabase (URL, clés)
+# - Anthropic API Key
+# - Stripe (clés, webhook secret)
+
+# Lancer le serveur de développement
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Ouvrir [http://localhost:3000](http://localhost:3000) dans votre navigateur.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📁 Structure du projet
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+/app
+  /api                    # API Routes
+    /admin               # Routes admin
+    /organizations       # Routes clients
+    /stripe              # Intégration Stripe
+    /claude              # Extraction IA
+  /admin                 # Interface admin
+  /(auth)                # Interface client authentifiée
+    /dashboard
+    /templates
+    /propositions
+    /credits
+/lib
+  /ai                    # Client Claude
+  /stripe                # Client Stripe
+  /parsers               # Parsers PDF/Word/Excel
+  /generators            # Générateurs de documents
+  /supabase              # Client Supabase
+/components
+  /admin                 # Composants admin
+  /client                # Composants client
+  /ui                    # Composants shadcn/ui
+```
 
-## Learn More
+## 🚀 Déploiement
 
-To learn more about Next.js, take a look at the following resources:
+Le projet est conçu pour être déployé sur un VPS avec Coolify.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Voir `instructions.md` pour les détails complets du déploiement.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📝 Documentation
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `instructions.md` : Spécifications techniques complètes
+- `plan.md` : Plan de développement en 9 phases
