@@ -16,11 +16,22 @@ import {
   getAllSelectedFields,
   getAllKnownFields,
   type ViewMode,
-  type Question,
 } from './organizationFormConfig';
 
+
+type Organization = {
+  id: string;
+  nom?: string;
+  email?: string;
+  secteur?: string;
+  credits?: number;
+  tarif_par_proposition?: number;
+  claude_model?: string;
+  prompt_template?: string;
+  champs_defaut?: string[];
+};
 interface Props {
-  organization: any;
+  organization: Organization;
 }
 
 export function EditOrganizationForm({ organization }: Props) {
@@ -58,7 +69,7 @@ export function EditOrganizationForm({ organization }: Props) {
         .map((q) => q.id);
       setSelectedQuestions(questionsToSelect);
     }
-  }, [organization.champs_defaut]);
+  }, [organization.champs_defaut, currentQuestions]);
 
   const fieldsCount = getFieldsCount(viewMode, selectedQuestions, currentQuestions, selectedFields, customFields);
 
@@ -79,8 +90,8 @@ export function EditOrganizationForm({ organization }: Props) {
       }
       router.push('/admin/clients/' + organization.id);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
     } finally {
       setIsLoading(false);
     }

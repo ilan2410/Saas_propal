@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { Step1SelectTemplate } from './Step1SelectTemplate';
@@ -21,13 +21,23 @@ export interface PropositionData {
   template_id: string;
   nom_client?: string;
   documents_urls: string[];
-  donnees_extraites: Record<string, any>;
+  donnees_extraites: Record<string, unknown>;
   proposition_id?: string;
   copieurs_count?: number;
 }
 
+export type PropositionTemplateSummary = {
+  id: string;
+  nom: string;
+  file_type: string;
+  description?: string | null;
+  champs_actifs?: string[] | null;
+  file_config?: unknown;
+  statut?: string | null;
+};
+
 interface Props {
-  templates: any[];
+  templates: PropositionTemplateSummary[];
   secteur: string;
   initialData?: Partial<PropositionData>;
   initialStep?: number;
@@ -47,7 +57,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
     setPropositionData((prev) => ({ ...prev, ...data }));
   };
 
-  const persistProgress = async (data: Record<string, any>) => {
+  const persistProgress = async (data: Record<string, unknown>) => {
     if (!propositionData.proposition_id) return;
     try {
       await fetch(`/api/propositions/${propositionData.proposition_id}/update`, {
@@ -60,12 +70,17 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
     }
   };
 
+  const initializationRef = useRef(false);
+
   // Créer automatiquement une proposition draft si on démarre un nouveau wizard
   useEffect(() => {
     let isCancelled = false;
 
     async function ensureDraft() {
-      if (propositionData.proposition_id) return;
+      // Si on a déjà un ID, ou si une initialisation est en cours/terminée, on arrête
+      if (propositionData.proposition_id || initializationRef.current) return;
+
+      initializationRef.current = true;
 
       try {
         const res = await fetch('/api/propositions/draft', {
@@ -76,11 +91,13 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
 
         const json = await res.json();
         if (!res.ok) throw new Error(json?.details || json?.error || 'Erreur création draft');
+        
         if (isCancelled) return;
 
         updatePropositionData({ proposition_id: json.proposition?.id });
       } catch (e) {
         console.error('Erreur création proposition draft:', e);
+        initializationRef.current = false; // Réinitialiser en cas d'erreur
       }
     }
 
@@ -88,7 +105,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
     return () => {
       isCancelled = true;
     };
-  }, [propositionData.proposition_id]);
+  }, [propositionData.proposition_id, currentStep]);
 
   const nextStep = () => {
     if (currentStep < 5) {

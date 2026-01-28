@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, X, ChevronDown, Grid3x3, ChevronRight } from 'lucide-react';
+import { Search, X, Grid3x3, ChevronRight } from 'lucide-react';
 import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
@@ -19,12 +19,18 @@ interface CellMapping {
   [fieldName: string]: string | string[]; // fieldName -> cellRef ou array de cellRefs
 }
 
+export type MappingContext = {
+  sheetName: string;
+  totalRows: number;
+  totalCols: number;
+};
+
 interface Props {
   sheet: SheetInfo;
   fields: string[]; // Champs à mapper
   secteur: string;
   initialMapping?: CellMapping; // Mappings existants à restaurer
-  onMappingComplete: (mapping: CellMapping, fileConfig: any) => void;
+  onMappingComplete: (mapping: CellMapping, fileConfig: MappingContext) => void;
   onBack: () => void;
 }
 
@@ -225,7 +231,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
           <p className="font-medium mb-1">💡 Comment mapper :</p>
           <ul className="text-xs space-y-1 ml-4">
             <li>• Sélectionnez un champ à gauche</li>
-            <li>• Cliquez sur une cellule dans la grille pour l'ajouter</li>
+            <li>• Cliquez sur une cellule dans la grille pour l’ajouter</li>
             <li>• Cliquez à nouveau pour ajouter une deuxième cellule (les données seront concaténées)</li>
             <li>• Cliquez sur le × pour retirer une cellule</li>
           </ul>
@@ -369,7 +375,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
           {!expandedField && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
-                👈 Sélectionnez d'abord un champ à gauche
+                👈 Sélectionnez d’abord un champ à gauche
               </p>
             </div>
           )}
@@ -400,7 +406,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
                         
                         // Vérifier si cette cellule est mappée
                         let isMapped = false;
-                        let mappedFields: string[] = [];
+                        const mappedFields: string[] = [];
                         
                         Object.entries(mapping).forEach(([field, cells]) => {
                           if (typeof cells === 'string') {

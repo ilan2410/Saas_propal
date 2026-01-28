@@ -15,13 +15,13 @@ export async function GET() {
     );
 
     // Lister toutes les organisations
-    const { data: organizations, error: orgError } = await supabaseAdmin
+    const { data: organizations } = await supabaseAdmin
       .from('organizations')
       .select('id, nom, email, credits')
       .order('created_at', { ascending: false });
 
     // Lister tous les utilisateurs Auth
-    const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
 
     // Trouver les utilisateurs sans organisation
     const orgIds = new Set(organizations?.map(o => o.id) || []);

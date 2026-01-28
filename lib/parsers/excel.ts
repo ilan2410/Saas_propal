@@ -63,7 +63,7 @@ export async function getExcelPreview(
       html += '<tr>';
       let colCount = 0;
 
-      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
         if (colCount >= maxCols) return;
 
         const value = cell.value?.toString() || '';
@@ -130,7 +130,7 @@ export async function extractExcelRange(
   filePath: string,
   sheetName: string,
   range: string
-): Promise<any[][]> {
+): Promise<unknown[][]> {
   try {
     const workbook = await parseExcel(filePath);
     const worksheet = workbook.getWorksheet(sheetName);
@@ -139,7 +139,6 @@ export async function extractExcelRange(
       throw new Error(`Feuille "${sheetName}" introuvable`);
     }
 
-    const data: any[][] = [];
     const cells = worksheet.getCell(range);
 
     // Note: Pour une vraie implémentation de range, il faudrait parser le range

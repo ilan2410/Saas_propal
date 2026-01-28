@@ -47,9 +47,10 @@ export default function RegisterPage() {
       setTimeout(() => {
         router.push('/login');
       }, 1200);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur inscription:', err);
-      setError(err?.message || "Erreur lors de l'inscription");
+      const message = err instanceof Error ? err.message : "Erreur lors de l'inscription";
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +82,7 @@ export default function RegisterPage() {
           <form onSubmit={handleRegister} className="space-y-6" autoComplete="off">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nom de l'entreprise
+                {"Nom de l'entreprise"}
               </label>
               <input
                 type="text"

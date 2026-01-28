@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 });
     }
 
-    const templateData = JSON.parse(templateDataStr || '{}');
+    const templateData = JSON.parse(templateDataStr || '{}') as Record<string, unknown>;
+    const champsActifs = Array.isArray(templateData.champs_actifs)
+      ? templateData.champs_actifs.filter((v): v is string => typeof v === 'string')
+      : [];
 
     // Pour l'instant, simuler un test réussi
     // TODO: Implémenter la vraie logique de test avec extraction IA
@@ -30,10 +33,10 @@ export async function POST(request: NextRequest) {
     // Retourner un résultat de test simulé
     const result = {
       success: true,
-      fieldsExtracted: templateData.champs_actifs?.length || 0,
+      fieldsExtracted: champsActifs.length,
       confidence: Math.floor(Math.random() * 15) + 85, // 85-100%
       tokensUsed: Math.floor(Math.random() * 1000) + 500,
-      extractedData: templateData.champs_actifs?.reduce((acc: any, field: string) => {
+      extractedData: champsActifs.reduce<Record<string, string>>((acc, field) => {
         acc[field] = `[Valeur extraite pour ${field}]`;
         return acc;
       }, {}),

@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Plus, Search } from 'lucide-react';
 import { formatCurrency, formatDate, formatSecteur } from '@/lib/utils/formatting';

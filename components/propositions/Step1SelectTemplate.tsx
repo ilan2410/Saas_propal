@@ -2,33 +2,36 @@
 
 import { useState } from 'react';
 import { FileText, CheckCircle2, ArrowRight, Sparkles, Hash } from 'lucide-react';
-import { PropositionData } from './PropositionWizard';
+import { PropositionData, type PropositionTemplateSummary } from './PropositionWizard';
 
-function countMappedFields(fileConfig: any): number {
+function countMappedFields(fileConfig: unknown): number {
   if (!fileConfig || typeof fileConfig !== 'object') return 0;
+  const cfg = fileConfig as Record<string, unknown>;
 
   const mappedFields = new Set<string>();
 
-  const sheetMappings = Array.isArray(fileConfig.sheetMappings)
-    ? fileConfig.sheetMappings
+  const sheetMappings = Array.isArray(cfg.sheetMappings)
+    ? cfg.sheetMappings
     : [];
   for (const sheetMapping of sheetMappings) {
-    const mapping = sheetMapping?.mapping;
-    if (!mapping || typeof mapping !== 'object') continue;
-    for (const [field, value] of Object.entries(mapping)) {
+    if (!sheetMapping || typeof sheetMapping !== 'object') continue;
+    const mapping = (sheetMapping as Record<string, unknown>).mapping;
+    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) continue;
+    for (const [field, value] of Object.entries(mapping as Record<string, unknown>)) {
       if (value !== null && value !== undefined && String(value).trim() !== '') {
         mappedFields.add(field);
       }
     }
   }
 
-  const arrayMappings = Array.isArray(fileConfig.arrayMappings)
-    ? fileConfig.arrayMappings
+  const arrayMappings = Array.isArray(cfg.arrayMappings)
+    ? cfg.arrayMappings
     : [];
   for (const arrayMapping of arrayMappings) {
-    const columnMapping = arrayMapping?.columnMapping;
-    if (!columnMapping || typeof columnMapping !== 'object') continue;
-    for (const [field, value] of Object.entries(columnMapping)) {
+    if (!arrayMapping || typeof arrayMapping !== 'object') continue;
+    const columnMapping = (arrayMapping as Record<string, unknown>).columnMapping;
+    if (!columnMapping || typeof columnMapping !== 'object' || Array.isArray(columnMapping)) continue;
+    for (const [field, value] of Object.entries(columnMapping as Record<string, unknown>)) {
       if (value !== null && value !== undefined && String(value).trim() !== '') {
         mappedFields.add(field);
       }
@@ -39,7 +42,7 @@ function countMappedFields(fileConfig: any): number {
 }
 
 interface Props {
-  templates: any[];
+  templates: PropositionTemplateSummary[];
   secteur: string;
   propositionData: Partial<PropositionData>;
   updatePropositionData: (data: Partial<PropositionData>) => void;
@@ -195,7 +198,7 @@ export function Step1SelectTemplate({
               Aucun template disponible
             </h3>
             <p className="text-gray-600 text-sm">
-              Créez d'abord un template avant de générer une proposition
+              {"Créez d'abord un template avant de générer une proposition"}
             </p>
           </div>
         ) : (

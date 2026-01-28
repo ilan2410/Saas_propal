@@ -41,25 +41,26 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
 
     // Récupérer l'organization
-    let organization: any = null;
+    type OrganizationBasic = { id: string; email: string | null };
+    let organization: OrganizationBasic | null = null;
 
     const orgById = await supabase
       .from('organizations')
-      .select('*')
+      .select('id, email')
       .eq('id', user.id)
       .single();
 
     if (orgById.data && !orgById.error) {
-      organization = orgById.data;
+      organization = orgById.data as OrganizationBasic;
     } else {
       const orgByEmail = await supabase
         .from('organizations')
-        .select('*')
+        .select('id, email')
         .eq('email', user.email)
         .single();
 
       if (orgByEmail.data && !orgByEmail.error) {
-        organization = orgByEmail.data;
+        organization = orgByEmail.data as OrganizationBasic;
       } else {
         return NextResponse.json(
           {
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
         credits_total: creditsTotal.toString(),
         bonus_applique: bonus.toString(),
       },
-      customer_email: organization.email,
+      customer_email: organization.email || undefined,
     });
 
     // Créer la transaction en BDD (statut: pending)

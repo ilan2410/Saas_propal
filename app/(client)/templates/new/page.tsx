@@ -37,7 +37,7 @@ export default async function NewTemplatePage() {
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">Limite atteinte</h1>
           <p className="text-gray-600 mt-2">
-            Vous avez déjà 3 templates. Supprimez-en un avant d'en créer un nouveau.
+            Vous avez déjà 3 templates. Supprimez-en un avant d&apos;en créer un nouveau.
           </p>
         </div>
 

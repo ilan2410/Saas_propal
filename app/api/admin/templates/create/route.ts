@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Créer le template avec les colonnes de base
-    const insertData: Record<string, any> = {
+    const insertData: Record<string, unknown> = {
       organization_id: body.organization_id,
       nom: body.nom,
       description: body.description || null,

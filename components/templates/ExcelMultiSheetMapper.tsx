@@ -19,6 +19,13 @@ interface SheetMapping {
   mapping: { [fieldName: string]: string | string[] };
 }
 
+type MultiSheetFileConfig = {
+  multiSheet: true;
+  sheetCount: number;
+  sheetMappings: SheetMapping[];
+  arrayMappings?: ArrayMapping[];
+};
+
 interface Props {
   sheets: SheetInfo[];
   fields: string[];
@@ -26,7 +33,7 @@ interface Props {
   arrayFields?: ArrayFieldDefinition[]; // Champs de type tableau
   initialMappings?: SheetMapping[];
   initialArrayMappings?: ArrayMapping[];
-  onComplete: (sheetMappings: SheetMapping[], fileConfig: any, isSave?: boolean) => void;
+  onComplete: (sheetMappings: SheetMapping[], fileConfig: MultiSheetFileConfig, isSave?: boolean) => void;
   onBack: () => void;
   onArrayMappingsChange?: (mappings: ArrayMapping[]) => void; // Callback pour sauvegarder les mappings de tableaux
   onSave?: () => void;
@@ -97,7 +104,7 @@ export function ExcelMultiSheetMapper({
     setSheetMappings(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleMappingComplete = (mapping: { [fieldName: string]: string | string[] }, fileConfig: any) => {
+  const handleMappingComplete = (mapping: { [fieldName: string]: string | string[] }) => {
     if (!editingSheet) return;
 
     const newMapping: SheetMapping = {

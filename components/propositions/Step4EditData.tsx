@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
@@ -8,6 +8,86 @@ import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
 } from '@/components/admin/organizationFormConfig';
+
+type UnknownRecord = Record<string, unknown>;
+
+function isPlainObject(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type ExcelFileConfig = {
+  sheetMappings?: Array<{
+    sheetName: string;
+    mapping: Record<string, string | string[]>;
+  }>;
+  arrayMappings?: Array<{
+    arrayId: string;
+    sheetName: string;
+    startRow?: number;
+    columnMapping?: Record<string, string>;
+  }>;
+};
+
+function normalizeExcelFileConfig(value: unknown): ExcelFileConfig {
+  if (!isPlainObject(value)) return {};
+
+  const sheetMappingsRaw = value.sheetMappings;
+  const arrayMappingsRaw = value.arrayMappings;
+
+  const sheetMappings = Array.isArray(sheetMappingsRaw)
+    ? sheetMappingsRaw
+        .filter(isPlainObject)
+        .map((m) => {
+          const sheetName = typeof m.sheetName === 'string' ? m.sheetName : '';
+          const mappingRaw = m.mapping;
+          const mapping: Record<string, string | string[]> = {};
+
+          if (isPlainObject(mappingRaw)) {
+            for (const [k, v] of Object.entries(mappingRaw)) {
+              if (typeof v === 'string') {
+                mapping[k] = v;
+              } else if (Array.isArray(v) && v.every((x) => typeof x === 'string')) {
+                mapping[k] = v;
+              }
+            }
+          }
+
+          return sheetName ? { sheetName, mapping } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+    : undefined;
+
+  const arrayMappings = Array.isArray(arrayMappingsRaw)
+    ? arrayMappingsRaw
+        .filter(isPlainObject)
+        .map((m) => {
+          const arrayId = typeof m.arrayId === 'string' ? m.arrayId : '';
+          const sheetName = typeof m.sheetName === 'string' ? m.sheetName : '';
+          const startRow = typeof m.startRow === 'number' ? m.startRow : undefined;
+
+          const columnMapping: Record<string, string> = {};
+          if (isPlainObject(m.columnMapping)) {
+            for (const [k, v] of Object.entries(m.columnMapping)) {
+              if (typeof v === 'string') columnMapping[k] = v;
+            }
+          }
+
+          if (!arrayId || !sheetName) return null;
+          return {
+            arrayId,
+            sheetName,
+            startRow,
+            columnMapping: Object.keys(columnMapping).length > 0 ? columnMapping : undefined,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+    : undefined;
+
+  return {
+    sheetMappings,
+    arrayMappings,
+  };
+}
 
 interface Props {
   secteur: string;
@@ -27,22 +107,26 @@ function formatFieldName(key: string): string {
 }
 
 // Récupérer une valeur imbriquée
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: unknown, path: string): unknown {
   const parts = path.split('.');
-  let current = obj;
+  let current: unknown = obj;
   for (const part of parts) {
     if (current === null || current === undefined) return undefined;
     if (Array.isArray(current) && /^\d+$/.test(part)) {
       current = current[parseInt(part, 10)];
-    } else {
-      current = current[part];
+      continue;
     }
+    if (isPlainObject(current)) {
+      current = current[part];
+      continue;
+    }
+    return undefined;
   }
   return current;
 }
 
 // Chercher une valeur dans les données extraites pour un champ donné
-function findValueForField(data: Record<string, any>, fieldName: string): any {
+function findValueForField(data: UnknownRecord, fieldName: string): unknown {
   // Chercher directement
   if (data[fieldName] !== undefined) {
     return data[fieldName];
@@ -89,59 +173,30 @@ function findValueForField(data: Record<string, any>, fieldName: string): any {
   }
 
   // Chercher dans les sous-objets
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      if (value[fieldName] !== undefined) {
-        return value[fieldName];
-      }
+  for (const value of Object.values(data)) {
+    if (!isPlainObject(value)) continue;
+    if (value[fieldName] !== undefined) {
+      return value[fieldName];
     }
   }
 
   return undefined;
 }
 
-function setNestedValue(obj: any, path: string, value: any): any {
+function setNestedValue(obj: unknown, path: string, value: unknown): UnknownRecord {
   const parts = path.split('.');
-  const newObj = { ...(obj || {}) };
-  let current: any = newObj;
+  const newObj: UnknownRecord = isPlainObject(obj) ? { ...obj } : {};
+  let current: UnknownRecord = newObj;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
     const existing = current[part];
-    current[part] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
-    current = current[part];
+    current[part] = isPlainObject(existing) ? { ...existing } : {};
+    current = current[part] as UnknownRecord;
   }
 
   current[parts[parts.length - 1]] = value;
   return newObj;
-}
-
-// Composant pour éditer une valeur simple
-function SimpleFieldEditor({ 
-  label, 
-  value, 
-  onChange,
-  placeholder
-}: { 
-  label: string; 
-  value: string; 
-  onChange: (val: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div className="bg-gray-50 rounded-lg p-4">
-      <label className="block text-sm font-semibold text-gray-700 mb-2">
-        {formatFieldName(label)}
-      </label>
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-        placeholder={placeholder || `Entrez ${formatFieldName(label).toLowerCase()}`}
-      />
-    </div>
-  );
 }
 
 // Composant pour éditer un objet
@@ -151,12 +206,12 @@ function ObjectFieldEditor({
   onChange,
 }: {
   label: string;
-  value: Record<string, any>;
-  onChange: (val: Record<string, any>) => void;
+  value: UnknownRecord;
+  onChange: (val: UnknownRecord) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const handleFieldChange = (key: string, newValue: any) => {
+  const handleFieldChange = (key: string, newValue: unknown) => {
     onChange({ ...value, [key]: newValue });
   };
 
@@ -182,7 +237,13 @@ function ObjectFieldEditor({
               </label>
               <input
                 type="text"
-                value={typeof val === 'object' ? JSON.stringify(val) : (val || '')}
+                value={
+                  val === null || val === undefined
+                    ? ''
+                    : typeof val === 'object'
+                      ? JSON.stringify(val)
+                      : String(val)
+                }
                 onChange={(e) => handleFieldChange(key, e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
@@ -201,12 +262,12 @@ function ArrayFieldEditor({
   onChange,
 }: {
   label: string;
-  value: any[];
-  onChange: (val: any[]) => void;
+  value: unknown[];
+  onChange: (val: unknown[]) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const handleItemChange = (index: number, newValue: any) => {
+  const handleItemChange = (index: number, newValue: unknown) => {
     const newArray = [...value];
     newArray[index] = newValue;
     onChange(newArray);
@@ -218,7 +279,8 @@ function ArrayFieldEditor({
   };
 
   const handleAddItem = () => {
-    const newItem = typeof value[0] === 'object' ? {} : '';
+    const first = value[0];
+    const newItem: unknown = isPlainObject(first) ? {} : '';
     onChange([...value, newItem]);
   };
 
@@ -245,7 +307,7 @@ function ArrayFieldEditor({
           {(value || []).map((item, index) => (
             <div key={index} className="flex gap-2 items-start">
               <div className="flex-1">
-                {typeof item === 'object' && item !== null ? (
+                {isPlainObject(item) ? (
                   <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                     <div className="text-xs font-medium text-gray-500 mb-2">
                       Élément {index + 1}
@@ -257,7 +319,7 @@ function ArrayFieldEditor({
                         </label>
                         <input
                           type="text"
-                          value={typeof val === 'object' ? JSON.stringify(val) : (val as string || '')}
+                          value={typeof val === 'object' ? JSON.stringify(val) : (typeof val === 'string' ? val : String(val ?? ''))}
                           onChange={(e) => handleItemChange(index, { ...item, [key]: e.target.value })}
                           className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
@@ -267,7 +329,7 @@ function ArrayFieldEditor({
                 ) : (
                   <input
                     type="text"
-                    value={item || ''}
+                    value={String(item ?? '')}
                     onChange={(e) => handleItemChange(index, e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                     placeholder={`Élément ${index + 1}`}
@@ -303,54 +365,67 @@ export function Step4EditData({
   onNext,
   onPrev,
 }: Props) {
-  const [editedData, setEditedData] = useState<Record<string, any>>(
-    propositionData.donnees_extraites || {}
-  );
+  const initialEditedData: UnknownRecord = isPlainObject(propositionData.donnees_extraites)
+    ? propositionData.donnees_extraites
+    : {};
+
+  const [editedData, setEditedData] = useState<UnknownRecord>(initialEditedData);
   const [copieursCount, setCopieursCount] = useState<number>(
     Math.max(1, Number(propositionData.copieurs_count || 1))
   );
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'simple' | 'complex'>('simple');
   const [viewMode, setViewMode] = useState<'excel' | 'form'>('excel');
-  const [templateInfo, setTemplateInfo] = useState<{ file_url: string; file_config: any; champs_actifs: string[] } | null>(null);
+  const [templateInfo, setTemplateInfo] = useState<{
+    file_url: string;
+    file_config: unknown;
+    champs_actifs: string[];
+  } | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const fieldsByCategoryRef = useMemo(() => {
     return getFieldsByCategoryForSecteur(secteur);
   }, [secteur]);
 
-  const ensureBureautiqueArraysCount = (data: Record<string, any>, count: number): Record<string, any> => {
-    if (secteur !== 'bureautique') return data;
-    const target = Math.max(1, Number(count || 1));
-    const next = { ...(data || {}) };
+  const normalizedExcelFileConfig = useMemo(() => {
+    return normalizeExcelFileConfig(templateInfo?.file_config);
+  }, [templateInfo?.file_config]);
 
-    const keys = [
-      'materiels',
-      'locations',
-      'maintenance',
-      'facturation_clics',
-      'releves_compteurs',
-      'options',
-      'engagements',
-    ];
+  const ensureBureautiqueArraysCount = useCallback(
+    (data: UnknownRecord, count: number): UnknownRecord => {
+      if (secteur !== 'bureautique') return data;
+      const target = Math.max(1, Number(count || 1));
+      const next: UnknownRecord = { ...(data || {}) };
 
-    for (const k of keys) {
-      const current = Array.isArray(next[k]) ? [...next[k]] : [];
-      if (current.length < target) {
-        for (let i = current.length; i < target; i += 1) {
-          current.push({});
+      const keys = [
+        'materiels',
+        'locations',
+        'maintenance',
+        'facturation_clics',
+        'releves_compteurs',
+        'options',
+        'engagements',
+      ];
+
+      for (const k of keys) {
+        const current = Array.isArray(next[k]) ? [...(next[k] as unknown[])] : [];
+        if (current.length < target) {
+          for (let i = current.length; i < target; i += 1) {
+            current.push({});
+          }
         }
+        next[k] = current;
       }
-      next[k] = current;
-    }
 
-    return next;
-  };
+      return next;
+    },
+    [secteur]
+  );
 
   useEffect(() => {
     if (secteur !== 'bureautique') return;
     setEditedData((prev) => ensureBureautiqueArraysCount(prev, copieursCount));
-  }, [secteur, copieursCount]);
+  }, [secteur, copieursCount, ensureBureautiqueArraysCount]);
 
   // Charger les infos du template
   useEffect(() => {
@@ -385,7 +460,7 @@ export function Step4EditData({
     }
     
     loadTemplate();
-  }, [propositionData.template_id]);
+  }, [propositionData.template_id, fieldsByCategoryRef]);
 
   // Grouper les champs actifs par catégorie (seulement les champs simples)
   const fieldsByCategory = useMemo(() => {
@@ -425,17 +500,18 @@ export function Step4EditData({
   };
 
   // Séparer les données structurées (tableaux uniquement) des objets conteneurs
-  const complexFields: Record<string, any> = {};
+  const complexFields: Record<string, unknown[]> = {};
 
   // Fonction récursive pour trouver tous les tableaux dans les données
-  const findArrays = (obj: any, prefix: string = '') => {
+  const findArrays = (obj: unknown, prefix: string = '') => {
+    if (!isPlainObject(obj)) return;
     Object.entries(obj).forEach(([key, value]) => {
       const fullKey = prefix ? `${prefix}.${key}` : key;
       
       if (Array.isArray(value) && value.length > 0) {
         // C'est un tableau avec des données
         complexFields[fullKey] = value;
-      } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      } else if (isPlainObject(value)) {
         // C'est un objet, chercher des tableaux à l'intérieur
         findArrays(value, fullKey);
       }
@@ -480,27 +556,10 @@ export function Step4EditData({
     }));
   };
 
-  const handleFieldChange = (key: string, value: any) => {
+  const handleFieldChange = (key: string, value: unknown) => {
     // Gérer les chemins imbriqués (ex: "lignes.fixes")
     if (key.includes('.')) {
-      const parts = key.split('.');
-      setEditedData((prev) => {
-        const newData = { ...prev };
-        let current: any = newData;
-        
-        for (let i = 0; i < parts.length - 1; i++) {
-          const part = parts[i];
-          if (current[part] === undefined) {
-            current[part] = {};
-          } else {
-            current[part] = { ...current[part] };
-          }
-          current = current[part];
-        }
-        
-        current[parts[parts.length - 1]] = value;
-        return newData;
-      });
+      setEditedData((prev) => setNestedValue(prev, key, value));
     } else {
       setEditedData((prev) => ({
         ...prev,
@@ -620,7 +679,10 @@ export function Step4EditData({
         templateInfo ? (
           <ExcelDataEditor
             templateFileUrl={templateInfo.file_url}
-            fileConfig={templateInfo.file_config}
+            fileConfig={{
+              sheetMappings: (templateInfo?.file_config as ExcelFileConfig)?.sheetMappings,
+              arrayMappings: (templateInfo?.file_config as ExcelFileConfig)?.arrayMappings
+            }}
             extractedData={editedData}
             onDataChange={setEditedData}
             onSave={handleSave}
@@ -657,7 +719,7 @@ export function Step4EditData({
                 className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               />
               <p className="text-xs text-blue-800 mt-2">
-                Si l'extraction n'a pas détecté tous les matériels, on pré-crée des lignes vides à compléter.
+                Si l&apos;extraction n&apos;a pas détecté tous les matériels, on pré-crée des lignes vides à compléter.
               </p>
             </div>
           )}
@@ -819,9 +881,9 @@ export function Step4EditData({
               Conseils
             </h3>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Vérifiez attentivement toutes les données extraites par l'IA</li>
+              <li>• Vérifiez attentivement toutes les données extraites par l&apos;IA</li>
               <li>• Corrigez les erreurs éventuelles avant de continuer</li>
-              <li>• Les données structurées (tableaux, objets) sont dans l'onglet dédié</li>
+              <li>• Les données structurées (tableaux, objets) sont dans l&apos;onglet dédié</li>
             </ul>
           </div>
 

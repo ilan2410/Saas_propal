@@ -126,7 +126,7 @@ export async function extractDataFromDocuments(options: {
   champs_actifs: string[];
   prompt_template: string;
   claude_model: string;
-}): Promise<Record<string, any>> {
+}): Promise<Record<string, unknown>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
 
   // Télécharger les documents depuis les URLs
@@ -200,6 +200,7 @@ export async function extractDataFromDocuments(options: {
     const message = await anthropic.messages.create({
       model: claude_model || 'claude-sonnet-4-5-20250929',
       max_tokens: 8192,
+      temperature: 0,
       messages: [
         {
           role: 'user',
@@ -227,12 +228,17 @@ export async function extractDataFromDocuments(options: {
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
     
-    const parsedData = JSON.parse(jsonStr);
+    const parsedData = JSON.parse(jsonStr) as unknown;
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+    if (!isPlainObject(parsedData)) {
+      throw new Error('Réponse JSON inattendue');
+    }
     console.log(`✅ Données brutes extraites: ${Object.keys(parsedData).length} champs`);
     
     // Filtrer pour ne garder que les champs demandés
     if (champs_actifs && champs_actifs.length > 0) {
-      const filteredData: Record<string, any> = {};
+      const filteredData: Record<string, unknown> = {};
       
       for (const champ of champs_actifs) {
         // Chercher le champ directement ou avec des variantes
@@ -259,11 +265,12 @@ export async function extractDataFromDocuments(options: {
     }
     
     return parsedData;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`❌ Erreur lors de l'appel à Claude:`, error);
-    console.error(`📋 Détails de l'erreur:`, error.message);
-    if (error.response) {
-      console.error(`📋 Réponse d'erreur:`, JSON.stringify(error.response, null, 2));
+    const maybeError = error as { message?: unknown; response?: unknown };
+    console.error(`📋 Détails de l'erreur:`, typeof maybeError?.message === 'string' ? maybeError.message : String(error));
+    if (maybeError?.response) {
+      console.error(`📋 Réponse d'erreur:`, JSON.stringify(maybeError.response, null, 2));
     }
     throw error;
   }

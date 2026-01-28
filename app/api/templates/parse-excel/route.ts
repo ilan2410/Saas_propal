@@ -100,12 +100,15 @@ export async function POST(request: NextRequest) {
             
             // Gérer les différents types de valeurs
             if (typeof cell.value === 'object') {
-              if ('richText' in cell.value) {
-                value = cell.value.richText.map((rt: any) => rt.text).join('');
-              } else if ('text' in cell.value) {
-                value = String(cell.value.text);
-              } else if ('result' in cell.value) {
-                value = String(cell.value.result);
+              const raw = cell.value as unknown as Record<string, unknown>;
+              if ('richText' in raw && Array.isArray(raw.richText)) {
+                value = (raw.richText as Array<Record<string, unknown>>)
+                  .map((rt) => (typeof rt.text === 'string' ? rt.text : ''))
+                  .join('');
+              } else if ('text' in raw) {
+                value = String(raw.text);
+              } else if ('result' in raw) {
+                value = String(raw.result);
               } else {
                 value = JSON.stringify(cell.value);
               }

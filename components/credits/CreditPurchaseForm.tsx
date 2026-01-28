@@ -236,7 +236,7 @@ export function CreditPurchaseForm({ organizationId }: Props) {
         <div className="mb-6">
           <h3 className="text-lg font-bold text-gray-900">Montant personnalisé</h3>
           <p className="mt-1 text-sm text-gray-600">
-            Besoin d'un montant spécifique ? Entrez le montant souhaité (10€ - 10 000€)
+            {"Besoin d'un montant spécifique ? Entrez le montant souhaité (10€ - 10 000€)"}
           </p>
         </div>
 

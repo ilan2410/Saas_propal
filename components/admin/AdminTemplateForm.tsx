@@ -29,14 +29,48 @@ interface Props {
   organizationId: string;
   organizationName: string;
   secteur: string;
-  template?: any;
+  template?: TemplateInput;
   isEditing?: boolean;
   initialPromptTemplate?: string;
 }
 
+type TemplateFileConfigInput = {
+  custom_categories?: CustomCategory[];
+  custom_array_fields?: CustomArrayCategory[];
+  sheetMappings?: unknown[];
+  arrayMappings?: unknown[];
+} & Record<string, unknown>;
+
+type TemplateInput = {
+  id: string;
+  nom?: string;
+  file_type?: string;
+  file_url?: string;
+  file_name?: string | null;
+  file_size_mb?: number;
+  file_config?: TemplateFileConfigInput;
+  description?: string;
+  claude_model?: string;
+  prompt_template?: string;
+  merge_config?: string[];
+} & Record<string, unknown>;
+
+interface SheetMapping {
+  sheetName: string;
+  mapping: Record<string, string | string[]>;
+}
+
+interface ArrayMapping {
+  arrayId: string;
+  sheetName: string;
+  startRow: number;
+  stopCondition: 'empty_first_col' | 'max_rows';
+  maxRows?: number;
+  columnMapping: Record<string, string>;
+}
+
 export function AdminTemplateForm({ 
   organizationId, 
-  organizationName, 
   secteur,
   template,
   isEditing = false,
@@ -54,7 +88,9 @@ export function AdminTemplateForm({
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [legacyCustomFields, setLegacyCustomFields] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activeMerges, setActiveMerges] = useState<string[]>(template?.merge_config || []);
+  const [activeMerges, setActiveMerges] = useState<string[]>(
+    Array.isArray(template?.merge_config) ? template.merge_config : []
+  );
 
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>(
     template?.file_config?.custom_categories || []
@@ -69,8 +105,15 @@ export function AdminTemplateForm({
     file: null,
     fileName: template?.file_name || null,
     sheets: [], // On ne charge pas les sheets existantes pour l'instant
-    mappings: template?.file_config?.sheetMappings || [],
-    arrayMappings: template?.file_config?.arrayMappings || [],
+    mappings: (template?.file_config?.sheetMappings as unknown as SheetMapping[]) || [],
+    arrayMappings: ((template?.file_config?.arrayMappings as unknown as Partial<ArrayMapping>[]) || []).map(m => ({
+      arrayId: m.arrayId || '',
+      sheetName: m.sheetName || '',
+      startRow: m.startRow || 2,
+      stopCondition: m.stopCondition || 'empty_first_col',
+      maxRows: m.maxRows,
+      columnMapping: m.columnMapping || {}
+    })),
   });
 
   const DEFAULT_PROMPT = `Tu es un expert en analyse de documents commerciaux (factures téléphonie, contrats, etc.).
@@ -156,20 +199,21 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       };
       loadSheets();
     }
-  }, [template?.file_type, template?.file_url]);
+  }, [template?.file_type, template?.file_url, excelState.sheets.length]);
 
   const currentQuestions = getQuestionsForSecteur(secteur);
 
   // Initialiser les champs sélectionnés si on édite
   useEffect(() => {
-    if (template?.champs_actifs && template.champs_actifs.length > 0) {
-      const existingFields: string[] = template.champs_actifs;
+    const champsActifs = template?.champs_actifs as string[] | undefined;
+    if (champsActifs && champsActifs.length > 0) {
+      const existingFields = champsActifs;
       const allKnownFields = getAllKnownFields();
       const knownFields = existingFields.filter((f) => allKnownFields.includes(f));
       const unknownFields = existingFields.filter((f) => !allKnownFields.includes(f));
       setSelectedFields(knownFields);
 
-      const defsFromConfig: CustomFieldDefinition[] = template?.file_config?.custom_fields || [];
+      const defsFromConfig = (template?.file_config?.custom_fields as CustomFieldDefinition[]) || [];
       const defPaths = new Set(defsFromConfig.map((d) => d.fieldPath));
       const legacy = unknownFields.filter((f) => !defPaths.has(f));
 
@@ -180,8 +224,12 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         .filter((q) => q.fields.length > 0 && q.fields.every((f) => existingFields.includes(f)))
         .map((q) => q.id);
       setSelectedQuestions(questionsToSelect);
+
+      if (template?.merge_config) {
+        setActiveMerges(template.merge_config);
+      }
     }
-  }, [template?.champs_actifs]);
+  }, [currentQuestions, template?.champs_actifs, template?.file_config?.custom_fields, template?.merge_config]);
 
   const customFieldsList = [...customFieldDefinitions.map((d) => d.fieldPath), ...legacyCustomFields].filter(Boolean);
 
@@ -217,7 +265,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       setFormData((prev) => ({ ...prev, prompt_template: nextPrompt }));
       setIsExpectedJsonOutOfSync(false);
     }
-  }, [activeMerges]);
+  }, [activeMerges, allFieldsForPrompt, formData.prompt_template]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,7 +281,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         return;
       }
 
-      const endpoint = isEditing 
+      const endpoint = isEditing && template?.id
         ? `/api/admin/templates/${template.id}/update`
         : '/api/admin/templates/create';
       
@@ -269,10 +317,12 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       }
 
       const result = await response.json();
-      router.push(`/admin/clients/${organizationId}/templates/${result.template?.id || template.id}`);
+      const existingTemplateId = typeof template?.id === 'string' ? template.id : '';
+      const nextTemplateId = typeof result?.template?.id === 'string' ? result.template.id : existingTemplateId;
+      router.push(`/admin/clients/${organizationId}/templates/${nextTemplateId}`);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
     } finally {
       setIsLoading(false);
     }
@@ -487,7 +537,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900">Configuration IA</h2>
-            <p className="text-sm text-gray-600">Modèle et prompt d'extraction pour ce template</p>
+            <p className="text-sm text-gray-600">Modèle et prompt d&apos;extraction pour ce template</p>
           </div>
         </div>
 
@@ -506,7 +556,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
               ))}
             </select>
             <p className="text-sm text-gray-500 mt-2">
-              Claude 3.7 Sonnet offre une meilleure précision d'extraction.
+              Claude 3.7 Sonnet offre une meilleure précision d&apos;extraction.
             </p>
           </div>
 
@@ -696,7 +746,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                           <strong>Exemple de sortie JSON :</strong>
                           <pre className="mt-1 overflow-x-auto whitespace-pre-wrap bg-purple-50 p-2 rounded">
 {`"lignes": [
-${activeMerges.map((catId, i) => {
+${activeMerges.map((catId) => {
   const cat = TELECOM_LINES_CATEGORIES.find(c => c.id === catId);
   return `  {"type": "${cat?.type}", "numero_ligne": "...", "forfait": "...", "tarif": "..."}`;
 }).join(',\n')}

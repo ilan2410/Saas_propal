@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
-
-function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
-  if (!url) return null;
-  const marker = `/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx < 0) return null;
-  const rawPath = url.slice(idx + marker.length);
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    return rawPath;
-  }
-}
+import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 
 export async function POST(request: NextRequest) {
   try {
@@ -205,7 +193,8 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
 
     // Créer OU réutiliser la proposition (draft) en BDD
-    let proposition: any = null;
+    type PropositionRow = { id: string } & Record<string, unknown>;
+    let proposition: PropositionRow;
     if (typeof proposition_id === 'string' && proposition_id) {
       const { data: existingProp, error: existingError } = await supabase
         .from('propositions')
@@ -242,7 +231,7 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
         );
       }
 
-      proposition = updated;
+      proposition = updated as PropositionRow;
     } else {
       const { data: created, error: propError } = await supabase
         .from('propositions')
@@ -265,16 +254,68 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
         }, { status: 500 });
       }
 
-      proposition = created;
+      proposition = created as PropositionRow;
     }
 
     console.log('📝 Proposition utilisée:', proposition.id);
 
-    // Débiter les crédits de l'organisation
-    try {
-      // IMPORTANT: utiliser le service role pour bypasser RLS (les clients ne peuvent pas UPDATE organizations)
-      // On évite aussi la dépendance à une fonction SQL potentiellement non déployée / pas à jour.
 
+    // Limiter automatiquement à 15 propositions (suppression des plus anciennes)
+    // Utilisation du helper centralisé
+    try {
+      // On utilise 15 ici car la proposition courante est déjà créée/mise à jour et incluse dans le compte
+      await cleanupOldPropositions(serviceSupabase, user.id, 15);
+    } catch (trimError) {
+      console.error('Erreur lors du trim à 15 propositions:', trimError);
+    }
+
+    // Extraire les données avec Claude
+    console.log('🤖 Lancement extraction Claude...');
+    const extractedData = await extractDataFromDocuments({
+      documents_urls,
+      champs_actifs: template.champs_actifs || [],
+      prompt_template: promptToUse,
+      claude_model: modelToUse,
+    });
+
+    // Post-traitement bureautique : garantir des arrays d'au moins N éléments
+    const ensureBureautiqueArraysCount = (data: unknown, count: number): Record<string, unknown> => {
+      const target = Math.max(1, Number(count || 1));
+      const base =
+        data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+      const next: Record<string, unknown> = { ...base };
+      const keys = [
+        'materiels',
+        'locations',
+        'maintenance',
+        'facturation_clics',
+        'releves_compteurs',
+        'options',
+        'engagements',
+      ];
+
+      for (const k of keys) {
+        const currentRaw = next[k];
+        const current = Array.isArray(currentRaw) ? [...currentRaw] : [];
+        if (current.length < target) {
+          for (let i = current.length; i < target; i += 1) current.push({});
+        }
+        next[k] = current;
+      }
+
+      return next;
+    };
+
+    const extractedDataFinal =
+      organization.secteur === 'bureautique'
+        ? ensureBureautiqueArraysCount(extractedData, copieursCount)
+        : extractedData;
+    
+    console.log('✅ Extraction réussie');
+
+    // Débiter les crédits de l'organisation UNIQUEMENT si l'extraction a réussi
+    try {
+      // IMPORTANT: utiliser le service role pour bypasser RLS
       const { data: currentOrg, error: currentOrgError } = await serviceSupabase
         .from('organizations')
         .select('credits')
@@ -285,7 +326,7 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
         await supabase.from('propositions').delete().eq('id', proposition.id);
         return NextResponse.json(
           {
-            error: 'Organisation non trouvée',
+            error: 'Organisation non trouvée lors du débit',
             details: currentOrgError?.message || 'Organisation introuvable',
           },
           { status: 404 }
@@ -293,6 +334,7 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
       }
 
       const currentCredits = parseFloat(String(currentOrg.credits || 0));
+      // Revérification (même si on a vérifié au début, les crédits ont pu changer)
       if (currentCredits < tarif) {
         await supabase.from('propositions').delete().eq('id', proposition.id);
         return NextResponse.json(
@@ -310,8 +352,7 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
         .from('organizations')
         .update({ credits: newCredits })
         .eq('id', organization.id)
-        // Optimistic lock: si les crédits ont changé entre-temps, l'update n'affectera aucune ligne
-        .eq('credits', currentOrg.credits)
+        .eq('credits', currentOrg.credits) // Optimistic lock
         .select('credits')
         .single();
 
@@ -329,113 +370,13 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
       console.log(`💳 Crédits débités: ${tarif}€ | ${currentCredits}€ -> ${updatedOrgRow.credits}€ | org=${organization.id}`);
     } catch (debitError) {
       console.error('Exception lors du débit des crédits:', debitError);
+      // Supprimer la proposition si le débit échoue
+      await supabase.from('propositions').delete().eq('id', proposition.id);
       return NextResponse.json({ 
         error: 'Erreur lors du débit des crédits', 
         details: debitError instanceof Error ? debitError.message : 'Erreur inconnue'
       }, { status: 500 });
     }
-
-    // Limiter automatiquement à 15 propositions (suppression des plus anciennes)
-    try {
-      const { data: allProps, error: listError } = await supabase
-        .from('propositions')
-        .select('id, created_at, source_documents, documents_urls, documents_sources_urls, duplicated_template_url, fichier_genere_url')
-        .eq('organization_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (!listError && allProps && allProps.length > 15) {
-        const toDelete = allProps.slice(15);
-
-        for (const p of toDelete) {
-          const urls: string[] = [];
-          const sourceDocs = (p.source_documents || p.documents_urls || p.documents_sources_urls) as any;
-          if (Array.isArray(sourceDocs)) {
-            urls.push(...sourceDocs.filter(Boolean));
-          }
-          const generatedUrl = (p.duplicated_template_url || p.fichier_genere_url) as any;
-          if (typeof generatedUrl === 'string' && generatedUrl) {
-            urls.push(generatedUrl);
-          }
-
-          const documentsPaths = urls
-            .map((u) => extractStoragePathFromPublicUrl(u, 'documents'))
-            .filter(Boolean) as string[];
-
-          const templatesPaths = urls
-            .map((u) => extractStoragePathFromPublicUrl(u, 'templates'))
-            .filter(Boolean) as string[];
-
-          const propositionsPaths = urls
-            .map((u) => extractStoragePathFromPublicUrl(u, 'propositions'))
-            .filter(Boolean) as string[];
-
-          if (documentsPaths.length > 0) {
-            const { error: storageError } = await serviceSupabase.storage.from('documents').remove(documentsPaths);
-            if (storageError) console.error('Erreur suppression documents (trim):', storageError);
-          }
-
-          if (templatesPaths.length > 0) {
-            const { error: storageError } = await serviceSupabase.storage.from('templates').remove(templatesPaths);
-            if (storageError) console.error('Erreur suppression templates (trim):', storageError);
-          }
-
-          if (propositionsPaths.length > 0) {
-            const { error: storageError } = await serviceSupabase.storage.from('propositions').remove(propositionsPaths);
-            if (storageError) console.error('Erreur suppression propositions bucket (trim):', storageError);
-          }
-
-          const { error: deleteError } = await supabase
-            .from('propositions')
-            .delete()
-            .eq('id', p.id)
-            .eq('organization_id', user.id);
-          if (deleteError) console.error('Erreur suppression proposition (trim):', deleteError);
-        }
-      }
-    } catch (trimError) {
-      console.error('Erreur lors du trim à 15 propositions:', trimError);
-    }
-
-    // Extraire les données avec Claude
-    console.log('🤖 Lancement extraction Claude...');
-    const extractedData = await extractDataFromDocuments({
-      documents_urls,
-      champs_actifs: template.champs_actifs || [],
-      prompt_template: promptToUse,
-      claude_model: modelToUse,
-    });
-
-    // Post-traitement bureautique : garantir des arrays d'au moins N éléments
-    const ensureBureautiqueArraysCount = (data: any, count: number): any => {
-      const target = Math.max(1, Number(count || 1));
-      const next = (data && typeof data === 'object') ? { ...data } : {};
-      const keys = [
-        'materiels',
-        'locations',
-        'maintenance',
-        'facturation_clics',
-        'releves_compteurs',
-        'options',
-        'engagements',
-      ];
-
-      for (const k of keys) {
-        const current = Array.isArray((next as any)[k]) ? [...(next as any)[k]] : [];
-        if (current.length < target) {
-          for (let i = current.length; i < target; i += 1) current.push({});
-        }
-        (next as any)[k] = current;
-      }
-
-      return next;
-    };
-
-    const extractedDataFinal =
-      organization.secteur === 'bureautique'
-        ? ensureBureautiqueArraysCount(extractedData, copieursCount)
-        : extractedData;
-    
-    console.log('✅ Extraction réussie');
 
     // Mettre à jour la proposition avec les données extraites
     const { error: updateError } = await supabase

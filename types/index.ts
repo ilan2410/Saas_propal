@@ -54,13 +54,13 @@ export interface ExcelConfig {
   cellMappings: Record<string, string>;
   preserverFormules?: boolean;
   cellulesAvecFormules?: string[];
-  tableauxDynamiques?: any[];
+  tableauxDynamiques?: unknown[];
 }
 
 export interface WordConfig {
   formatVariables: string;
   fieldMappings: Record<string, string>;
-  tableauxDynamiques?: any[];
+  tableauxDynamiques?: unknown[];
   imagesARemplacer?: Record<string, string>;
 }
 
@@ -72,7 +72,7 @@ export interface PDFConfig {
 // Résultat de test d'un template
 export interface TestResult {
   extraction: {
-    champsExtraits: Record<string, any>;
+    champsExtraits: Record<string, unknown>;
     confiance: Record<string, number>;
   };
   preview: {
@@ -83,7 +83,7 @@ export interface TestResult {
     champsManquants: string[];
     valeursIncertaines: Array<{
       champ: string;
-      valeur: any;
+      valeur: unknown;
       confiance: number;
     }>;
   };
@@ -106,9 +106,9 @@ export interface Proposition {
     name: string;
     type: string;
   }>;
-  extracted_data: Record<string, any>;
+  extracted_data: Record<string, unknown>;
   extraction_confidence: Record<string, number>;
-  filled_data?: Record<string, any>;
+  filled_data?: Record<string, unknown>;
   original_template_url?: string;
   duplicated_template_url?: string;
   generated_file_name?: string;
@@ -163,7 +163,7 @@ export interface StripeTransaction {
 
 // Résultat d'extraction Claude
 export interface ExtractionResult {
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   confidence: Record<string, number>;
   tokensUsed: {
     input: number;

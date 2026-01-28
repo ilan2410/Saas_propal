@@ -23,7 +23,7 @@ export async function PATCH(
     console.log('Body reçu:', body);
 
     // Construire l'objet de mise à jour (sans updated_at car la colonne n'existe pas)
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, unknown> = {};
 
     // Mapper les champs selon le schéma de la BDD
     if (body.filled_data !== undefined) {

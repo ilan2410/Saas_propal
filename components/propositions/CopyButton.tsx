@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 
 interface CopyButtonProps {
-  data: any;
+  data: unknown;
 }
 
 export function CopyButton({ data }: CopyButtonProps) {

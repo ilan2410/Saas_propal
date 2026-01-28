@@ -60,13 +60,15 @@ export default async function AdminDashboard() {
   // Propositions récentes
   const recentPropositions = allPropositions?.slice(0, 10) || [];
 
+  type RecentPropositionRow = { id: string } & Record<string, unknown>;
+
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard Admin</h1>
         <p className="text-gray-600 mt-2">
-          Vue d'ensemble de la plateforme
+          Vue d&apos;ensemble de la plateforme
         </p>
       </div>
 
@@ -287,32 +289,35 @@ export default async function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {recentPropositions?.map((prop: any) => (
-                <tr key={prop.id} className="hover:bg-gray-50">
+              {recentPropositions?.map((prop) => {
+                const p = prop as RecentPropositionRow;
+                return (
+                <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {prop.organization_id}
+                    {String(p.organization_id ?? '')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {prop.nom_client || 'Sans nom'}
+                    {typeof p.nom_client === 'string' && p.nom_client ? p.nom_client : 'Sans nom'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        prop.statut === 'exported'
+                        p.statut === 'exported'
                           ? 'bg-green-100 text-green-800'
-                          : prop.statut === 'error'
+                          : p.statut === 'error'
                           ? 'bg-red-100 text-red-800'
                           : 'bg-yellow-100 text-yellow-800'
                       }`}
                     >
-                      {prop.statut}
+                      {String(p.statut ?? '')}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(prop.created_at)}
+                    {formatDate(String(p.created_at ?? ''))}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

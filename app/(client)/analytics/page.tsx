@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { BarChart3, TrendingUp, Calendar, DollarSign } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils/formatting';
+import { formatCurrency } from '@/lib/utils/formatting';
 
 export const revalidate = 0;
 
@@ -76,7 +76,7 @@ export default async function AnalyticsPage() {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
         <p className="text-gray-600 mt-2">
-          Vue d'ensemble de votre activité
+          {"Vue d'ensemble de votre activité"}
         </p>
       </div>
 

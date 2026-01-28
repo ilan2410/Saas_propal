@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { TemplateData } from './TemplateWizard';
 
@@ -18,22 +18,14 @@ export function Step3Mapping({
   onPrev,
 }: Props) {
   const [mappings, setMappings] = useState<Record<string, string>>({});
-  const [detectedVariables, setDetectedVariables] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Simuler la détection automatique des variables dans le template
-    // En production, cela viendrait d'une API qui analyse le fichier
+  const detectedVariables = useMemo(() => {
     if (templateData.file_type === 'word') {
-      setDetectedVariables([
-        '{{nom_entreprise}}',
-        '{{contact_nom}}',
-        '{{total_mensuel_ht}}',
-      ]);
-    } else if (templateData.file_type === 'excel') {
-      setDetectedVariables(['A1', 'B2', 'C3', 'D4']);
-    } else {
-      setDetectedVariables(['field_1', 'field_2', 'field_3']);
+      return ['{{nom_entreprise}}', '{{contact_nom}}', '{{total_mensuel_ht}}'];
     }
+    if (templateData.file_type === 'excel') {
+      return ['A1', 'B2', 'C3', 'D4'];
+    }
+    return ['field_1', 'field_2', 'field_3'];
   }, [templateData.file_type]);
 
   const handleMappingChange = (variable: string, field: string) => {
@@ -45,7 +37,7 @@ export function Step3Mapping({
 
   const handleNext = () => {
     // Créer la configuration selon le type de fichier
-    let fileConfig: any = {};
+    let fileConfig: Record<string, unknown> = {};
 
     if (templateData.file_type === 'word') {
       fileConfig = {

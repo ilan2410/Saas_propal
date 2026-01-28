@@ -58,14 +58,18 @@ function getExampleValueForKey(key: string): string {
   return '...';
 }
 
-function applyFieldPathToStructure(root: any, fieldPath: string): void {
-  if (!root || typeof root !== 'object') return;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function applyFieldPathToStructure(root: unknown, fieldPath: string): void {
+  if (!isPlainObject(root)) return;
   if (!fieldPath || typeof fieldPath !== 'string') return;
 
   const segments = fieldPath.split('.').filter(Boolean);
   if (segments.length === 0) return;
 
-  let cursor: any = root;
+  let cursor: Record<string, unknown> = root;
 
   for (let i = 0; i < segments.length; i += 1) {
     const rawSeg = segments[i];
@@ -90,15 +94,16 @@ function applyFieldPathToStructure(root: any, fieldPath: string): void {
       if (!Array.isArray(cursor[key])) {
         cursor[key] = [{}];
       }
-      if (cursor[key].length === 0 || typeof cursor[key][0] !== 'object' || cursor[key][0] === null || Array.isArray(cursor[key][0])) {
+      const arr = cursor[key] as unknown[];
+      if (arr.length === 0 || !isPlainObject(arr[0])) {
         cursor[key] = [{}];
       }
-      cursor = cursor[key][0];
+      cursor = (cursor[key] as unknown[])[0] as Record<string, unknown>;
     } else {
-      if (cursor[key] === undefined || typeof cursor[key] !== 'object' || cursor[key] === null || Array.isArray(cursor[key])) {
+      if (!isPlainObject(cursor[key])) {
         cursor[key] = {};
       }
-      cursor = cursor[key];
+      cursor = cursor[key] as Record<string, unknown>;
     }
   }
 }
@@ -152,9 +157,8 @@ function buildAllowedTree(fields: string[]): AllowedNode {
   return root;
 }
 
-function pruneStructureByAllowedTree(obj: any, allowed: AllowedNode): void {
-  if (!obj || typeof obj !== 'object') return;
-  if (Array.isArray(obj)) return;
+function pruneStructureByAllowedTree(obj: unknown, allowed: AllowedNode): void {
+  if (!isPlainObject(obj)) return;
 
   const allowedChildren = allowed.children || {};
 
@@ -170,22 +174,23 @@ function pruneStructureByAllowedTree(obj: any, allowed: AllowedNode): void {
     if (Array.isArray(value)) {
       const itemRule = rule.isArray ? rule.item : rule.item || rule;
 
-      if (value.length > 0 && value[0] && typeof value[0] === 'object' && !Array.isArray(value[0])) {
-        pruneStructureByAllowedTree(value[0], itemRule || { children: {} });
-        value.splice(1);
+      const arr = value as unknown[];
+      if (arr.length > 0 && isPlainObject(arr[0])) {
+        pruneStructureByAllowedTree(arr[0], itemRule || { children: {} });
+        arr.splice(1);
       }
 
-      const first = value[0];
+      const first = arr[0];
       const firstIsEmptyObject =
-        first && typeof first === 'object' && !Array.isArray(first) && Object.keys(first).length === 0;
+        isPlainObject(first) && Object.keys(first).length === 0;
 
-      if (!rule.leaf && (!itemRule || value.length === 0 || firstIsEmptyObject)) {
+      if (!rule.leaf && (!itemRule || arr.length === 0 || firstIsEmptyObject)) {
         delete obj[key];
       }
       continue;
     }
 
-    if (value && typeof value === 'object') {
+    if (isPlainObject(value)) {
       const nextAllowed = rule.isArray ? rule.item || { children: {} } : rule;
       pruneStructureByAllowedTree(value, nextAllowed);
 
@@ -222,13 +227,15 @@ export function updateExpectedJsonStructureFromFields(
   if (jsonEnd < 0 || jsonEnd <= jsonStart) return prompt;
 
   const jsonText = prompt.slice(jsonStart, jsonEnd + 1);
-  let parsed: any;
+  let parsed: unknown;
 
   try {
     parsed = JSON.parse(jsonText);
   } catch {
     return prompt;
   }
+
+  if (!isPlainObject(parsed)) return prompt;
 
   for (const f of fields) {
     applyFieldPathToStructure(parsed, f);

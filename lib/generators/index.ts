@@ -6,15 +6,101 @@
 import ExcelJS from 'exceljs';
 import { createServiceClient } from '@/lib/supabase/server';
 
+type UnknownRecord = Record<string, unknown>;
+
+type SheetMapping = {
+  sheetName: string;
+  mapping: Record<string, string | string[]>;
+};
+
+type ArrayMapping = {
+  arrayId: string;
+  sheetName: string;
+  startRow?: number;
+  stopCondition?: 'empty_first_col' | 'max_rows';
+  maxRows?: number;
+  columnMapping?: Record<string, string>;
+};
+
+function isPlainObject(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseSheetMappings(value: unknown): SheetMapping[] {
+  if (!Array.isArray(value)) return [];
+
+  const result: SheetMapping[] = [];
+  for (const item of value) {
+    if (!isPlainObject(item)) continue;
+    const sheetName = item.sheetName;
+    const mapping = item.mapping;
+    if (typeof sheetName !== 'string' || !isPlainObject(mapping)) continue;
+
+    const nextMapping: Record<string, string | string[]> = {};
+    for (const [fieldName, cellRefs] of Object.entries(mapping)) {
+      if (typeof cellRefs === 'string') {
+        nextMapping[fieldName] = cellRefs;
+        continue;
+      }
+      if (
+        Array.isArray(cellRefs) &&
+        cellRefs.every((r) => typeof r === 'string')
+      ) {
+        nextMapping[fieldName] = cellRefs;
+      }
+    }
+
+    result.push({ sheetName, mapping: nextMapping });
+  }
+  return result;
+}
+
+function parseArrayMappings(value: unknown): ArrayMapping[] {
+  if (!Array.isArray(value)) return [];
+
+  const result: ArrayMapping[] = [];
+  for (const item of value) {
+    if (!isPlainObject(item)) continue;
+    const arrayId = item.arrayId;
+    const sheetName = item.sheetName;
+    if (typeof arrayId !== 'string' || typeof sheetName !== 'string') continue;
+
+    const startRow = typeof item.startRow === 'number' ? item.startRow : undefined;
+    const stopCondition =
+      item.stopCondition === 'empty_first_col' || item.stopCondition === 'max_rows'
+        ? item.stopCondition
+        : undefined;
+    const maxRows = typeof item.maxRows === 'number' ? item.maxRows : undefined;
+
+    const rawColumnMapping = item.columnMapping;
+    const columnMapping: Record<string, string> = {};
+    if (isPlainObject(rawColumnMapping)) {
+      for (const [k, v] of Object.entries(rawColumnMapping)) {
+        if (typeof v === 'string') columnMapping[k] = v;
+      }
+    }
+
+    result.push({
+      arrayId,
+      sheetName,
+      startRow,
+      stopCondition: stopCondition ?? 'empty_first_col',
+      maxRows,
+      columnMapping,
+    });
+  }
+  return result;
+}
+
 interface GenerateOptions {
   template: {
     id: string;
     file_type: 'excel' | 'word' | 'pdf';
     file_url: string;
-    file_config: any;
+    file_config: unknown;
     champs_actifs: string[];
   };
-  donnees: Record<string, any>;
+  donnees: UnknownRecord;
   organization_id: string;
   proposition_id: string;
 }
@@ -23,7 +109,7 @@ interface GenerateOptions {
  * Génère un fichier de proposition à partir d'un template et des données extraites
  */
 export async function generatePropositionFile(options: GenerateOptions): Promise<string> {
-  const { template, donnees, organization_id, proposition_id } = options;
+  const { template, proposition_id } = options;
 
   console.log('🔧 Génération fichier:', {
     type: template.file_type,
@@ -47,7 +133,7 @@ export async function generatePropositionFile(options: GenerateOptions): Promise
  * Génère un fichier Excel à partir du template
  */
 async function generateExcelFile(options: GenerateOptions): Promise<string> {
-  const { template, donnees, organization_id, proposition_id } = options;
+  const { template, donnees, organization_id } = options;
 
   console.log('📊 Génération Excel...');
   console.log('📁 URL du template:', template.file_url);
@@ -75,8 +161,8 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
     throw new Error(`Le fichier template Excel est corrompu ou invalide: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
   }
 
-  const fileConfig = template.file_config || {};
-  const sheetMappings = fileConfig.sheetMappings || [];
+  const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
+  const sheetMappings = parseSheetMappings(fileConfig.sheetMappings);
 
   console.log(`📋 Configuration du mapping:`, JSON.stringify(fileConfig, null, 2));
   console.log(`📊 Données à insérer:`, JSON.stringify(donnees, null, 2));
@@ -126,7 +212,7 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
   }
 
   // Remplir les tableaux (array mappings)
-  const arrayMappings = fileConfig.arrayMappings || [];
+  const arrayMappings = parseArrayMappings(fileConfig.arrayMappings);
   for (const arrayMapping of arrayMappings) {
     const worksheet = workbook.getWorksheet(arrayMapping.sheetName);
     if (!worksheet) {
@@ -135,7 +221,7 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
     }
 
     // Chercher les données du tableau avec la fonction intelligente
-    let arrayData = findValueInData(donnees, arrayMapping.arrayId);
+    let arrayData: unknown = findValueInData(donnees, arrayMapping.arrayId);
     
     // Mapping spécifique pour les tableaux courants
     if (!Array.isArray(arrayData)) {
@@ -168,10 +254,11 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
     const startRow = arrayMapping.startRow || 2;
     const columnMapping = arrayMapping.columnMapping || {};
 
-    arrayData.forEach((item: any, index: number) => {
+    arrayData.forEach((item: unknown, index: number) => {
       const rowNumber = startRow + index;
       console.log(`  📝 Ligne ${rowNumber}:`, JSON.stringify(item).substring(0, 100));
       
+      if (!isPlainObject(item)) return;
       for (const [fieldId, column] of Object.entries(columnMapping)) {
         const value = item[fieldId];
         if (value === undefined || value === null) continue;
@@ -215,7 +302,7 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
   const raisonSociale = findValueInData(donnees, 'raison_sociale') || 
                         findValueInData(donnees, 'nom_commercial') ||
                         findValueInData(donnees, 'client_nom') ||
-                        donnees.nom_client; // Fallback sur le nom du client de la proposition
+                        donnees['nom_client']; // Fallback sur le nom du client de la proposition
   
   if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
     // Nettoyer le nom : enlever les caractères spéciaux et limiter la longueur
@@ -274,6 +361,7 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
  * Génère un fichier Word (placeholder pour l'instant)
  */
 async function generateWordFile(options: GenerateOptions): Promise<string> {
+  void options;
   // TODO: Implémenter la génération Word avec docx ou similar
   console.log('📄 Génération Word (non implémenté)');
   throw new Error('La génération de fichiers Word n\'est pas encore implémentée');
@@ -283,6 +371,7 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
  * Génère un fichier PDF (placeholder pour l'instant)
  */
 async function generatePdfFile(options: GenerateOptions): Promise<string> {
+  void options;
   // TODO: Implémenter la génération PDF
   console.log('📑 Génération PDF (non implémenté)');
   throw new Error('La génération de fichiers PDF n\'est pas encore implémentée');
@@ -292,7 +381,7 @@ async function generatePdfFile(options: GenerateOptions): Promise<string> {
  * Cherche une valeur dans un objet imbriqué en utilisant différentes stratégies
  * Ex: "contact_nom" peut correspondre à donnees.client.contacts[0].nom ou donnees.contact_nom
  */
-function findValueInData(donnees: Record<string, any>, fieldName: string): any {
+function findValueInData(donnees: UnknownRecord, fieldName: string): unknown {
   // 1. Chercher directement à la racine
   if (donnees[fieldName] !== undefined && donnees[fieldName] !== null) {
     return donnees[fieldName];
@@ -402,17 +491,19 @@ function findValueInData(donnees: Record<string, any>, fieldName: string): any {
  * Récupère une valeur imbriquée avec un chemin en notation pointée
  * Ex: getNestedValue(obj, 'client.adresse.ville')
  */
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: unknown, path: string): unknown {
   const parts = path.split('.');
-  let current = obj;
+  let current: unknown = obj;
   
   for (const part of parts) {
     if (current === null || current === undefined) return undefined;
     
     // Gérer les index de tableau (ex: "contacts.0.nom")
     if (/^\d+$/.test(part)) {
-      current = current[parseInt(part)];
+      if (!Array.isArray(current)) return undefined;
+      current = current[parseInt(part, 10)];
     } else {
+      if (!isPlainObject(current)) return undefined;
       current = current[part];
     }
   }
@@ -421,34 +512,17 @@ function getNestedValue(obj: any, path: string): any {
 }
 
 /**
- * Recherche récursive d'une clé dans un objet
- */
-function searchInObject(obj: any, key: string, maxDepth: number = 3): any {
-  if (maxDepth <= 0 || obj === null || obj === undefined) return undefined;
-  if (typeof obj !== 'object') return undefined;
-
-  // Chercher la clé directement
-  if (obj[key] !== undefined) return obj[key];
-
-  // Chercher dans les sous-objets
-  for (const k of Object.keys(obj)) {
-    if (typeof obj[k] === 'object' && !Array.isArray(obj[k])) {
-      const found = searchInObject(obj[k], key, maxDepth - 1);
-      if (found !== undefined) return found;
-    }
-  }
-
-  return undefined;
-}
-
-/**
  * Formate une valeur pour l'insertion dans Excel
  */
-function formatValueForExcel(value: any): string | number | Date {
+function formatValueForExcel(value: unknown): string | number | Date {
   if (value === null || value === undefined) {
     return '';
   }
   
+  if (value instanceof Date) {
+    return value;
+  }
+
   if (typeof value === 'object') {
     // Si c'est un objet, le convertir en string JSON lisible
     return JSON.stringify(value);
@@ -462,5 +536,7 @@ function formatValueForExcel(value: any): string | number | Date {
     }
   }
   
-  return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  return String(value);
 }

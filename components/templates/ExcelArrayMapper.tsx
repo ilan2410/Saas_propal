@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown, Table2, X, Check, HelpCircle, ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 
 interface SheetInfo {
@@ -104,29 +104,6 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
   // Supprimer un mapping
   const removeMapping = (arrayId: string) => {
     updateMappings(mappings.filter(m => m.arrayId !== arrayId));
-  };
-
-  // Obtenir les colonnes disponibles pour une feuille
-  const getColumnsForSheet = (sheetName: string) => {
-    const sheet = sheets.find(s => s.name === sheetName);
-    if (!sheet) return [];
-    
-    const cols = Math.min(sheet.cols, 26); // Max 26 colonnes (A-Z)
-    return Array.from({ length: cols }, (_, i) => getColumnName(i));
-  };
-
-  // Obtenir un aperçu des données d'une colonne
-  const getColumnPreview = (sheetName: string, column: string, startRow: number) => {
-    const sheet = sheets.find(s => s.name === sheetName);
-    if (!sheet) return [];
-    
-    const previews: string[] = [];
-    for (let row = startRow; row < startRow + 3 && row <= sheet.rows; row++) {
-      const cellRef = `${column}${row}`;
-      const value = sheet.cells[cellRef] || '';
-      previews.push(value || '(vide)');
-    }
-    return previews;
   };
 
   // État pour le champ sélectionné dans l'éditeur
@@ -332,7 +309,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
             {!selectedField && (
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
-                  👈 Sélectionnez d'abord un champ à gauche
+                  👈 Sélectionnez d’abord un champ à gauche
                 </p>
               </div>
             )}
@@ -346,8 +323,10 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
                       {Array.from({ length: maxCols }, (_, i) => {
                         const colName = getColumnName(i);
                         // Vérifier si cette colonne est déjà mappée
-                        const mappedToField = Object.entries(editingMapping.columnMapping || {})
-                          .find(([_, col]) => col === colName)?.[0];
+                        const mappedToFieldEntry = Object.entries(editingMapping.columnMapping || {}).find(
+                          ([, col]) => col === colName
+                        );
+                        const mappedToField = mappedToFieldEntry?.[0];
                         const fieldDef = mappedToField 
                           ? editingArray.rowFields.find(f => f.id === mappedToField)
                           : null;
@@ -386,8 +365,10 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
                             const value = selectedSheet.cells[ref] || '';
                             
                             // Vérifier si cette colonne est mappée
-                            const mappedToField = Object.entries(editingMapping.columnMapping || {})
-                              .find(([_, col]) => col === colName)?.[0];
+                            const mappedToFieldEntry = Object.entries(editingMapping.columnMapping || {}).find(
+                              ([, col]) => col === colName
+                            );
+                            const mappedToField = mappedToFieldEntry?.[0];
                             
                             return (
                               <td
@@ -501,7 +482,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
                     <div className="text-sm text-gray-500">{arrayField.description}</div>
                     {isConfigured && mapping && (
                       <div className="text-xs text-green-700 mt-1">
-                        Feuille "{mapping.sheetName}" • Ligne {mapping.startRow} • 
+                        Feuille «{mapping.sheetName}» • Ligne {mapping.startRow} • 
                         {Object.keys(mapping.columnMapping).length} colonnes mappées
                       </div>
                     )}

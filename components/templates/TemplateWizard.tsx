@@ -6,6 +6,7 @@ import { Check } from 'lucide-react';
 import { Step1SelectFields } from './Step1SelectFields';
 import { Step2UploadTemplate } from './Step2UploadTemplate';
 import { Step3Test } from './Step3Test';
+import { type ArrayMapping } from './ExcelArrayMapper';
 
 const STEPS = [
   { id: 1, name: 'Champs', description: 'Sélectionner les champs' },
@@ -20,7 +21,7 @@ export interface TemplateData {
   prompt_template?: string;
   file_type: 'excel' | 'word' | 'pdf';
   champs_actifs: string[];
-  file_config: any;
+  file_config: Record<string, unknown>;
   file_url: string;
   file_name: string;
   file_size_mb: number;
@@ -38,9 +39,32 @@ interface WizardProps {
 export interface ExcelState {
   file: File | null;
   fileName: string | null;
-  sheets: any[];
-  mappings: any[];
-  arrayMappings: any[];
+  sheets: SheetInfo[];
+  mappings: SheetMapping[];
+  arrayMappings: ArrayMapping[];
+}
+
+type SheetInfo = {
+  name: string;
+  rows: number;
+  cols: number;
+  cells: { [key: string]: string };
+  preview: { ref: string; value: string }[];
+};
+
+type SheetMapping = {
+  sheetName: string;
+  mapping: { [fieldName: string]: string | string[] };
+};
+
+function getSheetMappings(fileConfig: unknown): SheetMapping[] {
+  const maybe = (fileConfig as { sheetMappings?: unknown } | null | undefined)?.sheetMappings;
+  return Array.isArray(maybe) ? (maybe as SheetMapping[]) : [];
+}
+
+function getArrayMappings(fileConfig: unknown): ArrayMapping[] {
+  const maybe = (fileConfig as { arrayMappings?: unknown } | null | undefined)?.arrayMappings;
+  return Array.isArray(maybe) ? (maybe as ArrayMapping[]) : [];
 }
 
 export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode = 'create' }: WizardProps) {
@@ -57,8 +81,8 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
     file: null,
     fileName: initialTemplate?.file_name || null,
     sheets: [],
-    mappings: initialTemplate?.file_config?.sheetMappings || [],
-    arrayMappings: initialTemplate?.file_config?.arrayMappings || [],
+    mappings: getSheetMappings(initialTemplate?.file_config),
+    arrayMappings: getArrayMappings(initialTemplate?.file_config),
   });
 
   // Charger les feuilles Excel si on édite un template existant avec un fichier Excel
@@ -85,7 +109,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
       };
       loadSheets();
     }
-  }, [templateData.file_type, templateData.file_url]);
+  }, [templateData.file_type, templateData.file_url, excelState.sheets.length]);
 
   const updateTemplateData = (data: Partial<TemplateData>) => {
     setTemplateData((prev) => ({ ...prev, ...data }));

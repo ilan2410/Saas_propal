@@ -50,10 +50,14 @@ export default async function ResumePropositionPage({
     notFound();
   }
 
-  const sourceDocuments = (proposition.source_documents || []) as any;
-  const documents_urls = Array.isArray(sourceDocuments) ? sourceDocuments : [];
+  const sourceDocuments = proposition.source_documents;
+  const documents_urls = Array.isArray(sourceDocuments)
+    ? sourceDocuments.filter((url): url is string => typeof url === 'string')
+    : [];
 
-  const dataToEdit = (proposition.filled_data || proposition.extracted_data || {}) as any;
+  const dataRaw = proposition.filled_data ?? proposition.extracted_data ?? {};
+  const dataToEdit: Record<string, unknown> =
+    dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw) ? (dataRaw as Record<string, unknown>) : {};
 
   const initialStep = Math.max(1, Math.min(5, Number(proposition.current_step || 1)));
 

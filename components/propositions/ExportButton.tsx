@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Download, Check } from 'lucide-react';
 
 interface ExportButtonProps {
-  data: any;
+  data: unknown;
   filename?: string;
 }
 

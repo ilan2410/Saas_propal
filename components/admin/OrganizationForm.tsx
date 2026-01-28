@@ -10,15 +10,8 @@ import { TestExtractionIA } from './TestExtractionIA';
 import {
   SIMPLE_QUESTIONS,
   ALL_FIELDS,
-  SECTEURS,
-  CLAUDE_MODELS,
   getCategoryLabel,
-  getQuestionsForSecteur,
-  syncSimpleToAdvanced,
-  syncAdvancedToSimple,
   getFieldsCount,
-  getAllSelectedFields,
-  type ViewMode,
 } from './organizationFormConfig';
 
 const DEFAULT_PROMPT = `Tu es un expert en analyse de documents commerciaux (factures téléphonie, contrats, etc.).
@@ -250,7 +243,7 @@ export function OrganizationForm() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Nom de l'organisation *
+              Nom de l&apos;organisation *
             </label>
             <input
               {...register('nom')}
@@ -304,7 +297,7 @@ export function OrganizationForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Sélectionner...</option>
-              <option value="telephonie">Téléphonie d'entreprise</option>
+              <option value="telephonie">Téléphonie d&apos;entreprise</option>
               <option value="bureautique">Bureautique (copieurs/imprimantes)</option>
               <option value="mixte">Mixte (Téléphonie + Bureautique)</option>
             </select>
@@ -340,7 +333,7 @@ export function OrganizationForm() {
               </option>
             </select>
             <p className="text-sm text-gray-500 mt-2">
-              Claude 3.7 Sonnet offre une précision d'extraction supérieure pour les documents complexes.
+              Claude 3.7 Sonnet offre une précision d&apos;extraction supérieure pour les documents complexes.
             </p>
           </div>
 
@@ -469,7 +462,7 @@ export function OrganizationForm() {
             {selectedQuestions.length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>Sélectionnez au moins une catégorie d'informations à extraire</p>
+                <p>Sélectionnez au moins une catégorie d&apos;informations à extraire</p>
               </div>
             )}
           </div>
@@ -620,7 +613,7 @@ export function OrganizationForm() {
             <div>
               <h3 className="font-semibold text-purple-900 flex items-center gap-2">
                 <span>🧪</span>
-                Tester l'extraction IA
+                Tester l&apos;extraction IA
               </h3>
               <p className="text-sm text-purple-700 mt-1">
                 Testez avec de vrais documents pour vérifier que Claude extrait correctement toutes les informations.

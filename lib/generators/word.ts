@@ -14,11 +14,12 @@ import { WordConfig } from '@/types';
  */
 export async function fillWordTemplate(
   templateUrl: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   fileConfig: WordConfig,
-  organizationId: string
+  _organizationId: string
 ): Promise<string> {
   try {
+    void _organizationId;
     const supabase = await createClient();
 
     // 1. Télécharger le template master
@@ -42,14 +43,16 @@ export async function fillWordTemplate(
     });
 
     // 4. Préparer les données selon le mapping
-    const mappedData: Record<string, any> = {};
+    const mappedData: Record<string, unknown> = {};
 
     for (const [templateVar, dataKey] of Object.entries(
       fileConfig.fieldMappings
     )) {
       // Nettoyer le nom de variable (enlever {{ }})
       const cleanVar = templateVar.replace(/[{}]/g, '');
-      mappedData[cleanVar] = data[dataKey] || '';
+      const value = data[dataKey];
+      mappedData[cleanVar] =
+        value === undefined || value === null ? '' : typeof value === 'string' ? value : String(value);
     }
 
     // 5. Remplir le template (MODIFICATION DIRECTE)
@@ -96,10 +99,12 @@ export async function fillWordTemplate(
  */
 export async function generateWordPreview(
   templateUrl: string,
-  data: Record<string, any>,
-  fileConfig: WordConfig
+  data: Record<string, unknown>,
+  _fileConfig: WordConfig
 ): Promise<string> {
   try {
+    void templateUrl;
+    void _fileConfig;
     // Pour un vrai preview, il faudrait convertir le Word en HTML
     // Pour l'instant, on retourne un message
     return `<div class="p-4 border rounded bg-gray-50">

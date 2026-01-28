@@ -474,7 +474,7 @@ export default async function ClientDashboard() {
                 Aucune proposition pour le moment
               </h3>
               <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                Commencez par créer votre première proposition commerciale en utilisant l'un de vos templates
+                Commencez par créer votre première proposition commerciale en utilisant l&apos;un de vos templates
               </p>
               <Link
                 href="/propositions/new"

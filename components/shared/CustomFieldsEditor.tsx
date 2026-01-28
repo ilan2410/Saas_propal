@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Copy, Trash2 } from 'lucide-react';
 import { toSnakeCaseKey } from '@/lib/utils/formatting';
 import {
   ARRAY_FIELDS,
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
+  type ArrayFieldDefinition,
 } from '@/components/admin/organizationFormConfig';
 
 export type CustomFieldType = 'simple' | 'array';
@@ -73,9 +74,8 @@ export function CustomFieldsEditor({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const arrayCategoryIds = useMemo(() => {
-    const fromConfig = (((ARRAY_FIELDS as any)[secteur] || []) as any[])
-      .map((a: any) => (a && typeof a.id === 'string' ? a.id : null))
-      .filter(Boolean);
+    const defs: ArrayFieldDefinition[] = ARRAY_FIELDS[secteur as keyof typeof ARRAY_FIELDS] || [];
+    const fromConfig = defs.map((a) => a.id);
     return new Set<string>([...fromConfig, 'lignes']);
   }, [secteur]);
 
@@ -85,13 +85,14 @@ export function CustomFieldsEditor({
 
   const builtInNonArrayCategoryIds = useMemo(() => {
     return Object.keys(fieldsByCategory).filter((cat) => !arrayCategoryIds.has(cat));
-  }, [arrayCategoryIds]);
+  }, [arrayCategoryIds, fieldsByCategory]);
 
-  useEffect(() => {
-    if (newCustomType !== 'simple' || newCustomCategoryMode !== 'existing') return;
-    if (!builtInNonArrayCategoryIds.includes(newCustomCategoryId)) {
-      setNewCustomCategoryId(builtInNonArrayCategoryIds.includes('client') ? 'client' : (builtInNonArrayCategoryIds[0] || 'client'));
-    }
+  const resolvedNewCustomCategoryId = useMemo(() => {
+    if (newCustomType !== 'simple' || newCustomCategoryMode !== 'existing') return newCustomCategoryId;
+    if (builtInNonArrayCategoryIds.includes(newCustomCategoryId)) return newCustomCategoryId;
+    return builtInNonArrayCategoryIds.includes('client')
+      ? 'client'
+      : builtInNonArrayCategoryIds[0] || 'client';
   }, [newCustomType, newCustomCategoryMode, newCustomCategoryId, builtInNonArrayCategoryIds]);
 
   const generatedKey = useMemo(() => {
@@ -118,10 +119,10 @@ export function CustomFieldsEditor({
     const key = toSnakeCaseKey(label);
     if (!key) return;
 
-    let nextCategories = [...customCategories];
+    const nextCategories = [...customCategories];
     let nextArrayCategories = [...customArrayCategories];
 
-    let categoryId = newCustomCategoryId;
+    let categoryId = resolvedNewCustomCategoryId;
 
     if (newCustomType === 'simple' && newCustomCategoryMode === 'new') {
       const newCatLabel = newCustomCategoryLabel.trim();
@@ -234,9 +235,8 @@ export function CustomFieldsEditor({
 
   const arrayLabelsById = useMemo(() => {
     const map = new Map<string, string>();
-    (((ARRAY_FIELDS as any)[secteur] || []) as any[]).forEach((a: any) => {
-      if (a && typeof a.id === 'string') map.set(a.id, (a.label as string) || a.id);
-    });
+    const defs: ArrayFieldDefinition[] = ARRAY_FIELDS[secteur as keyof typeof ARRAY_FIELDS] || [];
+    defs.forEach((a) => map.set(a.id, a.label || a.id));
     customArrayCategories.forEach((a) => map.set(a.id, a.label));
     map.set('lignes', getCategoryLabelForSecteur(secteur, 'lignes'));
     return map;
@@ -364,7 +364,7 @@ export function CustomFieldsEditor({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Choix</label>
                 <select
-                  value={newCustomCategoryId}
+                  value={resolvedNewCustomCategoryId}
                   onChange={(e) => setNewCustomCategoryId(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                 >
@@ -426,7 +426,7 @@ export function CustomFieldsEditor({
                 onChange={(e) => setNewCustomArrayId(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               >
-                {(((ARRAY_FIELDS as any)[secteur] || []) as any[]).map((a: any) => (
+                {(ARRAY_FIELDS[secteur as keyof typeof ARRAY_FIELDS] || []).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.label || a.id}
                   </option>

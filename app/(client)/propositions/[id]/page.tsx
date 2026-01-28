@@ -12,14 +12,7 @@ import {
   Clock,
   Zap,
   Package,
-  ChevronDown,
-  ExternalLink,
-  Copy,
-  Share2,
-  MoreVertical,
-  Eye,
   Edit3,
-  Trash2,
   FileSearch
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
@@ -29,20 +22,25 @@ import { ActionMenu } from '@/components/propositions/ActionMenu';
 import { CopyButton } from '@/components/propositions/CopyButton';
 import { ExportButton } from '@/components/propositions/ExportButton';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 // Compte le nombre total de champs (récursivement)
-function countTotalFields(data: any): number {
+function countTotalFields(data: unknown): number {
   if (data === null || data === undefined) return 0;
   if (typeof data !== 'object') return 1;
+  if (Array.isArray(data)) return data.length;
   
   let count = 0;
   
-  for (const value of Object.values(data)) {
+  for (const value of Object.values(data as Record<string, unknown>)) {
     if (value === null || value === undefined) continue;
     
     if (Array.isArray(value)) {
       count += value.length;
     } else if (typeof value === 'object') {
-      count += Object.keys(value).length;
+      count += Object.keys(value as Record<string, unknown>).length;
     } else {
       count += 1;
     }
@@ -84,28 +82,35 @@ function getFileExtension(url: string): string {
 }
 
 // Extrait le nom du client
-function getClientName(extractedData: any): string {
+function getClientName(extractedData: unknown): string {
   try {
-    const data = extractedData || {};
+    const data: Record<string, unknown> = isRecord(extractedData) ? extractedData : {};
     
-    if (data.client) {
-      if (data.client.nom) return data.client.nom;
-      if (data.client.name) return data.client.name;
+    if (isRecord(data.client)) {
+      const nom = data.client.nom;
+      const name = data.client.name;
+      if (typeof nom === 'string' && nom) return nom;
+      if (typeof name === 'string' && name) return name;
     }
     
-    if (data['client.nom']) return data['client.nom'];
-    if (data['client.prenom'] && data['client.nom']) {
-      return `${data['client.prenom']} ${data['client.nom']}`;
+    const clientNom = data['client.nom'];
+    if (typeof clientNom === 'string' && clientNom) return clientNom;
+
+    const clientPrenom = data['client.prenom'];
+    const clientNom2 = data['client.nom'];
+    if (typeof clientPrenom === 'string' && clientPrenom && typeof clientNom2 === 'string' && clientNom2) {
+      return `${clientPrenom} ${clientNom2}`;
     }
     
-    if (data.nom_client) return data.nom_client;
-    if (data.client_nom) return data.client_nom;
+    if (typeof data.nom_client === 'string' && data.nom_client) return data.nom_client;
+    if (typeof data.client_nom === 'string' && data.client_nom) return data.client_nom;
     
     for (const [key, value] of Object.entries(data)) {
-      if (key.toLowerCase().includes('client') && typeof value === 'object' && value !== null) {
-        const clientObj = value as any;
-        if (clientObj.nom) return clientObj.nom;
-        if (clientObj.name) return clientObj.name;
+      if (key.toLowerCase().includes('client') && isRecord(value)) {
+        const nom = value.nom;
+        const name = value.name;
+        if (typeof nom === 'string' && nom) return nom;
+        if (typeof name === 'string' && name) return name;
       }
     }
     
@@ -199,7 +204,8 @@ export default async function PropositionDetailPage({
     notFound();
   }
 
-  const template = proposition.template as any;
+  const templateRaw = (proposition as Record<string, unknown>).template;
+  const template = isRecord(templateRaw) ? templateRaw : null;
   
   const extractedData = proposition.extracted_data || proposition.donnees_extraites || {};
   const clientName = getClientName(extractedData) || proposition.nom_client || 'Proposition sans nom';
@@ -308,7 +314,7 @@ export default async function PropositionDetailPage({
               <h3 className="font-semibold text-gray-600 text-sm">Template</h3>
             </div>
             <p className="text-xl font-bold text-gray-900 truncate">
-              {template?.nom || 'N/A'}
+              {typeof template?.nom === 'string' ? template.nom : 'N/A'}
             </p>
           </div>
 
@@ -371,7 +377,7 @@ export default async function PropositionDetailPage({
                       Documents sources
                     </h2>
                     <p className="text-sm text-gray-500 mt-0.5">
-                      {documentsUrls.length} fichier(s) utilisé(s) pour l'extraction
+                      {documentsUrls.length} fichier(s) utilisé(s) pour l&apos;extraction
                     </p>
                   </div>
                 </div>
@@ -429,7 +435,7 @@ export default async function PropositionDetailPage({
                     Données extraites
                   </h2>
                   <p className="text-sm text-gray-500 mt-0.5">
-                    {totalFields} champ(s) détecté(s) par l'IA
+                    {totalFields} champ(s) détecté(s) par l&apos;IA
                   </p>
                 </div>
               </div>
@@ -460,7 +466,7 @@ export default async function PropositionDetailPage({
                               {typeof item === 'object' && item !== null ? (
                                 <div className="space-y-2">
                                   {Object.entries(item)
-                                    .filter(([_, v]) => v !== null && v !== undefined && v !== '')
+                                    .filter(([, v]) => v !== null && v !== undefined && v !== '')
                                     .map(([k, v]) => (
                                       <div key={k} className="flex items-start gap-3">
                                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[120px]">
@@ -482,7 +488,7 @@ export default async function PropositionDetailPage({
                     ) : typeof value === 'object' && value !== null ? (
                       <div className="space-y-3">
                         {Object.entries(value)
-                          .filter(([_, v]) => v !== null && v !== undefined)
+                          .filter(([, v]) => v !== null && v !== undefined)
                           .map(([k, v]) => (
                             <div key={k} className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-4 border border-gray-200">
                               <div className="flex items-start gap-3">
@@ -502,7 +508,7 @@ export default async function PropositionDetailPage({
                                               {typeof item === 'object' && item !== null ? (
                                                 <div className="space-y-1">
                                                   {Object.entries(item)
-                                                    .filter(([_, iv]) => iv !== null && iv !== undefined && iv !== '')
+                                                    .filter(([, iv]) => iv !== null && iv !== undefined && iv !== '')
                                                     .map(([ik, iv]) => (
                                                       <div key={ik} className="flex items-start gap-2 text-xs">
                                                         <span className="text-gray-500 font-medium">{formatFieldName(ik)}:</span>
@@ -525,7 +531,7 @@ export default async function PropositionDetailPage({
                                       </div>
                                       <div className="space-y-1 mt-2">
                                         {Object.entries(v)
-                                          .filter(([_, iv]) => iv !== null && iv !== undefined && iv !== '')
+                                          .filter(([, iv]) => iv !== null && iv !== undefined && iv !== '')
                                           .map(([ik, iv]) => (
                                             <div key={ik} className="flex items-start gap-2 text-xs">
                                               <span className="text-gray-500 font-medium">{formatFieldName(ik)}:</span>
@@ -561,7 +567,7 @@ export default async function PropositionDetailPage({
                   Aucune donnée extraite
                 </h3>
                 <p className="text-gray-500 text-sm">
-                  Les données n'ont pas encore été extraites des documents sources
+                  Les données n&apos;ont pas encore été extraites des documents sources
                 </p>
               </div>
             )}

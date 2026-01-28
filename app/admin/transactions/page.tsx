@@ -33,6 +33,8 @@ export default async function TransactionsPage() {
   const totalCredits = transactions?.reduce((sum, t) => sum + (t.credits_ajoutes || 0), 0) || 0;
   const transactionsReussies = transactions?.filter(t => t.statut === 'succeeded').length || 0;
 
+  type TransactionRow = { id: string } & Record<string, unknown>;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -133,49 +135,65 @@ export default async function TransactionsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {transactions.map((trans: any) => (
-                  <tr key={trans.id} className="hover:bg-gray-50">
+                {transactions.map((trans) => {
+                  const t = trans as TransactionRow;
+                  const orgRaw = t.organization;
+                  const org =
+                    orgRaw && typeof orgRaw === 'object' && !Array.isArray(orgRaw)
+                      ? (orgRaw as Record<string, unknown>)
+                      : null;
+
+                  const montant = typeof t.montant === 'number' ? t.montant : Number(t.montant ?? 0);
+                  const creditsAjoutes =
+                    typeof t.credits_ajoutes === 'number' ? t.credits_ajoutes : Number(t.credits_ajoutes ?? 0);
+                  const bonusApplique =
+                    typeof t.bonus_applique === 'number' ? t.bonus_applique : Number(t.bonus_applique ?? 0);
+                  const statut = typeof t.statut === 'string' ? t.statut : '';
+
+                  return (
+                  <tr key={t.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(trans.created_at)}
+                      {formatDate(String(t.created_at ?? ''))}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {trans.organization?.nom || 'N/A'}
+                          {typeof org?.nom === 'string' && org.nom ? org.nom : 'N/A'}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {trans.organization?.email || 'N/A'}
+                          {typeof org?.email === 'string' && org.email ? org.email : 'N/A'}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(trans.montant)}
+                      {formatCurrency(montant)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      +{formatCurrency(trans.credits_ajoutes)}
+                      +{formatCurrency(creditsAjoutes)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                      {trans.bonus_applique > 0 ? `+${trans.bonus_applique}%` : '-'}
+                      {bonusApplique > 0 ? `+${bonusApplique}%` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          trans.statut === 'succeeded'
+                          statut === 'succeeded'
                             ? 'bg-green-100 text-green-800'
-                            : trans.statut === 'failed'
+                            : statut === 'failed'
                             ? 'bg-red-100 text-red-800'
                             : 'bg-yellow-100 text-yellow-800'
                         }`}
                       >
-                        {trans.statut === 'succeeded'
+                        {statut === 'succeeded'
                           ? 'Réussi'
-                          : trans.statut === 'failed'
+                          : statut === 'failed'
                           ? 'Échoué'
                           : 'En attente'}
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           ) : (

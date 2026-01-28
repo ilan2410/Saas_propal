@@ -16,6 +16,12 @@ import {
 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 
+type UnknownRecord = Record<string, unknown>;
+
+function isPlainObject(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 interface Props {
   secteur: string;
   propositionData: Partial<PropositionData>;
@@ -25,41 +31,12 @@ interface Props {
 }
 
 // Compte le nombre total de champs (récursivement)
-function countTotalFields(data: any): number {
+function countTotalFields(data: unknown): number {
   if (data === null || data === undefined) return 0;
-  if (typeof data !== 'object') return 1;
-  
-  let count = 0;
-  
-  for (const value of Object.values(data)) {
-    if (value === null || value === undefined) continue;
-    
-    if (Array.isArray(value)) {
-      count += value.length;
-    } else if (typeof value === 'object') {
-      count += Object.keys(value).length;
-    } else {
-      count += 1;
-    }
-  }
-  
-  return count;
-}
+  if (Array.isArray(data)) return data.reduce<number>((acc, v) => acc + countTotalFields(v), 0);
+  if (!isPlainObject(data)) return 1;
 
-// Formate un nom de champ pour l'affichage
-function formatFieldName(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^\w/, c => c.toUpperCase())
-    .trim();
-}
-
-// Formate une valeur simple
-function formatSimpleValue(value: any): string {
-  if (value === null || value === undefined) return 'Non renseigné';
-  if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
-  return String(value);
+  return Object.values(data).reduce<number>((acc, v) => acc + countTotalFields(v), 0);
 }
 
 export function Step3ExtractData({
@@ -71,7 +48,7 @@ export function Step3ExtractData({
 }: Props) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionStatus, setExtractionStatus] = useState<'idle' | 'extracting' | 'success' | 'error'>('idle');
-  const [extractedData, setExtractedData] = useState<any>(null);
+  const [extractedData, setExtractedData] = useState<UnknownRecord | null>(null);
   const [error, setError] = useState<string>('');
   const [creditsInfo, setCreditsInfo] = useState<{ restants: number; debite: number } | null>(null);
 
@@ -99,7 +76,8 @@ export function Step3ExtractData({
         throw new Error(result.details || result.error || 'Erreur extraction');
       }
 
-      setExtractedData(result.donnees_extraites);
+      const nextExtractedData: UnknownRecord = isPlainObject(result.donnees_extraites) ? result.donnees_extraites : {};
+      setExtractedData(nextExtractedData);
       setExtractionStatus('success');
 
       if (result.credits_restants !== undefined && result.montant_debite !== undefined) {
@@ -110,12 +88,12 @@ export function Step3ExtractData({
       }
 
       updatePropositionData({
-        donnees_extraites: result.donnees_extraites,
+        donnees_extraites: nextExtractedData,
         proposition_id: result.proposition_id,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur extraction:', error);
-      setError(error.message);
+      setError(error instanceof Error ? error.message : 'Erreur inconnue');
       setExtractionStatus('error');
     } finally {
       setIsExtracting(false);
@@ -141,7 +119,7 @@ export function Step3ExtractData({
           Extraction des données
         </h2>
         <p className="text-gray-600 text-lg">
-          L'intelligence artificielle Claude va analyser vos documents
+          L&apos;intelligence artificielle Claude va analyser vos documents
         </p>
       </div>
 
@@ -154,7 +132,7 @@ export function Step3ExtractData({
               <Brain className="w-12 h-12 text-gray-400" />
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">
-              Prêt pour l'extraction
+              Prêt pour l&apos;extraction
             </h3>
             <p className="text-gray-600 mb-8 max-w-md mx-auto">
               Claude va analyser automatiquement vos documents et extraire toutes les informations nécessaires selon votre template
@@ -164,7 +142,7 @@ export function Step3ExtractData({
               className="group px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:from-indigo-700 hover:to-indigo-800 transition-all font-semibold text-lg shadow-lg shadow-indigo-500/30 flex items-center gap-3 mx-auto hover:scale-105 active:scale-95"
             >
               <Sparkles className="w-5 h-5" />
-              Lancer l'extraction
+              Lancer l&apos;extraction
               <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform" />
             </button>
           </div>
@@ -286,7 +264,7 @@ export function Step3ExtractData({
                 <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm text-green-800">
-                    <strong>Prêt pour la validation</strong> - Vous pourrez vérifier et modifier les données extraites à l'étape suivante
+                    <strong>Prêt pour la validation</strong> - Vous pourrez vérifier et modifier les données extraites à l&apos;étape suivante
                   </p>
                 </div>
               </div>
@@ -302,7 +280,7 @@ export function Step3ExtractData({
                 <AlertCircle className="w-12 h-12 text-white" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                Erreur d'extraction
+                Erreur d&apos;extraction
               </h3>
               <p className="text-red-600 text-lg mb-6 max-w-md mx-auto">
                 {error}
@@ -338,7 +316,7 @@ export function Step3ExtractData({
                 className="px-8 py-4 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 transition-all font-semibold shadow-lg shadow-red-500/30 flex items-center gap-3 mx-auto hover:scale-105 active:scale-95"
               >
                 <Zap className="w-5 h-5" />
-                Réessayer l'extraction
+                Réessayer l&apos;extraction
               </button>
             </div>
           </div>
@@ -353,7 +331,7 @@ export function Step3ExtractData({
           </div>
           <div className="flex-1">
             <h3 className="font-bold text-blue-900 text-lg mb-3">
-              Comment fonctionne l'extraction ?
+              Comment fonctionne l&apos;extraction ?
             </h3>
             <ul className="space-y-2 text-sm text-blue-800">
               <li className="flex items-start gap-2">
@@ -366,11 +344,11 @@ export function Step3ExtractData({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">✏️</span>
-                <span>Vous pourrez vérifier et modifier toutes les données à l'étape suivante</span>
+                <span>Vous pourrez vérifier et modifier toutes les données à l&apos;étape suivante</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">💳</span>
-                <span>L'extraction consomme vos crédits selon le volume de données traitées</span>
+                <span>L&apos;extraction consomme vos crédits selon le volume de données traitées</span>
               </li>
             </ul>
           </div>

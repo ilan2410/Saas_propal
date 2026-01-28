@@ -20,7 +20,7 @@ export async function PATCH(
     );
 
     // Construire l'objet de mise à jour avec les bons noms de colonnes
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 

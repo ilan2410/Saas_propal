@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, CreditCard, FileText, BarChart, Plus, Settings, Eye } from 'lucide-react';
@@ -52,14 +51,6 @@ export default async function ClientDetailPage({
     .eq('organization_id', id)
     .order('created_at', { ascending: false })
     .limit(10);
-
-  // Récupérer les analytics
-  const { data: analytics } = await supabase
-    .from('usage_analytics')
-    .select('*')
-    .eq('organization_id', id)
-    .order('periode', { ascending: false })
-    .limit(6);
 
   // Récupérer les transactions
   const { data: transactions } = await supabase
@@ -206,9 +197,11 @@ export default async function ClientDetailPage({
         <div className="p-6">
           {templates && templates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {templates.map((template: any) => (
+              {templates.map((template) => {
+                const t = template as { id: string } & Record<string, unknown>;
+                return (
                 <div
-                  key={template.id}
+                  key={t.id}
                   className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -217,31 +210,31 @@ export default async function ClientDetailPage({
                         <FileText className="w-5 h-5 text-purple-600" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">{template.nom}</h3>
+                        <h3 className="font-semibold text-gray-900">{String(t.nom ?? '')}</h3>
                         <p className="text-xs text-gray-500">
-                          {template.champs_actifs?.length || 0} champs configurés
+                          {Array.isArray(t.champs_actifs) ? t.champs_actifs.length : 0} champs configurés
                         </p>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                     <span className="px-2 py-1 bg-gray-100 rounded">
-                      {template.type_fichier?.toUpperCase() || 'EXCEL'}
+                      {typeof t.type_fichier === 'string' ? t.type_fichier.toUpperCase() : 'EXCEL'}
                     </span>
                     <span>
-                      Créé le {formatDate(template.created_at)}
+                      Créé le {formatDate(String(t.created_at ?? ''))}
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <Link
-                      href={`/admin/clients/${id}/templates/${template.id}`}
+                      href={`/admin/clients/${id}/templates/${t.id}`}
                       className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <Eye className="w-4 h-4" />
                       Voir
                     </Link>
                     <Link
-                      href={`/admin/clients/${id}/templates/${template.id}/edit`}
+                      href={`/admin/clients/${id}/templates/${t.id}/edit`}
                       className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
                     >
                       <Settings className="w-4 h-4" />
@@ -249,7 +242,8 @@ export default async function ClientDetailPage({
                     </Link>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8">
@@ -258,7 +252,7 @@ export default async function ClientDetailPage({
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun template</h3>
               <p className="text-gray-500 mb-4">
-                Créez un template pour configurer l'extraction IA
+                Créez un template pour configurer l&apos;extraction IA
               </p>
               <Link
                 href={`/admin/clients/${id}/templates/new`}

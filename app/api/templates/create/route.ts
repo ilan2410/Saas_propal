@@ -14,15 +14,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
     
     console.log('Création template - body reçu:', JSON.stringify(body, null, 2));
 
     // Validation des champs requis
-    if (!body.nom) {
+    const nom = typeof body.nom === 'string' ? body.nom : '';
+    const fileType = typeof body.file_type === 'string' ? body.file_type : '';
+
+    if (!nom) {
       return NextResponse.json({ error: 'Le nom est requis', details: 'nom manquant' }, { status: 400 });
     }
-    if (!body.file_type) {
+    if (!fileType) {
       return NextResponse.json({ error: 'Le type de fichier est requis', details: 'file_type manquant' }, { status: 400 });
     }
 
@@ -46,16 +49,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Créer le template dans la BDD
-    const insertData: Record<string, any> = {
+    const champsActifs = Array.isArray(body.champs_actifs)
+      ? (body.champs_actifs.filter((v): v is string => typeof v === 'string') as string[])
+      : [];
+    const fileConfig =
+      body.file_config && typeof body.file_config === 'object' && !Array.isArray(body.file_config)
+        ? body.file_config
+        : {};
+
+    const insertData: Record<string, unknown> = {
       organization_id: user.id,
-      nom: body.nom,
-      description: body.description || null,
-      file_type: body.file_type,
-      file_url: body.file_url || body.template_file_url || '',
-      file_name: body.file_name || body.nom || 'template',
-      file_size_mb: body.file_size_mb || null,
-      champs_actifs: body.champs_actifs || [],
-      file_config: body.file_config || {},
+      nom,
+      description: typeof body.description === 'string' ? body.description : null,
+      file_type: fileType,
+      file_url:
+        (typeof body.file_url === 'string' && body.file_url) ||
+        (typeof body.template_file_url === 'string' && body.template_file_url) ||
+        '',
+      file_name:
+        (typeof body.file_name === 'string' && body.file_name) || nom || 'template',
+      file_size_mb: typeof body.file_size_mb === 'number' ? body.file_size_mb : null,
+      champs_actifs: champsActifs,
+      file_config: fileConfig,
       statut: 'brouillon',
     };
 

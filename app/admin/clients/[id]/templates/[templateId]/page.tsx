@@ -182,7 +182,7 @@ export default async function TemplateDetailPage({
             </div>
           ) : (
             <p className="text-gray-500 text-center py-4">
-              Aucun champ configuré. Cliquez sur "Configurer" pour ajouter des champs.
+              Aucun champ configuré. Cliquez sur &quot;Configurer&quot; pour ajouter des champs.
             </p>
           )}
         </div>

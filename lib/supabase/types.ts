@@ -1,9 +1,24 @@
 // Types générés automatiquement depuis le schéma Supabase
 // Pour générer ces types automatiquement, utilisez: npx supabase gen types typescript
 
-import { Database as DatabaseGenerated } from '@/types/supabase';
+type TableDef = {
+  Row: Record<string, unknown>;
+  Insert: Record<string, unknown>;
+  Update: Record<string, unknown>;
+};
 
-export type Database = DatabaseGenerated;
+export type Database = {
+  public: {
+    Tables: {
+      organizations: TableDef;
+      proposition_templates: TableDef;
+      propositions: TableDef;
+      usage_analytics: TableDef;
+      stripe_transactions: TableDef;
+      prompt_defaults: TableDef;
+    };
+  };
+};
 
 // Types des tables
 export type Organization = Database['public']['Tables']['organizations']['Row'];

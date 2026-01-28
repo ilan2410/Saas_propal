@@ -38,9 +38,10 @@ export default function LoginPage() {
       }
       
       router.refresh();
-    } catch (error: any) {
-      console.error('Erreur login:', error);
-      setError(error.message || 'Erreur lors de la connexion');
+    } catch (err: unknown) {
+      console.error('Erreur login:', err);
+      const message = err instanceof Error ? err.message : 'Erreur lors de la connexion';
+      setError(message);
     } finally {
       setIsLoading(false);
     }

@@ -12,9 +12,7 @@ const clientSchema = z.object({
   nom: z.string().min(2, 'Le nom doit contenir au moins 2 caractères'),
   email: z.string().email('Email invalide'),
   password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
-  secteur: z.enum(['telephonie', 'bureautique', 'mixte'], {
-    required_error: 'Veuillez sélectionner un secteur',
-  }),
+  secteur: z.enum(['telephonie', 'bureautique', 'mixte']),
   tarif_par_proposition: z.number().min(0, 'Le tarif doit être positif'),
 });
 
@@ -92,7 +90,7 @@ export function OrganizationFormSimple() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <span className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
-                Nom de l'organisation *
+                Nom de l&apos;organisation *
               </span>
             </label>
             <input
@@ -146,7 +144,7 @@ export function OrganizationFormSimple() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <span className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4" />
-                Secteur d'activité *
+                Secteur d&apos;activité *
               </span>
             </label>
             <select
@@ -210,8 +208,8 @@ export function OrganizationFormSimple() {
           <div>
             <h3 className="font-medium text-blue-900">Configuration IA par template</h3>
             <p className="text-sm text-blue-700 mt-1">
-              La configuration de l'IA (modèle Claude, prompt, champs à extraire) se fait au niveau de chaque template.
-              Créez d'abord le client, puis configurez ses templates avec les paramètres d'extraction spécifiques.
+              La configuration de l&apos;IA (modèle Claude, prompt, champs à extraire) se fait au niveau de chaque template.
+              Créez d&apos;abord le client, puis configurez ses templates avec les paramètres d&apos;extraction spécifiques.
             </p>
           </div>
         </div>

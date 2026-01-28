@@ -10,10 +10,17 @@ interface Props {
   onPrev: () => void;
 }
 
+type TemplateTestResult = {
+  fieldsExtracted: number;
+  confidence: number;
+  tokensUsed: number;
+  previewUrl?: string;
+};
+
 export function Step4Test({ templateData, onComplete, onPrev }: Props) {
   const [testFile, setTestFile] = useState<File | null>(null);
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<TemplateTestResult | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
 
   const handleTestFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,7 +198,7 @@ export function Step4Test({ templateData, onComplete, onPrev }: Props) {
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <p className="text-sm text-yellow-800">
           ⚠️ Vous pouvez sauter le test et créer le template directement, mais il
-          est recommandé de tester d'abord.
+          est recommandé de tester d&apos;abord.
         </p>
       </div>
 

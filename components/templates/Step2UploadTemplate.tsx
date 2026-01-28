@@ -6,14 +6,6 @@ import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 
-interface SheetInfo {
-  name: string;
-  rows: number;
-  cols: number;
-  cells: { [key: string]: string };
-  preview: { ref: string; value: string }[];
-}
-
 interface SheetMapping {
   sheetName: string;
   mapping: { [fieldName: string]: string | string[] };
@@ -33,6 +25,23 @@ interface Props {
 
 type Step = 'upload' | 'parse-excel' | 'map-sheets' | 'uploading';
 
+type CustomFieldConfig = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getString(obj: Record<string, unknown>, key: string): string | undefined {
+  const v = obj[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+function getArrayOfRecords(obj: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const v = obj[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter(isRecord);
+}
+
 export function Step2UploadTemplate({
   templateData,
   updateTemplateData,
@@ -50,18 +59,21 @@ export function Step2UploadTemplate({
   
   // Obtenir les champs de type tableau pour ce secteur, en tenant compte des fusions
   const baseArrayFields = getArrayFieldsForSecteur(secteur, templateData.merge_config);
-  const customFields = (templateData.file_config as any)?.custom_fields || [];
-  const customArrayCats = (templateData.file_config as any)?.custom_array_fields || [];
+  const fileConfig = (templateData.file_config || {}) as CustomFieldConfig;
+  const customFields = getArrayOfRecords(fileConfig, 'custom_fields');
+  const customArrayCats = getArrayOfRecords(fileConfig, 'custom_array_fields');
 
   const baseArrayIds = new Set(baseArrayFields.map((a) => a.id));
 
   const arrayIdsFromCustomFields = new Set(
     customFields
-      .filter((d: any) => d && d.fieldType === 'array')
-      .map((d: any) => {
-        if (typeof d.arrayId === 'string' && d.arrayId.trim()) return d.arrayId.trim();
-        if (typeof d.fieldPath === 'string') {
-          const m = d.fieldPath.match(/^([^\[]+)\[\]\./);
+      .filter((d) => getString(d, 'fieldType') === 'array')
+      .map((d) => {
+        const arrayId = getString(d, 'arrayId');
+        if (arrayId && arrayId.trim()) return arrayId.trim();
+        const fieldPath = getString(d, 'fieldPath');
+        if (fieldPath) {
+          const m = fieldPath.match(/^([^\[]+)\[\]\./);
           if (m?.[1]) return m[1];
         }
         return null;
@@ -70,20 +82,25 @@ export function Step2UploadTemplate({
   );
 
   const customArrayLabelById = new Map(
-    (customArrayCats as any[])
-      .filter((c) => c && typeof c.id === 'string' && c.id.trim())
-      .map((c) => [c.id.trim(), typeof c.label === 'string' && c.label.trim() ? c.label.trim() : c.id.trim()])
+    customArrayCats
+      .map((c) => {
+        const id = getString(c, 'id')?.trim();
+        if (!id) return null;
+        const label = getString(c, 'label')?.trim();
+        return [id, label && label.length > 0 ? label : id] as const;
+      })
+      .filter(Boolean) as Array<readonly [string, string]>
   );
 
   const extraArrayDefs: ArrayFieldDefinition[] = Array.from(
     new Set([
-      ...(customArrayCats as any[])
-        .filter((c) => c && typeof c.id === 'string' && c.id.trim())
-        .map((c) => c.id.trim()),
+      ...customArrayCats
+        .map((c) => getString(c, 'id')?.trim() || null)
+        .filter(Boolean),
       ...Array.from(arrayIdsFromCustomFields),
     ])
   )
-    .filter((id) => id && !baseArrayIds.has(id))
+    .filter((id): id is string => !!id && !baseArrayIds.has(id))
     .map((id) => ({
       id,
       label: customArrayLabelById.get(id) || id,
@@ -93,8 +110,10 @@ export function Step2UploadTemplate({
 
   const arrayFields = [...baseArrayFields, ...extraArrayDefs].map((arr) => {
     const customForArray = customFields
-      .filter((d: any) => d && d.fieldType === 'array' && d.arrayId === arr.id && typeof d.key === 'string' && d.key.trim())
-      .map((d: any) => d.key.trim());
+      .filter((d) => getString(d, 'fieldType') === 'array')
+      .filter((d) => getString(d, 'arrayId') === arr.id)
+      .map((d) => getString(d, 'key')?.trim() || null)
+      .filter(Boolean) as string[];
 
     if (customForArray.length === 0) return arr;
 
@@ -111,7 +130,6 @@ export function Step2UploadTemplate({
     };
   });
   
-  const [fileType, setFileType] = useState<'excel' | 'word' | 'pdf' | null>(templateData.file_type || null);
   const [parseError, setParseError] = useState<string | null>(null);
 
   const getInitialStep = (): Step => {
@@ -171,7 +189,6 @@ export function Step2UploadTemplate({
       sheets: [],
       mappings: [],
     });
-    setFileType(type);
 
     // Pour Excel, parser le fichier pour obtenir les feuilles
     if (type === 'excel') {
@@ -191,10 +208,11 @@ export function Step2UploadTemplate({
           throw new Error('Erreur lors du parsing du fichier Excel');
         }
 
-        const result = await response.json();
+        const result = (await response.json().catch(() => null)) as unknown;
+        const sheets = isRecord(result) && Array.isArray(result.sheets) ? (result.sheets as ExcelState['sheets']) : [];
         // Sauvegarder les feuilles dans l'état partagé
         updateExcelState({
-          sheets: result.sheets,
+          sheets,
         });
         setStep('map-sheets');
       } catch (error) {
@@ -208,7 +226,12 @@ export function Step2UploadTemplate({
     }
   };
 
-  const handleUploadFile = async (uploadFile: File, uploadType: 'excel' | 'word' | 'pdf', fileConfig?: any, isSave?: boolean) => {
+  const handleUploadFile = async (
+    uploadFile: File,
+    uploadType: 'excel' | 'word' | 'pdf',
+    fileConfig?: Record<string, unknown>,
+    isSave?: boolean
+  ) => {
     setStep('uploading');
 
     try {
@@ -223,11 +246,13 @@ export function Step2UploadTemplate({
 
       if (!response.ok) throw new Error('Erreur upload');
 
-      const result = await response.json();
+      const result = (await response.json().catch(() => null)) as unknown;
+      const url = isRecord(result) ? getString(result, 'url') : undefined;
+      if (!url) throw new Error('Réponse upload invalide');
 
       updateTemplateData({
         file_type: uploadType,
-        file_url: result.url,
+        file_url: url,
         file_name: uploadFile.name,
         file_size_mb: uploadFile.size / (1024 * 1024),
         file_config: fileConfig || {},
@@ -245,7 +270,11 @@ export function Step2UploadTemplate({
     }
   };
 
-  const handleMultiSheetMappingComplete = async (sheetMappings: SheetMapping[], fileConfig: any, isSave?: boolean) => {
+  const handleMultiSheetMappingComplete = async (
+    sheetMappings: SheetMapping[],
+    fileConfig: Record<string, unknown>,
+    isSave?: boolean
+  ) => {
     // Sauvegarder les mappings dans l'état partagé (toujours)
     updateExcelState({ mappings: sheetMappings });
 
@@ -288,7 +317,6 @@ export function Step2UploadTemplate({
       mappings: [],
       arrayMappings: [],
     });
-    setFileType(null);
     setStep('upload');
     // Nettoyer le templateData
     updateTemplateData({

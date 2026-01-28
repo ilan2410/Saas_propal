@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { LayoutDashboard, FileText, Zap, CreditCard, Settings } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
-import { formatCurrency } from '@/lib/utils/formatting';
+import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
 
 export const revalidate = 0;
 
@@ -93,15 +93,11 @@ export default async function ClientLayout({
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           {/* Solde crédits */}
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-gray-600 mb-1">Crédits disponibles</p>
-            <p className="text-xl font-bold text-blue-600">
-              {formatCurrency(organization?.credits || 0)}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              ≈ {Math.floor((organization?.credits || 0) / (organization?.tarif_par_proposition || 1))} propositions
-            </p>
-          </div>
+          <CreditsDisplay 
+            organizationId={organization.id}
+            initialCredits={organization.credits || 0}
+            tarifParProposition={organization.tarif_par_proposition || 0}
+          />
 
           {/* Profil */}
           <div className="flex items-center gap-3 mb-3">

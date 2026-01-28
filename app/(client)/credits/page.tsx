@@ -160,7 +160,7 @@ export default async function CreditsPage() {
         <div className="p-8 lg:p-10">
           {transactions && transactions.length > 0 ? (
             <div className="space-y-4">
-              {transactions.map((trans, index) => {
+              {transactions.map((trans) => {
                 const statusConfig = {
                   succeeded: {
                     label: 'Réussi',
@@ -278,7 +278,7 @@ export default async function CreditsPage() {
             Bonus progressifs
           </h3>
           <p className="mt-2 text-sm text-gray-600">
-            Plus vous rechargez, plus le bonus est important. Jusqu'à +15% sur les forfaits Enterprise.
+            Plus vous rechargez, plus le bonus est important. Jusqu&apos;à +15% sur les forfaits Enterprise.
           </p>
         </div>
 

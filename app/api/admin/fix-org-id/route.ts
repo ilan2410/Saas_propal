@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 // POST /api/admin/fix-org-id
 // Corrige les organisations dont l'ID ne correspond pas à l'ID Auth de l'utilisateur
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     // Vérifier que l'appelant est admin
     const supabase = await createClient();
@@ -34,8 +34,20 @@ export async function POST(request: NextRequest) {
     const { data: authData } = await supabaseAdmin.auth.admin.listUsers();
     const authUsers = authData?.users || [];
 
-    const fixes: any[] = [];
-    const errors: any[] = [];
+    type FixResult = {
+      email: string;
+      oldId: string;
+      newId: string;
+      credits: unknown;
+    };
+    type FixError = {
+      email: string;
+      error: string;
+      step: 'delete' | 'insert';
+    };
+
+    const fixes: FixResult[] = [];
+    const errors: FixError[] = [];
 
     for (const org of organizations || []) {
       // Trouver l'utilisateur Auth correspondant par email

@@ -15,7 +15,6 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const fileType = formData.get('file_type') as string;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
     const fileName = `${user.id}/${timestamp}-${file.name}`;
 
     // Upload vers Supabase Storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('templates')
       .upload(fileName, file, {
         contentType: file.type,

@@ -25,6 +25,16 @@ export default async function AdminSettingsPage() {
     .select('secteur,prompt_template,updated_at')
     .order('secteur', { ascending: true });
 
+  type PromptDefaultRow = {
+    secteur: 'telephonie' | 'bureautique' | 'mixte';
+    prompt_template: string | null;
+    updated_at: string | null;
+  } & Record<string, unknown>;
+
+  const initialPromptDefaults: PromptDefaultRow[] = Array.isArray(promptDefaults)
+    ? (promptDefaults as PromptDefaultRow[])
+    : [];
+
   return (
     <div className="space-y-8">
       <div>
@@ -35,7 +45,7 @@ export default async function AdminSettingsPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <PromptDefaultsForm initialPromptDefaults={(promptDefaults as any) || []} />
+        <PromptDefaultsForm initialPromptDefaults={initialPromptDefaults} />
       </div>
     </div>
   );

@@ -10,8 +10,16 @@ const SECTEURS = [
   { value: 'mixte', label: 'Mixte (Téléphonie + Bureautique)', icon: '📱' },
 ];
 
+type Organization = {
+  id: string;
+  nom?: string;
+  email?: string;
+  secteur?: string;
+  credits?: number;
+  tarif_par_proposition?: number;
+};
 interface Props {
-  organization: any;
+  organization: Organization;
 }
 
 export function EditOrganizationFormSimple({ organization }: Props) {
@@ -46,8 +54,8 @@ export function EditOrganizationFormSimple({ organization }: Props) {
 
       router.push(`/admin/clients/${organization.id}`);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +86,7 @@ export function EditOrganizationFormSimple({ organization }: Props) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <span className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
-                Nom de l'organisation *
+                Nom de l&apos;organisation *
               </span>
             </label>
             <input
@@ -103,14 +111,14 @@ export function EditOrganizationFormSimple({ organization }: Props) {
               disabled
               className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
             />
-            <p className="text-xs text-gray-500 mt-1">L'email ne peut pas être modifié</p>
+            <p className="text-xs text-gray-500 mt-1">L&apos;email ne peut pas être modifié</p>
           </div>
 
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <span className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4" />
-                Secteur d'activité *
+                Secteur d&apos;activité *
               </span>
             </label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -208,7 +216,7 @@ export function EditOrganizationFormSimple({ organization }: Props) {
           <div>
             <h3 className="font-medium text-blue-900">Configuration IA par template</h3>
             <p className="text-sm text-blue-700 mt-1">
-              La configuration de l'IA (modèle Claude, prompt, champs à extraire) se fait au niveau de chaque template.
+              La configuration de l&apos;IA (modèle Claude, prompt, champs à extraire) se fait au niveau de chaque template.
               Accédez aux templates du client pour modifier ces paramètres.
             </p>
           </div>

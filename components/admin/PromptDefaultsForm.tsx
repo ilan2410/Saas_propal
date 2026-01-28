@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 
 type Secteur = 'telephonie' | 'bureautique' | 'mixte';
 
 type PromptDefaultRow = {
   secteur: Secteur;
-  prompt_template: string;
+  prompt_template: string | null;
   updated_at?: string | null;
 };
 
@@ -30,6 +30,14 @@ export function PromptDefaultsForm({
     bureautique: initialMap.get('bureautique')?.prompt_template || '',
     mixte: initialMap.get('mixte')?.prompt_template || '',
   });
+
+  useEffect(() => {
+    setValues({
+      telephonie: initialMap.get('telephonie')?.prompt_template || '',
+      bureautique: initialMap.get('bureautique')?.prompt_template || '',
+      mixte: initialMap.get('mixte')?.prompt_template || '',
+    });
+  }, [initialMap]);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +67,10 @@ export function PromptDefaultsForm({
       }
 
       setSuccess('Prompt sauvegardé. Il sera utilisé pour les nouveaux templates.');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur sauvegarde prompt default:', err);
-      setError(err?.message || 'Erreur lors de la sauvegarde');
+      const message = err instanceof Error ? err.message : 'Erreur lors de la sauvegarde';
+      setError(message);
     } finally {
       setIsSaving(false);
     }
@@ -72,7 +81,7 @@ export function PromptDefaultsForm({
       <div>
         <h2 className="text-xl font-bold text-gray-900">Prompts par défaut</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Utilisés uniquement lors de la création d'un nouveau template.
+          {"Utilisés uniquement lors de la création d'un nouveau template."}
         </p>
       </div>
 

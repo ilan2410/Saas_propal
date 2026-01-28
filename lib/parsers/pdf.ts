@@ -1,6 +1,25 @@
 // Parser PDF
-import pdfParse from 'pdf-parse';
 import fs from 'fs';
+
+type PdfParseResult = {
+  text: string;
+  numpages: number;
+  info?: unknown;
+};
+
+type PdfParseFn = (data: Buffer) => Promise<PdfParseResult>;
+
+async function getPdfParse(): Promise<PdfParseFn> {
+  const mod: unknown = await import('pdf-parse');
+  const maybeFn =
+    (mod as { default?: unknown } | null | undefined)?.default ?? mod;
+
+  if (typeof maybeFn !== 'function') {
+    throw new Error('pdf-parse: export introuvable');
+  }
+
+  return maybeFn as PdfParseFn;
+}
 
 /**
  * Parse un fichier PDF et extrait le texte
@@ -10,10 +29,11 @@ import fs from 'fs';
 export async function parsePDF(filePath: string): Promise<{
   text: string;
   pages: number;
-  metadata: any;
+  metadata: unknown;
 }> {
   try {
     const dataBuffer = fs.readFileSync(filePath);
+    const pdfParse = await getPdfParse();
     const pdfData = await pdfParse(dataBuffer);
 
     return {

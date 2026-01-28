@@ -253,7 +253,7 @@ export function Step2UploadDocuments({
           Upload des documents
         </h2>
         <p className="text-gray-600 text-lg">
-          Importez vos documents sources pour l'extraction automatique des données
+          {"Importez vos documents sources pour l'extraction automatique des données"}
         </p>
       </div>
 
@@ -524,7 +524,7 @@ export function Step2UploadDocuments({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">✨</span>
-                <span>L'IA Claude extraira automatiquement toutes les informations pertinentes</span>
+                <span>{"L'IA Claude extraira automatiquement toutes les informations pertinentes"}</span>
               </li>
             </ul>
           </div>

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       const timestamp = Date.now();
       const fileName = `${user.id}/${timestamp}-${file.name}`;
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('documents')
         .upload(fileName, file, {
           contentType: file.type,

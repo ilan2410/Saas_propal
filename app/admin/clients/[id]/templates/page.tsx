@@ -4,31 +4,31 @@ import { ArrowLeft, Plus, FileText, Eye, Settings } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { formatDate } from '@/lib/utils/formatting';
 
-function countMappedFields(fileConfig: any): number {
-  if (!fileConfig || typeof fileConfig !== 'object') return 0;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function countMappedFields(fileConfig: unknown): number {
+  if (!isRecord(fileConfig)) return 0;
 
   const mappedFields = new Set<string>();
 
-  const sheetMappings = Array.isArray(fileConfig.sheetMappings)
-    ? fileConfig.sheetMappings
-    : [];
+  const sheetMappings = Array.isArray(fileConfig.sheetMappings) ? fileConfig.sheetMappings : [];
   for (const sheetMapping of sheetMappings) {
-    const mapping = sheetMapping?.mapping;
-    if (!mapping || typeof mapping !== 'object') continue;
-    for (const [field, value] of Object.entries(mapping)) {
+    const mappingRaw = isRecord(sheetMapping) ? sheetMapping.mapping : null;
+    if (!isRecord(mappingRaw)) continue;
+    for (const [field, value] of Object.entries(mappingRaw)) {
       if (value !== null && value !== undefined && String(value).trim() !== '') {
         mappedFields.add(field);
       }
     }
   }
 
-  const arrayMappings = Array.isArray(fileConfig.arrayMappings)
-    ? fileConfig.arrayMappings
-    : [];
+  const arrayMappings = Array.isArray(fileConfig.arrayMappings) ? fileConfig.arrayMappings : [];
   for (const arrayMapping of arrayMappings) {
-    const columnMapping = arrayMapping?.columnMapping;
-    if (!columnMapping || typeof columnMapping !== 'object') continue;
-    for (const [field, value] of Object.entries(columnMapping)) {
+    const columnMappingRaw = isRecord(arrayMapping) ? arrayMapping.columnMapping : null;
+    if (!isRecord(columnMappingRaw)) continue;
+    for (const [field, value] of Object.entries(columnMappingRaw)) {
       if (value !== null && value !== undefined && String(value).trim() !== '') {
         mappedFields.add(field);
       }
@@ -169,7 +169,7 @@ export default async function ClientTemplatesPage({
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun template</h3>
             <p className="text-gray-500 mb-6 max-w-sm mx-auto">
-              Créez un template pour configurer l'extraction IA pour ce client
+              Créez un template pour configurer l&apos;extraction IA pour ce client
             </p>
             <Link
               href={`/admin/clients/${id}/templates/new`}

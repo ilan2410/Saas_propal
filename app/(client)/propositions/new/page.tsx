@@ -49,7 +49,7 @@ export default async function NewPropositionPage() {
             Aucun template actif
           </h3>
           <p className="text-gray-500 mb-6">
-            Vous devez d'abord créer et activer un template
+            Vous devez d&apos;abord créer et activer un template
           </p>
           <Link
             href="/templates/new"
@@ -77,7 +77,7 @@ export default async function NewPropositionPage() {
           Nouvelle Proposition
         </h1>
         <p className="text-gray-600 mt-2">
-          Générez une proposition à partir d'un template
+          Générez une proposition à partir d&apos;un template
         </p>
       </div>
 

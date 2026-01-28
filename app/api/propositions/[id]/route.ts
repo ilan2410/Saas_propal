@@ -88,13 +88,15 @@ export async function DELETE(
     }
 
     const urls: string[] = [];
-    const sourceDocs = (proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls) as any;
-    if (Array.isArray(sourceDocs)) {
-      urls.push(...sourceDocs.filter(Boolean));
+    const sourceDocsRaw =
+      proposition.source_documents ?? proposition.documents_urls ?? proposition.documents_sources_urls;
+    if (Array.isArray(sourceDocsRaw)) {
+      urls.push(...sourceDocsRaw.filter((u): u is string => typeof u === 'string' && Boolean(u)));
     }
-    const generatedUrl = (proposition.duplicated_template_url || proposition.fichier_genere_url) as any;
-    if (typeof generatedUrl === 'string' && generatedUrl) {
-      urls.push(generatedUrl);
+
+    const generatedUrlRaw = proposition.duplicated_template_url ?? proposition.fichier_genere_url;
+    if (typeof generatedUrlRaw === 'string' && generatedUrlRaw) {
+      urls.push(generatedUrlRaw);
     }
 
     const documentsPaths = urls

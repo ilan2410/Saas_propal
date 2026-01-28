@@ -14,8 +14,16 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState('');
+
+  const extractedData = (() => {
+    if (!result || typeof result !== 'object') return null;
+    const r = result as Record<string, unknown>;
+    const d = r['donnees_extraites'];
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+    return d as Record<string, unknown>;
+  })();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -75,9 +83,10 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
       }
 
       setResult(extractResult);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur test:', err);
-      setError(err.message);
+      const message = err instanceof Error ? err.message : 'Erreur test';
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -97,7 +106,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
         className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
       >
         <CheckCircle className="w-4 h-4" />
-        Tester l'extraction IA
+        {"Tester l'extraction IA"}
       </button>
     );
   }
@@ -109,7 +118,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
-              Test d'extraction IA
+              {"Test d'extraction IA"}
             </h2>
             <p className="text-sm text-gray-600 mt-1">
               Vérifiez que Claude comprend bien vos champs
@@ -138,6 +147,10 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
               <div className="flex gap-2">
                 <dt className="text-blue-700 font-medium">Modèle:</dt>
                 <dd className="text-blue-900">{claudeModel}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="text-blue-700 font-medium">Prompt:</dt>
+                <dd className="text-blue-900">{promptTemplate}</dd>
               </div>
               <div className="flex gap-2">
                 <dt className="text-blue-700 font-medium">Champs actifs:</dt>
@@ -243,7 +256,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
           )}
 
           {/* Résultat */}
-          {result && (
+          {!!result && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="flex items-start gap-3 mb-4">
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -252,7 +265,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                     Extraction réussie !
                   </h4>
                   <p className="text-sm text-green-800">
-                    {Object.keys(result.donnees_extraites || {}).length} champs extraits
+                    {Object.keys(extractedData || {}).length} champs extraits
                   </p>
                 </div>
               </div>
@@ -263,7 +276,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                   Données extraites :
                 </h5>
                 <dl className="space-y-3">
-                  {Object.entries(result.donnees_extraites || {}).map(([key, value]) => (
+                  {Object.entries(extractedData || {}).map(([key, value]) => (
                     <div key={key} className="border-b border-gray-100 pb-2">
                       <dt className="text-sm font-medium text-gray-700 mb-1">
                         {key}
@@ -271,7 +284,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                       <dd className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
                         {value !== null && value !== undefined
                           ? typeof value === 'object'
-                            ? JSON.stringify(value, null, 2)
+                            ? <pre className="whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
                             : String(value)
                           : '(non trouvé)'}
                       </dd>
@@ -291,7 +304,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                 <div className="bg-white rounded p-3">
                   <p className="text-xs text-gray-600">Champs extraits</p>
                   <p className="text-lg font-bold text-green-600">
-                    {Object.keys(result.donnees_extraites || {}).length}
+                    {Object.keys(extractedData || {}).length}
                   </p>
                 </div>
                 <div className="bg-white rounded p-3">
@@ -299,7 +312,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                   <p className="text-lg font-bold text-blue-600">
                     {champsActifs.length > 0
                       ? Math.round(
-                          (Object.keys(result.donnees_extraites || {}).length /
+                          (Object.keys(extractedData || {}).length /
                             champsActifs.length) *
                             100
                         )

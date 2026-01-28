@@ -18,7 +18,7 @@ export const SIMPLE_QUESTIONS = {
       description: 'Contact, entreprise, adresse, informations légales',
       fields: [
         'client.nom', 'client.prenom', 'client.email', 'client.fonction',
-        'client.mobile', 'client.fixe', 'client.raison_sociale',
+        'client.mobile', 'client.fixe', 'client.fax', 'client.raison_sociale',
         'client.adresse', 'client.code_postal', 'client.ville',
         'client.siret', 'client.ape', 'client.capital',
         'client.forme_juridique', 'client.rcs'
@@ -197,7 +197,7 @@ export const SIMPLE_QUESTIONS = {
       description: 'Contact, entreprise, adresse, informations légales',
       fields: [
         'client.nom', 'client.prenom', 'client.email', 'client.fonction',
-        'client.mobile', 'client.fixe', 'client.raison_sociale',
+        'client.mobile', 'client.fixe', 'client.fax', 'client.raison_sociale',
         'client.adresse', 'client.code_postal', 'client.ville',
         'client.siret', 'client.ape', 'client.capital',
         'client.forme_juridique', 'client.rcs'
@@ -263,6 +263,7 @@ export const TELEPHONIE_FIELDS = {
     'client.fonction',
     'client.mobile',
     'client.fixe',
+    'client.fax',
     'client.raison_sociale',
     'client.adresse',
     'client.code_postal',
@@ -806,7 +807,7 @@ export function getQuestionsForSecteur(secteur: string): Question[] {
 }
 
 export function getFieldsByCategoryForSecteur(secteur: string): Record<string, string[]> {
-  return (FIELDS_BY_SECTEUR as any)[secteur] || TELEPHONIE_FIELDS;
+  return FIELDS_BY_SECTEUR[secteur as keyof typeof FIELDS_BY_SECTEUR] || TELEPHONIE_FIELDS;
 }
 
 export function getCategoryLabelForSecteur(secteur: string, key: string): string {
@@ -819,7 +820,7 @@ export function getCategoryLabel(key: string): string {
 }
 
 export function getAllKnownFields(): string[] {
-  const bySecteur = Object.values(FIELDS_BY_SECTEUR as any) as Array<Record<string, string[]>>;
+  const bySecteur = Object.values(FIELDS_BY_SECTEUR) as Array<Record<string, string[]>>;
   return bySecteur.flatMap((m) => Object.values(m).flat());
 }
 

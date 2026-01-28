@@ -13,11 +13,12 @@ import { PDFConfig } from '@/types';
  */
 export async function fillPDFTemplate(
   templateUrl: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   fileConfig: PDFConfig,
-  organizationId: string
+  _organizationId: string
 ): Promise<string> {
   try {
+    void _organizationId;
     const supabase = await createClient();
 
     // 1. Télécharger le template master
@@ -39,7 +40,7 @@ export async function fillPDFTemplate(
       try {
         const field = form.getTextField(pdfFieldName);
         const value = data[dataKey];
-        field.setText(value?.toString() || '');
+        field.setText(value === undefined || value === null ? '' : String(value));
       } catch (error) {
         console.warn(
           `Champ PDF "${pdfFieldName}" introuvable ou non modifiable`,
@@ -111,6 +112,7 @@ export async function generatePDFPreview(
   templateUrl: string
 ): Promise<string> {
   try {
+    void templateUrl;
     return `<div class="p-4 border rounded bg-gray-50">
       <p class="font-semibold mb-2">Preview PDF</p>
       <p class="text-sm text-gray-600">Le PDF sera rempli avec les données extraites.</p>

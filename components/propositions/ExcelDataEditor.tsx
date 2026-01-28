@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Grid3x3, FileSpreadsheet, ChevronRight, Save, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, Save, Loader2 } from 'lucide-react';
+
+type UnknownRecord = Record<string, unknown>;
+
+function isPlainObject(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 interface SheetInfo {
   name: string;
@@ -15,14 +21,21 @@ interface SheetMapping {
   mapping: { [fieldName: string]: string | string[] };
 }
 
+interface ArrayMapping {
+  arrayId: string;
+  sheetName: string;
+  startRow?: number;
+  columnMapping?: Record<string, string>;
+}
+
 interface Props {
   templateFileUrl: string;
   fileConfig: {
     sheetMappings?: SheetMapping[];
-    arrayMappings?: any[];
+    arrayMappings?: ArrayMapping[];
   };
-  extractedData: Record<string, any>;
-  onDataChange: (data: Record<string, any>) => void;
+  extractedData: UnknownRecord;
+  onDataChange: (data: UnknownRecord) => void;
   onSave: () => void;
   isSaving: boolean;
 }
@@ -48,22 +61,26 @@ function formatFieldName(key: string): string {
 }
 
 // Récupérer une valeur imbriquée
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: unknown, path: string): unknown {
   const parts = path.split('.');
-  let current = obj;
+  let current: unknown = obj;
   for (const part of parts) {
     if (current === null || current === undefined) return undefined;
     if (Array.isArray(current) && /^\d+$/.test(part)) {
       current = current[parseInt(part, 10)];
-    } else {
-      current = current[part];
+      continue;
     }
+    if (isPlainObject(current)) {
+      current = current[part];
+      continue;
+    }
+    return undefined;
   }
   return current;
 }
 
 // Chercher une valeur dans les données extraites
-function findValueForField(data: Record<string, any>, fieldName: string): any {
+function findValueForField(data: UnknownRecord, fieldName: string): unknown {
   // Chercher directement
   if (data[fieldName] !== undefined) {
     return data[fieldName];
@@ -123,11 +140,10 @@ function findValueForField(data: Record<string, any>, fieldName: string): any {
   }
 
   // Chercher dans les sous-objets
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      if (value[fieldName] !== undefined) {
-        return value[fieldName];
-      }
+  for (const value of Object.values(data)) {
+    if (!isPlainObject(value)) continue;
+    if (value[fieldName] !== undefined) {
+      return value[fieldName];
     }
   }
 
@@ -146,9 +162,9 @@ export function ExcelDataEditor({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const arrayMappingsLength = fileConfig.arrayMappings?.length ?? 0;
 
   // Charger le fichier Excel
   useEffect(() => {
@@ -162,7 +178,7 @@ export function ExcelDataEditor({
             fieldsCount: Object.keys(sm.mapping || {}).length,
             fields: Object.keys(sm.mapping || {})
           })),
-          arrayMappings: fileConfig.arrayMappings?.length || 0
+          arrayMappings: arrayMappingsLength
         });
         
         const response = await fetch('/api/templates/parse-excel', {
@@ -200,7 +216,7 @@ export function ExcelDataEditor({
     if (templateFileUrl) {
       loadExcel();
     }
-  }, [templateFileUrl, fileConfig.sheetMappings]);
+  }, [templateFileUrl, fileConfig.sheetMappings, arrayMappingsLength]);
 
   // Obtenir le mapping pour la feuille active
   const activeSheet = sheets[activeSheetIndex];
@@ -244,7 +260,8 @@ export function ExcelDataEditor({
 
   // Créer un mapping inversé: cellRef -> { fieldName, value }
   const cellDataMap = useMemo(() => {
-    const map: Record<string, { fieldName: string; value: any; isArray?: boolean; arrayIndex?: number }> = {};
+    type CellData = { fieldName: string; value: unknown; isArray?: boolean; arrayIndex?: number };
+    const map: Record<string, CellData> = {};
     
     // Ajouter les champs simples
     if (activeSheetMapping) {
@@ -259,8 +276,8 @@ export function ExcelDataEditor({
     }
 
     // Fonction récursive pour trouver un tableau par son ID
-    const findArrayById = (obj: any, targetId: string, path: string = ''): any[] => {
-      if (!obj || typeof obj !== 'object') return [];
+    const findArrayById = (obj: unknown, targetId: string, path: string = ''): unknown[] => {
+      if (!isPlainObject(obj)) return [];
       
       for (const [key, value] of Object.entries(obj)) {
         const currentPath = path ? `${path}.${key}` : key;
@@ -278,7 +295,7 @@ export function ExcelDataEditor({
             console.log(`✅ Tableau trouvé: ${currentPath} pour ${targetId}`);
             return value;
           }
-        } else if (typeof value === 'object' && value !== null) {
+        } else if (isPlainObject(value)) {
           // Chercher récursivement dans les sous-objets
           const found = findArrayById(value, targetId, currentPath);
           if (found.length > 0) return found;
@@ -302,19 +319,21 @@ export function ExcelDataEditor({
           startRow, 
           mappedColumns: columnMappings,
           extractedDataKeys: Object.keys(extractedData),
-          firstItemKeys: arrayData[0] ? Object.keys(arrayData[0]) : [],
+          firstItemKeys: isPlainObject(arrayData[0]) ? Object.keys(arrayData[0]) : [],
           sampleData: arrayData.slice(0, 2)
         });
         
         // Mapper chaque ligne du tableau aux cellules
         arrayData.forEach((item, index) => {
-          const rowNum = startRow + index;
+          if (!isPlainObject(item)) return;
+          const baseRow = typeof startRow === 'number' ? startRow : 2;
+          const rowNum = baseRow + index;
           
           Object.entries(columnMappings).forEach(([fieldKey, colLetter]) => {
             const cellRef = `${colLetter}${rowNum}`;
             
             // Chercher la valeur avec différentes variantes de clé
-            let value = item[fieldKey];
+            let value: unknown = item[fieldKey];
             if (value === undefined) {
               // Essayer des variantes de la clé
               const keyVariants = [
@@ -437,7 +456,6 @@ export function ExcelDataEditor({
             ).length || 0;
             
             const hasMapping = hasSimpleMapping || hasArrayMapping;
-            const totalMappings = simpleMappingCount + arrayMappingCount;
             
             return (
               <button
@@ -579,7 +597,7 @@ export function ExcelDataEditor({
             Aucun mapping configuré pour cette feuille
           </h4>
           <p className="text-sm text-yellow-700">
-            La feuille "{activeSheet.name}" n'a pas de champs mappés. 
+            La feuille &quot;{activeSheet.name}&quot; n&apos;a pas de champs mappés. 
             Si vous souhaitez mapper des champs sur cette feuille, veuillez modifier le template.
           </p>
         </div>

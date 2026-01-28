@@ -13,11 +13,12 @@ import { ExcelConfig } from '@/types';
  */
 export async function fillExcelTemplate(
   templateUrl: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   fileConfig: ExcelConfig,
-  organizationId: string
+  _organizationId: string
 ): Promise<string> {
   try {
+    void _organizationId;
     const supabase = await createClient();
 
     // 1. Télécharger le template master
@@ -119,7 +120,7 @@ export async function fillExcelTemplate(
  */
 export async function generateExcelPreview(
   templateUrl: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   fileConfig: ExcelConfig
 ): Promise<string> {
   try {
@@ -140,7 +141,7 @@ export async function generateExcelPreview(
     let html = '<table class="border-collapse border border-gray-300 text-sm">';
     let rowCount = 0;
 
-    worksheet.eachRow((row, rowNumber) => {
+    worksheet.eachRow((row) => {
       if (rowCount >= 10) return;
 
       html += '<tr>';
@@ -153,11 +154,13 @@ export async function generateExcelPreview(
         );
         const bgColor = willBeFilled ? 'bg-green-50' : '';
 
-        const value = willBeFilled
-          ? data[fileConfig.cellMappings[cell.address]] || cell.value
-          : cell.value;
+        const filledValue = willBeFilled
+          ? data[fileConfig.cellMappings[cell.address]]
+          : undefined;
+        const value =
+          filledValue === undefined || filledValue === null ? cell.value : filledValue;
 
-        html += `<td class="border border-gray-300 p-2 ${bgColor}">${value || ''}</td>`;
+        html += `<td class="border border-gray-300 p-2 ${bgColor}">${value === undefined || value === null ? '' : String(value)}</td>`;
       });
 
       html += '</tr>';

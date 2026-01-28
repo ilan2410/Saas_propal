@@ -15,13 +15,11 @@ export function Step5Generate({
   onComplete,
   onPrev,
 }: Props) {
-  const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [fileUrl, setFileUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
 
   const startGeneration = async () => {
-    setIsGenerating(true);
     setGenerationStatus('generating');
     setError('');
 
@@ -39,12 +37,12 @@ export function Step5Generate({
 
       setFileUrl(result.file_url);
       setGenerationStatus('success');
-    } catch (error: any) {
-      console.error('Erreur génération:', error);
-      setError(error.message);
+    } catch (err: unknown) {
+      console.error('Erreur génération:', err);
+      const message = err instanceof Error ? err.message : 'Erreur génération';
+      setError(message);
       setGenerationStatus('error');
     } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -162,18 +160,18 @@ export function Step5Generate({
               <dd className="font-medium text-gray-900">
                 {(() => {
                   const data = propositionData.donnees_extraites || {};
-                  let count = 0;
                   
                   // Compter les champs simples et les éléments des tableaux
-                  const countFields = (obj: any): number => {
+                  const countFields = (obj: unknown): number => {
+                    if (!obj || typeof obj !== 'object') return 0;
                     let total = 0;
-                    for (const [key, value] of Object.entries(obj)) {
+                    for (const [, value] of Object.entries(obj as Record<string, unknown>)) {
                       if (Array.isArray(value)) {
                         // Pour les tableaux, compter les éléments
                         total += value.length;
                       } else if (typeof value === 'object' && value !== null) {
                         // Pour les objets, compter les propriétés
-                        total += Object.keys(value).length;
+                        total += Object.keys(value as Record<string, unknown>).length;
                       } else {
                         // Pour les valeurs simples
                         total += 1;
