@@ -121,7 +121,7 @@ export function Step2UploadDocuments({
         formData.append('files', file);
       });
 
-      // L'API backend enverra directement les fichiers à Claude (PDF et images supportés nativement)
+      // L'API backend enverra directement les fichiers à l'ia (PDF et images supportés nativement)
       const response = await fetch('/api/propositions/upload-documents', {
         method: 'POST',
         body: formData,
@@ -512,11 +512,11 @@ export function Step2UploadDocuments({
             <ul className="space-y-2 text-sm text-blue-800">
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">📄</span>
-                <span><strong>PDFs</strong> : Format idéal - Claude analyse texte, images, graphiques et tableaux</span>
+                <span><strong>PDFs</strong> : Format idéal - le système analyse texte, images, graphiques et tableaux</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">📸</span>
-                <span><strong>Photos</strong> : Prenez des photos claires de vos factures ou contrats - Claude les comprend parfaitement !</span>
+                <span><strong>Photos</strong> : Prenez des photos claires de vos factures ou contrats</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">💡</span>
@@ -524,7 +524,7 @@ export function Step2UploadDocuments({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">✨</span>
-                <span>{"L'IA Claude extraira automatiquement toutes les informations pertinentes"}</span>
+                <span>{"Le système extraira automatiquement toutes les informations pertinentes"}</span>
               </li>
             </ul>
           </div>

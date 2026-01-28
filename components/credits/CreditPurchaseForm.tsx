@@ -186,7 +186,7 @@ export function CreditPurchaseForm({ organizationId }: Props) {
                 )}
 
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600 group-hover:text-emerald-700">
-                  {isSelected ? 'Sélectionné' : 'Choisir ce forfait'}
+                  {isSelected ? 'Sélectionné' : 'Choisir ce pack'}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
               </div>

@@ -131,7 +131,7 @@ export default async function CreditsPage() {
               Recharger votre compte
             </h2>
             <p className="text-sm text-gray-600">
-              Choisissez un forfait ou entrez un montant personnalisé
+              Choisissez un pack ou entrez un montant personnalisé
             </p>
           </div>
         </div>
@@ -278,7 +278,7 @@ export default async function CreditsPage() {
             Bonus progressifs
           </h3>
           <p className="mt-2 text-sm text-gray-600">
-            Plus vous rechargez, plus le bonus est important. Jusqu&apos;à +15% sur les forfaits Enterprise.
+            Plus vous rechargez, plus le bonus est important. Jusqu&apos;à +15% sur les packs Enterprise.
           </p>
         </div>
 

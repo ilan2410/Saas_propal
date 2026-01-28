@@ -5,6 +5,7 @@ export type FileType = 'excel' | 'word' | 'pdf';
 export type TemplateStatus = 'brouillon' | 'teste' | 'actif';
 export type PropositionStatus = 'processing' | 'ready' | 'exported' | 'error';
 export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
+export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre';
 
 // Organization (Client de la plateforme)
 export interface Organization {
@@ -159,6 +160,24 @@ export interface StripeTransaction {
   credits_ajoutes: number;
   statut: TransactionStatus;
   created_at: string;
+}
+
+export interface CatalogueProduit {
+  id: string;
+  organization_id: string | null;
+  categorie: CatalogueCategorie;
+  nom: string;
+  description?: string;
+  fournisseur?: string;
+  prix_mensuel: number;
+  prix_installation?: number;
+  engagement_mois?: number;
+  caracteristiques: Record<string, unknown>;
+  tags: string[];
+  est_produit_base: boolean;
+  actif: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Résultat d'extraction Claude

@@ -60,6 +60,7 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/dashboard') ||
     request.nextUrl.pathname.startsWith('/templates') ||
     request.nextUrl.pathname.startsWith('/propositions') ||
+    request.nextUrl.pathname.startsWith('/catalogue') ||
     request.nextUrl.pathname.startsWith('/credits') ||
     request.nextUrl.pathname.startsWith('/settings') ||
     request.nextUrl.pathname.startsWith('/onboarding')

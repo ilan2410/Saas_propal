@@ -119,7 +119,7 @@ export function Step3ExtractData({
           Extraction des données
         </h2>
         <p className="text-gray-600 text-lg">
-          L&apos;intelligence artificielle Claude va analyser vos documents
+          Le système va analyser vos documents
         </p>
       </div>
 
@@ -135,7 +135,7 @@ export function Step3ExtractData({
               Prêt pour l&apos;extraction
             </h3>
             <p className="text-gray-600 mb-8 max-w-md mx-auto">
-              Claude va analyser automatiquement vos documents et extraire toutes les informations nécessaires selon votre template
+              Le système va analyser automatiquement vos documents et extraire toutes les informations nécessaires selon votre template
             </p>
             <button
               onClick={startExtraction}
@@ -168,7 +168,7 @@ export function Step3ExtractData({
                   Extraction en cours...
                 </h3>
                 <p className="text-gray-600 text-lg">
-                  Claude analyse vos documents avec son intelligence artificielle
+                  le système analyse vos documents avec son intelligence artificielle
                 </p>
               </div>
 
@@ -219,7 +219,7 @@ export function Step3ExtractData({
                 Extraction réussie ! 🎉
               </h3>
               <p className="text-gray-600 text-lg mb-6">
-                Claude a extrait toutes les informations de vos documents
+                le système a extrait toutes les informations de vos documents
               </p>
             </div>
 
@@ -336,7 +336,7 @@ export function Step3ExtractData({
             <ul className="space-y-2 text-sm text-blue-800">
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">🤖</span>
-                <span>Claude AI analyse intelligemment le contenu de vos documents (texte et images)</span>
+                <span>Le système analyse intelligemment le contenu de vos documents (texte et images)</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">🎯</span>

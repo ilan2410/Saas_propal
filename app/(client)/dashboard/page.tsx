@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { 
   Plus, 
   FileText, 
@@ -26,25 +27,29 @@ export default async function ClientDashboard() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  if (!user) {
+    redirect('/login');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')
     .select('*')
-    .eq('id', user?.id)
+    .eq('id', user.id)
     .single();
 
   // Récupérer les templates
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('*')
-    .eq('organization_id', user?.id)
+    .eq('organization_id', user.id)
     .order('created_at', { ascending: false });
 
   // Récupérer TOUTES les propositions pour les stats
   const { data: allPropositions } = await supabase
     .from('propositions')
     .select('*')
-    .eq('organization_id', user?.id)
+    .eq('organization_id', user.id)
     .order('created_at', { ascending: false });
 
   // Récupérer les propositions récentes pour l'affichage
@@ -54,7 +59,7 @@ export default async function ClientDashboard() {
   const { data: transactions } = await supabase
     .from('stripe_transactions')
     .select('*')
-    .eq('organization_id', user?.id)
+    .eq('organization_id', user.id)
     .eq('statut', 'succeeded')
     .order('created_at', { ascending: false });
 
@@ -62,7 +67,9 @@ export default async function ClientDashboard() {
   const totalTemplates = templates?.length || 0;
   const totalPropositions = allPropositions?.length || 0;
   const templatesActifs = templates?.filter((t) => t.statut === 'actif').length || 0;
-  const propositionsExportees = allPropositions?.filter((p) => p.statut === 'exported').length || 0;
+  const propositionsExportees =
+    allPropositions?.filter((p) => p.statut === 'exported' || !!p.exported_at || !!p.duplicated_template_url)
+      .length || 0;
   const totalDepense = transactions?.reduce((sum, t) => sum + (t.montant || 0), 0) || 0;
   
   // Stats du mois en cours

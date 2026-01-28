@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { LayoutDashboard, FileText, Zap, CreditCard, Settings } from 'lucide-react';
+import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
 
@@ -72,6 +72,14 @@ export default async function ClientLayout({
           >
             <Zap className="w-5 h-5 text-gray-600" />
             <span className="font-medium">Propositions</span>
+          </Link>
+
+          <Link
+            href="/catalogue"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <Package className="w-5 h-5 text-gray-600" />
+            <span className="font-medium">Catalogue</span>
           </Link>
 
           <Link

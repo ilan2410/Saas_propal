@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List } from 'lucide-react';
+import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
 import {
@@ -27,67 +27,6 @@ type ExcelFileConfig = {
     columnMapping?: Record<string, string>;
   }>;
 };
-
-function normalizeExcelFileConfig(value: unknown): ExcelFileConfig {
-  if (!isPlainObject(value)) return {};
-
-  const sheetMappingsRaw = value.sheetMappings;
-  const arrayMappingsRaw = value.arrayMappings;
-
-  const sheetMappings = Array.isArray(sheetMappingsRaw)
-    ? sheetMappingsRaw
-        .filter(isPlainObject)
-        .map((m) => {
-          const sheetName = typeof m.sheetName === 'string' ? m.sheetName : '';
-          const mappingRaw = m.mapping;
-          const mapping: Record<string, string | string[]> = {};
-
-          if (isPlainObject(mappingRaw)) {
-            for (const [k, v] of Object.entries(mappingRaw)) {
-              if (typeof v === 'string') {
-                mapping[k] = v;
-              } else if (Array.isArray(v) && v.every((x) => typeof x === 'string')) {
-                mapping[k] = v;
-              }
-            }
-          }
-
-          return sheetName ? { sheetName, mapping } : null;
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-    : undefined;
-
-  const arrayMappings = Array.isArray(arrayMappingsRaw)
-    ? arrayMappingsRaw
-        .filter(isPlainObject)
-        .map((m) => {
-          const arrayId = typeof m.arrayId === 'string' ? m.arrayId : '';
-          const sheetName = typeof m.sheetName === 'string' ? m.sheetName : '';
-          const startRow = typeof m.startRow === 'number' ? m.startRow : undefined;
-
-          const columnMapping: Record<string, string> = {};
-          if (isPlainObject(m.columnMapping)) {
-            for (const [k, v] of Object.entries(m.columnMapping)) {
-              if (typeof v === 'string') columnMapping[k] = v;
-            }
-          }
-
-          if (!arrayId || !sheetName) return null;
-          return {
-            arrayId,
-            sheetName,
-            startRow,
-            columnMapping: Object.keys(columnMapping).length > 0 ? columnMapping : undefined,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-    : undefined;
-
-  return {
-    sheetMappings,
-    arrayMappings,
-  };
-}
 
 interface Props {
   secteur: string;
@@ -376,6 +315,8 @@ export function Step4EditData({
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'simple' | 'complex'>('simple');
   const [viewMode, setViewMode] = useState<'excel' | 'form'>('excel');
+  const [suggestions, setSuggestions] = useState<unknown | null>(null);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [templateInfo, setTemplateInfo] = useState<{
     file_url: string;
     file_config: unknown;
@@ -386,10 +327,6 @@ export function Step4EditData({
   const fieldsByCategoryRef = useMemo(() => {
     return getFieldsByCategoryForSecteur(secteur);
   }, [secteur]);
-
-  const normalizedExcelFileConfig = useMemo(() => {
-    return normalizeExcelFileConfig(templateInfo?.file_config);
-  }, [templateInfo?.file_config]);
 
   const ensureBureautiqueArraysCount = useCallback(
     (data: UnknownRecord, count: number): UnknownRecord => {
@@ -603,6 +540,38 @@ export function Step4EditData({
     }
   };
 
+  const handleGenererSuggestions = async () => {
+    setIsLoadingSuggestions(true);
+    try {
+      const catalogueRes = await fetch('/api/catalogue');
+      const catalogueJson = await catalogueRes.json();
+      if (!catalogueRes.ok) {
+        throw new Error(catalogueJson?.error || 'Erreur chargement catalogue');
+      }
+
+      const res = await fetch('/api/propositions/generer-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          situation_actuelle: editedData,
+          catalogue: catalogueJson?.produits || [],
+          preferences: { objectif: 'equilibre' },
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result?.error || 'Erreur génération suggestions');
+      }
+
+      setSuggestions(result);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Erreur lors de la génération');
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
   // Compter les champs simples (total des champs dans fieldsByCategory)
   const simpleFieldsCount = Object.values(fieldsByCategory).reduce((acc, fields) => acc + fields.length, 0);
   const complexFieldsCount = Object.keys(complexFields).length;
@@ -665,6 +634,15 @@ export function Step4EditData({
             </button>
           </div>
           
+          <button
+            onClick={handleGenererSuggestions}
+            disabled={isLoadingSuggestions}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            {isLoadingSuggestions ? 'Génération...' : 'Suggestions IA'}
+          </button>
+
           <div className="flex items-center gap-2 bg-green-50 px-4 py-2 rounded-lg">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-green-800">
@@ -673,6 +651,15 @@ export function Step4EditData({
           </div>
         </div>
       </div>
+
+      {suggestions !== null && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Suggestions IA</h3>
+          <pre className="text-xs bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-auto max-h-96">
+            {JSON.stringify(suggestions, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Vue Excel */}
       {viewMode === 'excel' && (
