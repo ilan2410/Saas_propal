@@ -6,6 +6,7 @@ export type TemplateStatus = 'brouillon' | 'teste' | 'actif';
 export type PropositionStatus = 'processing' | 'ready' | 'exported' | 'error';
 export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
 export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre';
+export type CatalogueSecteur = 'telephonie' | 'bureautique';
 
 // Organization (Client de la plateforme)
 export interface Organization {
@@ -165,13 +166,17 @@ export interface StripeTransaction {
 export interface CatalogueProduit {
   id: string;
   organization_id: string | null;
+  secteur_catalogue?: CatalogueSecteur;
   categorie: CatalogueCategorie;
   nom: string;
   description?: string;
   fournisseur?: string;
-  prix_mensuel: number;
+  type_frequence: 'mensuel' | 'unique';
+  prix_mensuel?: number;
+  prix_vente?: number;
   prix_installation?: number;
   engagement_mois?: number;
+  image_url?: string;
   caracteristiques: Record<string, unknown>;
   tags: string[];
   est_produit_base: boolean;

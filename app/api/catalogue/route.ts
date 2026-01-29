@@ -48,17 +48,26 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    // Vérifier si l'utilisateur est admin
+    const role = user.user_metadata?.role;
+    // Si isAdminRequest est true et que l'utilisateur est admin, on crée un produit global (organization_id = null)
+    // Sinon, on crée un produit pour l'organisation de l'utilisateur
+    const isGlobalProduct = body?.is_global === true && role === 'admin';
+
     const { data, error } = await supabase
       .from('catalogues_produits')
       .insert({
-        organization_id: user.id,
+        organization_id: isGlobalProduct ? null : user.id,
         categorie: body?.categorie,
         nom: body?.nom,
         description: body?.description ?? null,
         fournisseur: body?.fournisseur ?? null,
+        type_frequence: body?.type_frequence ?? 'mensuel',
         prix_mensuel: body?.prix_mensuel,
+        prix_vente: body?.prix_vente,
         prix_installation: body?.prix_installation ?? null,
         engagement_mois: body?.engagement_mois ?? null,
+        image_url: body?.image_url ?? null,
         caracteristiques: body?.caracteristiques ?? {},
         tags: body?.tags ?? [],
         est_produit_base: false,
