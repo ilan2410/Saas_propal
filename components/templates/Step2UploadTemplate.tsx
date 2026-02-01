@@ -167,6 +167,10 @@ export function Step2UploadTemplate({
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
   const exempleTableau = arrayFields.find((a) => a.id === 'lignes') || arrayFields[0];
   const exempleTableauFieldIds = (exempleTableau?.rowFields || []).slice(0, 3).map((rf) => rf.id);
+  const hasCriticalValidationErrors =
+    validationResults !== null &&
+    (validationResults.errors.some((e) => e.type === 'error') ||
+      validationResults.tables.some((t) => t.errors.some((e) => e.type === 'error')));
 
   const getInitialStep = (): Step => {
     if (hasSavedData && savedMappings.length > 0) {
@@ -624,6 +628,10 @@ export function Step2UploadTemplate({
   };
 
   const handleSaveWordTemplate = async (isSave?: boolean) => {
+    if (!isSave && hasCriticalValidationErrors) {
+      alert('Veuillez corriger les erreurs critiques dans votre fichier Word avant de continuer.');
+      return;
+    }
     if (!file) {
       alert('Veuillez sélectionner un fichier Word (.docx) avant d\'enregistrer.');
       return;
@@ -1137,14 +1145,14 @@ export function Step2UploadTemplate({
               </div>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-3">
-                  Comment ça marche ? C&apos;est comme des &quot;trous à remplir&quot;
+                  Comment ça marche ?
                 </h3>
                 <p className="text-gray-700 text-base leading-relaxed mb-3">
                   Imaginez votre document Word comme un formulaire papier avec des cases vides. 
                   Au lieu d&apos;écrire &quot;Client : <span className="border-b-2 border-dashed border-gray-400 px-8"></span>&quot;, vous allez mettre &quot;Client : <span className="bg-yellow-200 px-2 py-0.5 rounded font-mono text-sm">&#123;&#123;nom_client&#125;&#125;</span>&quot;.
                 </p>
                 <p className="text-gray-700 text-base leading-relaxed">
-                  Quand vous créerez une proposition, PropoBoost remplacera automatiquement 
+                  Quand vous créerez une proposition, le système remplacera automatiquement 
                   <span className="bg-yellow-200 px-2 py-0.5 rounded font-mono text-sm mx-1">&#123;&#123;nom_client&#125;&#125;</span> par le vrai nom du client !
                 </p>
               </div>
@@ -1154,7 +1162,7 @@ export function Step2UploadTemplate({
           {/* NOUVELLE SECTION : Instructions en 3 étapes visuelles */}
           <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-6 text-center">
-              3 étapes ultra-simples ⚡
+              3 étapes simples
             </h3>
             
             <div className="space-y-6">
@@ -1523,7 +1531,7 @@ export function Step2UploadTemplate({
                             startCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
                           }`}
                         >
-                          {startCopied ? '✓ Début copié' : 'Copier début uniquement'}
+                          {startCopied ? '✓ Début copié' : "Copier la balise d'ouverture"}
                         </button>
                         <button
                           type="button"
@@ -1532,7 +1540,7 @@ export function Step2UploadTemplate({
                             endCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
                           }`}
                         >
-                          {endCopied ? '✓ Fin copiée' : 'Copier fin uniquement'}
+                          {endCopied ? '✓ Fin copiée' : 'Copier la balise de fermeture'}
                         </button>
                       </div>
                     </div>
@@ -1614,12 +1622,24 @@ export function Step2UploadTemplate({
               <button
                 type="button"
                 onClick={() => handleSaveWordTemplate(false)}
-                className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-md"
+                disabled={hasCriticalValidationErrors}
+                className={`px-8 py-3 rounded-lg transition-colors font-medium shadow-md ${
+                  hasCriticalValidationErrors
+                    ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
               >
                 ✅ Enregistrer et continuer
               </button>
             </div>
           </div>
+          {hasCriticalValidationErrors && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-800 font-medium">
+                Vous ne pouvez pas continuer : corrigez d&apos;abord les erreurs critiques, puis ré-uploadez le .docx.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
