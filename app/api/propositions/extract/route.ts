@@ -188,6 +188,16 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
 - Si le document ne permet pas de remplir certains éléments, ajoute quand même des objets vides {} ou des valeurs null pour atteindre ${copieursCount} élément(s).
 `;
     }
+
+    promptToUse = `${promptToUse.trim()}
+
+INSTRUCTION COMPLÉMENTAIRE - RÉSUMÉ:
+- Ajoute un champ "resume" (string) dans le JSON retourné.
+- Le champ "resume" contient un résumé en français, structuré et lisible (titres + listes), basé uniquement sur les informations trouvées dans les documents.
+- N'invente pas d'informations. Si une information est absente, indique "(non trouvé)" ou omets la sous-partie concernée.
+- Le résumé doit couvrir au minimum : Informations client, Fournisseur/Opérateur, Lignes/Services, Location/Matériel (si présent), Engagements/Facturation (si présent), puis une Synthèse en 3-5 puces.
+
+Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     
     console.log('🤖 Modèle utilisé:', modelToUse);
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);

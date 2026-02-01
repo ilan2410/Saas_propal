@@ -207,11 +207,28 @@ export default async function PropositionDetailPage({
   const templateRaw = (proposition as Record<string, unknown>).template;
   const template = isRecord(templateRaw) ? templateRaw : null;
   
-  const extractedData = proposition.extracted_data || proposition.donnees_extraites || {};
-  const clientName = getClientName(extractedData) || proposition.nom_client || 'Proposition sans nom';
+  const extractedDataRaw = proposition.extracted_data || proposition.donnees_extraites || {};
+  const extractedDataRecord: Record<string, unknown> = isRecord(extractedDataRaw) ? extractedDataRaw : {};
+  const normalizeKey = (k: string) =>
+    k
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_');
+  const resumeKey = Object.keys(extractedDataRecord).find((k) => normalizeKey(k) === 'resume');
+  const resume =
+    resumeKey && typeof extractedDataRecord[resumeKey] === 'string'
+      ? (extractedDataRecord[resumeKey] as string)
+      : '';
+  const extractedDataForDisplay: Record<string, unknown> =
+    resumeKey
+      ? Object.fromEntries(Object.entries(extractedDataRecord).filter(([k]) => normalizeKey(k) !== 'resume'))
+      : extractedDataRecord;
+  const clientName = getClientName(extractedDataRecord) || proposition.nom_client || 'Proposition sans nom';
   
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
-  const totalFields = countTotalFields(extractedData);
+  const totalFields = countTotalFields(extractedDataForDisplay);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
@@ -422,6 +439,29 @@ export default async function PropositionDetailPage({
           </div>
         )}
 
+        {!!resume.trim() && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-lg">
+                  <FileText className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Résumé</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Synthèse automatique basée sur les documents sources
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+                {resume}
+              </pre>
+            </div>
+          </div>
+        )}
+
         {/* Données extraites */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
@@ -442,16 +482,16 @@ export default async function PropositionDetailPage({
               
               {/* Actions */}
               <div className="flex items-center gap-2">
-                <CopyButton data={extractedData} />
-                <ExportButton data={extractedData} filename={`donnees-${clientName.toLowerCase().replace(/\s+/g, '-')}`} />
+                <CopyButton data={extractedDataRecord} />
+                <ExportButton data={extractedDataRecord} filename={`donnees-${clientName.toLowerCase().replace(/\s+/g, '-')}`} />
               </div>
             </div>
           </div>
 
           <div className="p-6">
-            {extractedData && Object.keys(extractedData).length > 0 ? (
+            {extractedDataForDisplay && Object.keys(extractedDataForDisplay).length > 0 ? (
               <div className="space-y-3">
-                {Object.entries(extractedData).map(([key, value]) => (
+                {Object.entries(extractedDataForDisplay).map(([key, value]) => (
                   <AccordionItem key={key} title={formatFieldName(key)}>
                     {Array.isArray(value) ? (
                       <div className="space-y-3">

@@ -259,6 +259,20 @@ export async function extractDataFromDocuments(options: {
           }
         }
       }
+
+      const normalizeKey = (k: string) =>
+        k
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, '_');
+
+      const resumeKey = Object.keys(parsedData).find((k) => normalizeKey(k) === 'resume');
+      if (resumeKey) {
+        const v = parsedData[resumeKey];
+        if (typeof v === 'string' && v.trim()) filteredData['resume'] = v;
+      }
       
       console.log(`✅ Données filtrées: ${Object.keys(filteredData).length} champs (sur ${champs_actifs.length} demandés)`);
       return filteredData;

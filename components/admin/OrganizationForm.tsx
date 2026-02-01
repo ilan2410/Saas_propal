@@ -20,6 +20,7 @@ Analyse le(s) document(s) fourni(s) et extrais les informations demandées au fo
 
 STRUCTURE JSON ATTENDUE:
 {
+  "resume": "Résumé en français (titres + listes) basé sur les informations trouvées",
   "fournisseur": "Nom du fournisseur/distributeur actuel",
   "client": {
     "nom": "Nom du contact",
@@ -55,6 +56,7 @@ RÈGLES:
 - Les tarifs sont des nombres (29.99 et non "29,99€")
 - Les tableaux peuvent contenir plusieurs éléments
 - Extrais TOUTES les lignes trouvées dans le document
+- Le champ "resume" doit être un texte structuré et lisible, sans inventer d'informations
 
 DOCUMENT(S):
 {documents}
