@@ -4,6 +4,8 @@
  */
 
 import ExcelJS from 'exceljs';
+import Docxtemplater from 'docxtemplater';
+import PizZip from 'pizzip';
 import { createServiceClient } from '@/lib/supabase/server';
 
 type UnknownRecord = Record<string, unknown>;
@@ -361,10 +363,106 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
  * Génère un fichier Word (placeholder pour l'instant)
  */
 async function generateWordFile(options: GenerateOptions): Promise<string> {
-  void options;
-  // TODO: Implémenter la génération Word avec docx ou similar
-  console.log('📄 Génération Word (non implémenté)');
-  throw new Error('La génération de fichiers Word n\'est pas encore implémentée');
+  const { template, donnees, organization_id } = options;
+
+  if (!template.file_url) {
+    throw new Error('URL du template manquante. Le fichier template n\'a pas été uploadé correctement.');
+  }
+
+  const response = await fetch(template.file_url);
+  if (!response.ok) {
+    throw new Error(`Impossible de télécharger le template (${response.status}). Vérifiez que le fichier existe dans le storage.`);
+  }
+
+  const templateBuffer = await response.arrayBuffer();
+  const zip = new PizZip(Buffer.from(templateBuffer));
+  const doc = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true,
+    delimiters: {
+      start: '{{',
+      end: '}}',
+    },
+  });
+
+  const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
+  const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
+  const mappedData: UnknownRecord = { ...baseData };
+
+  const rawFieldMappings = fileConfig.fieldMappings;
+  const fieldMappings: Record<string, string> = {};
+  if (isPlainObject(rawFieldMappings)) {
+    for (const [k, v] of Object.entries(rawFieldMappings)) {
+      if (typeof v === 'string') fieldMappings[k] = v;
+    }
+  }
+
+  for (const [templateVar, dataKey] of Object.entries(fieldMappings)) {
+    const cleanVar = templateVar.replace(/[{}]/g, '').trim();
+    if (!cleanVar) continue;
+
+    const value = findValueInData(baseData, dataKey);
+    const formatted = formatValueForWord(value);
+
+    if (cleanVar.includes('.')) {
+      setNestedValue(mappedData, cleanVar, formatted);
+    } else {
+      mappedData[cleanVar] = formatted;
+    }
+  }
+
+  try {
+    doc.render(mappedData);
+  } catch (error) {
+    const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
+    const details =
+      e?.properties?.errors?.map((er) => er?.properties?.explanation).filter(Boolean).join('\n') ||
+      e?.message ||
+      'Erreur inconnue';
+    throw new Error(`Erreur Docxtemplater: ${details}`);
+  }
+
+  const uint8Array = doc.getZip().generate({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+  });
+
+  if (uint8Array.byteLength === 0) {
+    throw new Error('Le fichier Word généré est vide');
+  }
+
+  const supabase = createServiceClient();
+
+  let clientName = 'Proposition';
+  const raisonSociale =
+    findValueInData(baseData, 'raison_sociale') ||
+    findValueInData(baseData, 'nom_commercial') ||
+    findValueInData(baseData, 'client_nom') ||
+    baseData['nom_client'];
+
+  if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
+    clientName = raisonSociale
+      .replace(/[^a-zA-Z0-9\s-]/g, '')
+      .trim()
+      .substring(0, 50)
+      .replace(/\s+/g, '_');
+  }
+
+  const fileName = `Propal_${clientName}_${Date.now()}.docx`;
+  const filePath = `generated/${organization_id}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    upsert: true,
+    cacheControl: '3600',
+  });
+
+  if (uploadError) {
+    throw new Error(`Erreur upload: ${uploadError.message}`);
+  }
+
+  const { data: urlData } = supabase.storage.from('templates').getPublicUrl(filePath);
+  return urlData.publicUrl;
 }
 
 /**
@@ -509,6 +607,44 @@ function getNestedValue(obj: unknown, path: string): unknown {
   }
   
   return current;
+}
+
+function setNestedValue(obj: UnknownRecord, path: string, value: unknown) {
+  const parts = path.split('.').filter(Boolean);
+  if (parts.length === 0) return;
+
+  let current: UnknownRecord = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    const next = current[key];
+    if (isPlainObject(next)) {
+      current = next;
+      continue;
+    }
+    const created: UnknownRecord = {};
+    current[key] = created;
+    current = created;
+  }
+
+  current[parts[parts.length - 1]] = value;
+}
+
+function formatValueForWord(value: unknown): unknown {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+
+  if (Array.isArray(value)) {
+    if (value.every((v) => v === null || v === undefined)) return '';
+    if (value.every((v) => typeof v === 'string' || typeof v === 'number')) {
+      return value.map((v) => String(v)).join(', ');
+    }
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 /**

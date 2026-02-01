@@ -1,435 +1,505 @@
-Mission : Intégrer un système de catalogue produits
-🎯 Objectif
-Créer un catalogue de produits pour permettre aux clients :
-
-D'avoir accès à des produits de base pré-remplis (téléphonie : forfaits mobile, internet, fixe, équipements)
-D'ajouter leurs propres produits personnalisés
-D'utiliser l'IA pour générer automatiquement des propositions optimisées basées sur le catalogue
-
-📋 Tâches à réaliser
-ÉTAPE 1 : Base de données
-1.1 Créer le fichier supabase/migrations/add_catalogue_produits.sql
-sql-- ==========================================
--- TABLE: catalogues_produits
--- ==========================================
-CREATE TABLE IF NOT EXISTS catalogues_produits (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  
-  -- Type de produit
-  categorie VARCHAR(50) NOT NULL CHECK (categorie IN ('mobile', 'internet', 'fixe', 'cloud', 'equipement', 'autre')),
-  
-  -- Informations produit
-  nom VARCHAR(255) NOT NULL,
-  description TEXT,
-  fournisseur VARCHAR(100),
-  
-  -- Tarification
-  prix_mensuel DECIMAL(10,2) NOT NULL,
-  prix_installation DECIMAL(10,2),
-  engagement_mois INTEGER,
-  
-  -- Caractéristiques (JSONB flexible)
-  caracteristiques JSONB DEFAULT '{}',
-  
-  -- Ciblage intelligent
-  tags TEXT[],
-  
-  -- Produit de base (pré-rempli) ou personnalisé
-  est_produit_base BOOLEAN DEFAULT false,
-  
-  -- État
-  actif BOOLEAN DEFAULT true,
-  
-  -- Timestamps
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Index
-CREATE INDEX IF NOT EXISTS idx_catalogue_org ON catalogues_produits(organization_id);
-CREATE INDEX IF NOT EXISTS idx_catalogue_categorie ON catalogues_produits(categorie);
-CREATE INDEX IF NOT EXISTS idx_catalogue_actif ON catalogues_produits(actif);
-CREATE INDEX IF NOT EXISTS idx_catalogue_base ON catalogues_produits(est_produit_base);
-
--- RLS Policies
-ALTER TABLE catalogues_produits ENABLE ROW LEVEL SECURITY;
-
--- Les clients peuvent voir les produits de base ET leurs propres produits
-CREATE POLICY "Users can view base products and their own"
-ON catalogues_produits FOR SELECT
-USING (
-  est_produit_base = true OR organization_id = auth.uid()
-);
-
--- Les clients peuvent créer/modifier/supprimer uniquement leurs propres produits
-CREATE POLICY "Users can manage their own products"
-ON catalogues_produits FOR ALL
-USING (organization_id = auth.uid())
-WITH CHECK (organization_id = auth.uid());
-1.2 Créer le fichier supabase/seed-catalogue.sql avec les produits de base
-sql-- ==========================================
--- SEED: Catalogue produits de base (Téléphonie)
--- ==========================================
-
--- Produits Mobile
-INSERT INTO catalogues_produits (
-  organization_id, categorie, nom, description, fournisseur,
-  prix_mensuel, engagement_mois, caracteristiques, tags, est_produit_base, actif
-) VALUES
-  -- Forfaits Mobile Professionnels
-  (NULL, 'mobile', 'Forfait Pro 50Go', 'Forfait mobile professionnel avec 50Go de data', 'Orange Business', 
-   19.99, 12, 
-   '{"data_go": 50, "appels_illimites": true, "sms_illimites": true, "international": ["Europe", "DOM-TOM"]}'::jsonb,
-   ARRAY['professionnel', 'pme', 'economique'], true, true),
-   
-  (NULL, 'mobile', 'Forfait Pro 100Go', 'Forfait mobile professionnel avec 100Go de data', 'Orange Business',
-   29.99, 12,
-   '{"data_go": 100, "appels_illimites": true, "sms_illimites": true, "international": ["Europe", "DOM-TOM", "USA"]}'::jsonb,
-   ARRAY['professionnel', 'pme', 'premium'], true, true),
-   
-  (NULL, 'mobile', 'Forfait Pro Illimité', 'Forfait mobile professionnel data illimitée', 'Orange Business',
-   39.99, 12,
-   '{"data_go": "illimité", "appels_illimites": true, "sms_illimites": true, "international": ["Monde"]}'::jsonb,
-   ARRAY['professionnel', 'premium', 'grands-comptes'], true, true),
-
-  (NULL, 'mobile', 'Forfait Essentiel 20Go', 'Forfait économique pour collaborateurs', 'SFR Business',
-   14.99, 12,
-   '{"data_go": 20, "appels_illimites": true, "sms_illimites": true}'::jsonb,
-   ARRAY['professionnel', 'economique', 'tpe'], true, true),
-
--- Produits Internet
-  (NULL, 'internet', 'Fibre Pro 500Mb', 'Connexion fibre optique professionnelle 500Mb/s', 'Orange Pro',
-   49.99, 12,
-   '{"debit_down_mb": 500, "debit_up_mb": 500, "technologie": "fibre", "ip_fixe": true, "gtie_temps_retablissement": "4h"}'::jsonb,
-   ARRAY['professionnel', 'pme', 'performance'], true, true),
-   
-  (NULL, 'internet', 'Fibre Pro 1Gb', 'Connexion fibre optique professionnelle 1Gb/s symétrique', 'Orange Pro',
-   79.99, 12,
-   '{"debit_down_mb": 1000, "debit_up_mb": 1000, "technologie": "fibre", "ip_fixe": true, "gtie_temps_retablissement": "4h"}'::jsonb,
-   ARRAY['professionnel', 'premium', 'grands-comptes'], true, true),
-   
-  (NULL, 'internet', 'SDSL 10Mb', 'Connexion SDSL symétrique garantie', 'SFR Business',
-   99.99, 24,
-   '{"debit_down_mb": 10, "debit_up_mb": 10, "technologie": "sdsl", "debit_garanti": true, "gtie_temps_retablissement": "4h"}'::jsonb,
-   ARRAY['professionnel', 'premium', 'critiques'], true, true),
-
--- Produits Téléphonie Fixe
-  (NULL, 'fixe', 'Trunk SIP 10 canaux', 'Trunk SIP professionnel 10 canaux simultanés', 'OVH Telecom',
-   29.99, 12,
-   '{"canaux_simultanees": 10, "appels_illimites": true, "destinations": ["France", "fixes Europe"], "portabilite_incluse": true}'::jsonb,
-   ARRAY['professionnel', 'pme', 'voip'], true, true),
-   
-  (NULL, 'fixe', 'Trunk SIP 30 canaux', 'Trunk SIP professionnel 30 canaux simultanés', 'OVH Telecom',
-   79.99, 12,
-   '{"canaux_simultanes": 30, "appels_illimites": true, "destinations": ["France", "Europe", "USA"], "portabilite_incluse": true}'::jsonb,
-   ARRAY['professionnel', 'premium', 'callcenter'], true, true),
-
--- Équipements
-  (NULL, 'equipement', 'Téléphone IP Yealink T43U', 'Téléphone IP professionnel écran couleur', 'Yealink',
-   8.99, 0,
-   '{"type": "telephone_ip", "ecran": "couleur 2.7\"", "nb_comptes_sip": 12, "poe": true}'::jsonb,
-   ARRAY['equipement', 'voip', 'bureautique'], true, true),
-   
-  (NULL, 'equipement', 'Routeur 4G/5G Backup', 'Routeur de secours 4G/5G professionnel', 'Cisco',
-   15.99, 0,
-   '{"type": "routeur_backup", "connectivite": "4G/5G", "ethernet_ports": 4, "failover_auto": true}'::jsonb,
-   ARRAY['equipement', 'backup', 'resilience'], true, true);
-ÉTAPE 2 : Types TypeScript
-2.1 Ajouter dans types/index.ts
-typescript// Catalogue produit
-export interface CatalogueProduit {
-  id: string;
-  organization_id: string | null;
-  categorie: 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre';
-  nom: string;
-  description?: string;
-  fournisseur?: string;
-  prix_mensuel: number;
-  prix_installation?: number;
-  engagement_mois?: number;
-  caracteristiques: Record<string, any>;
-  tags: string[];
-  est_produit_base: boolean;
-  actif: boolean;
-  created_at: string;
-  updated_at: string;
-}
-ÉTAPE 3 : API Routes
-3.1 Créer app/api/catalogue/route.ts
-typescriptimport { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-
-export async function GET(request: NextRequest) {
-  const supabase = await createClient();
-  const { searchParams } = new URL(request.url);
-  const categorie = searchParams.get('categorie');
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  let query = supabase
-    .from('catalogues_produits')
-    .select('*')
-    .eq('actif', true)
-    .order('est_produit_base', { ascending: false })
-    .order('nom', { ascending: true });
-
-  if (categorie && categorie !== 'all') {
-    query = query.eq('categorie', categorie);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ produits: data });
+Excellente idée ! Voici la validation améliorée qui vérifie la cohérence des variables lors du ré-upload :
+tsx// À ajouter après les imports existants
+interface ValidationError {
+  type: 'warning' | 'error';
+  message: string;
+  details?: string;
 }
 
-export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const body = await request.json();
-
-  const { data, error } = await supabase
-    .from('catalogues_produits')
-    .insert({
-      organization_id: user.id,
-      ...body,
-      est_produit_base: false,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ produit: data });
-}
-3.2 Créer app/api/catalogue/[id]/route.ts
-typescriptimport { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id } = await params;
-  const body = await request.json();
-
-  const { data, error } = await supabase
-    .from('catalogues_produits')
-    .update(body)
-    .eq('id', id)
-    .eq('organization_id', user.id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ produit: data });
+interface TableValidation {
+  arrayId: string;
+  arrayLabel: string;
+  found: boolean;
+  hasStartTag: boolean;
+  hasEndTag: boolean;
+  foundFields: string[];
+  missingFields: string[];
+  extraFields: string[];
+  columnCount?: number;
+  expectedColumnCount?: number;
+  errors: ValidationError[];
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+// Fonction de validation à ajouter dans le composant
+const validateWordVariables = (html: string): {
+  simpleFields: { found: string[]; missing: string[] };
+  tables: TableValidation[];
+  errors: ValidationError[];
+} => {
+  const errors: ValidationError[] = [];
   
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { id } = await params;
-
-  const { error } = await supabase
-    .from('catalogues_produits')
-    .delete()
-    .eq('id', id)
-    .eq('organization_id', user.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
-}
-3.3 Créer app/api/propositions/generer-suggestions/route.ts
-typescriptimport { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
-
-export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // 1. Valider les champs simples
+  const foundSimpleFields: string[] = [];
+  const missingSimpleFields: string[] = [];
   
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { situation_actuelle, catalogue, preferences } = await request.json();
-
-  const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle du client et propose la meilleure combinaison de produits de notre catalogue.
-
-SITUATION ACTUELLE:
-${JSON.stringify(situation_actuelle, null, 2)}
-
-NOTRE CATALOGUE (${catalogue.length} produits):
-${JSON.stringify(catalogue, null, 2)}
-
-OBJECTIF: ${preferences?.objectif || 'equilibre'}
-${preferences?.budget_max ? `BUDGET MAX: ${preferences.budget_max}€/mois` : ''}
-
-INSTRUCTIONS:
-1. Pour chaque ligne/service actuel, trouve le produit le plus adapté
-2. Privilégie ${
-  preferences?.objectif === 'economie' 
-    ? 'les économies maximales' 
-    : preferences?.objectif === 'performance' 
-    ? 'la meilleure performance' 
-    : "l'équilibre coût/performance"
-}
-3. Calcule les économies mensuelles et annuelles
-4. Justifie chaque choix
-
-RETOURNE UN JSON:
-{
-  "suggestions": [
-    {
-      "ligne_actuelle": {...},
-      "produit_propose_id": "uuid",
-      "produit_propose_nom": "...",
-      "prix_actuel": 0,
-      "prix_propose": 0,
-      "economie_mensuelle": 0,
-      "justification": "..."
+  champsSimples.forEach((field) => {
+    const pattern = `{{${field}}}`;
+    if (html.includes(pattern)) {
+      foundSimpleFields.push(field);
+    } else {
+      missingSimpleFields.push(field);
     }
-  ],
-  "synthese": {
-    "cout_total_actuel": 0,
-    "cout_total_propose": 0,
-    "economie_mensuelle": 0,
-    "economie_annuelle": 0,
-    "ameliorations": ["..."]
-  }
-}`;
+  });
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }],
+  // 2. Valider les tableaux
+  const tableValidations: TableValidation[] = arrayFields.map((arr) => {
+    const startTag = `{{#${arr.id}}}`;
+    const endTag = `{{/${arr.id}}}`;
+    const hasStartTag = html.includes(startTag);
+    const hasEndTag = html.includes(endTag);
+    
+    const validation: TableValidation = {
+      arrayId: arr.id,
+      arrayLabel: arr.label || arr.id,
+      found: hasStartTag && hasEndTag,
+      hasStartTag,
+      hasEndTag,
+      foundFields: [],
+      missingFields: [],
+      extraFields: [],
+      errors: [],
+    };
+
+    // Vérifier si les tags sont présents
+    if (!hasStartTag && !hasEndTag) {
+      // Tableau non utilisé - c'est OK
+      return validation;
+    }
+
+    // Erreur : un seul tag présent
+    if (hasStartTag && !hasEndTag) {
+      validation.errors.push({
+        type: 'error',
+        message: `Le tableau "${validation.arrayLabel}" a une balise d'ouverture {{#${arr.id}}} mais pas de balise de fermeture {{/${arr.id}}}`,
+        details: 'Ajoutez la balise de fermeture à la fin de votre ligne de tableau',
+      });
+    }
+    
+    if (!hasStartTag && hasEndTag) {
+      validation.errors.push({
+        type: 'error',
+        message: `Le tableau "${validation.arrayLabel}" a une balise de fermeture {{/${arr.id}}} mais pas de balise d'ouverture {{#${arr.id}}}`,
+        details: 'Ajoutez la balise d\'ouverture au début de votre ligne de tableau',
+      });
+    }
+
+    if (!validation.found) {
+      return validation;
+    }
+
+    // Extraire le contenu entre les balises
+    const startIndex = html.indexOf(startTag);
+    const endIndex = html.indexOf(endTag);
+    
+    if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+      validation.errors.push({
+        type: 'error',
+        message: `Le tableau "${validation.arrayLabel}" a des balises dans le mauvais ordre`,
+        details: 'La balise d\'ouverture doit être avant la balise de fermeture',
+      });
+      return validation;
+    }
+
+    const tableContent = html.substring(startIndex, endIndex + endTag.length);
+
+    // Vérifier les champs du tableau
+    arr.rowFields.forEach((rf) => {
+      const fieldPattern = `{{${rf.id}}}`;
+      if (tableContent.includes(fieldPattern)) {
+        validation.foundFields.push(rf.id);
+      } else {
+        validation.missingFields.push(rf.id);
+      }
     });
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Erreur génération suggestions:', error);
-    return NextResponse.json(
-      { error: 'Erreur génération suggestions' },
-      { status: 500 }
-    );
-  }
-}
-ÉTAPE 4 : Interface utilisateur
-4.1 Créer app/(auth)/catalogue/page.tsx - Interface principale de gestion du catalogue (voir le code complet dans ma réponse précédente)
-4.2 Créer app/(auth)/catalogue/new/page.tsx - Formulaire d'ajout de produit
-4.3 Créer app/(auth)/catalogue/[id]/page.tsx - Formulaire d'édition de produit
-4.4 Modifier components/propositions/Step4Edit.tsx - Ajouter le bouton "Générer proposition optimisée"
-Ajoute dans le composant :
-typescriptconst [suggestions, setSuggestions] = useState<any>(null);
-const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-
-const handleGenererSuggestions = async () => {
-  setIsLoadingSuggestions(true);
-  try {
-    const catalogueRes = await fetch('/api/catalogue');
-    const { produits } = await catalogueRes.json();
+    // Détecter les variables supplémentaires (qui ne sont pas dans la config)
+    const allFieldIds = arr.rowFields.map((rf) => rf.id);
+    const variableRegex = /\{\{([^#/}][^}]*)\}\}/g;
+    let match;
+    const foundVariables = new Set<string>();
     
-    const res = await fetch('/api/propositions/generer-suggestions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        situation_actuelle: propositionData.donnees_extraites,
-        catalogue: produits,
-        preferences: { objectif: 'equilibre' },
-      }),
+    while ((match = variableRegex.exec(tableContent)) !== null) {
+      const varName = match[1];
+      foundVariables.add(varName);
+      if (!allFieldIds.includes(varName)) {
+        validation.extraFields.push(varName);
+      }
+    }
+
+    // Compter les colonnes dans le tableau Word (approximatif basé sur les <td>)
+    const tdMatches = tableContent.match(/<td[^>]*>/g);
+    if (tdMatches) {
+      validation.columnCount = tdMatches.length;
+      validation.expectedColumnCount = validation.foundFields.length + 2; // +2 pour les tags début/fin
+    }
+
+    // Générer les erreurs/warnings
+    if (validation.missingFields.length > 0) {
+      validation.errors.push({
+        type: 'warning',
+        message: `Le tableau "${validation.arrayLabel}" ne contient pas tous les champs`,
+        details: `Champs manquants : ${validation.missingFields.join(', ')}`,
+      });
+    }
+
+    if (validation.extraFields.length > 0) {
+      validation.errors.push({
+        type: 'warning',
+        message: `Le tableau "${validation.arrayLabel}" contient des variables non configurées`,
+        details: `Variables inconnues : ${validation.extraFields.join(', ')}. Ces variables ne seront pas remplies automatiquement.`,
+      });
+    }
+
+    // Vérifier que les variables sont entre les balises
+    arr.rowFields.forEach((rf) => {
+      const fieldPattern = `{{${rf.id}}}`;
+      const fieldIndex = html.indexOf(fieldPattern);
+      if (fieldIndex !== -1 && (fieldIndex < startIndex || fieldIndex > endIndex)) {
+        validation.errors.push({
+          type: 'error',
+          message: `La variable {{${rf.id}}} est en dehors du bloc tableau`,
+          details: `Elle doit être placée entre {{#${arr.id}}} et {{/${arr.id}}}`,
+        });
+      }
     });
-    
-    const result = await res.json();
-    setSuggestions(result);
-  } catch (error) {
-    console.error('Erreur:', error);
-  } finally {
-    setIsLoadingSuggestions(false);
+
+    return validation;
+  });
+
+  // Erreurs globales
+  if (foundSimpleFields.length === 0 && tableValidations.every((t) => !t.found)) {
+    errors.push({
+      type: 'error',
+      message: 'Aucune variable détectée dans le document',
+      details: 'Assurez-vous d\'avoir ajouté au moins quelques variables avant de continuer',
+    });
   }
+
+  return {
+    simpleFields: {
+      found: foundSimpleFields,
+      missing: missingSimpleFields,
+    },
+    tables: tableValidations,
+    errors,
+  };
 };
-ÉTAPE 5 : Navigation
-5.1 Ajouter le lien dans la navigation
-Modifier le fichier de navigation pour ajouter :
-typescript{
-  name: 'Catalogue',
-  href: '/catalogue',
-  icon: Package, // depuis lucide-react
+
+// État pour stocker les résultats de validation
+const [validationResults, setValidationResults] = useState<{
+  simpleFields: { found: string[]; missing: string[] };
+  tables: TableValidation[];
+  errors: ValidationError[];
+} | null>(null);
+
+const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
+
+// Modifier la fonction parseWordToPreview
+async function parseWordToPreview(nextFile: File) {
+  setStep('parse-word');
+  setWordPreviewHtml(null);
+  setWordParseError(null);
+  setValidationResults(null);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+
+    const response = await fetch('/api/templates/parse-word', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Erreur lors du parsing du fichier Word');
+    }
+
+    const result = (await response.json().catch(() => null)) as unknown;
+    const html = isRecord(result) ? getString(result, 'html') : undefined;
+    setWordPreviewHtml(html || null);
+    
+    // VALIDATION : Seulement si c'est un ré-upload (pas le premier)
+    if (html && hasUploadedBefore) {
+      const validation = validateWordVariables(html);
+      setValidationResults(validation);
+    }
+    
+    // Marquer qu'un fichier a été uploadé
+    setHasUploadedBefore(true);
+    setStep('preview-word');
+  } catch (error) {
+    console.error('Erreur parsing Word:', error);
+    setWordParseError('Erreur lors de la lecture du fichier Word');
+    setStep('preview-word');
+  }
 }
-✅ Checklist de validation
-Après implémentation, vérifie que :
+Maintenant, ajoutez le composant visuel de validation dans le JSX, juste après l'en-tête du fichier dans step === 'preview-word' :
+tsx{/* APRÈS l'en-tête du fichier et AVANT la section "Explication métaphorique" */}
 
- La table catalogues_produits est créée dans Supabase
- Les produits de base sont insérés (seed)
- Les policies RLS fonctionnent (les clients voient les produits de base + leurs produits)
- L'API GET /api/catalogue retourne les produits
- L'API POST /api/catalogue permet de créer un produit
- L'interface /catalogue affiche les produits de base et personnalisés
- On peut ajouter un nouveau produit via /catalogue/new
- On peut éditer un produit existant
- On peut dupliquer un produit de base pour le personnaliser
- L'API /api/propositions/generer-suggestions fonctionne avec Claude
- Le bouton "Générer proposition optimisée" appelle l'IA correctement
+{/* Résultats de validation (uniquement lors du ré-upload) */}
+{validationResults && (
+  <div className="space-y-4">
+    {/* Erreurs critiques */}
+    {validationResults.errors.length > 0 && (
+      <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6">
+        <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2 text-lg">
+          <span className="text-2xl">⚠️</span>
+          Problèmes détectés
+        </h3>
+        <div className="space-y-2">
+          {validationResults.errors.map((error, idx) => (
+            <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
+              <p className="font-medium text-red-900">{error.message}</p>
+              {error.details && (
+                <p className="text-sm text-red-700 mt-1">{error.details}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
 
-🎯 Priorité d'implémentation
+    {/* Validation des tableaux */}
+    {validationResults.tables.some((t) => t.found || t.errors.length > 0) && (
+      <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
+        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-lg">
+          <span className="text-2xl">📊</span>
+          Vérification des tableaux
+        </h3>
+        <div className="space-y-4">
+          {validationResults.tables
+            .filter((t) => t.found || t.errors.length > 0)
+            .map((table, idx) => {
+              const hasErrors = table.errors.some((e) => e.type === 'error');
+              const hasWarnings = table.errors.some((e) => e.type === 'warning');
+              const isValid = table.found && !hasErrors && table.missingFields.length === 0;
 
-Base de données (migrations + seed)
-Types TypeScript
-API Routes (GET, POST, PATCH, DELETE catalogue)
-Interface catalogue (liste + formulaires)
-Intégration IA (génération suggestions)
-Navigation (ajouter le lien)
+              return (
+                <div
+                  key={idx}
+                  className={`border-2 rounded-lg p-4 ${
+                    hasErrors
+                      ? 'border-red-300 bg-red-50'
+                      : hasWarnings
+                        ? 'border-yellow-300 bg-yellow-50'
+                        : isValid
+                          ? 'border-green-300 bg-green-50'
+                          : 'border-gray-300 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                        {isValid ? '✅' : hasErrors ? '❌' : hasWarnings ? '⚠️' : '⏸️'}
+                        {table.arrayLabel}
+                      </h4>
+                      <p className="text-xs text-gray-500 font-mono">{table.arrayId}</p>
+                    </div>
+                    {isValid && (
+                      <span className="text-sm text-green-700 font-medium bg-green-100 px-3 py-1 rounded-full">
+                        Valide
+                      </span>
+                    )}
+                  </div>
 
-📝 Notes importantes
+                  {/* Statut des balises */}
+                  {table.found && (
+                    <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={table.hasStartTag ? 'text-green-600' : 'text-red-600'}>
+                          {table.hasStartTag ? '✓' : '✗'}
+                        </span>
+                        <span className="text-gray-700">Balise d&apos;ouverture</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={table.hasEndTag ? 'text-green-600' : 'text-red-600'}>
+                          {table.hasEndTag ? '✓' : '✗'}
+                        </span>
+                        <span className="text-gray-700">Balise de fermeture</span>
+                      </div>
+                    </div>
+                  )}
 
-Utilise le middleware Supabase existant pour l'authentification
-Respecte la structure de routing Next.js App Router déjà en place
-Utilise les composants shadcn/ui déjà installés (Button, Input, Card, etc.)
-Suis le pattern des autres API routes pour la cohérence
-Les produits de base ont organization_id = NULL et est_produit_base = true
-Les produits personnalisés ont organization_id = user.id et est_produit_base = false
+                  {/* Champs trouvés */}
+                  {table.foundFields.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-sm font-semibold text-gray-700 mb-1">
+                        Champs détectés ({table.foundFields.length}) :
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {table.foundFields.map((field) => (
+                          <span
+                            key={field}
+                            className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-mono"
+                          >
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-Commence par l'ÉTAPE 1, puis valide avant de passer à la suivante. Bonne chance 
+                  {/* Champs manquants */}
+                  {table.missingFields.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-sm font-semibold text-yellow-700 mb-1">
+                        Champs manquants ({table.missingFields.length}) :
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {table.missingFields.map((field) => (
+                          <span
+                            key={field}
+                            className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-mono"
+                          >
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Variables inconnues */}
+                  {table.extraFields.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-sm font-semibold text-orange-700 mb-1">
+                        Variables non configurées ({table.extraFields.length}) :
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {table.extraFields.map((field) => (
+                          <span
+                            key={field}
+                            className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded font-mono"
+                          >
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-orange-600 mt-1">
+                        Ces variables ne seront pas remplies automatiquement
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Erreurs spécifiques */}
+                  {table.errors.length > 0 && (
+                    <div className="space-y-2 mt-3">
+                      {table.errors.map((error, errIdx) => (
+                        <div
+                          key={errIdx}
+                          className={`text-sm p-2 rounded ${
+                            error.type === 'error'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          <p className="font-medium">{error.message}</p>
+                          {error.details && (
+                            <p className="text-xs mt-1">{error.details}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    )}
+
+    {/* Résumé des champs simples */}
+    <div className="bg-white border border-gray-200 rounded-xl p-6">
+      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-lg">
+        <span className="text-2xl">📝</span>
+        Champs simples détectés
+      </h3>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-sm font-semibold text-green-700 mb-2">
+            Trouvés ({validationResults.simpleFields.found.length})
+          </p>
+          {validationResults.simpleFields.found.length > 0 ? (
+            <div className="space-y-1">
+              {validationResults.simpleFields.found.slice(0, 5).map((field) => (
+                <div key={field} className="text-xs text-gray-600 flex items-center gap-1">
+                  <span className="text-green-600">✓</span>
+                  <span className="font-mono">&#123;&#123;{field}&#125;&#125;</span>
+                </div>
+              ))}
+              {validationResults.simpleFields.found.length > 5 && (
+                <p className="text-xs text-gray-500 italic">
+                  ... et {validationResults.simpleFields.found.length - 5} autre(s)
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500 italic">Aucun champ simple trouvé</p>
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-600 mb-2">
+            Non utilisés ({validationResults.simpleFields.missing.length})
+          </p>
+          {validationResults.simpleFields.missing.length > 0 ? (
+            <div className="space-y-1">
+              {validationResults.simpleFields.missing.slice(0, 5).map((field) => (
+                <div key={field} className="text-xs text-gray-500 flex items-center gap-1">
+                  <span className="text-gray-400">○</span>
+                  <span className="font-mono">&#123;&#123;{field}&#125;&#125;</span>
+                </div>
+              ))}
+              {validationResults.simpleFields.missing.length > 5 && (
+                <p className="text-xs text-gray-400 italic">
+                  ... et {validationResults.simpleFields.missing.length - 5} autre(s)
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-green-600 italic">Tous les champs sont utilisés !</p>
+          )}
+        </div>
+      </div>
+    </div>
+
+    {/* Bouton pour masquer la validation */}
+    <button
+      onClick={() => setValidationResults(null)}
+      className="w-full py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50"
+    >
+      Masquer la validation
+    </button>
+  </div>
+)}
+🎯 Fonctionnalités de validation :
+✅ Pour les champs simples :
+
+Détecte quels champs sont présents dans le document
+Liste les champs manquants (optionnel, pas bloquant)
+
+✅ Pour les tableaux :
+
+Vérification des balises :
+
+Détecte si {{#arrayId}} est présent
+Détecte si {{/arrayId}} est présent
+Erreur si un seul des deux est présent
+Erreur si l'ordre est inversé
+
+
+Vérification des champs :
+
+Liste les champs correctement placés
+Liste les champs manquants (warning)
+Détecte les variables inconnues (warning)
+
+
+Vérification de la position :
+
+Erreur si une variable de tableau est en dehors des balises
+
+
+Affichage visuel :
+
+🟢 Vert : Tout est OK
+🟡 Jaune : Warnings (champs manquants)
+🔴 Rouge : Erreurs critiques (balises manquantes/mal placées)
