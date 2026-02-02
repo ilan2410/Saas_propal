@@ -26,6 +26,8 @@ export interface Organization {
     tokensMaxParProposition: number;
   };
   stripe_customer_id?: string;
+  pdf_header_logo_url?: string;
+  pdf_footer_text?: string;
   created_at: string;
   updated_at: string;
 }
@@ -196,3 +198,26 @@ export interface ExtractionResult {
   };
   cost: number;
 }
+
+export type Suggestion = {
+  ligne_actuelle: Record<string, unknown>;
+  produit_propose_id?: string;
+  produit_propose_nom: string;
+  prix_actuel: number;
+  prix_propose: number;
+  economie_mensuelle: number;
+  justification: string;
+};
+
+export type SuggestionsSynthese = {
+  cout_total_actuel: number;
+  cout_total_propose: number;
+  economie_mensuelle: number;
+  economie_annuelle: number;
+  ameliorations?: string[];
+};
+
+export type SuggestionsGenerees = {
+  suggestions: Suggestion[];
+  synthese: SuggestionsSynthese;
+};
