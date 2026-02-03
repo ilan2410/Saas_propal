@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
+import { SuggestionsView } from './SuggestionsView';
+import { SuggestionsGenerees } from '@/types';
 import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
@@ -315,8 +317,11 @@ export function Step4EditData({
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'simple' | 'complex'>('simple');
   const [viewMode, setViewMode] = useState<'excel' | 'form'>('excel');
-  const [suggestions, setSuggestions] = useState<unknown | null>(null);
+  const [suggestions, setSuggestions] = useState<SuggestionsGenerees | null>(
+    propositionData.suggestions_generees as SuggestionsGenerees || null
+  );
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [templateInfo, setTemplateInfo] = useState<{
     file_url: string;
     file_config: unknown;
@@ -572,6 +577,40 @@ export function Step4EditData({
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!suggestions || !propositionData.proposition_id) return;
+    
+    setIsDownloadingPdf(true);
+    try {
+        const response = await fetch(`/api/propositions/${propositionData.proposition_id}/export-comparatif`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                suggestions: suggestions.suggestions,
+                synthese: suggestions.synthese,
+                proposition_id: propositionData.proposition_id
+            })
+        });
+
+        if (!response.ok) throw new Error('Erreur lors de la génération du PDF');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `comparatif-telecom-${propositionData.nom_client || 'client'}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    } catch (error) {
+        console.error(error);
+        alert('Erreur lors du téléchargement du PDF');
+    } finally {
+        setIsDownloadingPdf(false);
+    }
+  };
+
   // Compter les champs simples (total des champs dans fieldsByCategory)
   const simpleFieldsCount = Object.values(fieldsByCategory).reduce((acc, fields) => acc + fields.length, 0);
   const complexFieldsCount = Object.keys(complexFields).length;
@@ -653,11 +692,16 @@ export function Step4EditData({
       </div>
 
       {suggestions !== null && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Suggestions IA</h3>
-          <pre className="text-xs bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-auto max-h-96">
-            {JSON.stringify(suggestions, null, 2)}
-          </pre>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-600" />
+            Suggestions IA
+          </h3>
+          <SuggestionsView 
+            suggestions={suggestions} 
+            onDownloadPdf={handleDownloadPdf}
+            isDownloading={isDownloadingPdf}
+          />
         </div>
       )}
 

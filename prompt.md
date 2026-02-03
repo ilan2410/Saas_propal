@@ -1,505 +1,237 @@
-Excellente idée ! Voici la validation améliorée qui vérifie la cohérence des variables lors du ré-upload :
-tsx// À ajouter après les imports existants
-interface ValidationError {
-  type: 'warning' | 'error';
-  message: string;
-  details?: string;
-}
+# Mission : Améliorer l'interface des "Suggestions IA" dans PropoBoost
 
-interface TableValidation {
-  arrayId: string;
-  arrayLabel: string;
-  found: boolean;
-  hasStartTag: boolean;
-  hasEndTag: boolean;
-  foundFields: string[];
-  missingFields: string[];
-  extraFields: string[];
-  columnCount?: number;
-  expectedColumnCount?: number;
-  errors: ValidationError[];
-}
+## Contexte
+PropoBoost est une plateforme SaaS Next.js 14 (TypeScript) qui génère des propositions commerciales automatisées. La fonctionnalité "Suggestions IA" utilise Claude AI pour analyser la situation télécom actuelle d'un client et proposer des produits optimisés depuis un catalogue.
 
-// Fonction de validation à ajouter dans le composant
-const validateWordVariables = (html: string): {
-  simpleFields: { found: string[]; missing: string[] };
-  tables: TableValidation[];
-  errors: ValidationError[];
-} => {
-  const errors: ValidationError[] = [];
-  
-  // 1. Valider les champs simples
-  const foundSimpleFields: string[] = [];
-  const missingSimpleFields: string[] = [];
-  
-  champsSimples.forEach((field) => {
-    const pattern = `{{${field}}}`;
-    if (html.includes(pattern)) {
-      foundSimpleFields.push(field);
-    } else {
-      missingSimpleFields.push(field);
+Actuellement, les suggestions s'affichent en JSON brut dans un `<pre>`. L'objectif est de créer une interface visuelle professionnelle et intuitive.
+
+## Stack technique
+- Next.js 14 (App Router)
+- TypeScript
+- TailwindCSS
+- Lucide React (icônes)
+- Supabase (base de données)
+- API Claude (Anthropic)
+
+## Objectifs
+
+### 1. NIVEAU 1 : Interface visuelle interactive
+
+**Remplacer l'affichage JSON brut par :**
+
+#### A) Composant `SuggestionsView.tsx`
+Créer un nouveau composant dans `components/propositions/SuggestionsView.tsx` qui affiche :
+
+**Pour chaque suggestion :**
+- Card visuelle avec :
+  - Header : Nom du produit proposé + Badge (✓ Économie en vert OU ⚠️ Surcoût en orange)
+  - Comparaison visuelle : 2 colonnes côte à côte
+    - Colonne gauche : "Actuellement" (fond gris) - prix_actuel + forfait actuel
+    - Colonne droite : "Proposé" (fond bleu clair) - prix_propose + produit proposé
+  - Bloc économie : 
+    - Si économie > 0 : fond vert avec flèche descendante (TrendingDown), afficher économie mensuelle et annuelle
+    - Si économie < 0 : fond orange avec flèche montante (TrendingUp), afficher surcoût mensuel et annuel
+  - Justification : Icône ampoule (Lightbulb) + texte de justification
+
+**Design moderne avec :**
+- Bordures arrondies
+- Ombres subtiles au hover
+- Transitions fluides
+- Espacement aéré
+- Typographie hiérarchisée
+
+#### B) Dashboard de synthèse globale
+En haut des suggestions, afficher 3 cards métriques (grid 3 colonnes) :
+
+1. **Économie mensuelle totale**
+   - Icône Euro
+   - Valeur avec couleur verte si positif, orange si négatif
+   - Sous-titre : économie annuelle
+
+2. **Réduction globale en %**
+   - Icône TrendingDown
+   - Calcul : `((cout_total_actuel - cout_total_propose) / cout_total_actuel) * 100`
+   - Affichage : "X% de réduction" OU "X% d'augmentation"
+
+3. **Lignes analysées**
+   - Icône Package
+   - Nombre de suggestions générées
+   - Sous-titre : "produits optimisés"
+
+### 2. NIVEAU 3 : Export PDF comparatif
+
+#### A) Créer l'API route `/api/propositions/[id]/export-comparatif`
+- Méthode : POST
+- Input : `{ suggestions, synthese, proposition_id }`
+- Utiliser `pdf-lib` pour générer un PDF professionnel avec :
+
+**Structure du PDF :**
+
+**Page 1 : Page de garde**
+- Titre : "Analyse Comparative - Optimisation Télécom"
+- Logo PropoBoost (si disponible)
+- Nom du client
+- Date de génération
+- Message : "Proposition générée automatiquement par PropoBoost"
+
+**Page 2 : Synthèse exécutive**
+- Tableau récapitulatif :
+```
+  | Situation actuelle | Situation proposée | Différence |
+  | 1 250€/mois        | 1 120€/mois        | -130€/mois |
+  | 15 000€/an         | 13 440€/an         | -1 560€/an |
+```
+- Liste des améliorations (puces)
+- Graphique en barres (coût actuel vs proposé)
+
+**Pages 3+ : Comparatif détaillé ligne par ligne**
+Pour chaque suggestion, un tableau :
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Ligne mobile 06XXXXXXXX                                     │
+├─────────────────────┬───────────────────────┬───────────────┤
+│ Situation actuelle  │ Situation proposée    │ Différence    │
+├─────────────────────┼───────────────────────┼───────────────┤
+│ Forfait: Pro 50Go   │ Forfait: Pro 100Go    │               │
+│ Prix: 29.99€/mois   │ Prix: 24.99€/mois     │ -5€/mois      │
+│                     │                       │ -60€/an       │
+├─────────────────────┴───────────────────────┴───────────────┤
+│ 💡 Justification:                                           │
+│ Forfait plus avantageux avec 2x plus de data pour un prix  │
+│ inférieur. Engagement identique 12 mois.                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Dernière page : Pied de page personnalisable**
+- Zone pour logo/coordonnées client (prévoir champ dans settings organisation)
+- Texte légal / mentions
+- Contact PropoBoost
+
+**Note importante :** Prévoir dans la table `organizations` des champs :
+```sql
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pdf_header_logo_url TEXT;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pdf_footer_text TEXT;
+```
+
+#### B) Bouton "Télécharger Comparatif PDF"
+Ajouter un bouton dans `SuggestionsView.tsx` :
+- Icône FileDown
+- Texte : "Télécharger le comparatif PDF"
+- Style : bouton principal (bg-blue-600)
+- Au clic : appeler l'API et télécharger le PDF
+
+### 3. Limitation : Un seul clic par proposition
+
+#### Modifier `Step4EditData.tsx`
+- Stocker dans la BDD (table `propositions`) un champ `suggestions_generees` (JSONB nullable)
+- Au clic sur "Suggestions IA" :
+  1. Vérifier si `suggestions_generees` est déjà rempli
+  2. Si oui : afficher un message "Suggestions déjà générées pour cette proposition" + afficher les suggestions existantes
+  3. Si non : générer les suggestions et les sauvegarder dans la BDD
+
+**Migration SQL nécessaire :**
+```sql
+ALTER TABLE propositions ADD COLUMN IF NOT EXISTS suggestions_generees JSONB;
+```
+
+### 4. Correction du prompt Claude
+
+#### Modifier `app/api/propositions/generer-suggestions/route.ts`
+Remplacer le prompt actuel par :
+```typescript
+const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle du client et propose la meilleure combinaison de produits de notre catalogue.
+
+SITUATION ACTUELLE:
+${JSON.stringify(situation_actuelle ?? {}, null, 2)}
+
+NOTRE CATALOGUE (${catalogue.length} produits):
+${JSON.stringify(catalogue, null, 2)}
+
+OBJECTIF: ${objectif}
+${budgetMax ? `BUDGET MAX: ${budgetMax}€/mois` : ''}
+
+INSTRUCTIONS:
+1. Pour chaque ligne/service actuel, trouve le produit le plus adapté
+2. Privilégie ${
+      objectif === 'economie'
+        ? 'les économies maximales'
+        : objectif === 'performance'
+          ? 'la meilleure performance'
+          : "l'équilibre coût/performance"
     }
-  });
+3. Calcule les économies mensuelles et annuelles selon la formule :
+   • economie_mensuelle = prix_actuel - prix_propose
+   • Si le résultat est POSITIF → économie réelle
+   • Si le résultat est NÉGATIF → surcoût (produit proposé plus cher)
+4. Justifie chaque choix
 
-  // 2. Valider les tableaux
-  const tableValidations: TableValidation[] = arrayFields.map((arr) => {
-    const startTag = `{{#${arr.id}}}`;
-    const endTag = `{{/${arr.id}}}`;
-    const hasStartTag = html.includes(startTag);
-    const hasEndTag = html.includes(endTag);
-    
-    const validation: TableValidation = {
-      arrayId: arr.id,
-      arrayLabel: arr.label || arr.id,
-      found: hasStartTag && hasEndTag,
-      hasStartTag,
-      hasEndTag,
-      foundFields: [],
-      missingFields: [],
-      extraFields: [],
-      errors: [],
-    };
-
-    // Vérifier si les tags sont présents
-    if (!hasStartTag && !hasEndTag) {
-      // Tableau non utilisé - c'est OK
-      return validation;
+RETOURNE UN JSON:
+{
+  "suggestions": [
+    {
+      "ligne_actuelle": {...},
+      "produit_propose_id": "uuid",
+      "produit_propose_nom": "...",
+      "prix_actuel": 0,
+      "prix_propose": 0,
+      "economie_mensuelle": 0,  // = prix_actuel - prix_propose (positif = économie, négatif = surcoût)
+      "justification": "..."
     }
-
-    // Erreur : un seul tag présent
-    if (hasStartTag && !hasEndTag) {
-      validation.errors.push({
-        type: 'error',
-        message: `Le tableau "${validation.arrayLabel}" a une balise d'ouverture {{#${arr.id}}} mais pas de balise de fermeture {{/${arr.id}}}`,
-        details: 'Ajoutez la balise de fermeture à la fin de votre ligne de tableau',
-      });
-    }
-    
-    if (!hasStartTag && hasEndTag) {
-      validation.errors.push({
-        type: 'error',
-        message: `Le tableau "${validation.arrayLabel}" a une balise de fermeture {{/${arr.id}}} mais pas de balise d'ouverture {{#${arr.id}}}`,
-        details: 'Ajoutez la balise d\'ouverture au début de votre ligne de tableau',
-      });
-    }
-
-    if (!validation.found) {
-      return validation;
-    }
-
-    // Extraire le contenu entre les balises
-    const startIndex = html.indexOf(startTag);
-    const endIndex = html.indexOf(endTag);
-    
-    if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-      validation.errors.push({
-        type: 'error',
-        message: `Le tableau "${validation.arrayLabel}" a des balises dans le mauvais ordre`,
-        details: 'La balise d\'ouverture doit être avant la balise de fermeture',
-      });
-      return validation;
-    }
-
-    const tableContent = html.substring(startIndex, endIndex + endTag.length);
-
-    // Vérifier les champs du tableau
-    arr.rowFields.forEach((rf) => {
-      const fieldPattern = `{{${rf.id}}}`;
-      if (tableContent.includes(fieldPattern)) {
-        validation.foundFields.push(rf.id);
-      } else {
-        validation.missingFields.push(rf.id);
-      }
-    });
-
-    // Détecter les variables supplémentaires (qui ne sont pas dans la config)
-    const allFieldIds = arr.rowFields.map((rf) => rf.id);
-    const variableRegex = /\{\{([^#/}][^}]*)\}\}/g;
-    let match;
-    const foundVariables = new Set<string>();
-    
-    while ((match = variableRegex.exec(tableContent)) !== null) {
-      const varName = match[1];
-      foundVariables.add(varName);
-      if (!allFieldIds.includes(varName)) {
-        validation.extraFields.push(varName);
-      }
-    }
-
-    // Compter les colonnes dans le tableau Word (approximatif basé sur les <td>)
-    const tdMatches = tableContent.match(/<td[^>]*>/g);
-    if (tdMatches) {
-      validation.columnCount = tdMatches.length;
-      validation.expectedColumnCount = validation.foundFields.length + 2; // +2 pour les tags début/fin
-    }
-
-    // Générer les erreurs/warnings
-    if (validation.missingFields.length > 0) {
-      validation.errors.push({
-        type: 'warning',
-        message: `Le tableau "${validation.arrayLabel}" ne contient pas tous les champs`,
-        details: `Champs manquants : ${validation.missingFields.join(', ')}`,
-      });
-    }
-
-    if (validation.extraFields.length > 0) {
-      validation.errors.push({
-        type: 'warning',
-        message: `Le tableau "${validation.arrayLabel}" contient des variables non configurées`,
-        details: `Variables inconnues : ${validation.extraFields.join(', ')}. Ces variables ne seront pas remplies automatiquement.`,
-      });
-    }
-
-    // Vérifier que les variables sont entre les balises
-    arr.rowFields.forEach((rf) => {
-      const fieldPattern = `{{${rf.id}}}`;
-      const fieldIndex = html.indexOf(fieldPattern);
-      if (fieldIndex !== -1 && (fieldIndex < startIndex || fieldIndex > endIndex)) {
-        validation.errors.push({
-          type: 'error',
-          message: `La variable {{${rf.id}}} est en dehors du bloc tableau`,
-          details: `Elle doit être placée entre {{#${arr.id}}} et {{/${arr.id}}}`,
-        });
-      }
-    });
-
-    return validation;
-  });
-
-  // Erreurs globales
-  if (foundSimpleFields.length === 0 && tableValidations.every((t) => !t.found)) {
-    errors.push({
-      type: 'error',
-      message: 'Aucune variable détectée dans le document',
-      details: 'Assurez-vous d\'avoir ajouté au moins quelques variables avant de continuer',
-    });
-  }
-
-  return {
-    simpleFields: {
-      found: foundSimpleFields,
-      missing: missingSimpleFields,
-    },
-    tables: tableValidations,
-    errors,
-  };
-};
-
-// État pour stocker les résultats de validation
-const [validationResults, setValidationResults] = useState<{
-  simpleFields: { found: string[]; missing: string[] };
-  tables: TableValidation[];
-  errors: ValidationError[];
-} | null>(null);
-
-const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
-
-// Modifier la fonction parseWordToPreview
-async function parseWordToPreview(nextFile: File) {
-  setStep('parse-word');
-  setWordPreviewHtml(null);
-  setWordParseError(null);
-  setValidationResults(null);
-
-  try {
-    const formData = new FormData();
-    formData.append('file', nextFile);
-
-    const response = await fetch('/api/templates/parse-word', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Erreur lors du parsing du fichier Word');
-    }
-
-    const result = (await response.json().catch(() => null)) as unknown;
-    const html = isRecord(result) ? getString(result, 'html') : undefined;
-    setWordPreviewHtml(html || null);
-    
-    // VALIDATION : Seulement si c'est un ré-upload (pas le premier)
-    if (html && hasUploadedBefore) {
-      const validation = validateWordVariables(html);
-      setValidationResults(validation);
-    }
-    
-    // Marquer qu'un fichier a été uploadé
-    setHasUploadedBefore(true);
-    setStep('preview-word');
-  } catch (error) {
-    console.error('Erreur parsing Word:', error);
-    setWordParseError('Erreur lors de la lecture du fichier Word');
-    setStep('preview-word');
+  ],
+  "synthese": {
+    "cout_total_actuel": 0,
+    "cout_total_propose": 0,
+    "economie_mensuelle": 0,  // = cout_total_actuel - cout_total_propose
+    "economie_annuelle": 0,   // = economie_mensuelle * 12
+    "ameliorations": ["..."]
   }
 }
-Maintenant, ajoutez le composant visuel de validation dans le JSX, juste après l'en-tête du fichier dans step === 'preview-word' :
-tsx{/* APRÈS l'en-tête du fichier et AVANT la section "Explication métaphorique" */}
 
-{/* Résultats de validation (uniquement lors du ré-upload) */}
-{validationResults && (
-  <div className="space-y-4">
-    {/* Erreurs critiques */}
-    {validationResults.errors.length > 0 && (
-      <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6">
-        <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2 text-lg">
-          <span className="text-2xl">⚠️</span>
-          Problèmes détectés
-        </h3>
-        <div className="space-y-2">
-          {validationResults.errors.map((error, idx) => (
-            <div key={idx} className="bg-white border border-red-200 rounded-lg p-3">
-              <p className="font-medium text-red-900">{error.message}</p>
-              {error.details && (
-                <p className="text-sm text-red-700 mt-1">{error.details}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )}
+IMPORTANT - GESTION DES SURCOÛTS:
+- Si le produit proposé est plus cher, l'économie_mensuelle sera NÉGATIVE
+- Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
+- L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
+```
 
-    {/* Validation des tableaux */}
-    {validationResults.tables.some((t) => t.found || t.errors.length > 0) && (
-      <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-lg">
-          <span className="text-2xl">📊</span>
-          Vérification des tableaux
-        </h3>
-        <div className="space-y-4">
-          {validationResults.tables
-            .filter((t) => t.found || t.errors.length > 0)
-            .map((table, idx) => {
-              const hasErrors = table.errors.some((e) => e.type === 'error');
-              const hasWarnings = table.errors.some((e) => e.type === 'warning');
-              const isValid = table.found && !hasErrors && table.missingFields.length === 0;
+## Fichiers à créer/modifier
 
-              return (
-                <div
-                  key={idx}
-                  className={`border-2 rounded-lg p-4 ${
-                    hasErrors
-                      ? 'border-red-300 bg-red-50'
-                      : hasWarnings
-                        ? 'border-yellow-300 bg-yellow-50'
-                        : isValid
-                          ? 'border-green-300 bg-green-50'
-                          : 'border-gray-300 bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                        {isValid ? '✅' : hasErrors ? '❌' : hasWarnings ? '⚠️' : '⏸️'}
-                        {table.arrayLabel}
-                      </h4>
-                      <p className="text-xs text-gray-500 font-mono">{table.arrayId}</p>
-                    </div>
-                    {isValid && (
-                      <span className="text-sm text-green-700 font-medium bg-green-100 px-3 py-1 rounded-full">
-                        Valide
-                      </span>
-                    )}
-                  </div>
+### Nouveaux fichiers :
+1. `components/propositions/SuggestionsView.tsx` - Interface visuelle des suggestions
+2. `components/propositions/MetricCard.tsx` - Card métrique réutilisable
+3. `app/api/propositions/[id]/export-comparatif/route.ts` - Export PDF
+4. `lib/pdf/comparatif-generator.ts` - Logique de génération PDF
+5. `supabase/migrations/YYYYMMDD_add_suggestions_fields.sql` - Migration BDD
 
-                  {/* Statut des balises */}
-                  {table.found && (
-                    <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className={table.hasStartTag ? 'text-green-600' : 'text-red-600'}>
-                          {table.hasStartTag ? '✓' : '✗'}
-                        </span>
-                        <span className="text-gray-700">Balise d&apos;ouverture</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={table.hasEndTag ? 'text-green-600' : 'text-red-600'}>
-                          {table.hasEndTag ? '✓' : '✗'}
-                        </span>
-                        <span className="text-gray-700">Balise de fermeture</span>
-                      </div>
-                    </div>
-                  )}
+### Fichiers à modifier :
+1. `components/propositions/Step4EditData.tsx` - Intégrer SuggestionsView + logique limitation
+2. `app/api/propositions/generer-suggestions/route.ts` - Corriger prompt + sauvegarder en BDD
+3. `types/index.ts` - Ajouter types TypeScript pour Suggestion et Synthese
 
-                  {/* Champs trouvés */}
-                  {table.foundFields.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-sm font-semibold text-gray-700 mb-1">
-                        Champs détectés ({table.foundFields.length}) :
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {table.foundFields.map((field) => (
-                          <span
-                            key={field}
-                            className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-mono"
-                          >
-                            {field}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+## Contraintes importantes
 
-                  {/* Champs manquants */}
-                  {table.missingFields.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-sm font-semibold text-yellow-700 mb-1">
-                        Champs manquants ({table.missingFields.length}) :
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {table.missingFields.map((field) => (
-                          <span
-                            key={field}
-                            className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-mono"
-                          >
-                            {field}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+1. **Performance** : Le PDF doit se générer en moins de 3 secondes
+2. **Responsive** : L'interface doit être parfaite sur mobile/tablette/desktop
+3. **Accessibilité** : Couleurs contrastées, textes lisibles
+4. **TypeScript strict** : Tous les types doivent être explicites
+5. **Gestion d'erreurs** : Try/catch partout avec messages utilisateur clairs
+6. **Loading states** : Spinners pendant génération PDF
 
-                  {/* Variables inconnues */}
-                  {table.extraFields.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-sm font-semibold text-orange-700 mb-1">
-                        Variables non configurées ({table.extraFields.length}) :
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {table.extraFields.map((field) => (
-                          <span
-                            key={field}
-                            className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded font-mono"
-                          >
-                            {field}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="text-xs text-orange-600 mt-1">
-                        Ces variables ne seront pas remplies automatiquement
-                      </p>
-                    </div>
-                  )}
+## Livrables attendus
 
-                  {/* Erreurs spécifiques */}
-                  {table.errors.length > 0 && (
-                    <div className="space-y-2 mt-3">
-                      {table.errors.map((error, errIdx) => (
-                        <div
-                          key={errIdx}
-                          className={`text-sm p-2 rounded ${
-                            error.type === 'error'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          <p className="font-medium">{error.message}</p>
-                          {error.details && (
-                            <p className="text-xs mt-1">{error.details}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-        </div>
-      </div>
-    )}
+1. ✅ Interface visuelle des suggestions complète et fonctionnelle
+2. ✅ Dashboard de synthèse avec 3 métriques
+3. ✅ Export PDF professionnel et téléchargeable
+4. ✅ Limitation à un seul clic par proposition
+5. ✅ Prompt corrigé avec calcul cohérent des économies
+6. ✅ Migration SQL pour nouveaux champs
+7. ✅ Types TypeScript complets
+8. ✅ Gestion d'erreurs robuste
 
-    {/* Résumé des champs simples */}
-    <div className="bg-white border border-gray-200 rounded-xl p-6">
-      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-lg">
-        <span className="text-2xl">📝</span>
-        Champs simples détectés
-      </h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-sm font-semibold text-green-700 mb-2">
-            Trouvés ({validationResults.simpleFields.found.length})
-          </p>
-          {validationResults.simpleFields.found.length > 0 ? (
-            <div className="space-y-1">
-              {validationResults.simpleFields.found.slice(0, 5).map((field) => (
-                <div key={field} className="text-xs text-gray-600 flex items-center gap-1">
-                  <span className="text-green-600">✓</span>
-                  <span className="font-mono">&#123;&#123;{field}&#125;&#125;</span>
-                </div>
-              ))}
-              {validationResults.simpleFields.found.length > 5 && (
-                <p className="text-xs text-gray-500 italic">
-                  ... et {validationResults.simpleFields.found.length - 5} autre(s)
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-500 italic">Aucun champ simple trouvé</p>
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-600 mb-2">
-            Non utilisés ({validationResults.simpleFields.missing.length})
-          </p>
-          {validationResults.simpleFields.missing.length > 0 ? (
-            <div className="space-y-1">
-              {validationResults.simpleFields.missing.slice(0, 5).map((field) => (
-                <div key={field} className="text-xs text-gray-500 flex items-center gap-1">
-                  <span className="text-gray-400">○</span>
-                  <span className="font-mono">&#123;&#123;{field}&#125;&#125;</span>
-                </div>
-              ))}
-              {validationResults.simpleFields.missing.length > 5 && (
-                <p className="text-xs text-gray-400 italic">
-                  ... et {validationResults.simpleFields.missing.length - 5} autre(s)
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-green-600 italic">Tous les champs sont utilisés !</p>
-          )}
-        </div>
-      </div>
-    </div>
+## Notes supplémentaires
 
-    {/* Bouton pour masquer la validation */}
-    <button
-      onClick={() => setValidationResults(null)}
-      className="w-full py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50"
-    >
-      Masquer la validation
-    </button>
-  </div>
-)}
-🎯 Fonctionnalités de validation :
-✅ Pour les champs simples :
+- Utiliser les composants shadcn/ui si disponibles (Button, Card, Badge)
+- Suivre les conventions de nommage du projet existant
+- Commenter le code pour les parties complexes
+- Tester avec des données réelles du catalogue
 
-Détecte quels champs sont présents dans le document
-Liste les champs manquants (optionnel, pas bloquant)
-
-✅ Pour les tableaux :
-
-Vérification des balises :
-
-Détecte si {{#arrayId}} est présent
-Détecte si {{/arrayId}} est présent
-Erreur si un seul des deux est présent
-Erreur si l'ordre est inversé
-
-
-Vérification des champs :
-
-Liste les champs correctement placés
-Liste les champs manquants (warning)
-Détecte les variables inconnues (warning)
-
-
-Vérification de la position :
-
-Erreur si une variable de tableau est en dehors des balises
-
-
-Affichage visuel :
-
-🟢 Vert : Tout est OK
-🟡 Jaune : Warnings (champs manquants)
-🔴 Rouge : Erreurs critiques (balises manquantes/mal placées)
+Commence par analyser l'architecture existante du projet, puis implémente les fonctionnalités dans l'ordre logique. N'hésite pas à me demander des clarifications si nécessaire.

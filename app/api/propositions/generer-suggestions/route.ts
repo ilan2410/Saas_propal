@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { situation_actuelle, catalogue, preferences } = await request.json();
+    const { situation_actuelle, catalogue, preferences, proposition_id } = await request.json();
 
     if (!Array.isArray(catalogue)) {
       return NextResponse.json({ error: 'catalogue invalide' }, { status: 400 });
@@ -63,7 +63,10 @@ INSTRUCTIONS:
           ? 'la meilleure performance'
           : "l'équilibre coût/performance"
     }
-3. Calcule les économies mensuelles et annuelles
+3. Calcule les économies mensuelles et annuelles selon la formule :
+   • economie_mensuelle = prix_actuel - prix_propose
+   • Si le résultat est POSITIF → économie réelle
+   • Si le résultat est NÉGATIF → surcoût (produit proposé plus cher)
 4. Justifie chaque choix
 
 RETOURNE UN JSON:
@@ -75,21 +78,28 @@ RETOURNE UN JSON:
       "produit_propose_nom": "...",
       "prix_actuel": 0,
       "prix_propose": 0,
-      "economie_mensuelle": 0,
+      "economie_mensuelle": 0,  // = prix_actuel - prix_propose (positif = économie, négatif = surcoût)
       "justification": "..."
     }
   ],
   "synthese": {
     "cout_total_actuel": 0,
     "cout_total_propose": 0,
-    "economie_mensuelle": 0,
-    "economie_annuelle": 0,
+    "economie_mensuelle": 0,  // = cout_total_actuel - cout_total_propose
+    "economie_annuelle": 0,   // = economie_mensuelle * 12
     "ameliorations": ["..."]
   }
-}`;
+}
+
+IMPORTANT - GESTION DES SURCOÛTS:
+- Si le produit proposé est plus cher, l'économie_mensuelle sera NÉGATIVE
+- Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
+- L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
 
     const preferredModel = 'claude-sonnet-4-20250514';
     const fallbackModel = 'claude-3-7-sonnet-20250219';
+
+    let result;
 
     try {
       const message = await anthropic.messages.create({
@@ -99,8 +109,7 @@ RETOURNE UN JSON:
       });
 
       const text = message.content[0].type === 'text' ? message.content[0].text : '';
-      const result = extractJsonFromText(text);
-      return NextResponse.json(result);
+      result = extractJsonFromText(text);
     } catch {
       const message = await anthropic.messages.create({
         model: fallbackModel,
@@ -109,9 +118,25 @@ RETOURNE UN JSON:
       });
 
       const text = message.content[0].type === 'text' ? message.content[0].text : '';
-      const result = extractJsonFromText(text);
-      return NextResponse.json(result);
+      result = extractJsonFromText(text);
     }
+
+    // Sauvegarde en BDD si proposition_id est présent
+    if (proposition_id && result) {
+      const { error: updateError } = await supabase
+        .from('propositions')
+        .update({ 
+          suggestions_generees: result,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', proposition_id);
+      
+      if (updateError) {
+        console.error('Erreur sauvegarde suggestions:', updateError);
+      }
+    }
+
+    return NextResponse.json(result);
   } catch {
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
