@@ -423,7 +423,7 @@ IMPORTANT - GESTION DES SURCOÛTS:
 - Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
 - L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
 
-    const preferredModel = 'claude-sonnet-4-20250514';
+    const preferredModel = 'claude-haiku-4-5-20251001';
     const fallbackModel = 'claude-3-7-sonnet-20250219';
 
     let result;

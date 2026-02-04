@@ -312,7 +312,7 @@ export default async function PropositionsPage() {
                     {/* Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {/* Bouton Reprendre (draft) */}
-                      {prop.statut === 'draft' && (
+                      {['draft', 'ready', 'extracted'].includes(prop.statut) && (
                         <Link
                           href={`/propositions/${prop.id}/resume`}
                           className="px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all flex items-center gap-2"

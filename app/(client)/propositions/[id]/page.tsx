@@ -282,7 +282,7 @@ export default async function PropositionDetailPage({
             {/* Action buttons */}
             <div className="flex items-center gap-3">
               {/* Bouton Reprendre (brouillon) */}
-              {proposition.statut === 'draft' && (
+              {['draft', 'ready', 'extracted'].includes(proposition.statut) && (
                 <Link
                   href={`/propositions/${proposition.id}/resume`}
                   className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all font-semibold shadow-lg shadow-amber-500/30 hover:scale-105"

@@ -22,6 +22,9 @@ const colors = {
   darkGray: rgb(0.3, 0.3, 0.3),         // Gris foncé
   white: rgb(1, 1, 1),
   black: rgb(0, 0, 0),
+  chartActuel: rgb(0.6, 0.6, 0.65),     // Gris bleuté pour actuel
+  chartPropose: rgb(0.18, 0.55, 0.78),  // Bleu vif pour proposé
+  chartGrid: rgb(0.85, 0.85, 0.85),     // Gris clair pour la grille
 };
 
 // Helpers
@@ -50,8 +53,29 @@ function truncateText(text: string, maxLength: number): string {
   return text.substring(0, maxLength - 3) + '...';
 }
 
+function sanitizePdfText(text: string): string {
+  const s = String(text ?? '');
+  return s
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/\u2022/g, '-')
+    .replace(/\u2192/g, '->')
+    .replace(/\u2190/g, '<-')
+    .replace(/\u21D2/g, '=>')
+    .replace(/\u21D0/g, '<=')
+    .replace(/[\u2194\u21D4]/g, '<->')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function wrapText(text: string, maxCharsPerLine: number): string[] {
-  const words = text.split(' ');
+  const normalized = sanitizePdfText(text);
+  const words = normalized.split(' ');
   const lines: string[] = [];
   let currentLine = '';
 
@@ -80,7 +104,7 @@ function wrapTextByWidth(
   text: string,
   maxLines: number
 ): string[] {
-  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalized = sanitizePdfText(text);
   if (!normalized) return [''];
 
   const words = normalized.split(' ');
@@ -139,8 +163,218 @@ function getLigneName(ligne: unknown): string {
 
 function buildRecommendationTitle(suggestion: Suggestion): string {
   const current = getLigneName(suggestion.ligne_actuelle);
-  const proposed = suggestion.produit_propose_nom || 'Aucun produit similaire trouvé';
-  return `${proposed} à la place de ${current}`;
+  const proposed = suggestion.produit_propose_nom || 'Aucun produit similaire trouve';
+  return `${proposed} a la place de ${current}`;
+}
+
+// Fonction pour dessiner le graphique moderne avec barres verticales
+function drawModernChart(
+  page: PDFPage,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  actuel: number,
+  propose: number,
+  isEconomy: boolean,
+  helvetica: PDFFont,
+  helveticaBold: PDFFont
+) {
+  const chartPadding = { top: 45, bottom: 55, left: 55, right: 130 };
+  const chartWidth = width - chartPadding.left - chartPadding.right;
+  const chartHeight = height - chartPadding.top - chartPadding.bottom;
+  const chartX = x + chartPadding.left;
+  const chartY = y + chartPadding.bottom;
+
+  // Fond du graphique avec bordure
+  drawRoundedRect(page, x, y, width, height, colors.white, colors.mediumGray);
+  
+  // Titre du graphique
+  page.drawText('Comparaison des couts mensuels', {
+    x: x + 15,
+    y: y + height - 28,
+    size: 13,
+    font: helveticaBold,
+    color: colors.primary,
+  });
+
+  // Calcul des valeurs
+  const maxValue = Math.max(actuel, propose) * 1.15;
+  const barWidth = 55;
+  const bar1CenterX = chartX + chartWidth * 0.3;
+  const bar2CenterX = chartX + chartWidth * 0.7;
+  
+  // Lignes de grille horizontales et valeurs Y
+  const gridLines = 4;
+  for (let i = 0; i <= gridLines; i++) {
+    const lineY = chartY + (chartHeight / gridLines) * i;
+    const value = (maxValue / gridLines) * i;
+    
+    // Ligne de grille pointillée
+    if (i > 0) {
+      page.drawLine({
+        start: { x: chartX, y: lineY },
+        end: { x: chartX + chartWidth, y: lineY },
+        thickness: 0.5,
+        color: colors.chartGrid,
+        dashArray: [3, 3],
+      });
+    }
+    
+    // Valeur sur l'axe Y
+    const valueText = `${value.toFixed(0)}`;
+    page.drawText(valueText, {
+      x: chartX - 40,
+      y: lineY - 4,
+      size: 9,
+      font: helvetica,
+      color: colors.darkGray,
+    });
+  }
+
+  // Label axe Y
+  page.drawText('EUR', {
+    x: chartX - 45,
+    y: chartY + chartHeight + 8,
+    size: 8,
+    font: helveticaBold,
+    color: colors.mediumGray,
+  });
+
+  // Axe X (ligne horizontale de base)
+  page.drawLine({
+    start: { x: chartX, y: chartY },
+    end: { x: chartX + chartWidth, y: chartY },
+    thickness: 1.5,
+    color: colors.darkGray,
+  });
+
+  // ===== BARRE "ACTUEL" =====
+  const bar1Height = (actuel / maxValue) * chartHeight;
+  const bar1X = bar1CenterX - barWidth / 2;
+  
+  // Ombre de la barre (décalée)
+  drawRoundedRect(page, bar1X + 4, chartY + 2, barWidth, bar1Height - 4, rgb(0.45, 0.45, 0.5));
+  
+  // Barre principale avec dégradé simulé (bande plus claire sur le côté)
+  drawRoundedRect(page, bar1X, chartY, barWidth, bar1Height, colors.chartActuel);
+  drawRoundedRect(page, bar1X, chartY, 8, bar1Height, rgb(0.7, 0.7, 0.75));
+  
+  // Valeur au-dessus de la barre
+  const actuelText = `${actuel.toFixed(2)} EUR`;
+  const actuelTextWidth = helveticaBold.widthOfTextAtSize(actuelText, 11);
+  page.drawText(actuelText, {
+    x: bar1CenterX - actuelTextWidth / 2,
+    y: chartY + bar1Height + 10,
+    size: 11,
+    font: helveticaBold,
+    color: colors.darkGray,
+  });
+  
+  // Label sous la barre
+  page.drawText('ACTUEL', {
+    x: bar1CenterX - 22,
+    y: chartY - 25,
+    size: 10,
+    font: helveticaBold,
+    color: colors.darkGray,
+  });
+
+  // ===== BARRE "PROPOSE" =====
+  const bar2Height = (propose / maxValue) * chartHeight;
+  const bar2X = bar2CenterX - barWidth / 2;
+  
+  // Ombre de la barre
+  drawRoundedRect(page, bar2X + 4, chartY + 2, barWidth, bar2Height - 4, rgb(0.08, 0.35, 0.55));
+  
+  // Barre principale
+  drawRoundedRect(page, bar2X, chartY, barWidth, bar2Height, colors.chartPropose);
+  drawRoundedRect(page, bar2X, chartY, 8, bar2Height, rgb(0.25, 0.65, 0.88));
+  
+  // Valeur au-dessus de la barre
+  const proposeText = `${propose.toFixed(2)} EUR`;
+  const proposeTextWidth = helveticaBold.widthOfTextAtSize(proposeText, 11);
+  page.drawText(proposeText, {
+    x: bar2CenterX - proposeTextWidth / 2,
+    y: chartY + bar2Height + 10,
+    size: 11,
+    font: helveticaBold,
+    color: colors.secondary,
+  });
+  
+  // Label sous la barre
+  page.drawText('PROPOSE', {
+    x: bar2CenterX - 26,
+    y: chartY - 25,
+    size: 10,
+    font: helveticaBold,
+    color: colors.secondary,
+  });
+
+  // ===== INDICATEUR DE DIFFÉRENCE (panneau à droite) =====
+  const diff = actuel - propose;
+  const diffPercent = actuel > 0 ? (Math.abs(diff) / actuel) * 100 : 0;
+  const diffColor = isEconomy ? colors.success : colors.warning;
+  const diffSign = isEconomy ? '-' : '+';
+  
+  // Boîte de différence
+  const diffBoxX = x + width - 115;
+  const diffBoxY = y + height - 95;
+  const diffBoxWidth = 100;
+  const diffBoxHeight = 70;
+  
+  // Fond de la boîte
+  drawRoundedRect(page, diffBoxX, diffBoxY, diffBoxWidth, diffBoxHeight, diffColor);
+  
+  // Titre de la boîte
+  page.drawText(isEconomy ? 'ECONOMIE' : 'SURCOUT', {
+    x: diffBoxX + 12,
+    y: diffBoxY + diffBoxHeight - 18,
+    size: 9,
+    font: helveticaBold,
+    color: colors.white,
+  });
+  
+  // Pourcentage
+  page.drawText(`${diffSign}${diffPercent.toFixed(1)}%`, {
+    x: diffBoxX + 12,
+    y: diffBoxY + diffBoxHeight - 42,
+    size: 20,
+    font: helveticaBold,
+    color: colors.white,
+  });
+  
+  // Montant
+  page.drawText(`${diffSign}${Math.abs(diff).toFixed(2)} EUR`, {
+    x: diffBoxX + 12,
+    y: diffBoxY + 10,
+    size: 9,
+    font: helvetica,
+    color: colors.white,
+  });
+
+  // ===== LÉGENDE EN BAS =====
+  const legendY = y + 12;
+  
+  // Légende Actuel
+  drawRoundedRect(page, x + 20, legendY - 3, 14, 14, colors.chartActuel);
+  page.drawText('Cout mensuel actuel', {
+    x: x + 40,
+    y: legendY,
+    size: 9,
+    font: helvetica,
+    color: colors.darkGray,
+  });
+  
+  // Légende Proposé
+  drawRoundedRect(page, x + 160, legendY - 3, 14, 14, colors.chartPropose);
+  page.drawText('Cout mensuel propose', {
+    x: x + 180,
+    y: legendY,
+    size: 9,
+    font: helvetica,
+    color: colors.darkGray,
+  });
 }
 
 export async function generateComparatifPdf({ 
@@ -163,6 +397,7 @@ export async function generateComparatifPdf({
   const isEconomy = synthese.economie_mensuelle >= 0;
   const resolvedClientName =
     typeof clientName === 'string' && clientName.trim() ? clientName.trim() : 'Client';
+  const safeClientName = sanitizePdfText(resolvedClientName) || 'Client';
 
   // ============================================
   // PAGE 1 - COUVERTURE
@@ -202,7 +437,7 @@ export async function generateComparatifPdf({
     color: colors.mediumGray,
   });
   
-  page1.drawText(resolvedClientName, {
+  page1.drawText(safeClientName, {
     x: margins.left + 20,
     y: yPos - 50,
     size: 24,
@@ -363,7 +598,7 @@ export async function generateComparatifPdf({
 
   // Footer page 1
   drawRoundedRect(page1, 0, 0, width, 40, colors.lightGray);
-  page1.drawText(`Document genere par ${companyName}`, {
+  page1.drawText(sanitizePdfText(`Document genere par ${companyName}`), {
     x: margins.left,
     y: 15,
     size: 9,
@@ -396,7 +631,7 @@ export async function generateComparatifPdf({
   yPos = height - 90;
 
   // Tableau comparatif
-  page2.drawText('Comparaison des couts', {
+  page2.drawText('Detail des lignes', {
     x: margins.left,
     y: yPos,
     size: 14,
@@ -407,7 +642,7 @@ export async function generateComparatifPdf({
   yPos -= 30;
   
   // En-tête du tableau
-  const colWidths = [180, 100, 100, 100]; // Total = 480, contentWidth = 495
+  const colWidths = [180, 100, 100, 100];
   const tableX = margins.left;
   
   drawRoundedRect(page2, tableX, yPos - 25, contentWidth, 30, colors.primary);
@@ -504,53 +739,28 @@ export async function generateComparatifPdf({
     color: colors.white 
   });
 
-  yPos -= 70;
+  yPos -= 55;
 
-  // Graphique comparatif simplifié (barres horizontales)
-  if (yPos > 200) {
-    page2.drawText('Visualisation des couts mensuels', {
-      x: margins.left,
-      y: yPos,
-      size: 14,
-      font: helveticaBold,
-      color: colors.primary,
-    });
-    
-    yPos -= 40;
-    
-    const maxCost = Math.max(synthese.cout_total_actuel, synthese.cout_total_propose);
-    const barMaxWidth = contentWidth - 150; // Plus d'espace pour le texte EUR
-    
-    // Barre Actuel
-    page2.drawText('Actuel', { x: margins.left, y: yPos - 5, size: 10, font: helveticaBold, color: colors.darkGray });
-    const bar1Width = (synthese.cout_total_actuel / maxCost) * barMaxWidth;
-    drawRoundedRect(page2, margins.left + 60, yPos - 15, bar1Width, 20, colors.mediumGray);
-    page2.drawText(`${synthese.cout_total_actuel.toFixed(2)} EUR`, { 
-      x: margins.left + 70 + bar1Width, 
-      y: yPos - 10, 
-      size: 10, 
-      font: helveticaBold, 
-      color: colors.darkGray 
-    });
-    
-    yPos -= 35;
-    
-    // Barre Propose
-    page2.drawText('Propose', { x: margins.left, y: yPos - 5, size: 10, font: helveticaBold, color: colors.darkGray });
-    const bar2Width = (synthese.cout_total_propose / maxCost) * barMaxWidth;
-    drawRoundedRect(page2, margins.left + 60, yPos - 15, bar2Width, 20, colors.secondary);
-    page2.drawText(`${synthese.cout_total_propose.toFixed(2)} EUR`, { 
-      x: margins.left + 70 + bar2Width, 
-      y: yPos - 10, 
-      size: 10, 
-      font: helveticaBold, 
-      color: colors.secondary 
-    });
+  // Graphique moderne
+  if (yPos > 260) {
+    const chartHeight = 210;
+    drawModernChart(
+      page2,
+      margins.left,
+      yPos - chartHeight,
+      contentWidth,
+      chartHeight,
+      synthese.cout_total_actuel,
+      synthese.cout_total_propose,
+      isEconomy,
+      helvetica,
+      helveticaBold
+    );
   }
 
   // Footer page 2
   drawRoundedRect(page2, 0, 0, width, 40, colors.lightGray);
-  page2.drawText(footerText || `Document genere par ${companyName}`, {
+  page2.drawText(sanitizePdfText(footerText || `Document genere par ${companyName}`), {
     x: margins.left,
     y: 15,
     size: 9,
@@ -572,7 +782,6 @@ export async function generateComparatifPdf({
   let pageNumber = 3;
   yPos = height - 90;
 
-  // En-tête
   const drawPageHeader = (page: PDFPage, title: string) => {
     drawRoundedRect(page, 0, height - 50, width, 50, colors.primary);
     page.drawText(title, {
@@ -586,7 +795,7 @@ export async function generateComparatifPdf({
 
   const drawPageFooter = (page: PDFPage, pageNum: number) => {
     drawRoundedRect(page, 0, 0, width, 40, colors.lightGray);
-    page.drawText(footerText || `Document genere par ${companyName}`, {
+    page.drawText(sanitizePdfText(footerText || `Document genere par ${companyName}`), {
       x: margins.left,
       y: 15,
       size: 9,
@@ -609,7 +818,6 @@ export async function generateComparatifPdf({
     const headerHeight = 44;
     const cardHeight = 190;
     
-    // Nouvelle page si nécessaire
     if (yPos < cardHeight + margins.bottom + 50) {
       drawPageFooter(currentPage, pageNumber);
       currentPage = pdfDoc.addPage([width, height]);
@@ -618,16 +826,13 @@ export async function generateComparatifPdf({
       yPos = height - 90;
     }
 
-    // Carte de suggestion
     drawRoundedRect(currentPage, margins.left, yPos - cardHeight, contentWidth, cardHeight, colors.white, colors.mediumGray);
     
-    // Numéro et titre
     const suggestionIsEconomy = suggestion.economie_mensuelle >= 0;
     const badgeColor = suggestionIsEconomy ? colors.success : colors.warning;
     
     drawRoundedRect(currentPage, margins.left, yPos - headerHeight, contentWidth, headerHeight, colors.lightGray);
     
-    // Badge numéro
     drawRoundedRect(currentPage, margins.left + 10, yPos - 32, 25, 20, colors.primary);
     currentPage.drawText(`${i + 1}`, {
       x: margins.left + 18,
@@ -637,7 +842,6 @@ export async function generateComparatifPdf({
       color: colors.white,
     });
     
-    // Nom du produit
     const title = buildRecommendationTitle(suggestion);
     const titleX = margins.left + 45;
     const badgeX = width - margins.right - 160;
@@ -654,13 +858,12 @@ export async function generateComparatifPdf({
       });
     }
     
-    // Badge economie/surcout
     const badgeText = suggestionIsEconomy ? 
       `Economie: ${Math.abs(suggestion.economie_mensuelle).toFixed(2)} EUR/mois` :
       `Surcout: ${Math.abs(suggestion.economie_mensuelle).toFixed(2)} EUR/mois`;
     
     drawRoundedRect(currentPage, width - margins.right - 160, yPos - 32, 150, 20, badgeColor);
-    currentPage.drawText(badgeText, {
+    currentPage.drawText(sanitizePdfText(badgeText), {
       x: width - margins.right - 155,
       y: yPos - 27,
       size: 9,
@@ -668,7 +871,6 @@ export async function generateComparatifPdf({
       color: colors.white,
     });
 
-    // Détails prix
     let detailY = yPos - (headerHeight + 25);
     
     currentPage.drawText('Prix actuel:', {
@@ -701,7 +903,6 @@ export async function generateComparatifPdf({
       color: colors.secondary,
     });
 
-    // Justification
     detailY -= 30;
     currentPage.drawText('Justification:', {
       x: margins.left + 20,
@@ -729,6 +930,9 @@ export async function generateComparatifPdf({
 
   drawPageFooter(currentPage, pageNumber);
 
+  // ============================================
+  // PAGE FINALE - SYNTHÈSE
+  // ============================================
   const finalPage = pdfDoc.addPage([width, height]);
   pageNumber += 1;
   drawPageHeader(finalPage, 'SYNTHESE FINALE');
@@ -744,7 +948,7 @@ export async function generateComparatifPdf({
   });
   yPos -= 18;
 
-  finalPage.drawText(resolvedClientName, {
+  finalPage.drawText(safeClientName, {
     x: margins.left,
     y: yPos,
     size: 18,
