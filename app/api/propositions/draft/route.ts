@@ -22,6 +22,13 @@ export async function POST(request: NextRequest) {
     const source_documents = Array.isArray(body?.source_documents) ? body.source_documents : [];
     const current_step = typeof body?.current_step === 'number' ? body.current_step : 1;
 
+    if (!template_id) {
+      return NextResponse.json(
+        { error: 'template_id requis' },
+        { status: 400 }
+      );
+    }
+
     // Nettoyage préventif AVANT la création (pour ne pas supprimer ce qu'on vient de créer si on est à la limite)
     // Mais ici on veut garder les 15 plus récents. Si on en a 15, on en supprime 1 pour faire de la place.
     // L'appel async ne bloque pas le retour immédiat, mais c'est mieux d'attendre un peu pour éviter les race conditions

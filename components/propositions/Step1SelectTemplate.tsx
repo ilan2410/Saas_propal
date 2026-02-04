@@ -62,8 +62,44 @@ export function Step1SelectTemplate({
   const [copieursCount, setCopieursCount] = useState<number>(
     Math.max(1, Number(propositionData.copieurs_count || 1))
   );
+  const [isCreatingDraft, setIsCreatingDraft] = useState(false);
 
-  const handleNext = () => {
+  const ensureDraftId = async (): Promise<string> => {
+    if (propositionData.proposition_id) return propositionData.proposition_id;
+
+    setIsCreatingDraft(true);
+    try {
+      const now = Date.now();
+      sessionStorage.setItem('propal:proposition-wizard:createdAt', String(now));
+
+      const res = await fetch('/api/propositions/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: selectedTemplateId,
+          current_step: 2,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.details || json?.error || 'Erreur création draft');
+      }
+
+      const nextId = typeof json?.proposition?.id === 'string' ? json.proposition.id : '';
+      if (!nextId) {
+        throw new Error('Réponse invalide: id de proposition manquant');
+      }
+
+      sessionStorage.setItem('propal:proposition-wizard:draftId', nextId);
+      updatePropositionData({ proposition_id: nextId });
+      return nextId;
+    } finally {
+      setIsCreatingDraft(false);
+    }
+  };
+
+  const handleNext = async () => {
     if (!selectedTemplateId) {
       alert('Veuillez sélectionner un template');
       return;
@@ -76,8 +112,9 @@ export function Step1SelectTemplate({
 
     updatePropositionData(nextData);
 
-    if (propositionData.proposition_id) {
-      fetch(`/api/propositions/${propositionData.proposition_id}/update`, {
+    try {
+      const id = await ensureDraftId();
+      await fetch(`/api/propositions/${id}/update`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,7 +122,10 @@ export function Step1SelectTemplate({
           current_step: 2,
           statut: 'draft',
         }),
-      }).catch(() => {});
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erreur lors de la création du brouillon');
+      return;
     }
 
     onNext();
@@ -339,10 +379,10 @@ export function Step1SelectTemplate({
         </div>
         <button
           onClick={handleNext}
-          disabled={!selectedTemplateId}
+          disabled={!selectedTemplateId || isCreatingDraft}
           className="group px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold text-lg shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-3 hover:scale-105 active:scale-95"
         >
-          Continuer
+          {isCreatingDraft ? 'Création...' : 'Continuer'}
           <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

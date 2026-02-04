@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { Step1SelectTemplate } from './Step1SelectTemplate';
@@ -72,43 +72,6 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
     }
   };
 
-  const initializationRef = useRef(false);
-
-  // Créer automatiquement une proposition draft si on démarre un nouveau wizard
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function ensureDraft() {
-      // Si on a déjà un ID, ou si une initialisation est en cours/terminée, on arrête
-      if (propositionData.proposition_id || initializationRef.current) return;
-
-      initializationRef.current = true;
-
-      try {
-        const res = await fetch('/api/propositions/draft', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ current_step: currentStep }),
-        });
-
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.details || json?.error || 'Erreur création draft');
-        
-        if (isCancelled) return;
-
-        updatePropositionData({ proposition_id: json.proposition?.id });
-      } catch (e) {
-        console.error('Erreur création proposition draft:', e);
-        initializationRef.current = false; // Réinitialiser en cas d'erreur
-      }
-    }
-
-    ensureDraft();
-    return () => {
-      isCancelled = true;
-    };
-  }, [propositionData.proposition_id, currentStep]);
-
   const nextStep = () => {
     if (currentStep < 5) {
       const next = currentStep + 1;
@@ -126,6 +89,11 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
   };
 
   const handleComplete = () => {
+    try {
+      sessionStorage.removeItem('propal:proposition-wizard:draftId');
+      sessionStorage.removeItem('propal:proposition-wizard:createdAt');
+    } catch {}
+
     if (propositionData.proposition_id) {
       router.push(`/propositions/${propositionData.proposition_id}`);
     } else {

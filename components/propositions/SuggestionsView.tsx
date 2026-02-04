@@ -4,14 +4,16 @@ import { Euro, TrendingDown, TrendingUp, Package, Lightbulb, CheckCircle, AlertT
 
 interface SuggestionsViewProps {
   suggestions: SuggestionsGenerees;
+  clientName?: string;
   onDownloadPdf: () => void;
   isDownloading?: boolean;
 }
 
-export function SuggestionsView({ suggestions, onDownloadPdf, isDownloading = false }: SuggestionsViewProps) {
+export function SuggestionsView({ suggestions, clientName, onDownloadPdf, isDownloading = false }: SuggestionsViewProps) {
   const { synthese, suggestions: items } = suggestions;
 
   const isPositiveEconomy = synthese.economie_mensuelle >= 0;
+  const resolvedClientName = typeof clientName === 'string' && clientName.trim() ? clientName.trim() : null;
 
   return (
     <div className="space-y-8">
@@ -41,17 +43,31 @@ export function SuggestionsView({ suggestions, onDownloadPdf, isDownloading = fa
       </div>
 
       {/* Liste des Suggestions */}
-      <div className="grid gap-6">
-        {items.map((item, index) => (
-          <SuggestionCard key={index} suggestion={item} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 mt-0.5 text-amber-700 flex-shrink-0" />
+            <div className="space-y-1">
+              <p className="font-semibold">Aucun produit similaire trouvé</p>
+              <p className="text-sm text-amber-800">
+                Aucun produit de votre catalogue ne semble correspondre à la situation actuelle du client.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          {items.map((item, index) => (
+            <SuggestionCard key={index} suggestion={item} />
+          ))}
+        </div>
+      )}
 
       {/* Bouton Export PDF */}
       <div className="flex justify-end pt-4">
         <button
           onClick={onDownloadPdf}
-          disabled={isDownloading}
+          disabled={isDownloading || items.length === 0}
           className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
         >
           {isDownloading ? (
@@ -59,8 +75,54 @@ export function SuggestionsView({ suggestions, onDownloadPdf, isDownloading = fa
           ) : (
             <FileDown className="w-5 h-5" />
           )}
-          <span>Télécharger le comparatif PDF</span>
+          <span>{items.length === 0 ? 'Aucune suggestion à exporter' : 'Télécharger le comparatif PDF'}</span>
         </button>
+      </div>
+
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-white rounded-lg border border-slate-200">
+            <Lightbulb className="w-5 h-5 text-slate-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+              <h3 className="text-lg font-bold text-slate-900">Synthèse finale</h3>
+              {resolvedClientName ? (
+                <p className="text-sm text-slate-600">
+                  Client : <span className="font-semibold text-slate-800">{resolvedClientName}</span>
+                </p>
+              ) : null}
+            </div>
+
+            <p className="text-sm text-slate-700 mt-3 leading-relaxed">
+              Après analyse de <span className="font-semibold">{items.length}</span> ligne{items.length > 1 ? 's' : ''},
+              le coût mensuel estimé passe de <span className="font-semibold">{synthese.cout_total_actuel.toFixed(2)}€</span> à{' '}
+              <span className="font-semibold">{synthese.cout_total_propose.toFixed(2)}€</span>, soit{' '}
+              <span className={`font-semibold ${isPositiveEconomy ? 'text-emerald-700' : 'text-orange-700'}`}>
+                {isPositiveEconomy ? 'une économie' : 'un surcoût'} de {Math.abs(synthese.economie_mensuelle).toFixed(2)}€ / mois
+              </span>{' '}
+              ({Math.abs(synthese.economie_annuelle).toFixed(2)}€ / an).
+            </p>
+
+            {Array.isArray(synthese.ameliorations) && synthese.ameliorations.length > 0 ? (
+              <div className="mt-4">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Points clés</p>
+                <ul className="space-y-1.5">
+                  {synthese.ameliorations.slice(0, 6).map((a, idx) => (
+                    <li key={`${idx}-${a}`} className="flex gap-2 text-sm text-slate-700">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                      <span className="flex-1">{a}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 mt-3">
+                Aucun point clé n&apos;a été fourni dans la synthèse.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -82,6 +144,8 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
     return (firstString as string) || 'Ligne inconnue';
   };
 
+  const currentProductName = getLigneName(suggestion.ligne_actuelle);
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
       {/* Header */}
@@ -90,7 +154,14 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
             <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
                 <Package className="w-5 h-5" />
             </div>
-            <h3 className="font-semibold text-lg text-gray-800">{suggestion.produit_propose_nom}</h3>
+            <div className="space-y-0.5">
+              <h3 className="font-semibold text-lg text-gray-800">
+                {suggestion.produit_propose_nom} à la place de {currentProductName}
+              </h3>
+              {suggestion.produit_propose_fournisseur ? (
+                <p className="text-xs text-gray-600">{suggestion.produit_propose_fournisseur}</p>
+              ) : null}
+            </div>
         </div>
         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
           isEconomy ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
@@ -137,6 +208,9 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
              <div className="flex justify-between items-start">
                 <div className="space-y-1">
                     <p className="text-sm font-medium text-blue-800">{suggestion.produit_propose_nom}</p>
+                    {suggestion.produit_propose_fournisseur ? (
+                      <p className="text-xs text-blue-600">{suggestion.produit_propose_fournisseur}</p>
+                    ) : null}
                 </div>
                 <div className="text-right">
                     <p className="text-xl font-bold text-blue-700">{suggestion.prix_propose}€</p>
