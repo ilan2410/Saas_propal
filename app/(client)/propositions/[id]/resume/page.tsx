@@ -6,10 +6,13 @@ import { PropositionWizard } from '@/components/propositions/PropositionWizard';
 
 export default async function ResumePropositionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const supabase = await createClient();
 
   const {
@@ -59,7 +62,13 @@ export default async function ResumePropositionPage({
   const dataToEdit: Record<string, unknown> =
     dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw) ? (dataRaw as Record<string, unknown>) : {};
 
-  const initialStep = Math.max(1, Math.min(5, Number(proposition.current_step || 1)));
+  const stepParam = resolvedSearchParams?.step;
+  const stepRaw = Array.isArray(stepParam) ? stepParam[0] : stepParam;
+  const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
+  const initialStep = Math.max(
+    1,
+    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : Number(proposition.current_step || 1))
+  );
 
   return (
     <div className="space-y-6">
@@ -86,6 +95,7 @@ export default async function ResumePropositionPage({
           nom_client: proposition.nom_client || undefined,
           documents_urls,
           donnees_extraites: dataToEdit,
+          suggestions_generees: proposition.suggestions_generees || null,
         }}
       />
     </div>

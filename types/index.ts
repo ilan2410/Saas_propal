@@ -203,6 +203,7 @@ export type Suggestion = {
   ligne_actuelle: Record<string, unknown>;
   produit_propose_id?: string;
   produit_propose_nom: string;
+  produit_propose_fournisseur?: string;
   prix_actuel: number;
   prix_propose: number;
   economie_mensuelle: number;

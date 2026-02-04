@@ -13,10 +13,12 @@ import {
   Zap,
   Package,
   Edit3,
-  FileSearch
+  FileSearch,
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { AccordionItem } from '@/components/propositions/PropositionDetailClient';
+import { AccordionItem, SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
 import { ActionMenu } from '@/components/propositions/ActionMenu';
 import { CopyButton } from '@/components/propositions/CopyButton';
@@ -24,6 +26,15 @@ import { ExportButton } from '@/components/propositions/ExportButton';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasSuggestionsGenerees(
+  value: unknown
+): value is { suggestions: unknown[]; synthese: Record<string, unknown> } {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.suggestions)) return false;
+  if (!isRecord(value.synthese)) return false;
+  return true;
 }
 
 // Compte le nombre total de champs (récursivement)
@@ -229,6 +240,7 @@ export default async function PropositionDetailPage({
   
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
   const totalFields = countTotalFields(extractedDataForDisplay);
+  const suggestionsGenerees = (proposition as Record<string, unknown>).suggestions_generees;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
@@ -440,26 +452,66 @@ export default async function PropositionDetailPage({
         )}
 
         {!!resume.trim() && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-lg">
-                  <FileText className="w-5 h-5 text-indigo-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Résumé</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">
-                    Synthèse automatique basée sur les documents sources
-                  </p>
+          <details className="group bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <FileText className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Résumé</h2>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        Synthèse automatique basée sur les documents sources
+                      </p>
+                    </div>
+                  </div>
+
+                  <ChevronDown className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" />
                 </div>
               </div>
-            </div>
+            </summary>
+
             <div className="p-6">
               <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
                 {resume}
               </pre>
             </div>
-          </div>
+          </details>
+        )}
+
+        {hasSuggestionsGenerees(suggestionsGenerees) && (
+          <details className="group bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <Sparkles className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Suggestions IA</h2>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        Comparatif calculé à partir des données de la proposition
+                      </p>
+                    </div>
+                  </div>
+
+                  <ChevronDown className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" />
+                </div>
+              </div>
+            </summary>
+
+            <div className="p-6">
+              <SuggestionsPanel
+                propositionId={proposition.id}
+                clientName={clientName}
+                suggestions={suggestionsGenerees}
+                embedded
+              />
+            </div>
+          </details>
         )}
 
         {/* Données extraites */}

@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
+      .eq('organization_id', user.id)
       .order('est_produit_base', { ascending: false })
       .order('nom', { ascending: true });
 

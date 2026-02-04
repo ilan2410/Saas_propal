@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles } from 'lucide-react';
+import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles, Loader2 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
 import { SuggestionsView } from './SuggestionsView';
@@ -546,8 +546,13 @@ export function Step4EditData({
   };
 
   const handleGenererSuggestions = async () => {
+    if (suggestions) return;
     setIsLoadingSuggestions(true);
     try {
+      if (!propositionData.proposition_id) {
+        throw new Error('Proposition introuvable');
+      }
+
       const catalogueRes = await fetch('/api/catalogue');
       const catalogueJson = await catalogueRes.json();
       if (!catalogueRes.ok) {
@@ -561,6 +566,7 @@ export function Step4EditData({
           situation_actuelle: editedData,
           catalogue: catalogueJson?.produits || [],
           preferences: { objectif: 'equilibre' },
+          proposition_id: propositionData.proposition_id,
         }),
       });
 
@@ -570,6 +576,7 @@ export function Step4EditData({
       }
 
       setSuggestions(result);
+      updatePropositionData({ suggestions_generees: result });
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Erreur lors de la génération');
     } finally {
@@ -577,37 +584,64 @@ export function Step4EditData({
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!suggestions || !propositionData.proposition_id) return;
+ const handleDownloadPdf = async () => {
+    if (!suggestions || !propositionData.proposition_id) {
+      console.log('❌ Pas de suggestions ou proposition_id');
+      return;
+    }
     
     setIsDownloadingPdf(true);
     try {
-        const response = await fetch(`/api/propositions/${propositionData.proposition_id}/export-comparatif`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                suggestions: suggestions.suggestions,
-                synthese: suggestions.synthese,
-                proposition_id: propositionData.proposition_id
-            })
-        });
+      const response = await fetch(`/api/propositions/${propositionData.proposition_id}/export-comparatif`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          suggestions: suggestions.suggestions,
+          synthese: suggestions.synthese,
+          proposition_id: propositionData.proposition_id
+        })
+      });
 
-        if (!response.ok) throw new Error('Erreur lors de la génération du PDF');
+      // Vérifier si c'est une erreur JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        const errorData = await response.json();
+        console.error('❌ Erreur serveur:', errorData);
+        throw new Error(errorData.details || errorData.error || 'Erreur lors de la génération du PDF');
+      }
 
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `comparatif-telecom-${propositionData.nom_client || 'client'}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}`);
+      }
+
+      // Récupérer les bytes
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Si le buffer est vide mais la réponse était OK avec content-type PDF,
+      // c'est probablement que le navigateur a géré le téléchargement lui-même
+      if (arrayBuffer.byteLength === 0) {
+        console.log('ℹ️ Buffer vide - le navigateur a peut-être géré le téléchargement directement');
+        // Ne pas throw d'erreur, le téléchargement a probablement fonctionné
+        return;
+      }
+
+      // Créer le blob et télécharger manuellement
+      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `comparatif-telecom-${resolvedClientName || 'client'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      console.log('✅ Téléchargement lancé');
     } catch (error) {
-        console.error(error);
-        alert('Erreur lors du téléchargement du PDF');
+      console.error('❌ Erreur téléchargement PDF:', error);
+      alert(error instanceof Error ? error.message : 'Erreur lors du téléchargement du PDF');
     } finally {
-        setIsDownloadingPdf(false);
+      setIsDownloadingPdf(false);
     }
   };
 
@@ -633,6 +667,21 @@ export function Step4EditData({
   }).length;
   
   const filledFieldsCount = filledSimpleFieldsCount + filledComplexFieldsCount;
+
+  const resolvedClientName =
+    typeof propositionData.nom_client === 'string' &&
+    propositionData.nom_client.trim() &&
+    propositionData.nom_client.trim().toLowerCase() !== 'client'
+      ? propositionData.nom_client.trim()
+      : (() => {
+          const fromData = getFieldValue('client_nom').trim();
+          if (fromData) return fromData;
+          const fromNestedNom = getFieldValue('client.nom').trim();
+          if (fromNestedNom) return fromNestedNom;
+          const fromNestedName = getFieldValue('client.name').trim();
+          if (fromNestedName) return fromNestedName;
+          return '';
+        })();
 
   return (
     <div className="space-y-6">
@@ -675,11 +724,15 @@ export function Step4EditData({
           
           <button
             onClick={handleGenererSuggestions}
-            disabled={isLoadingSuggestions}
+            disabled={isLoadingSuggestions || suggestions !== null}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            <Sparkles className="w-4 h-4 text-purple-600" />
-            {isLoadingSuggestions ? 'Génération...' : 'Suggestions IA'}
+            {isLoadingSuggestions ? (
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-purple-600" />
+            )}
+            {suggestions !== null ? 'Suggestions SP (déjà générées)' : isLoadingSuggestions ? 'Génération...' : 'Suggestions SP'}
           </button>
 
           <div className="flex items-center gap-2 bg-green-50 px-4 py-2 rounded-lg">
@@ -695,10 +748,11 @@ export function Step4EditData({
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-600" />
-            Suggestions IA
+            Suggestions SP
           </h3>
           <SuggestionsView 
             suggestions={suggestions} 
+            clientName={resolvedClientName || undefined}
             onDownloadPdf={handleDownloadPdf}
             isDownloading={isDownloadingPdf}
           />

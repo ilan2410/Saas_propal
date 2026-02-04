@@ -157,12 +157,34 @@ export default async function PropositionsPage() {
     .eq('organization_id', user?.id)
     .order('created_at', { ascending: false });
 
+  const displayedPropositions = (propositions || []).filter((p) => {
+    const prop = p as Record<string, unknown>;
+    const statut = typeof prop.statut === 'string' ? prop.statut : '';
+    const templateId = typeof prop.template_id === 'string' ? prop.template_id : null;
+    const nomClient = typeof prop.nom_client === 'string' ? prop.nom_client : null;
+    const currentStep = typeof prop.current_step === 'number' ? prop.current_step : null;
+    const sourceDocuments = prop.source_documents;
+    const hasDocs =
+      Array.isArray(sourceDocuments) && sourceDocuments.some((v) => typeof v === 'string' && v.trim());
+    const hasAnyData = Boolean(prop.extracted_data) || Boolean(prop.donnees_extraites) || Boolean(prop.filled_data);
+
+    const isEmptyDraft =
+      statut === 'draft' &&
+      !templateId &&
+      !nomClient &&
+      !hasDocs &&
+      !hasAnyData &&
+      (currentStep === null || currentStep === 1);
+
+    return !isEmptyDraft;
+  });
+
   // Statistiques
   const stats = {
-    total: propositions?.length || 0,
-    exported: propositions?.filter(p => p.statut === 'exported').length || 0,
-    pending: propositions?.filter(p => ['draft', 'ready', 'extracted', 'processing'].includes(p.statut)).length || 0,
-    error: propositions?.filter(p => p.statut === 'error').length || 0,
+    total: displayedPropositions.length || 0,
+    exported: displayedPropositions.filter((p) => p.statut === 'exported').length || 0,
+    pending: displayedPropositions.filter((p) => ['draft', 'ready', 'extracted', 'processing'].includes(p.statut)).length || 0,
+    error: displayedPropositions.filter((p) => p.statut === 'error').length || 0,
   };
 
   return (
@@ -236,9 +258,9 @@ export default async function PropositionsPage() {
         </div>
 
         {/* Liste des propositions */}
-        {propositions && propositions.length > 0 ? (
+        {displayedPropositions.length > 0 ? (
           <div className="space-y-4">
-            {propositions.map((prop) => {
+            {displayedPropositions.map((prop) => {
               const status = getStatusConfig(prop.statut);
               const StatusIcon = status.icon;
               const fieldsCount = countFields(prop.extracted_data || prop.donnees_extraites);
@@ -297,6 +319,17 @@ export default async function PropositionsPage() {
                         >
                           <Clock className="w-4 h-4" />
                           Reprendre
+                        </Link>
+                      )}
+
+                      {/* Bouton Suggestions IA */}
+                      {!!prop.suggestions_generees && (
+                        <Link
+                          href={`/propositions/${prop.id}/resume?step=4`}
+                          className="px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-2"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          SP suggerée
                         </Link>
                       )}
 
