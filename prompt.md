@@ -1,237 +1,327 @@
-# Mission : Améliorer l'interface des "Suggestions IA" dans PropoBoost
+MISSION : Implémentation du système d'édition des suggestions IA avec garde-fou PDF
+📋 CONTEXTE DU PROJET
+Tu travailles sur PropoBoost, une plateforme SaaS Next.js 14 (TypeScript) qui génère des propositions commerciales télécom avec l'aide de Claude AI.
+Stack technique actuelle :
 
-## Contexte
-PropoBoost est une plateforme SaaS Next.js 14 (TypeScript) qui génère des propositions commerciales automatisées. La fonctionnalité "Suggestions IA" utilise Claude AI pour analyser la situation télécom actuelle d'un client et proposer des produits optimisés depuis un catalogue.
+Next.js 14 (App Router) + TypeScript
+Supabase (PostgreSQL + Auth + Storage)
+TailwindCSS + shadcn/ui
+Anthropic Claude API
+pdf-lib pour génération PDF
 
-Actuellement, les suggestions s'affichent en JSON brut dans un `<pre>`. L'objectif est de créer une interface visuelle professionnelle et intuitive.
+Structure existante :
+/app
+  /api
+    /propositions
+      /[id]
+        /export-comparatif/route.ts
+      /generer-suggestions/route.ts
+/components
+  /propositions
+    /PropositionDetailClient.tsx
+    /SuggestionsView.tsx
+    /Step4EditData.tsx
+/lib
+  /pdf/comparatif-generator.ts
+/types/index.ts
+/hooks
+🎯 OBJECTIF
+Implémenter un système complet permettant aux utilisateurs de :
 
-## Stack technique
-- Next.js 14 (App Router)
-- TypeScript
-- TailwindCSS
-- Lucide React (icônes)
-- Supabase (base de données)
-- API Claude (Anthropic)
+Modifier les produits suggérés par l'IA avec recalcul automatique des prix/économies
+Éditer ou régénérer les justifications (texte "NOTRE ANALYSE") manuellement ou via IA
+Éditer ou régénérer la synthèse finale manuellement ou via IA
+Garde-fou avant téléchargement PDF : alerter si des modifications de produits n'ont pas été suivies d'une mise à jour des textes
 
-## Objectifs
+📊 SCHÉMA DE BASE DE DONNÉES À MODIFIER
+Migration Supabase requise :
+sql-- Ajouter le champ suggestions_editees à la table propositions
+ALTER TABLE propositions 
+ADD COLUMN IF NOT EXISTS suggestions_editees JSONB DEFAULT NULL;
 
-### 1. NIVEAU 1 : Interface visuelle interactive
+-- Index pour performance
+CREATE INDEX IF NOT EXISTS idx_propositions_suggestions_editees 
+ON propositions USING GIN (suggestions_editees);
+Logique :
 
-**Remplacer l'affichage JSON brut par :**
+suggestions_generees (JSONB) = Version originale de l'IA (jamais modifiée)
+suggestions_editees (JSONB) = Version modifiée par l'utilisateur (si existe)
 
-#### A) Composant `SuggestionsView.tsx`
-Créer un nouveau composant dans `components/propositions/SuggestionsView.tsx` qui affiche :
+📁 FICHIERS À CRÉER
+1. Hook de tracking des modifications
+Fichier : hooks/useSuggestionsTracker.ts
+Responsabilité : Détecter automatiquement les changements de produits et si les justifications/synthèse ont été mises à jour
+Fonctionnalités :
 
-**Pour chaque suggestion :**
-- Card visuelle avec :
-  - Header : Nom du produit proposé + Badge (✓ Économie en vert OU ⚠️ Surcoût en orange)
-  - Comparaison visuelle : 2 colonnes côte à côte
-    - Colonne gauche : "Actuellement" (fond gris) - prix_actuel + forfait actuel
-    - Colonne droite : "Proposé" (fond bleu clair) - prix_propose + produit proposé
-  - Bloc économie : 
-    - Si économie > 0 : fond vert avec flèche descendante (TrendingDown), afficher économie mensuelle et annuelle
-    - Si économie < 0 : fond orange avec flèche montante (TrendingUp), afficher surcoût mensuel et annuel
-  - Justification : Icône ampoule (Lightbulb) + texte de justification
+Comparer les suggestions actuelles vs originales
+Détecter les changements de produit_propose_id ou produit_propose_nom
+Vérifier si les justification ont été modifiées après changement de produit
+Vérifier si la synthese.ameliorations a été modifiée
+Fournir un indicateur needsWarning() pour savoir si un avertissement est nécessaire
 
-**Design moderne avec :**
-- Bordures arrondies
-- Ombres subtiles au hover
-- Transitions fluides
-- Espacement aéré
-- Typographie hiérarchisée
+2. Composant modal d'avertissement
+Fichier : components/propositions/DownloadWarningModal.tsx
+Responsabilité : Afficher un modal élégant avertissant l'utilisateur avant le téléchargement PDF
+Props requises :
+typescriptinterface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  changedProductsCount: number;
+  hasAnalysisUpdates: boolean;
+  hasSynthesisUpdate: boolean;
+}
+Design requis :
 
-#### B) Dashboard de synthèse globale
-En haut des suggestions, afficher 3 cards métriques (grid 3 colonnes) :
+Icône d'alerte ambrée
+Liste des problèmes détectés
+Encadré bleu avec recommandations (régénérer IA ou éditer manuellement)
+2 boutons : "Retour pour modifier" (gris) et "Télécharger quand même" (ambré)
 
-1. **Économie mensuelle totale**
-   - Icône Euro
-   - Valeur avec couleur verte si positif, orange si négatif
-   - Sous-titre : économie annuelle
+3. Composant de produit proposé éditable
+Fichier : components/propositions/EditableProposedProduct.tsx
+Responsabilité : Permettre de changer le produit proposé avec un sélecteur
+Fonctionnalités :
 
-2. **Réduction globale en %**
-   - Icône TrendingDown
-   - Calcul : `((cout_total_actuel - cout_total_propose) / cout_total_actuel) * 100`
-   - Affichage : "X% de réduction" OU "X% d'augmentation"
+Icône Edit2 en haut à droite pour basculer en mode édition
+Select dropdown avec tous les produits du catalogue
+Recalcul automatique de prix_propose et economie_mensuelle lors du changement
+Mise à jour du produit_propose_fournisseur
 
-3. **Lignes analysées**
-   - Icône Package
-   - Nombre de suggestions générées
-   - Sous-titre : "produits optimisés"
+4. Composant d'analyse éditable
+Fichier : components/propositions/EditableAnalysis.tsx
+Responsabilité : Permettre l'édition manuelle ou la régénération IA de la justification
+Fonctionnalités :
 
-### 2. NIVEAU 3 : Export PDF comparatif
+2 icônes en haut à droite :
 
-#### A) Créer l'API route `/api/propositions/[id]/export-comparatif`
-- Méthode : POST
-- Input : `{ suggestions, synthese, proposition_id }`
-- Utiliser `pdf-lib` pour générer un PDF professionnel avec :
+Wand2 (baguette magique) : Régénérer avec l'IA
+Edit2 (crayon) : Éditer manuellement
 
-**Structure du PDF :**
 
-**Page 1 : Page de garde**
-- Titre : "Analyse Comparative - Optimisation Télécom"
-- Logo PropoBoost (si disponible)
-- Nom du client
-- Date de génération
-- Message : "Proposition générée automatiquement par PropoBoost"
+Textarea pour modification manuelle
+Appel API /api/propositions/regenerer-analyse pour régénération IA
+Animation de chargement pendant régénération
 
-**Page 2 : Synthèse exécutive**
-- Tableau récapitulatif :
+5. Composant de synthèse éditable
+Fichier : components/propositions/EditableSynthesis.tsx
+Responsabilité : Permettre l'édition manuelle ou la régénération IA de la synthèse
+Fonctionnalités :
+
+Affichage automatique des chiffres recalculés (cout_total_actuel, cout_total_propose, economie_mensuelle, economie_annuelle)
+2 icônes en haut à droite :
+
+Wand2 : Régénérer la liste des améliorations avec l'IA
+Edit2 : Éditer manuellement la liste
+
+
+Textarea multi-lignes (une amélioration par ligne)
+Appel API /api/propositions/regenerer-synthese pour régénération IA
+
+6. Composant principal avec intégration complète
+Fichier : components/propositions/EditableSuggestionsView.tsx
+Responsabilité : Orchestrer tous les composants et gérer la sauvegarde globale
+Fonctionnalités :
+
+Utiliser le hook useSuggestionsTracker pour le tracking
+Afficher un badge d'avertissement si modifications non synchronisées
+Recalculer automatiquement la synthèse (chiffres) quand un produit change
+Bouton "Sauvegarder les modifications" → Appelle /api/propositions/[id]/update-suggestions
+Bouton "Télécharger le PDF" → Vérifie avec needsWarning() et affiche le modal si nécessaire
+Si OK, procède au téléchargement via /api/propositions/[id]/export-comparatif
+
+🔌 API ROUTES À CRÉER
+1. Route de mise à jour des suggestions
+Fichier : app/api/propositions/[id]/update-suggestions/route.ts
+Méthode : PATCH
+Body :
+typescript{
+  suggestions: Suggestion[],
+  synthese: SuggestionsSynthese
+}
+Action :
+
+Valider les données reçues
+Sauvegarder dans propositions.suggestions_editees (JSONB)
+Retourner { success: true, suggestions_editees }
+
+2. Route de régénération d'analyse
+Fichier : app/api/propositions/regenerer-analyse/route.ts
+Méthode : POST
+Body :
+typescript{
+  ligne_actuelle: Record<string, unknown>,
+  produit_propose_nom: string,
+  produit_propose_fournisseur: string,
+  prix_actuel: number,
+  prix_propose: number,
+  economie_mensuelle: number
+}
 ```
-  | Situation actuelle | Situation proposée | Différence |
-  | 1 250€/mois        | 1 120€/mois        | -130€/mois |
-  | 15 000€/an         | 13 440€/an         | -1 560€/an |
+
+**Action :**
+- Construire un prompt ciblé pour Claude expliquant pourquoi ce produit est recommandé
+- Appeler Claude API (modèle: `claude-3-7-sonnet-20250219`)
+- Retourner `{ justification: string }`
+
+**Prompt template :**
 ```
-- Liste des améliorations (puces)
-- Graphique en barres (coût actuel vs proposé)
+Tu es un expert en télécommunications.
 
-**Pages 3+ : Comparatif détaillé ligne par ligne**
-Pour chaque suggestion, un tableau :
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Ligne mobile 06XXXXXXXX                                     │
-├─────────────────────┬───────────────────────┬───────────────┤
-│ Situation actuelle  │ Situation proposée    │ Différence    │
-├─────────────────────┼───────────────────────┼───────────────┤
-│ Forfait: Pro 50Go   │ Forfait: Pro 100Go    │               │
-│ Prix: 29.99€/mois   │ Prix: 24.99€/mois     │ -5€/mois      │
-│                     │                       │ -60€/an       │
-├─────────────────────┴───────────────────────┴───────────────┤
-│ 💡 Justification:                                           │
-│ Forfait plus avantageux avec 2x plus de data pour un prix  │
-│ inférieur. Engagement identique 12 mois.                    │
-└─────────────────────────────────────────────────────────────┘
-```
+SITUATION ACTUELLE DU CLIENT:
+{ligne_actuelle en JSON}
 
-**Dernière page : Pied de page personnalisable**
-- Zone pour logo/coordonnées client (prévoir champ dans settings organisation)
-- Texte légal / mentions
-- Contact PropoBoost
-
-**Note importante :** Prévoir dans la table `organizations` des champs :
-```sql
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pdf_header_logo_url TEXT;
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pdf_footer_text TEXT;
-```
-
-#### B) Bouton "Télécharger Comparatif PDF"
-Ajouter un bouton dans `SuggestionsView.tsx` :
-- Icône FileDown
-- Texte : "Télécharger le comparatif PDF"
-- Style : bouton principal (bg-blue-600)
-- Au clic : appeler l'API et télécharger le PDF
-
-### 3. Limitation : Un seul clic par proposition
-
-#### Modifier `Step4EditData.tsx`
-- Stocker dans la BDD (table `propositions`) un champ `suggestions_generees` (JSONB nullable)
-- Au clic sur "Suggestions IA" :
-  1. Vérifier si `suggestions_generees` est déjà rempli
-  2. Si oui : afficher un message "Suggestions déjà générées pour cette proposition" + afficher les suggestions existantes
-  3. Si non : générer les suggestions et les sauvegarder dans la BDD
-
-**Migration SQL nécessaire :**
-```sql
-ALTER TABLE propositions ADD COLUMN IF NOT EXISTS suggestions_generees JSONB;
-```
-
-### 4. Correction du prompt Claude
-
-#### Modifier `app/api/propositions/generer-suggestions/route.ts`
-Remplacer le prompt actuel par :
-```typescript
-const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle du client et propose la meilleure combinaison de produits de notre catalogue.
-
-SITUATION ACTUELLE:
-${JSON.stringify(situation_actuelle ?? {}, null, 2)}
-
-NOTRE CATALOGUE (${catalogue.length} produits):
-${JSON.stringify(catalogue, null, 2)}
-
-OBJECTIF: ${objectif}
-${budgetMax ? `BUDGET MAX: ${budgetMax}€/mois` : ''}
+PRODUIT PROPOSÉ:
+- Nom: {produit_propose_nom}
+- Fournisseur: {produit_propose_fournisseur}
+- Prix actuel: {prix_actuel}€/mois
+- Prix proposé: {prix_propose}€/mois
+- Économie mensuelle: {economie_mensuelle}€/mois
 
 INSTRUCTIONS:
-1. Pour chaque ligne/service actuel, trouve le produit le plus adapté
-2. Privilégie ${
-      objectif === 'economie'
-        ? 'les économies maximales'
-        : objectif === 'performance'
-          ? 'la meilleure performance'
-          : "l'équilibre coût/performance"
-    }
-3. Calcule les économies mensuelles et annuelles selon la formule :
-   • economie_mensuelle = prix_actuel - prix_propose
-   • Si le résultat est POSITIF → économie réelle
-   • Si le résultat est NÉGATIF → surcoût (produit proposé plus cher)
-4. Justifie chaque choix
+Rédige une analyse concise (2-4 phrases) expliquant pourquoi ce produit est recommandé.
+Mets en avant:
+- Les avantages techniques
+- L'aspect économique
+- L'adéquation avec les besoins du client
 
-RETOURNE UN JSON:
-{
-  "suggestions": [
-    {
-      "ligne_actuelle": {...},
-      "produit_propose_id": "uuid",
-      "produit_propose_nom": "...",
-      "prix_actuel": 0,
-      "prix_propose": 0,
-      "economie_mensuelle": 0,  // = prix_actuel - prix_propose (positif = économie, négatif = surcoût)
-      "justification": "..."
-    }
-  ],
-  "synthese": {
-    "cout_total_actuel": 0,
-    "cout_total_propose": 0,
-    "economie_mensuelle": 0,  // = cout_total_actuel - cout_total_propose
-    "economie_annuelle": 0,   // = economie_mensuelle * 12
-    "ameliorations": ["..."]
-  }
+Réponds UNIQUEMENT avec le texte de l'analyse, sans titre ni introduction.
+3. Route de régénération de synthèse
+Fichier : app/api/propositions/regenerer-synthese/route.ts
+Méthode : POST
+Body :
+typescript{
+  suggestions: Suggestion[],
+  situation_actuelle?: Record<string, unknown>
 }
-
-IMPORTANT - GESTION DES SURCOÛTS:
-- Si le produit proposé est plus cher, l'économie_mensuelle sera NÉGATIVE
-- Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
-- L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
 ```
 
-## Fichiers à créer/modifier
+**Action :**
+- Construire un prompt demandant une liste de 3-5 points clés
+- Appeler Claude API
+- Parser le JSON retourné
+- Retourner `{ ameliorations: string[] }`
 
-### Nouveaux fichiers :
-1. `components/propositions/SuggestionsView.tsx` - Interface visuelle des suggestions
-2. `components/propositions/MetricCard.tsx` - Card métrique réutilisable
-3. `app/api/propositions/[id]/export-comparatif/route.ts` - Export PDF
-4. `lib/pdf/comparatif-generator.ts` - Logique de génération PDF
-5. `supabase/migrations/YYYYMMDD_add_suggestions_fields.sql` - Migration BDD
+**Prompt template :**
+```
+Tu es un expert en télécommunications.
 
-### Fichiers à modifier :
-1. `components/propositions/Step4EditData.tsx` - Intégrer SuggestionsView + logique limitation
-2. `app/api/propositions/generer-suggestions/route.ts` - Corriger prompt + sauvegarder en BDD
-3. `types/index.ts` - Ajouter types TypeScript pour Suggestion et Synthese
+SITUATION ACTUELLE DU CLIENT:
+{situation_actuelle en JSON}
 
-## Contraintes importantes
+RECOMMANDATIONS PROPOSÉES:
+{liste des suggestions avec détails}
 
-1. **Performance** : Le PDF doit se générer en moins de 3 secondes
-2. **Responsive** : L'interface doit être parfaite sur mobile/tablette/desktop
-3. **Accessibilité** : Couleurs contrastées, textes lisibles
-4. **TypeScript strict** : Tous les types doivent être explicites
-5. **Gestion d'erreurs** : Try/catch partout avec messages utilisateur clairs
-6. **Loading states** : Spinners pendant génération PDF
+INSTRUCTIONS:
+Génère une liste de 3-5 points clés résumant les principaux avantages de cette proposition globale.
 
-## Livrables attendus
+Réponds UNIQUEMENT avec un JSON:
+{
+  "ameliorations": [
+    "Point clé 1",
+    "Point clé 2",
+    "Point clé 3"
+  ]
+}
+🔧 MODIFICATIONS DE FICHIERS EXISTANTS
+1. Modifier l'export PDF pour utiliser suggestions_editees
+Fichier : app/api/propositions/[id]/export-comparatif/route.ts
+Modification :
+typescript// AVANT (ligne ~40)
+const suggestionsToUse = proposition.suggestions_generees;
 
-1. ✅ Interface visuelle des suggestions complète et fonctionnelle
-2. ✅ Dashboard de synthèse avec 3 métriques
-3. ✅ Export PDF professionnel et téléchargeable
-4. ✅ Limitation à un seul clic par proposition
-5. ✅ Prompt corrigé avec calcul cohérent des économies
-6. ✅ Migration SQL pour nouveaux champs
-7. ✅ Types TypeScript complets
-8. ✅ Gestion d'erreurs robuste
+// APRÈS
+const suggestionsToUse = proposition.suggestions_editees || proposition.suggestions_generees;
+Explication : Prioriser les suggestions éditées si elles existent, sinon utiliser les originales
+2. Intégrer le nouveau composant éditable
+Fichier : components/propositions/Step4EditData.tsx OU components/propositions/PropositionDetailClient.tsx
+Modification :
+Remplacer l'utilisation de <SuggestionsView> par <EditableSuggestionsView> avec les props appropriées incluant le catalogue de produits
+📦 TYPES TYPESCRIPT
+Ajouter dans types/index.ts :
+typescriptexport interface ModificationState {
+  hasProductChanges: boolean;
+  hasAnalysisUpdates: boolean;
+  hasSynthesisUpdate: boolean;
+  changedProductsCount: number;
+}
+🎨 DESIGN & UX
+Principes :
 
-## Notes supplémentaires
+Utiliser TailwindCSS pour tous les styles
+Icônes via lucide-react
+Couleurs :
 
-- Utiliser les composants shadcn/ui si disponibles (Button, Card, Badge)
-- Suivre les conventions de nommage du projet existant
-- Commenter le code pour les parties complexes
-- Tester avec des données réelles du catalogue
+Bleu pour produit proposé
+Orange/Ambré pour analyse
+Gris/Slate pour synthèse
+Ambré pour les avertissements
+Émeraude pour économie, Orange pour surcoût
 
-Commence par analyser l'architecture existante du projet, puis implémente les fonctionnalités dans l'ordre logique. N'hésite pas à me demander des clarifications si nécessaire.
+
+Animations : animate-spin pour loaders
+Transitions douces : transition-colors
+
+Accessibilité :
+
+Boutons avec title pour tooltips
+disabled states visuellement clairs
+Messages d'erreur explicites
+
+✅ CRITÈRES DE SUCCÈS
+
+✅ Migration Supabase exécutée sans erreur
+✅ Tous les fichiers créés compilent sans erreur TypeScript
+✅ Le hook useSuggestionsTracker détecte correctement les modifications
+✅ Le changement de produit recalcule automatiquement prix et économie
+✅ La régénération IA des analyses fonctionne
+✅ La régénération IA de la synthèse fonctionne
+✅ L'édition manuelle fonctionne pour analyses et synthèse
+✅ Le modal d'avertissement s'affiche uniquement quand nécessaire
+✅ La sauvegarde persiste les modifications dans suggestions_editees
+✅ Le PDF généré utilise les suggestions éditées
+✅ L'UX est fluide avec animations et feedbacks appropriés
+
+🚨 POINTS D'ATTENTION
+
+Gestion des erreurs API : Toujours wrapper les appels fetch dans try/catch
+État de chargement : Afficher des spinners pendant les opérations asynchrones
+Validation des données : Vérifier que les suggestions et synthèse sont valides avant sauvegarde
+Recalcul automatique : La synthèse (chiffres) doit se recalculer dès qu'un produit change
+Comparaison intelligente : Le tracker doit comparer les données originales vs actuelles, pas les états React successifs
+
+📝 ORDRE D'IMPLÉMENTATION RECOMMANDÉ
+
+Migration Supabase
+Types TypeScript
+Hook useSuggestionsTracker
+API Routes (update-suggestions, regenerer-analyse, regenerer-synthese)
+Composants atomiques (EditableProposedProduct, EditableAnalysis, EditableSynthesis)
+Modal DownloadWarningModal
+Composant orchestrateur EditableSuggestionsView
+Modifications des fichiers existants (export-comparatif, intégration)
+Tests manuels de bout en bout
+
+🧪 TESTS À EFFECTUER
+
+Changer un produit → vérifier recalcul prix/économie
+Changer plusieurs produits → vérifier compteur dans l'avertissement
+Régénérer une analyse → vérifier appel API et mise à jour texte
+Éditer manuellement une analyse → vérifier sauvegarde
+Régénérer la synthèse → vérifier appel API et mise à jour
+Éditer manuellement la synthèse → vérifier sauvegarde
+Changer un produit SANS mettre à jour textes → vérifier avertissement
+Cliquer "Télécharger quand même" → vérifier PDF généré
+Sauvegarder puis recharger page → vérifier persistance
+Générer PDF après édition → vérifier contenu correct
+
+
+🎯 COMMENCE PAR :
+
+Exécuter la migration Supabase
+Créer le hook useSuggestionsTracker.ts
+Créer les 3 API routes
+Créer les composants dans l'ordre : EditableProposedProduct → EditableAnalysis → EditableSynthesis → DownloadWarningModal → EditableSuggestionsView
+Modifier export-comparatif/route.ts pour utiliser suggestions_editees
+
+Bonne chance ! N'hésite pas à me demander des clarifications si besoin. 🚀
