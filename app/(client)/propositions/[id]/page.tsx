@@ -240,7 +240,9 @@ export default async function PropositionDetailPage({
   
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
   const totalFields = countTotalFields(extractedDataForDisplay);
-  const suggestionsGenerees = (proposition as Record<string, unknown>).suggestions_generees;
+  const suggestionsGenerees =
+    (proposition as Record<string, unknown>).suggestions_editees ||
+    (proposition as Record<string, unknown>).suggestions_generees;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">

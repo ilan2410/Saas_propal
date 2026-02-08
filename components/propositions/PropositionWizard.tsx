@@ -26,6 +26,7 @@ export interface PropositionData {
   proposition_id?: string;
   copieurs_count?: number;
   suggestions_generees?: SuggestionsGenerees | null;
+  suggestions_editees?: SuggestionsGenerees | null;
 }
 
 export type PropositionTemplateSummary = {

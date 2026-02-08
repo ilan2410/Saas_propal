@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles, Loader2 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
-import { SuggestionsView } from './SuggestionsView';
-import { SuggestionsGenerees } from '@/types';
+import { EditableSuggestionsView } from './EditableSuggestionsView';
+import { SuggestionsGenerees, CatalogueProduit, Suggestion, SuggestionsSynthese } from '@/types';
 import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
@@ -318,10 +318,27 @@ export function Step4EditData({
   const [activeTab, setActiveTab] = useState<'simple' | 'complex'>('simple');
   const [viewMode, setViewMode] = useState<'excel' | 'form'>('excel');
   const [suggestions, setSuggestions] = useState<SuggestionsGenerees | null>(
-    propositionData.suggestions_generees as SuggestionsGenerees || null
+    (propositionData.suggestions_editees ||
+      propositionData.suggestions_generees ||
+      null) as SuggestionsGenerees | null
   );
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
+
+  useEffect(() => {
+    const loadCatalogue = async () => {
+      try {
+        const response = await fetch('/api/catalogue');
+        const data = await response.json();
+        setCatalogue(data.produits || []);
+      } catch (e) {
+        console.error("Erreur chargement catalogue", e);
+      }
+    };
+    loadCatalogue();
+  }, []);
+
   const [templateInfo, setTemplateInfo] = useState<{
     file_url: string;
     file_config: unknown;
@@ -584,8 +601,11 @@ export function Step4EditData({
     }
   };
 
- const handleDownloadPdf = async () => {
-    if (!suggestions || !propositionData.proposition_id) {
+ const handleDownloadPdf = async (customSuggestions?: Suggestion[], customSynthese?: SuggestionsSynthese) => {
+    const suggestionsToUse = customSuggestions || suggestions?.suggestions;
+    const syntheseToUse = customSynthese || suggestions?.synthese;
+
+    if (!suggestionsToUse || !syntheseToUse || !propositionData.proposition_id) {
       console.log('❌ Pas de suggestions ou proposition_id');
       return;
     }
@@ -596,8 +616,8 @@ export function Step4EditData({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          suggestions: suggestions.suggestions,
-          synthese: suggestions.synthese,
+          suggestions: suggestionsToUse,
+          synthese: syntheseToUse,
           proposition_id: propositionData.proposition_id
         })
       });
@@ -750,8 +770,10 @@ export function Step4EditData({
             <Sparkles className="w-5 h-5 text-purple-600" />
             Suggestions SP
           </h3>
-          <SuggestionsView 
+          <EditableSuggestionsView 
             suggestions={suggestions} 
+            propositionId={propositionData.proposition_id || ''}
+            catalogue={catalogue}
             clientName={resolvedClientName || undefined}
             onDownloadPdf={handleDownloadPdf}
             isDownloading={isDownloadingPdf}

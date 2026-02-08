@@ -128,6 +128,15 @@ export interface Proposition {
   error_message?: string;
   created_at: string;
   exported_at?: string;
+  suggestions_generees?: SuggestionsGenerees;
+  suggestions_editees?: SuggestionsGenerees;
+}
+
+export interface ModificationState {
+  hasProductChanges: boolean;
+  hasAnalysisUpdates: boolean;
+  hasSynthesisUpdate: boolean;
+  changedProductsCount: number;
 }
 
 // Analytics d'utilisation
