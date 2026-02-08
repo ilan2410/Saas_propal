@@ -91,10 +91,36 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { suggestions, synthese } = body;
+    const body = await request.json().catch(() => ({}));
+    let { suggestions, synthese } = body;
     
-    console.log('🔵 [PDF Export] Body reçu:', {
+    // Si les données ne sont pas fournies dans le body, on les récupère de la BDD
+    if (!suggestions || !synthese) {
+      console.log('🔵 [PDF Export] Données manquantes dans le body, récupération depuis la BDD...');
+      const { data: propData, error: fetchError } = await supabase
+        .from('propositions')
+        .select('suggestions_editees, suggestions_generees')
+        .eq('id', id)
+        .single();
+        
+      if (fetchError || !propData) {
+        return NextResponse.json({ error: 'Proposition introuvable ou données manquantes' }, { status: 404 });
+      }
+      
+      const sourceData = propData.suggestions_editees || propData.suggestions_generees;
+      if (
+        sourceData &&
+        typeof sourceData === 'object' &&
+        'suggestions' in sourceData &&
+        'synthese' in sourceData
+      ) {
+        const typed = sourceData as { suggestions: unknown; synthese: unknown };
+        suggestions = typed.suggestions;
+        synthese = typed.synthese;
+      }
+    }
+    
+    console.log('🔵 [PDF Export] Données à utiliser:', {
       hasSuggestions: !!suggestions,
       suggestionsLength: suggestions?.length,
       hasSynthese: !!synthese,

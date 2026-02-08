@@ -33,6 +33,79 @@ Modifier les produits suggérés par l'IA avec recalcul automatique des prix/éc
 Éditer ou régénérer la synthèse finale manuellement ou via IA
 Garde-fou avant téléchargement PDF : alerter si des modifications de produits n'ont pas été suivies d'une mise à jour des textes
 
+⚠️ CONTRAINTES CRITIQUES DE DESIGN
+🎨 PRÉSERVATION DU DESIGN EXISTANT
+IMPÉRATIF : Le design actuel de l'affichage des suggestions NE DOIT PAS ÊTRE MODIFIÉ.
+Tu dois :
+
+✅ CONSERVER exactement la même structure de layout actuelle
+✅ CONSERVER les mêmes couleurs, espacements, polices, bordures
+✅ CONSERVER la même organisation visuelle (cadre ACTUELLEMENT, cadre PROPOSÉ, cadre NOTRE ANALYSE, cadre Synthèse finale)
+✅ AJOUTER UNIQUEMENT des icônes de modification discrètes en haut à droite de chaque cadre éditable
+❌ NE PAS changer les classes TailwindCSS existantes
+❌ NE PAS réorganiser les éléments visuels
+
+Approche recommandée :
+
+Copier le composant SuggestionsView.tsx existant
+Le renommer en EditableSuggestionsView.tsx
+Ajouter UNIQUEMENT les fonctionnalités d'édition sans toucher au reste du design
+Ajouter les icônes en absolute top-3 right-3 pour ne pas perturber la mise en page
+
+🔍 SÉLECTEUR DE PRODUITS AVEC RECHERCHE
+Pour le cadre PROPOSÉ en mode édition, implémenter un composant de sélection avancé :
+Fonctionnalités requises :
+
+📦 Liste déroulante affichant TOUS les produits du catalogue du client
+🔍 Barre de recherche intégrée dans le dropdown pour filtrer les produits
+📋 Affichage de chaque produit avec : nom - prix/mois (fournisseur)
+⚡ Recherche en temps réel (filtrage sur nom, fournisseur, tags)
+🎯 Highlight du produit actuellement sélectionné
+
+Implémentation recommandée :
+Utiliser un composant personnalisé ou shadcn/ui <Command> avec <CommandInput> :
+tsximport { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+// Dans le composant EditableProposedProduct
+<Popover open={open} onOpenChange={setOpen}>
+  <PopoverTrigger asChild>
+    <Button variant="outline" className="w-full justify-between">
+      {selectedProduct ? selectedProduct.nom : "Sélectionner un produit"}
+      <ChevronsUpDown className="ml-2 h-4 w-4" />
+    </Button>
+  </PopoverTrigger>
+  <PopoverContent className="w-[400px] p-0">
+    <Command>
+      <CommandInput placeholder="Rechercher un produit..." />
+      <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
+      <CommandGroup className="max-h-[300px] overflow-auto">
+        {catalogue.map((produit) => (
+          <CommandItem
+            key={produit.id}
+            value={`${produit.nom} ${produit.fournisseur}`}
+            onSelect={() => handleProductSelect(produit)}
+          >
+            <Check
+              className={cn(
+                "mr-2 h-4 w-4",
+                selectedProductId === produit.id ? "opacity-100" : "opacity-0"
+              )}
+            />
+            <div className="flex flex-col">
+              <span className="font-medium">{produit.nom}</span>
+              <span className="text-sm text-gray-500">
+                {produit.prix_mensuel?.toFixed(2)}€/mois · {produit.fournisseur}
+              </span>
+            </div>
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </Command>
+  </PopoverContent>
+</Popover>
+Installation requise si pas déjà installé :
+bashnpx shadcn-ui@latest add command popover
 📊 SCHÉMA DE BASE DE DONNÉES À MODIFIER
 Migration Supabase requise :
 sql-- Ajouter le champ suggestions_editees à la table propositions
@@ -80,20 +153,41 @@ Encadré bleu avec recommandations (régénérer IA ou éditer manuellement)
 
 3. Composant de produit proposé éditable
 Fichier : components/propositions/EditableProposedProduct.tsx
-Responsabilité : Permettre de changer le produit proposé avec un sélecteur
+Responsabilité : Permettre de changer le produit proposé avec un sélecteur avancé
 Fonctionnalités :
 
-Icône Edit2 en haut à droite pour basculer en mode édition
-Select dropdown avec tous les produits du catalogue
+⚠️ CONSERVER le design exact du cadre PROPOSÉ actuel
+Icône Edit2 discrète en absolute top-3 right-3 pour basculer en mode édition
+En mode édition : Popover + Command avec recherche intégrée
+Liste de TOUS les produits du catalogue client
+Barre de recherche filtrant sur nom + fournisseur + tags
+Affichage : nom - prix€/mois (fournisseur)
 Recalcul automatique de prix_propose et economie_mensuelle lors du changement
 Mise à jour du produit_propose_fournisseur
 
+Pattern d'intégration :
+tsx// Mode affichage = Design actuel PRÉSERVÉ
+{!isEditing && (
+  <div className="[CLASSES ACTUELLES EXACTES]">
+    {/* Contenu actuel identique */}
+  </div>
+)}
+
+// Mode édition = Nouveau sélecteur
+{isEditing && (
+  <div className="space-y-3">
+    <Popover>
+      {/* Sélecteur avec recherche */}
+    </Popover>
+  </div>
+)}
 4. Composant d'analyse éditable
 Fichier : components/propositions/EditableAnalysis.tsx
 Responsabilité : Permettre l'édition manuelle ou la régénération IA de la justification
 Fonctionnalités :
 
-2 icônes en haut à droite :
+⚠️ CONSERVER le design exact du cadre NOTRE ANALYSE actuel
+2 icônes discrètes en absolute top-3 right-3 :
 
 Wand2 (baguette magique) : Régénérer avec l'IA
 Edit2 (crayon) : Éditer manuellement
@@ -108,8 +202,9 @@ Fichier : components/propositions/EditableSynthesis.tsx
 Responsabilité : Permettre l'édition manuelle ou la régénération IA de la synthèse
 Fonctionnalités :
 
+⚠️ CONSERVER le design exact du cadre Synthèse finale actuel
 Affichage automatique des chiffres recalculés (cout_total_actuel, cout_total_propose, economie_mensuelle, economie_annuelle)
-2 icônes en haut à droite :
+2 icônes discrètes en absolute top-3 right-3 :
 
 Wand2 : Régénérer la liste des améliorations avec l'IA
 Edit2 : Éditer manuellement la liste
@@ -121,10 +216,19 @@ Appel API /api/propositions/regenerer-synthese pour régénération IA
 6. Composant principal avec intégration complète
 Fichier : components/propositions/EditableSuggestionsView.tsx
 Responsabilité : Orchestrer tous les composants et gérer la sauvegarde globale
+IMPORTANT : Ce composant doit être une copie enrichie de SuggestionsView.tsx, pas une réécriture complète.
+Méthode recommandée :
+
+Copier SuggestionsView.tsx → EditableSuggestionsView.tsx
+Remplacer les cartes de suggestion par les versions éditables
+Ajouter le hook useSuggestionsTracker
+Ajouter le badge d'avertissement en haut
+Ajouter le modal DownloadWarningModal
+
 Fonctionnalités :
 
 Utiliser le hook useSuggestionsTracker pour le tracking
-Afficher un badge d'avertissement si modifications non synchronisées
+Afficher un badge d'avertissement en haut si modifications non synchronisées
 Recalculer automatiquement la synthèse (chiffres) quand un produit change
 Bouton "Sauvegarder les modifications" → Appelle /api/propositions/[id]/update-suggestions
 Bouton "Télécharger le PDF" → Vérifie avec needsWarning() et affiche le modal si nécessaire
@@ -237,6 +341,17 @@ Explication : Prioriser les suggestions éditées si elles existent, sinon utili
 Fichier : components/propositions/Step4EditData.tsx OU components/propositions/PropositionDetailClient.tsx
 Modification :
 Remplacer l'utilisation de <SuggestionsView> par <EditableSuggestionsView> avec les props appropriées incluant le catalogue de produits
+IMPORTANT : Charger le catalogue avant de passer au composant :
+typescriptconst [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
+
+useEffect(() => {
+  const loadCatalogue = async () => {
+    const response = await fetch('/api/catalogue');
+    const data = await response.json();
+    setCatalogue(data.produits || []);
+  };
+  loadCatalogue();
+}, []);
 📦 TYPES TYPESCRIPT
 Ajouter dans types/index.ts :
 typescriptexport interface ModificationState {
@@ -246,11 +361,14 @@ typescriptexport interface ModificationState {
   changedProductsCount: number;
 }
 🎨 DESIGN & UX
-Principes :
+Principes généraux :
 
 Utiliser TailwindCSS pour tous les styles
 Icônes via lucide-react
-Couleurs :
+Animations : animate-spin pour loaders
+Transitions douces : transition-colors
+
+Couleurs (à PRÉSERVER exactement comme dans le design actuel) :
 
 Bleu pour produit proposé
 Orange/Ambré pour analyse
@@ -258,10 +376,46 @@ Gris/Slate pour synthèse
 Ambré pour les avertissements
 Émeraude pour économie, Orange pour surcoût
 
-
-Animations : animate-spin pour loaders
-Transitions douces : transition-colors
-
+Placement des icônes d'édition :
+tsx<div className="relative">
+  {/* Contenu actuel préservé */}
+  
+  {/* Icônes ajoutées en absolute */}
+  <div className="absolute top-3 right-3 flex gap-2">
+    <button className="p-2 hover:bg-blue-100 rounded-lg transition-colors">
+      <Edit2 className="w-4 h-4 text-blue-600" />
+    </button>
+  </div>
+</div>
+Sélecteur de produits :
+tsx// Utiliser shadcn/ui Command + Popover
+<Popover>
+  <PopoverTrigger asChild>
+    <Button variant="outline" className="w-full justify-between">
+      {selectedProduct || "Sélectionner un produit"}
+      <ChevronsUpDown className="w-4 h-4" />
+    </Button>
+  </PopoverTrigger>
+  <PopoverContent className="w-[400px] p-0">
+    <Command>
+      <CommandInput placeholder="Rechercher..." />
+      <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
+      <CommandGroup className="max-h-[300px] overflow-auto">
+        {catalogue.map((p) => (
+          <CommandItem key={p.id} onSelect={() => handleSelect(p)}>
+            <Check className={cn("mr-2 h-4 w-4", selected === p.id ? "opacity-100" : "opacity-0")} />
+            <div className="flex flex-col">
+              <span>{p.nom}</span>
+              <span className="text-sm text-gray-500">
+                {p.prix_mensuel}€/mois · {p.fournisseur}
+              </span>
+            </div>
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </Command>
+  </PopoverContent>
+</Popover>
 Accessibilité :
 
 Boutons avec title pour tooltips
@@ -272,6 +426,10 @@ Messages d'erreur explicites
 
 ✅ Migration Supabase exécutée sans erreur
 ✅ Tous les fichiers créés compilent sans erreur TypeScript
+✅ Le design visuel est IDENTIQUE à l'actuel (couleurs, espacements, polices)
+✅ Les icônes d'édition sont discrètes et bien placées
+✅ Le sélecteur de produits affiche TOUS les produits du catalogue
+✅ La recherche dans le sélecteur filtre correctement
 ✅ Le hook useSuggestionsTracker détecte correctement les modifications
 ✅ Le changement de produit recalcule automatiquement prix et économie
 ✅ La régénération IA des analyses fonctionne
@@ -284,6 +442,9 @@ Messages d'erreur explicites
 
 🚨 POINTS D'ATTENTION
 
+DESIGN INCHANGÉ : Ne modifier AUCUNE classe CSS existante, juste ajouter les icônes en absolute
+Catalogue complet : S'assurer de charger TOUS les produits (pas de pagination/limite)
+Recherche performante : Le filtrage doit être instantané
 Gestion des erreurs API : Toujours wrapper les appels fetch dans try/catch
 État de chargement : Afficher des spinners pendant les opérations asynchrones
 Validation des données : Vérifier que les suggestions et synthèse sont valides avant sauvegarde
@@ -293,17 +454,24 @@ Comparaison intelligente : Le tracker doit comparer les données originales vs a
 📝 ORDRE D'IMPLÉMENTATION RECOMMANDÉ
 
 Migration Supabase
+Installation composants shadcn/ui manquants : npx shadcn-ui@latest add command popover
 Types TypeScript
 Hook useSuggestionsTracker
 API Routes (update-suggestions, regenerer-analyse, regenerer-synthese)
-Composants atomiques (EditableProposedProduct, EditableAnalysis, EditableSynthesis)
+COPIER SuggestionsView.tsx → EditableSuggestionsView.tsx (ne pas créer from scratch)
+Ajouter les icônes d'édition dans les cadres existants
+Créer le sélecteur de produits avec recherche (EditableProposedProduct)
+Créer EditableAnalysis et EditableSynthesis
 Modal DownloadWarningModal
-Composant orchestrateur EditableSuggestionsView
+Intégrer le hook et la logique dans EditableSuggestionsView
 Modifications des fichiers existants (export-comparatif, intégration)
 Tests manuels de bout en bout
 
 🧪 TESTS À EFFECTUER
 
+Design : Comparer visuellement avec l'ancien → doit être identique
+Sélecteur : Vérifier que TOUS les produits s'affichent
+Recherche : Taper "Orange" → voir uniquement produits Orange
 Changer un produit → vérifier recalcul prix/économie
 Changer plusieurs produits → vérifier compteur dans l'avertissement
 Régénérer une analyse → vérifier appel API et mise à jour texte
@@ -319,9 +487,11 @@ Générer PDF après édition → vérifier contenu correct
 🎯 COMMENCE PAR :
 
 Exécuter la migration Supabase
+Installer composants manquants : npx shadcn-ui@latest add command popover
+COPIER le fichier SuggestionsView.tsx existant pour préserver le design
 Créer le hook useSuggestionsTracker.ts
 Créer les 3 API routes
-Créer les composants dans l'ordre : EditableProposedProduct → EditableAnalysis → EditableSynthesis → DownloadWarningModal → EditableSuggestionsView
+Enrichir progressivement EditableSuggestionsView.tsx sans casser le design
 Modifier export-comparatif/route.ts pour utiliser suggestions_editees
 
-Bonne chance ! N'hésite pas à me demander des clarifications si besoin. 🚀
+Bonne chance ! Le design actuel doit rester IDENTIQUE visuellement. 🚀

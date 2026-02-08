@@ -96,6 +96,7 @@ export default async function ResumePropositionPage({
           documents_urls,
           donnees_extraites: dataToEdit,
           suggestions_generees: proposition.suggestions_generees || null,
+          suggestions_editees: proposition.suggestions_editees || null,
         }}
       />
     </div>
