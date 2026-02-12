@@ -35,7 +35,10 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
   // Extract unique suppliers for filter
   const suppliers = useMemo(() => {
-    const s = new Set(initialProducts.map(p => p.fournisseur).filter(Boolean));
+    const isNonEmptyString = (value: unknown): value is string =>
+      typeof value === 'string' && value.trim().length > 0;
+
+    const s = new Set(initialProducts.map((p) => p.fournisseur).filter(isNonEmptyString));
     return Array.from(s).sort();
   }, [initialProducts]);
 
@@ -494,6 +497,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
         onClose={() => setIsEditModalOpen(false)}
         selectedIds={Array.from(selectedIds)}
         isAdmin={isAdmin || !showHeader}
+        fournisseurOptions={suppliers}
         onSuccess={() => {
           setSelectedIds(new Set());
           router.refresh();

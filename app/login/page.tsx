@@ -70,7 +70,12 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-6" autoComplete="off">
+          <form
+            onSubmit={handleLogin}
+            className="space-y-6"
+            autoComplete="off"
+            suppressHydrationWarning
+          >
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email
