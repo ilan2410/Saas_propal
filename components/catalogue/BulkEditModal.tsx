@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { CatalogueCategorie } from '@/types';
 
 interface BulkEditModalProps {
@@ -10,6 +10,7 @@ interface BulkEditModalProps {
   selectedIds: string[];
   isAdmin?: boolean;
   onSuccess: () => void;
+  fournisseurOptions: string[];
 }
 
 type BulkUpdateData = {
@@ -23,7 +24,14 @@ type BulkUpdateData = {
   engagement_mois?: number;
 };
 
-export function BulkEditModal({ isOpen, onClose, selectedIds, isAdmin = false, onSuccess }: BulkEditModalProps) {
+export function BulkEditModal({
+  isOpen,
+  onClose,
+  selectedIds,
+  isAdmin = false,
+  onSuccess,
+  fournisseurOptions,
+}: BulkEditModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   
   // States for each field's value and whether it is being updated
@@ -80,7 +88,14 @@ export function BulkEditModal({ isOpen, onClose, selectedIds, isAdmin = false, o
     const updates: BulkUpdateData = {};
     
     if (updateFields.categorie) updates.categorie = formData.categorie;
-    if (updateFields.fournisseur) updates.fournisseur = formData.fournisseur.trim() || undefined;
+    if (updateFields.fournisseur) {
+      const fournisseur = formData.fournisseur.trim();
+      if (!fournisseur) {
+        alert('Veuillez sélectionner un fournisseur');
+        return;
+      }
+      updates.fournisseur = fournisseur;
+    }
     if (updateFields.description) updates.description = formData.description.trim() || undefined;
     
     if (updateFields.type_frequence) {
@@ -182,13 +197,19 @@ export function BulkEditModal({ isOpen, onClose, selectedIds, isAdmin = false, o
                 />
                 <label htmlFor="check_fournisseur" className="font-medium text-gray-900 cursor-pointer">Fournisseur</label>
               </div>
-              <input
-                disabled={!updateFields.fournisseur}
+              <select
+                disabled={!updateFields.fournisseur || fournisseurOptions.length === 0}
                 value={formData.fournisseur}
                 onChange={(e) => setFormData(p => ({ ...p, fournisseur: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:text-gray-400"
-                placeholder="Ex: Orange Business"
-              />
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                <option value="">
+                  {fournisseurOptions.length === 0 ? 'Aucun fournisseur existant' : 'Sélectionner un fournisseur'}
+                </option>
+                {fournisseurOptions.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
             </div>
 
             {/* Type de facturation */}
