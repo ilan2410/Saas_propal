@@ -41,9 +41,9 @@ export default async function ClientLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200">
+      <aside className="fixed left-0 top-0 h-full w-64 bg-[var(--background)] border-r border-gray-200">
         <div className="p-6">
           <h1 className="text-2xl font-bold text-blue-600">Propositions</h1>
           <p className="text-sm text-gray-500 mt-1">{organization?.nom}</p>

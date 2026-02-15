@@ -62,6 +62,30 @@ export async function POST(request: NextRequest) {
         const organizationId = metadata.organization_id;
         const creditsTotal = parseFloat(metadata.credits_total);
 
+        const stripeCustomerId =
+          typeof session.customer === 'string' && session.customer.length > 0 ? session.customer : null;
+
+        if (stripeCustomerId) {
+          const { data: orgRow, error: orgRowError } = await supabaseAdmin
+            .from('organizations')
+            .select('stripe_customer_id')
+            .eq('id', organizationId)
+            .single();
+
+          if (orgRowError) {
+            console.error('Error fetching organization for customer id:', orgRowError);
+          } else if (!orgRow?.stripe_customer_id) {
+            const { error: customerUpdateError } = await supabaseAdmin
+              .from('organizations')
+              .update({ stripe_customer_id: stripeCustomerId })
+              .eq('id', organizationId);
+
+            if (customerUpdateError) {
+              console.error('Error updating stripe_customer_id:', customerUpdateError);
+            }
+          }
+        }
+
         // Mettre à jour la transaction
         const { error: updateError } = await supabaseAdmin
           .from('stripe_transactions')

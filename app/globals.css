@@ -12,6 +12,26 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
+}
+
+html[data-density="compact"] {
+  font-size: 14px;
+}
+
+html[data-density="confortable"] {
+  font-size: 16px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
