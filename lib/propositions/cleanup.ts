@@ -3,8 +3,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 type PropositionListRow = {
   id: string;
   created_at: string;
+  exported_at?: string | null;
+  nom_client?: string | null;
+  template_id?: string | null;
+  generated_file_name?: string | null;
   source_documents: unknown;
   duplicated_template_url: string | null;
+  template?: unknown;
 };
 
 function asStringArray(value: unknown): string[] {
@@ -37,7 +42,7 @@ export async function cleanupOldPropositions(
   try {
     const { data: allProps, error: listError } = await serviceSupabase
       .from('propositions')
-      .select('id, created_at, source_documents, duplicated_template_url')
+      .select('id, created_at, exported_at, nom_client, template_id, generated_file_name, source_documents, duplicated_template_url, template:proposition_templates(nom, file_type)')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false });
 
@@ -58,6 +63,42 @@ export async function cleanupOldPropositions(
     );
 
     const idsToDelete = toDelete.map((p) => p.id).filter(Boolean);
+
+    if (toDelete.length > 0) {
+      const archiveRows = toDelete.map((p) => {
+        const templateValue = p.template;
+        const template =
+          Array.isArray(templateValue)
+            ? (templateValue[0] as Record<string, unknown> | undefined)
+            : templateValue && typeof templateValue === 'object'
+              ? (templateValue as Record<string, unknown>)
+              : undefined;
+
+        const templateNom = typeof template?.nom === 'string' ? template.nom : null;
+        const templateType = typeof template?.file_type === 'string' ? template.file_type : null;
+
+        return {
+          organization_id: organizationId,
+          proposition_id: p.id,
+          template_id: p.template_id ?? null,
+          template_nom: templateNom,
+          template_type: templateType,
+          nom_client: p.nom_client ?? null,
+          created_at: p.created_at ?? null,
+          exported_at: p.exported_at ?? null,
+          source_documents: p.source_documents ?? null,
+          generated_file_name: p.generated_file_name ?? null,
+        };
+      });
+
+      const { error: archiveError } = await serviceSupabase
+        .from('propositions_archive')
+        .upsert(archiveRows, { onConflict: 'proposition_id' });
+
+      if (archiveError) {
+        console.error('Erreur insertion archive propositions:', archiveError);
+      }
+    }
 
     const urls: string[] = [];
     for (const p of toDelete) {

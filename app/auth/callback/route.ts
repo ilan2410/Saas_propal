@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   const { data: organization } = await supabase
     .from('organizations')
-    .select('secteur')
+    .select('secteur, preferences')
     .eq('id', user.id)
     .single();
 
@@ -35,5 +35,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/onboarding', request.url));
   }
 
-  return NextResponse.redirect(new URL('/dashboard', request.url));
+  const allowedHomePages = new Set(['/dashboard', '/templates', '/propositions']);
+  const preferences =
+    organization.preferences && typeof organization.preferences === 'object'
+      ? (organization.preferences as Record<string, unknown>)
+      : {};
+
+  const home =
+    typeof preferences.page_accueil === 'string' && allowedHomePages.has(preferences.page_accueil)
+      ? preferences.page_accueil
+      : '/dashboard';
+
+  const response = NextResponse.redirect(new URL(home, request.url));
+
+  if (typeof preferences.theme === 'string') {
+    response.cookies.set('appearance_theme', preferences.theme, {
+      path: '/',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+
+  if (typeof preferences.densite === 'string') {
+    response.cookies.set('appearance_density', preferences.densite, {
+      path: '/',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+
+  response.cookies.set('appearance_home', home, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+  return response;
 }

@@ -3,6 +3,19 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -402,13 +415,42 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       console.error('Erreur mise à jour proposition:', updateError);
     }
 
-    // Récupérer les crédits mis à jour après le débit
+    // Récupérer les crédits mis à jour après le débit et les préférences pour la recharge auto
     // IMPORTANT: utiliser le service role pour éviter toute surprise liée à RLS si org.id != auth.uid()
     const { data: updatedOrg } = await serviceSupabase
       .from('organizations')
-      .select('credits')
+      .select('credits, preferences')
       .eq('id', organization.id)
       .single();
+
+    // Gestion de la recharge automatique
+    if (updatedOrg?.preferences) {
+      const prefs = updatedOrg.preferences as unknown;
+      const rechargeAuto = isRecord(prefs) ? prefs['recharge_auto'] : null;
+      const actif = isRecord(rechargeAuto) ? rechargeAuto['actif'] : null;
+      if (actif === true) {
+        const seuil = isRecord(rechargeAuto) ? toNumber(rechargeAuto['seuil']) : 0;
+        const montant = isRecord(rechargeAuto) ? toNumber(rechargeAuto['montant']) : 0;
+        const credits = toNumber(updatedOrg.credits);
+
+        if (seuil > 0 && montant > 0 && credits < seuil) {
+          console.log(`[AutoRecharge] Crédits (${credits}€) inférieurs au seuil (${seuil}€). Tentative de recharge de ${montant}€...`);
+          try {
+            // Import dynamique pour éviter de charger Stripe si non nécessaire
+            const { attemptAutoRecharge } = await import('@/lib/stripe/auto-recharge');
+            const result = await attemptAutoRecharge(organization.id, montant);
+            
+            if (result.success && result.creditsAdded) {
+              // Mettre à jour la valeur retournée au client
+              updatedOrg.credits = (updatedOrg.credits || 0) + result.creditsAdded;
+            }
+          } catch (rechargeError) {
+            console.error('[AutoRecharge] Échec de la tentative:', rechargeError);
+            // On ne bloque pas la réponse si la recharge échoue
+          }
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,

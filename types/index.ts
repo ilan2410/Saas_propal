@@ -28,8 +28,46 @@ export interface Organization {
   stripe_customer_id?: string;
   pdf_header_logo_url?: string;
   pdf_footer_text?: string;
+  
+  // Nouveaux champs
+  logo_url?: string;
+  siret?: string;
+  adresse?: string;
+  code_postal?: string;
+  ville?: string;
+  numero_tva?: string;
+  nom_facturation?: string;
+  adresse_facturation?: string; // Gardé pour rétrocompatibilité, mais on préfère les champs détaillés
+  email_facturation?: string;
+  adresse_ligne1_facturation?: string;
+  adresse_ligne2_facturation?: string;
+  ville_facturation?: string;
+  code_postal_facturation?: string;
+  pays_facturation?: string;
+  telephone_facturation?: string;
+  preferences?: OrganizationPreferences;
+  
   created_at: string;
   updated_at: string;
+}
+
+export interface OrganizationPreferences {
+  theme?: 'light' | 'dark' | 'system';
+  densite?: 'compact' | 'confortable';
+  page_accueil?: '/dashboard' | '/templates' | '/propositions';
+  notifications?: {
+    alerte_credits_faibles?: boolean;
+    seuil_credits?: number;
+    email_proposition_generee?: boolean;
+    email_recharge?: boolean;
+    resume_hebdomadaire?: boolean;
+    rappel_engagement?: boolean;
+  };
+  recharge_auto?: {
+    actif?: boolean;
+    seuil?: number;
+    montant?: number;
+  };
 }
 
 // Template de proposition

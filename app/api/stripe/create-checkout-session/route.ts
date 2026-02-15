@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -41,12 +41,12 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
 
     // Récupérer l'organization
-    type OrganizationBasic = { id: string; email: string | null };
+    type OrganizationBasic = { id: string; email: string | null; nom: string | null; stripe_customer_id: string | null };
     let organization: OrganizationBasic | null = null;
 
     const orgById = await supabase
       .from('organizations')
-      .select('id, email')
+      .select('id, email, nom, stripe_customer_id')
       .eq('id', user.id)
       .single();
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     } else {
       const orgByEmail = await supabase
         .from('organizations')
-        .select('id, email')
+        .select('id, email, nom, stripe_customer_id')
         .eq('email', user.email)
         .single();
 
@@ -68,6 +68,36 @@ export async function POST(request: NextRequest) {
             details: orgById.error?.message || orgByEmail.error?.message || 'Organisation introuvable',
           },
           { status: 404 }
+        );
+      }
+    }
+
+    let stripeCustomerId = organization.stripe_customer_id || null;
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: organization.email || user.email || undefined,
+        name: organization.nom || undefined,
+        metadata: {
+          organization_id: organization.id,
+        },
+      });
+
+      stripeCustomerId = customer.id;
+
+      const serviceSupabase = createServiceClient();
+      const { error: customerIdUpdateError } = await serviceSupabase
+        .from('organizations')
+        .update({
+          stripe_customer_id: stripeCustomerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', organization.id);
+
+      if (customerIdUpdateError) {
+        return NextResponse.json(
+          { error: 'Erreur lors de la sauvegarde du client Stripe', details: customerIdUpdateError.message },
+          { status: 500 }
         );
       }
     }
@@ -97,6 +127,10 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       success_url: `${baseUrl}/credits?success=true`,
       cancel_url: `${baseUrl}/credits?canceled=true`,
+      client_reference_id: organization.id,
+      payment_intent_data: {
+        setup_future_usage: 'off_session',
+      },
       metadata: {
         organization_id: organization.id,
         montant: montant.toString(),
@@ -105,7 +139,7 @@ export async function POST(request: NextRequest) {
         credits_total: creditsTotal.toString(),
         bonus_applique: bonus.toString(),
       },
-      customer_email: organization.email || undefined,
+      customer: stripeCustomerId,
     });
 
     // Créer la transaction en BDD (statut: pending)
