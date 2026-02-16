@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ComponentType } from 'react';
+import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -60,6 +60,39 @@ type NotificationsPreferences = {
 type ThemePreference = 'light' | 'dark' | 'system';
 type DensityPreference = 'compact' | 'confortable';
 type HomePagePreference = '/dashboard' | '/templates' | '/propositions';
+type HistoryReportPeriod =
+  | 'current_month'
+  | 'last_month'
+  | 'last_3_months'
+  | 'last_6_months'
+  | 'current_year'
+  | 'last_year'
+  | 'custom';
+
+function buildLocalDate(yyyyMmDd: string): Date | null {
+  const parts = yyyyMmDd.split('-');
+  if (parts.length !== 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  const d = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function addDays(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 0, 0, 0, 0);
+}
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function startOfYear(d: Date): Date {
+  return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
 
 export default function SettingsPage({ 
   organization, 
@@ -142,6 +175,14 @@ export default function SettingsPage({
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const [isHistoryExportLoading, setIsHistoryExportLoading] = useState(false);
+  const [historyReportPeriod, setHistoryReportPeriod] = useState<HistoryReportPeriod>('current_month');
+  const [historyReportCustomStart, setHistoryReportCustomStart] = useState('');
+  const [historyReportCustomEnd, setHistoryReportCustomEnd] = useState('');
+  const [historyReportCounts, setHistoryReportCounts] = useState<{
+    propositionsCount: number | null;
+    transactionsCount: number | null;
+    isLoading: boolean;
+  }>({ propositionsCount: null, transactionsCount: null, isLoading: false });
 
   useEffect(() => {
     const tab = searchParams.get('tab') as TabId;
@@ -422,12 +463,103 @@ export default function SettingsPage({
     document.body.removeChild(a);
   };
 
+  const getHistoryReportRange = useCallback((): { start: Date; endExclusive: Date } | null => {
+    const now = new Date();
+    const tomorrowStart = addDays(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0), 1);
+
+    if (historyReportPeriod === 'current_month') {
+      return { start: startOfMonth(now), endExclusive: tomorrowStart };
+    }
+    if (historyReportPeriod === 'last_month') {
+      const start = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0));
+      const endExclusive = startOfMonth(now);
+      return { start, endExclusive };
+    }
+    if (historyReportPeriod === 'last_3_months') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate(), 0, 0, 0, 0);
+      return { start, endExclusive: tomorrowStart };
+    }
+    if (historyReportPeriod === 'last_6_months') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate(), 0, 0, 0, 0);
+      return { start, endExclusive: tomorrowStart };
+    }
+    if (historyReportPeriod === 'current_year') {
+      return { start: startOfYear(now), endExclusive: tomorrowStart };
+    }
+    if (historyReportPeriod === 'last_year') {
+      const start = startOfYear(new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0));
+      const endExclusive = startOfYear(now);
+      return { start, endExclusive };
+    }
+    if (historyReportPeriod === 'custom') {
+      const start = buildLocalDate(historyReportCustomStart);
+      const end = buildLocalDate(historyReportCustomEnd);
+      if (!start || !end) return null;
+      const endExclusive = addDays(end, 1);
+      if (start.getTime() >= endExclusive.getTime()) return null;
+      return { start, endExclusive };
+    }
+    return null;
+  }, [historyReportPeriod, historyReportCustomStart, historyReportCustomEnd]);
+
+  useEffect(() => {
+    const range = getHistoryReportRange();
+    if (!range) {
+      setHistoryReportCounts((prev) => ({ ...prev, propositionsCount: null, transactionsCount: null, isLoading: false }));
+      return;
+    }
+
+    const controller = new AbortController();
+    setHistoryReportCounts((prev) => ({ ...prev, isLoading: true }));
+
+    const run = async () => {
+      try {
+        const params = new URLSearchParams({
+          start: range.start.toISOString(),
+          end: range.endExclusive.toISOString(),
+        });
+        const res = await fetch(`/api/settings/export-history-stats?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setHistoryReportCounts((prev) => ({ ...prev, propositionsCount: null, transactionsCount: null, isLoading: false }));
+          return;
+        }
+        setHistoryReportCounts({
+          propositionsCount: typeof data?.propositionsCount === 'number' ? data.propositionsCount : null,
+          transactionsCount: typeof data?.transactionsCount === 'number' ? data.transactionsCount : null,
+          isLoading: false,
+        });
+      } catch {
+        if (controller.signal.aborted) return;
+        setHistoryReportCounts((prev) => ({ ...prev, propositionsCount: null, transactionsCount: null, isLoading: false }));
+      }
+    };
+
+    run();
+    return () => controller.abort();
+  }, [getHistoryReportRange]);
+
   const handleExportHistoryXlsx = async () => {
     if (isHistoryExportLoading) return;
+    const range = getHistoryReportRange();
+    if (!range) {
+      toast.error(
+        historyReportPeriod === 'custom'
+          ? 'Veuillez renseigner une période valide'
+          : 'Période invalide'
+      );
+      return;
+    }
     setIsHistoryExportLoading(true);
     const toastId = toast.loading('Génération du fichier Excel...');
     try {
-      const res = await fetch('/api/settings/export-history-xlsx');
+      const params = new URLSearchParams({
+        start: range.start.toISOString(),
+        end: range.endExclusive.toISOString(),
+      });
+      const res = await fetch(`/api/settings/export-history-xlsx?${params.toString()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast.error(data?.error || 'Export Excel impossible', { id: toastId });
@@ -1125,10 +1257,54 @@ export default function SettingsPage({
                       <p className="text-sm text-gray-500 mt-1">
                         Tableau récapitulatif de vos propositions et transactions, idéal pour votre comptabilité
                       </p>
-                      <p className="text-xs text-gray-500 mt-2">{propositions.length} propositions · {transactions.length} transactions</p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {historyReportCounts.isLoading
+                          ? 'Chargement...'
+                          : `${historyReportCounts.propositionsCount ?? '—'} propositions · ${historyReportCounts.transactionsCount ?? '—'} transactions`}
+                      </p>
                     </div>
                   </div>
-                  <div>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-gray-700">Période du rapport</label>
+                      <select
+                        value={historyReportPeriod}
+                        onChange={(e) => setHistoryReportPeriod(e.target.value as HistoryReportPeriod)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white"
+                      >
+                        <option value="current_month">Mois en cours</option>
+                        <option value="last_month">Mois dernier</option>
+                        <option value="last_3_months">3 derniers mois</option>
+                        <option value="last_6_months">6 derniers mois</option>
+                        <option value="current_year">Année en cours</option>
+                        <option value="last_year">Année dernière</option>
+                        <option value="custom">Personnaliser</option>
+                      </select>
+                    </div>
+
+                    {historyReportPeriod === 'custom' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-600">Du</label>
+                          <input
+                            type="date"
+                            value={historyReportCustomStart}
+                            onChange={(e) => setHistoryReportCustomStart(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-600">Au</label>
+                          <input
+                            type="date"
+                            value={historyReportCustomEnd}
+                            onChange={(e) => setHistoryReportCustomEnd(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <Button onClick={handleExportHistoryXlsx} disabled={isHistoryExportLoading} className="w-full">
                       {isHistoryExportLoading ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />

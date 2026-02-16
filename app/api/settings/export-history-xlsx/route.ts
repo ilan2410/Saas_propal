@@ -177,7 +177,7 @@ async function getStripeEnrichment(paymentIntentId: string): Promise<StripeEnric
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -189,6 +189,52 @@ export async function GET() {
 
   const serviceSupabase = createServiceClient();
 
+  const { searchParams } = new URL(request.url);
+  const startParam = searchParams.get('start');
+  const endParam = searchParams.get('end');
+
+  let startIso: string | null = null;
+  let endIso: string | null = null;
+
+  if (startParam || endParam) {
+    if (!startParam || !endParam) {
+      return NextResponse.json({ error: 'Paramètres de période invalides' }, { status: 400 });
+    }
+    const start = new Date(startParam);
+    const end = new Date(endParam);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start.getTime() >= end.getTime()) {
+      return NextResponse.json({ error: 'Paramètres de période invalides' }, { status: 400 });
+    }
+    startIso = start.toISOString();
+    endIso = end.toISOString();
+  }
+
+  let propositionsQuery = serviceSupabase
+    .from('propositions')
+    .select(
+      'id, template_id, created_at, exported_at, source_documents, generated_file_name, template:proposition_templates(nom, file_type)'
+    )
+    .eq('organization_id', user.id)
+    .order('created_at', { ascending: false });
+
+  let propositionsArchiveQuery = serviceSupabase
+    .from('propositions_archive')
+    .select('proposition_id, template_id, template_nom, template_type, created_at, exported_at, source_documents, generated_file_name')
+    .eq('organization_id', user.id)
+    .order('created_at', { ascending: false });
+
+  let transactionsQuery = serviceSupabase
+    .from('stripe_transactions')
+    .select('id, stripe_session_id, stripe_payment_intent_id, montant, credits_ajoutes, statut, created_at')
+    .eq('organization_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (startIso && endIso) {
+    propositionsQuery = propositionsQuery.gte('created_at', startIso).lt('created_at', endIso);
+    propositionsArchiveQuery = propositionsArchiveQuery.gte('created_at', startIso).lt('created_at', endIso);
+    transactionsQuery = transactionsQuery.gte('created_at', startIso).lt('created_at', endIso);
+  }
+
   const [
     { data: propositionsCurrent, error: propError },
     { data: propositionsArchived, error: archError },
@@ -196,26 +242,14 @@ export async function GET() {
     { data: transactions, error: txError },
     { data: organization, error: orgError },
   ] = await Promise.all([
-    serviceSupabase
-      .from('propositions')
-      .select('id, template_id, created_at, exported_at, source_documents, generated_file_name, template:proposition_templates(nom, file_type)')
-      .eq('organization_id', user.id)
-      .order('created_at', { ascending: false }),
-    serviceSupabase
-      .from('propositions_archive')
-      .select('proposition_id, template_id, template_nom, template_type, created_at, exported_at, source_documents, generated_file_name')
-      .eq('organization_id', user.id)
-      .order('created_at', { ascending: false }),
+    propositionsQuery,
+    propositionsArchiveQuery,
     serviceSupabase
       .from('proposition_templates')
       .select('id, nom, file_type, statut, created_at')
       .eq('organization_id', user.id)
       .order('created_at', { ascending: false }),
-    serviceSupabase
-      .from('stripe_transactions')
-      .select('id, stripe_session_id, stripe_payment_intent_id, montant, credits_ajoutes, statut, created_at')
-      .eq('organization_id', user.id)
-      .order('created_at', { ascending: false }),
+    transactionsQuery,
     serviceSupabase.from('organizations').select('tarif_par_proposition').eq('id', user.id).single(),
   ]);
 
