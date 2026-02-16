@@ -19,7 +19,7 @@ export default async function AdminCataloguePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Catalogue Global</h1>
           <p className="text-gray-500">Gérez les produits disponibles pour tous les clients</p>

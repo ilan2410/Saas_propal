@@ -197,11 +197,11 @@ export default async function CreditsPage() {
                 return (
                   <div
                     key={trans.id}
-                    className="group flex items-center justify-between gap-6 rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50/50 to-white p-5 transition-all hover:border-gray-300 hover:shadow-md"
+                    className="group flex flex-col sm:flex-row sm:items-center justify-between gap-6 rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50/50 to-white p-5 transition-all hover:border-gray-300 hover:shadow-md"
                   >
-                    <div className="flex flex-1 items-center gap-5">
+                    <div className="flex flex-1 items-start sm:items-center gap-5 w-full sm:w-auto">
                       {/* Date */}
-                      <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
+                      <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-gray-100 flex-shrink-0">
                         <span className="text-xs font-medium text-gray-500">
                           {new Date(trans.created_at).toLocaleDateString('fr-FR', { month: 'short' })}
                         </span>
@@ -211,8 +211,8 @@ export default async function CreditsPage() {
                       </div>
 
                       {/* Détails */}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                           <p className="text-base font-semibold text-gray-900">
                             Recharge de {formatCurrency(trans.montant)}
                           </p>
@@ -234,8 +234,8 @@ export default async function CreditsPage() {
                     </div>
 
                     {/* Crédits et bonus */}
-                    <div className="flex items-center gap-8">
-                      <div className="text-right">
+                    <div className="flex items-center justify-between sm:justify-end gap-8 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-4 sm:pt-0">
+                      <div className="text-left sm:text-right">
                         <p className="text-sm font-medium text-gray-500">Crédits</p>
                         <p className="mt-1 text-xl font-bold text-gray-900">
                           +{formatCurrency(trans.credits_ajoutes)}

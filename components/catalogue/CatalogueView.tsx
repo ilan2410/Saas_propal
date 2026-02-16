@@ -164,7 +164,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
       {/* Filters Bar */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4 md:space-y-0 md:flex md:items-center md:justify-between gap-4">
         {/* Search */}
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
@@ -177,12 +177,12 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
         {/* Filters & View Toggle */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-gray-500 hidden sm:block" />
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as CatalogueCategorie | 'all')}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 flex-1 sm:flex-none min-w-[140px]"
             >
               {categories.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -192,7 +192,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
             <select
               value={selectedSupplier}
               onChange={(e) => setSelectedSupplier(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 max-w-[150px]"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 flex-1 sm:flex-none min-w-[140px] max-w-[150px]"
             >
               <option value="all">Tous fournisseurs</option>
               {suppliers.map(s => (
@@ -203,7 +203,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
           <div className="h-6 w-px bg-gray-200 mx-2 hidden md:block" />
 
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-gray-100 rounded-lg p-1 ml-auto sm:ml-0">
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-md transition-all ${
@@ -268,10 +268,10 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
               }`}
             >
               {/* Card Content - Adapted for Grid/List */}
-              <div className={viewMode === 'list' ? 'flex-1 min-w-0 grid grid-cols-12 gap-4 items-center' : ''}>
+              <div className={viewMode === 'list' ? 'flex-1 min-w-0 grid grid-cols-1 md:grid-cols-12 gap-4 items-center' : ''}>
                 
                 {viewMode === 'list' && (
-                  <div className="col-span-1 flex justify-center">
+                  <div className="col-span-1 md:col-span-1 flex justify-start md:justify-center">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(p.id)}
@@ -282,7 +282,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                 )}
 
                 {/* Header / Main Info */}
-                <div className={viewMode === 'list' ? 'col-span-3 flex items-center gap-4' : 'flex items-start justify-between gap-4 mb-3'}>
+                <div className={viewMode === 'list' ? 'col-span-1 md:col-span-3 flex items-center gap-4' : 'flex items-start justify-between gap-4 mb-3'}>
                   {/* Image in Grid Mode */}
                   {viewMode === 'grid' && (
                     <div className="relative group">
@@ -352,7 +352,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                 </div>
 
                 {/* Details */}
-                <div className={viewMode === 'list' ? 'col-span-3' : ''}>
+                <div className={viewMode === 'list' ? 'col-span-1 md:col-span-3' : ''}>
                   {p.fournisseur && <p className="text-sm text-gray-600 mb-1">{p.fournisseur}</p>}
                   {viewMode === 'grid' && p.description && (
                     <p className="text-sm text-gray-600 line-clamp-3 mb-3">{p.description}</p>
@@ -362,7 +362,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                 {/* Price */}
                 <div className={
                   viewMode === 'list' 
-                    ? 'col-span-3 text-right' 
+                    ? 'col-span-1 md:col-span-3 text-left md:text-right' 
                     : 'flex items-center justify-between pt-3 border-t border-gray-100'
                 }>
                   <div className="text-sm text-gray-600">
@@ -377,7 +377,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
                 {/* Actions (List Mode) */}
                 {viewMode === 'list' && (
-                  <div className="col-span-2 flex justify-end gap-2">
+                  <div className="col-span-1 md:col-span-2 flex justify-end gap-2">
                     <Link
                       href={showHeader ? `/catalogue/${p.id}` : `/admin/catalogue/${p.id}`}
                       className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"
@@ -458,10 +458,10 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-white shadow-2xl border border-gray-200 rounded-full px-6 py-3 flex items-center gap-6 z-50 animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-white shadow-2xl border border-gray-200 rounded-2xl md:rounded-full px-4 md:px-6 py-3 flex flex-wrap justify-center items-center gap-3 md:gap-6 z-50 animate-in slide-in-from-bottom-4 w-[90%] md:w-auto max-w-lg">
           <div className="font-semibold text-gray-900 flex items-center gap-2">
             <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">{selectedIds.size}</span>
-            <span>sélectionné{selectedIds.size > 1 ? 's' : ''}</span>
+            <span className="hidden sm:inline">sélectionné{selectedIds.size > 1 ? 's' : ''}</span>
           </div>
           <div className="h-5 w-px bg-gray-200" />
           <button
@@ -470,7 +470,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
             className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
           >
             <Pencil className="w-4 h-4" />
-            Modifier
+            <span className="hidden sm:inline">Modifier</span>
           </button>
           <div className="h-5 w-px bg-gray-200" />
           <button
@@ -479,7 +479,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
             className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium transition-colors disabled:opacity-50"
           >
             <Trash2 className="w-4 h-4" />
-            Supprimer
+            <span className="hidden sm:inline">Supprimer</span>
           </button>
           <div className="h-5 w-px bg-gray-200" />
           <button

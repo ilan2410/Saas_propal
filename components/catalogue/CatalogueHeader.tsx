@@ -32,14 +32,14 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl }
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {!isAdmin && (
           <button
             onClick={() => setIsLibraryOpen(true)}
             className="px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm flex items-center gap-2"
           >
             <Library className="w-5 h-5 text-blue-600" />
-            Bibliothèque
+            <span className="hidden sm:inline">Bibliothèque</span>
           </button>
         )}
 
@@ -48,7 +48,7 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl }
           className="px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm flex items-center gap-2"
         >
           <Upload className="w-5 h-5" />
-          Importer
+          <span className="hidden sm:inline">Importer</span>
         </button>
 
         <Link
@@ -56,7 +56,8 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl }
           className="group px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-lg shadow-blue-500/30 flex items-center gap-2 hover:scale-105 active:scale-95 w-fit"
         >
           <Plus className="w-5 h-5" />
-          Ajouter un produit
+          <span className="hidden sm:inline">Ajouter un produit</span>
+          <span className="sm:hidden">Ajouter</span>
         </Link>
       </div>
 

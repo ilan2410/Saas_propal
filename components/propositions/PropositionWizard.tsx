@@ -105,8 +105,8 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
   return (
     <div className="space-y-8">
       {/* Steps Progress */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <nav aria-label="Progress">
+      <div className="bg-white rounded-lg border border-gray-200 p-4 md:p-6 overflow-x-auto">
+        <nav aria-label="Progress" className="min-w-[600px] md:min-w-0">
           <ol className="flex items-center justify-between">
             {STEPS.map((step, stepIdx) => (
               <li
