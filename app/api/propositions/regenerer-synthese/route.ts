@@ -41,7 +41,7 @@ Réponds UNIQUEMENT avec un JSON:
 }`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [
         {

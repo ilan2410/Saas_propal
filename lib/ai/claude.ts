@@ -19,7 +19,7 @@ export async function extractWithClaude(
   documentPaths: Array<{ path: string; type: string }>,
   fieldsToExtract: string[],
   customPrompt: string,
-  claudeModel: string = 'claude-3-5-sonnet-20241022'
+  claudeModel: string = process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6'
 ): Promise<ExtractionResult> {
   try {
     // Préparer les documents pour Claude
@@ -198,7 +198,7 @@ export async function extractDataFromDocuments(options: {
   
   try {
     const message = await anthropic.messages.create({
-      model: claude_model || 'claude-sonnet-4-5-20250929',
+      model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
       max_tokens: 8192,
       temperature: 0,
       messages: [

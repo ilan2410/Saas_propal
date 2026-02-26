@@ -423,7 +423,7 @@ IMPORTANT - GESTION DES SURCOÛTS:
 - Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
 - L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
 
-    const model = 'claude-haiku-4-5-20251001';
+    const model = process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-haiku-4-5-20251001';
 
     const message = await anthropic.messages.create({
       model,
