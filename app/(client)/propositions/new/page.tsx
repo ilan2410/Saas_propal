@@ -1,8 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
+import { PropositionPageTourTrigger } from '@/components/onboarding/PropositionPageTourTrigger';
+import type { Secteur } from '@/lib/onboarding/onboarding.types';
 
 export default async function NewPropositionPage() {
   const supabase = await createClient();
@@ -64,6 +67,11 @@ export default async function NewPropositionPage() {
 
   return (
     <div className="space-y-6">
+      {/* Tour guide trigger (activated via ?tour=proposition in URL) */}
+      <Suspense fallback={null}>
+        <PropositionPageTourTrigger secteur={secteur as Secteur} />
+      </Suspense>
+
       <Link
         href="/propositions"
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900"

@@ -53,6 +53,7 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl }
 
         <Link
           href={targetCreateUrl}
+          id="btn-add-product"
           className="group px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-lg shadow-blue-500/30 flex items-center gap-2 hover:scale-105 active:scale-95 w-fit"
         >
           <Plus className="w-5 h-5" />

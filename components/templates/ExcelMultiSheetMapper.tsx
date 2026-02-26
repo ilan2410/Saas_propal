@@ -321,7 +321,7 @@ export function ExcelMultiSheetMapper({
 
       {/* Ajouter une feuille */}
       {remainingFields.length > 0 && (
-        <div className="border border-gray-200 rounded-lg p-4">
+        <div id="excel-sheet-selector" className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 mb-3">
             Ajouter une feuille
           </h4>
@@ -407,6 +407,7 @@ export function ExcelMultiSheetMapper({
             </button>
           )}
           <button
+            id="btn-save-excel-template"
             onClick={handleComplete}
             disabled={sheetMappings.length === 0 && arrayMappings.length === 0}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

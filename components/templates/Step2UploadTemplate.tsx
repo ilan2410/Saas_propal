@@ -254,6 +254,13 @@ export function Step2UploadTemplate({
       mappings: [],
     });
 
+    // Notify onboarding tour of the selected file type
+    if (type === 'excel' || type === 'word') {
+      window.dispatchEvent(
+        new CustomEvent('template:file-type-selected', { detail: { fileType: type } })
+      );
+    }
+
     // Pour Excel, parser le fichier pour obtenir les feuilles
     if (type === 'excel') {
       setStep('parse-excel');
@@ -805,7 +812,7 @@ export function Step2UploadTemplate({
               </button>
             </div>
           ) : (
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-12">
+            <div id="upload-zone" className="border-2 border-dashed border-gray-300 rounded-lg p-12">
               <div className="text-center">
                 <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <div className="mb-4">
@@ -1271,7 +1278,7 @@ export function Step2UploadTemplate({
           </div>
 
           {/* Section champs simples avec meilleur exemple */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <div id="variable-list-panel" className="bg-white border border-gray-200 rounded-xl p-6">
             <h4 className="font-semibold text-gray-900 mb-4 text-lg flex items-center gap-2">
               <span className="text-2xl">📝</span>
               Champs simples (informations uniques)
@@ -1301,7 +1308,7 @@ export function Step2UploadTemplate({
             </div>
 
             {/* Liste des champs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div id="btn-copy-variable" className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {champsSimples.map((field) => {
                 const token = `{{${field}}}`;
                 const copied = copiedKeys[token] !== undefined;
@@ -1551,7 +1558,7 @@ export function Step2UploadTemplate({
           )}
 
           {/* Aperçu Word */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <div id="word-preview-panel" className="bg-white border border-gray-200 rounded-xl p-6">
             <h4 className="font-semibold text-gray-900 mb-4 text-lg flex items-center gap-2">
               <span className="text-2xl">👁️</span>
               Aperçu de votre document
@@ -1620,6 +1627,7 @@ export function Step2UploadTemplate({
                 </button>
               )}
               <button
+                id="btn-validate-template"
                 type="button"
                 onClick={() => handleSaveWordTemplate(false)}
                 disabled={hasCriticalValidationErrors}
@@ -1647,6 +1655,7 @@ export function Step2UploadTemplate({
       {step === 'map-sheets' && (
         <>
           {excelSheets.length > 0 && templateData.champs_actifs && templateData.champs_actifs.length > 0 ? (
+            <div id="excel-mapping-panel">
             <ExcelMultiSheetMapper
               sheets={excelSheets}
               fields={templateData.champs_actifs}
@@ -1659,6 +1668,7 @@ export function Step2UploadTemplate({
               onArrayMappingsChange={(arrayMappings) => updateExcelState({ arrayMappings })}
               onSave={onSave}
             />
+            </div>
           ) : (
             <div className="text-center py-12">
               <p className="text-gray-600 mb-4">Les données du fichier ne sont plus disponibles.</p>

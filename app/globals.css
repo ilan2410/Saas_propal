@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../styles/driver-override.css";
 
 :root {
   --background: #ffffff;

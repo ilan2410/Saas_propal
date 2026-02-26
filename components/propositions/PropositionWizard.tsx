@@ -174,46 +174,56 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
       {/* Step Content */}
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         {currentStep === 1 && (
-          <Step1SelectTemplate
-            templates={templates}
-            secteur={secteur}
-            propositionData={propositionData}
-            updatePropositionData={updatePropositionData}
-            onNext={nextStep}
-          />
+          <div id="step1-template-selector">
+            <Step1SelectTemplate
+              templates={templates}
+              secteur={secteur}
+              propositionData={propositionData}
+              updatePropositionData={updatePropositionData}
+              onNext={nextStep}
+            />
+          </div>
         )}
         {currentStep === 2 && (
-          <Step2UploadDocuments
-            propositionData={propositionData}
-            updatePropositionData={updatePropositionData}
-            onNext={nextStep}
-            onPrev={prevStep}
-          />
+          <div id="step2-upload-docs">
+            <Step2UploadDocuments
+              propositionData={propositionData}
+              updatePropositionData={updatePropositionData}
+              onNext={nextStep}
+              onPrev={prevStep}
+            />
+          </div>
         )}
         {currentStep === 3 && (
-          <Step3ExtractData
-            secteur={secteur}
-            propositionData={propositionData}
-            updatePropositionData={updatePropositionData}
-            onNext={nextStep}
-            onPrev={prevStep}
-          />
+          <div id="step3-extracted-data">
+            <Step3ExtractData
+              secteur={secteur}
+              propositionData={propositionData}
+              updatePropositionData={updatePropositionData}
+              onNext={nextStep}
+              onPrev={prevStep}
+            />
+          </div>
         )}
         {currentStep === 4 && (
-          <Step4EditData
-            secteur={secteur}
-            propositionData={propositionData}
-            updatePropositionData={updatePropositionData}
-            onNext={nextStep}
-            onPrev={prevStep}
-          />
+          <div id="step4-ai-suggestions">
+            <Step4EditData
+              secteur={secteur}
+              propositionData={propositionData}
+              updatePropositionData={updatePropositionData}
+              onNext={nextStep}
+              onPrev={prevStep}
+            />
+          </div>
         )}
         {currentStep === 5 && (
-          <Step5Generate
-            propositionData={propositionData}
-            onComplete={handleComplete}
-            onPrev={prevStep}
-          />
+          <div id="btn-generate-proposition">
+            <Step5Generate
+              propositionData={propositionData}
+              onComplete={handleComplete}
+              onPrev={prevStep}
+            />
+          </div>
         )}
       </div>
     </div>

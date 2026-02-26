@@ -17,6 +17,7 @@ import {
   Download
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
+import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
 
 export const revalidate = 0;
 
@@ -114,8 +115,21 @@ export default async function ClientDashboard() {
     };
   });
 
+  // Onboarding state
+  const onboardingCompleted = organization?.onboarding_completed ?? false;
+  const toursSeen: string[] = Array.isArray(organization?.onboarding_tours_seen)
+    ? organization.onboarding_tours_seen
+    : [];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
+      {/* Onboarding — welcome modal + restart button */}
+      <DashboardOnboarding
+        onboardingCompleted={onboardingCompleted}
+        organizationName={organization?.nom}
+        toursSeen={toursSeen}
+      />
+
       {/* Hero Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-8">
@@ -126,15 +140,15 @@ export default async function ClientDashboard() {
               </h1>
               <p className="text-gray-600 mt-2 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                {new Date().toLocaleDateString('fr-FR', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
+                {new Date().toLocaleDateString('fr-FR', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
                 })}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
               <Link
                 href="/templates"
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-all font-medium"

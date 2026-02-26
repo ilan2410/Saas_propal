@@ -262,8 +262,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="text-center">
+      <div id="template-step1-header" className="text-center">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
           <FileText className="w-8 h-8 text-white" />
         </div>

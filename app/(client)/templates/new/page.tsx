@@ -1,8 +1,11 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { TemplateWizard } from '@/components/templates/TemplateWizard';
+import { TemplatePageTourTrigger } from '@/components/onboarding/TemplatePageTourTrigger';
+import type { Secteur } from '@/lib/onboarding/onboarding.types';
 
 export const revalidate = 0;
 
@@ -113,6 +116,11 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
   return (
     <div className="space-y-6">
+      {/* Tour guide trigger (activated via ?tour=template in URL) */}
+      <Suspense fallback={null}>
+        <TemplatePageTourTrigger secteur={secteur as Secteur} />
+      </Suspense>
+
       {/* Header */}
       <div>
         <Link
@@ -129,7 +137,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       </div>
 
       {/* Wizard */}
-      <TemplateWizard 
+      <TemplateWizard
         defaultFields={organization?.champs_defaut || []}
         secteur={secteur}
         initialTemplate={{ prompt_template: promptForNewTemplate }}

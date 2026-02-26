@@ -96,6 +96,7 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
           <Link
             href="/catalogue"
             onClick={closeSidebar}
+            id="nav-catalogue"
             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
               pathname.startsWith('/catalogue') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
             }`}
@@ -129,6 +130,7 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
           <Link
             href="/settings"
             onClick={closeSidebar}
+            id="settings-branding"
             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
               pathname.startsWith('/settings') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
             }`}
