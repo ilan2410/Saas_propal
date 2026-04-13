@@ -12,7 +12,8 @@ import {
   Grid3x3,
   Link2,
   ChevronRight,
-  Info
+  Info,
+  ArrowUp
 } from 'lucide-react';
 import { TemplateData } from './TemplateWizard';
 import {
@@ -249,6 +250,10 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
   };
 
   const handleNext = () => {
+    if (isExpectedJsonOutOfSync) {
+      alert('Veuillez d\'abord cliquer sur "Mettre à jour la structure JSON attendue depuis les champs sélectionnés" avant de continuer.');
+      return;
+    }
     if (validateAndUpdateData()) {
       onNext();
     }
@@ -338,7 +343,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
             </button>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-amber-200">
+          <div id="update-json-structure" className="mt-4 pt-4 border-t border-amber-200">
             <UpdateExpectedJsonStructureButton
               promptTemplate={promptTemplateForActions}
               fields={allSelectedFieldsForJson}
@@ -649,6 +654,18 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
               }
               return null;
             })()}
+
+            <CustomFieldsEditor
+              secteur={secteur}
+              activeMerges={activeMerges}
+              selectedCategory="all"
+              reservedFieldPaths={getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, [])}
+              customFieldDefinitions={customFieldDefinitions}
+              legacyCustomFields={legacyCustomFields}
+              customCategories={customCategories}
+              customArrayCategories={customArrayCategories}
+              onChange={handleCustomFieldsChange}
+            />
           </div>
         )}
 
@@ -770,22 +787,42 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
         <div className="text-sm text-gray-500">
           Étape 1 sur 3
         </div>
-        <div className="flex gap-3">
-          {onSave && (
-            <button
-              onClick={handleSave}
-              className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold"
-            >
-              Sauvegarder
-            </button>
+        <div className="flex flex-col items-end gap-2">
+          {isExpectedJsonOutOfSync && (
+            <div className="flex items-center gap-2 text-xs text-orange-700 bg-orange-50 border border-orange-300 rounded-lg px-3 py-2">
+              <Info className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Mettez à jour la structure JSON avant de continuer</span>
+              <a
+                href="#update-json-structure"
+                className="ml-auto flex items-center gap-1 font-semibold text-orange-700 hover:text-orange-900 underline underline-offset-2 whitespace-nowrap"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+                Y aller
+              </a>
+            </div>
           )}
-          <button
-            onClick={handleNext}
-            className="group px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-lg shadow-blue-500/30 flex items-center gap-2 hover:scale-105 active:scale-95"
-          >
-            Continuer
-            <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
+          <div className="flex gap-3">
+            {onSave && (
+              <button
+                onClick={handleSave}
+                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold"
+              >
+                Sauvegarder
+              </button>
+            )}
+            <button
+              onClick={handleNext}
+              disabled={isExpectedJsonOutOfSync}
+              className={`group px-8 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all ${
+                isExpectedJsonOutOfSync
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95'
+              }`}
+            >
+              Continuer
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -57,7 +57,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Créer l'organization dans la BDD
+    // 2. Résoudre le tarif : priorité au tarif explicite du body, sinon platform_settings
+    let tarifFinal = body.tarif_par_proposition != null ? Number(body.tarif_par_proposition) : null;
+    if (tarifFinal === null || isNaN(tarifFinal)) {
+      const { data: settingRow } = await supabaseAdmin
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'tarif_par_proposition_defaut')
+        .limit(1)
+        .maybeSingle();
+      tarifFinal = settingRow ? Number(settingRow.value) : 5.0;
+    }
+
+    // 3. Créer l'organization dans la BDD
     const { data: org, error: orgError } = await supabaseAdmin
       .from('organizations')
       .insert({
@@ -68,7 +80,7 @@ export async function POST(request: NextRequest) {
         claude_model: body.claude_model || 'claude-3-7-sonnet-20250219',
         prompt_template: ensureChampsActifsPlaceholder(String(body.prompt_template || '')),
         champs_defaut: body.champs_defaut,
-        tarif_par_proposition: body.tarif_par_proposition,
+        tarif_par_proposition: tarifFinal,
         credits: 0,
         quotas: {
           tailleMaxDocumentMB: 50,

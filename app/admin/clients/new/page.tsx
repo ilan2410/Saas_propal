@@ -1,8 +1,22 @@
 import { OrganizationFormSimple } from '@/components/admin/OrganizationFormSimple';
+import { createServiceClient } from '@/lib/supabase/server';
 import { ArrowLeft, Building2 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function NewClientPage() {
+export const revalidate = 0;
+
+export default async function NewClientPage() {
+  const supabase = createServiceClient();
+  const { data: settingsRows } = await supabase
+    .from('platform_settings')
+    .select('key,value')
+    .eq('key', 'tarif_par_proposition_defaut')
+    .limit(1);
+
+  const tarifDefaut = settingsRows?.[0]
+    ? Number(settingsRows[0].value)
+    : 5.0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -29,7 +43,7 @@ export default function NewClientPage() {
         </div>
 
         {/* Form */}
-        <OrganizationFormSimple />
+        <OrganizationFormSimple defaultTarif={tarifDefaut} />
       </div>
     </div>
   );

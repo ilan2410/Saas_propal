@@ -24,7 +24,7 @@ const SECTEURS = [
   { value: 'mixte', label: 'Mixte (Téléphonie + Bureautique)', icon: '📱' },
 ];
 
-export function OrganizationFormSimple() {
+export function OrganizationFormSimple({ defaultTarif = 5.0 }: { defaultTarif?: number }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -35,7 +35,7 @@ export function OrganizationFormSimple() {
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
-      tarif_par_proposition: 5.0,
+      tarif_par_proposition: defaultTarif,
     },
   });
 

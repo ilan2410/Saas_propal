@@ -162,6 +162,7 @@ export function Step2UploadTemplate({
     errors: ValidationError[];
   } | null>(null);
   const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
+  const [collapsedAdvanced, setCollapsedAdvanced] = useState<Record<string, boolean>>({});
   
   const champsActifs = Array.isArray(templateData.champs_actifs) ? templateData.champs_actifs : [];
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
@@ -1354,30 +1355,9 @@ export function Step2UploadTemplate({
               </h3>
               
               <div className="bg-white rounded-lg p-4 mb-4">
-                <p className="text-gray-700 mb-3">
-                  Au lieu de copier chaque variable une par une, utilisez le 
-                  <strong className="text-purple-700"> &quot;bloc tableau&quot;</strong> pour créer des lignes automatiques :
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                  Dans Word, créez votre tableau avec une ligne de données (les en-têtes au-dessus). Puis cliquez sur <strong className="text-purple-700">&quot;Copier pour Word&quot;</strong> ci-dessous et collez dans la <strong>1ère cellule</strong> de votre ligne — le système remplira automatiquement une ligne par entrée.
                 </p>
-                
-                {/* Instructions visuelles */}
-                <ol className="space-y-3 text-sm text-gray-700 mb-4">
-                  <li className="flex gap-3">
-                    <span className="font-bold text-purple-600 flex-shrink-0">1.</span>
-                    <span>Dans Word, créez un tableau avec les en-têtes de colonnes (N°, Utilisateur, Forfait, etc.)</span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="font-bold text-purple-600 flex-shrink-0">2.</span>
-                    <span>Gardez <strong>UNE SEULE</strong> ligne de données (elle servira de modèle à répéter)</span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="font-bold text-purple-600 flex-shrink-0">3.</span>
-                    <span>Cliquez sur <strong>&quot;Copier le bloc tableau&quot;</strong> ci-dessous</span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="font-bold text-purple-600 flex-shrink-0">4.</span>
-                    <span>Dans la <strong>1ère cellule</strong> de votre ligne modèle, faites <strong>Ctrl+V</strong></span>
-                  </li>
-                </ol>
 
                 {/* Visuel avant/après */}
                 <div className="grid md:grid-cols-2 gap-4">
@@ -1457,99 +1437,140 @@ export function Step2UploadTemplate({
                   const rowKey = `row:${arr.id}`;
                   const rowCopied = copiedKeys[rowKey] !== undefined;
                   const rowFieldIds = arr.rowFields.map((rf) => rf.id);
-                  const rowExample = buildWordTableRowTsv(arr.id, rowFieldIds).split('\t').join(' | ');
+
+                  const tableValidation = validationResults?.tables.find((t) => t.arrayId === arr.id);
+                  const isAlreadyValid = tableValidation?.found && !tableValidation?.errors.some((e) => e.type === 'error') && (tableValidation?.missingFields.length ?? 0) === 0;
+                  const hasTableErrors = tableValidation?.errors.some((e) => e.type === 'error');
+                  const isAdvancedOpen = collapsedAdvanced[arr.id] === true;
 
                   return (
                     <div key={arr.id} className="border-2 border-purple-200 rounded-lg p-4 bg-white">
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-bold text-gray-900 text-lg">{arr.label || arr.id}</p>
-                          <p className="text-xs text-gray-500 font-mono">{arr.id}</p>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={rowFieldIds.length === 0}
-                          onClick={() => handleCopyTableRow(arr.id, rowFieldIds)}
-                          className={`text-sm px-4 py-2 border-2 rounded-lg font-medium transition-all ${
-                            rowCopied
-                              ? 'border-green-300 bg-green-50 text-green-700'
-                              : rowFieldIds.length === 0
-                                ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700'
-                          }`}
-                        >
-                          {rowCopied ? '✅ Bloc copié !' : '📋 Copier le bloc tableau'}
-                        </button>
+                      {/* Header */}
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <p className="font-bold text-gray-900 text-base">{arr.label || arr.id}</p>
+                        {isAlreadyValid ? (
+                          <span className="text-sm text-green-700 font-semibold bg-green-100 border border-green-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                            <Check className="w-4 h-4" />
+                            Déjà configuré
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={rowFieldIds.length === 0}
+                            onClick={() => handleCopyTableRow(arr.id, rowFieldIds)}
+                            className={`text-sm px-4 py-2 border-2 rounded-lg font-semibold transition-all ${
+                              rowCopied
+                                ? 'border-green-300 bg-green-50 text-green-700'
+                                : rowFieldIds.length === 0
+                                  ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                                  : hasTableErrors
+                                    ? 'border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700'
+                                    : 'border-purple-400 bg-purple-600 hover:bg-purple-700 text-white'
+                            }`}
+                          >
+                            {rowCopied ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Check className="w-4 h-4" />
+                                Copié !
+                              </span>
+                            ) : hasTableErrors ? (
+                              '🔄 Corriger'
+                            ) : (
+                              '📋 Copier pour Word'
+                            )}
+                          </button>
+                        )}
                       </div>
 
-                      {rowFieldIds.length > 0 && (
-                        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-                          <p className="text-xs text-purple-700 mb-1 font-medium">Exemple (à coller dans Word) :</p>
-                          <p className="text-xs text-purple-900 break-words font-mono bg-white p-2 rounded">{rowExample}</p>
-                        </div>
+                      {/* Instruction contextuelle */}
+                      {!isAlreadyValid && rowFieldIds.length > 0 && !rowCopied && (
+                        <p className="text-xs text-gray-500 mb-3">
+                          Collez dans la <strong>première cellule de données</strong> de votre tableau Word (Ctrl+V)
+                        </p>
+                      )}
+                      {rowCopied && (
+                        <p className="text-xs text-green-600 font-medium mb-3 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          Collez maintenant dans la 1ère cellule de votre tableau Word (Ctrl+V)
+                        </p>
                       )}
 
-                      <div className="space-y-2">
-                        <p className="text-sm font-semibold text-gray-700">Champs de colonne individuels (optionnel) :</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {arr.rowFields.length > 0 ? (
-                            arr.rowFields.map((rf) => {
-                              const rfTag = `{{${rf.id}}}`;
-                              const rfCopied = copiedKeys[rfTag] !== undefined;
-                              return (
-                                <div
-                                  key={rf.id}
-                                  className={`flex items-center justify-between border rounded px-3 py-2 ${
-                                    rfCopied ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                                  }`}
-                                >
-                                  <span className="text-sm font-mono text-gray-900">{rfTag}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyAndMark(rfTag, rfTag)}
-                                    className={`text-sm px-2 py-1 border rounded ${
-                                      rfCopied ? 'border-green-300 bg-white text-green-700' : 'border-gray-300 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    {rfCopied ? (
-                                      <span className="inline-flex items-center gap-1">
-                                        <Check className="w-4 h-4" />
-                                        Copié
-                                      </span>
-                                    ) : (
-                                      'Copier'
-                                    )}
-                                  </button>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <p className="text-sm text-gray-500 col-span-2">Aucun champ de ligne configuré pour ce tableau.</p>
-                          )}
-                        </div>
-                      </div>
+                      {/* Accordéon options avancées */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCollapsedAdvanced((prev) => ({ ...prev, [arr.id]: !prev[arr.id] }))
+                        }
+                        className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                      >
+                        {isAdvancedOpen ? '▴' : '▾'} Options avancées
+                      </button>
 
-                      {/* Boutons avancés */}
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => copyAndMark(startTag, startTag)}
-                          className={`text-xs px-2 py-1 border rounded ${
-                            startCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
-                          }`}
-                        >
-                          {startCopied ? '✓ Début copié' : "Copier la balise d'ouverture"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyAndMark(endTag, endTag)}
-                          className={`text-xs px-2 py-1 border rounded ${
-                            endCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
-                          }`}
-                        >
-                          {endCopied ? '✓ Fin copiée' : 'Copier la balise de fermeture'}
-                        </button>
-                      </div>
+                      {isAdvancedOpen && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+                          {arr.rowFields.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-2">Champs individuels :</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {arr.rowFields.map((rf) => {
+                                  const rfTag = `{{${rf.id}}}`;
+                                  const rfCopied = copiedKeys[rfTag] !== undefined;
+                                  return (
+                                    <div
+                                      key={rf.id}
+                                      className={`flex items-center justify-between border rounded px-3 py-2 ${
+                                        rfCopied ? 'border-green-300 bg-green-50' : 'border-gray-200'
+                                      }`}
+                                    >
+                                      <span className="text-xs font-mono text-gray-900">{rfTag}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => copyAndMark(rfTag, rfTag)}
+                                        className={`text-xs px-2 py-1 border rounded ${
+                                          rfCopied ? 'border-green-300 bg-white text-green-700' : 'border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        {rfCopied ? (
+                                          <span className="inline-flex items-center gap-1">
+                                            <Check className="w-3 h-3" />
+                                            Copié
+                                          </span>
+                                        ) : (
+                                          'Copier'
+                                        )}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 mb-2">Balises séparées :</p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => copyAndMark(startTag, startTag)}
+                                className={`text-xs px-2 py-1 border rounded ${
+                                  startCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
+                                }`}
+                              >
+                                {startCopied ? '✓ Début copié' : "Balise d'ouverture"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyAndMark(endTag, endTag)}
+                                className={`text-xs px-2 py-1 border rounded ${
+                                  endCopied ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 hover:bg-gray-50 text-gray-600'
+                                }`}
+                              >
+                                {endCopied ? '✓ Fin copiée' : 'Balise de fermeture'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
