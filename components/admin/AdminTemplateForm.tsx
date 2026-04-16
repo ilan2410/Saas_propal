@@ -11,6 +11,7 @@ import { UpdateExpectedJsonStructureButton } from '@/components/shared/UpdateExp
 import {
   ALL_FIELDS,
   CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
   getCategoryLabel,
   getQuestionsForSecteur,
   syncSimpleToAdvanced,
@@ -171,7 +172,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     file_size_mb: template?.file_size_mb || 0,
     file_config: template?.file_config || {},
     description: template?.description || '',
-    claude_model: template?.claude_model || 'claude-sonnet-4-5-20250929',
+    claude_model: template?.claude_model || DEFAULT_CLAUDE_MODEL,
     prompt_template: template?.prompt_template || initialPromptTemplate || DEFAULT_PROMPT,
   });
 

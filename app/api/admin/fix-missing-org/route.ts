@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 // POST /api/admin/fix-missing-org
 // Body: { userId: string, nom?: string, secteur?: string, credits?: number }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
         nom: nom || authUser.user.user_metadata?.organization_name || authUser.user.email?.split('@')[0] || 'Client',
         email: authUser.user.email,
         secteur: secteur || 'telephonie',
-        claude_model: 'claude-3-7-sonnet-20250219',
+        claude_model: DEFAULT_CLAUDE_MODEL,
         prompt_template: '',
         champs_defaut: [],
         tarif_par_proposition: 5,

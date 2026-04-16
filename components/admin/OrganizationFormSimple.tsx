@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Building2, Mail, Lock, Briefcase, CreditCard } from 'lucide-react';
+import { DEFAULT_CLAUDE_MODEL } from './organizationFormConfig';
 
 // Schéma de validation simplifié pour le client
 const clientSchema = z.object({
@@ -49,7 +50,7 @@ export function OrganizationFormSimple({ defaultTarif = 5.0 }: { defaultTarif?: 
         body: JSON.stringify({
           ...data,
           // Valeurs par défaut pour la config IA (sera configurée par template)
-          claude_model: 'claude-3-7-sonnet-20250219',
+          claude_model: DEFAULT_CLAUDE_MODEL,
           prompt_template: '',
           champs_defaut: [],
         }),

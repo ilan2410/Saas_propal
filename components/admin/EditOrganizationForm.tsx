@@ -8,6 +8,7 @@ import {
   ALL_FIELDS,
   SECTEURS,
   CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
   getCategoryLabel,
   getQuestionsForSecteur,
   syncSimpleToAdvanced,
@@ -50,7 +51,7 @@ export function EditOrganizationForm({ organization }: Props) {
     secteur: organization.secteur || 'telephonie',
     credits: organization.credits || 0,
     tarif_par_proposition: organization.tarif_par_proposition || 5,
-    claude_model: organization.claude_model || 'claude-3-7-sonnet-20250219',
+    claude_model: organization.claude_model || DEFAULT_CLAUDE_MODEL,
     prompt_template: organization.prompt_template || '',
   });
 

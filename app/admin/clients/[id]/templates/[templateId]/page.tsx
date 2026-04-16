@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, FileText, Settings, Download } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
+import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 export default async function TemplateDetailPage({
   params,
@@ -136,7 +137,7 @@ export default async function TemplateDetailPage({
             <div>
               <dt className="text-sm text-gray-600">Modèle Claude</dt>
               <dd className="text-sm font-medium text-gray-900 mt-1">
-                {template.claude_model || org.claude_model || 'claude-3-7-sonnet-20250219'}
+                {template.claude_model || org.claude_model || DEFAULT_CLAUDE_MODEL}
               </dd>
             </div>
             <div>

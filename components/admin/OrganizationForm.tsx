@@ -10,6 +10,8 @@ import { TestExtractionIA } from './TestExtractionIA';
 import {
   SIMPLE_QUESTIONS,
   ALL_FIELDS,
+  CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
   getCategoryLabel,
   getFieldsCount,
 } from './organizationFormConfig';
@@ -80,7 +82,7 @@ export function OrganizationForm() {
   } = useForm<OrganizationFormData>({
     resolver: zodResolver(organizationSchema),
     defaultValues: {
-      claude_model: 'claude-3-7-sonnet-20250219',
+      claude_model: DEFAULT_CLAUDE_MODEL,
       prompt_template: DEFAULT_PROMPT,
       tarif_par_proposition: 5.0,
     },
@@ -327,15 +329,14 @@ export function OrganizationForm() {
               {...register('claude_model')}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="claude-3-7-sonnet-20250219">
-                Claude 3.7 Sonnet (Recommandé - Meilleure extraction)
-              </option>
-              <option value="claude-3-5-sonnet-20241022">
-                Claude 3.5 Sonnet
-              </option>
+              {CLAUDE_MODELS.map((model) => (
+                <option key={model.value} value={model.value}>
+                  {model.label}
+                </option>
+              ))}
             </select>
             <p className="text-sm text-gray-500 mt-2">
-              Claude 3.7 Sonnet offre une précision d&apos;extraction supérieure pour les documents complexes.
+              Le premier modèle de la liste est utilisé par défaut et correspond toujours au plus récent configuré.
             </p>
           </div>
 
@@ -631,7 +632,7 @@ export function OrganizationForm() {
                   })
                 : [...selectedFields, ...customFields.filter(f => f.trim())]
             }
-            claudeModel={watch('claude_model') || 'claude-3-7-sonnet-20250219'}
+            claudeModel={watch('claude_model') || DEFAULT_CLAUDE_MODEL}
             promptTemplate={watch('prompt_template') || DEFAULT_PROMPT}
             secteur={secteur}
           />

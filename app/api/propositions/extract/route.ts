@@ -189,7 +189,7 @@ DOCUMENT(S):
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
-    const modelToUse = template.claude_model || organization.claude_model || 'claude-3-7-sonnet-20250219';
+    const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
 
     // Bureautique : aider l'extraction à produire un nombre cohérent de lignes (si l'utilisateur a indiqué N copieurs)
     if (organization.secteur === 'bureautique' && copieursCount > 1) {

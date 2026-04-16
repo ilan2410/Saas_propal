@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         nom: body.nom,
         email: body.email,
         secteur: body.secteur,
-        claude_model: body.claude_model || 'claude-3-7-sonnet-20250219',
+        claude_model: body.claude_model || DEFAULT_CLAUDE_MODEL,
         prompt_template: ensureChampsActifsPlaceholder(String(body.prompt_template || '')),
         champs_defaut: body.champs_defaut,
         tarif_par_proposition: tarifFinal,

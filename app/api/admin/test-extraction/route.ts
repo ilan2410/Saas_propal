@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       documents_urls,
       champs_actifs,
       prompt_template: prompt_template || '',
-      claude_model: claude_model || 'claude-3-7-sonnet-20250219',
+      claude_model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
     });
 
     console.log('Extraction réussie:', {

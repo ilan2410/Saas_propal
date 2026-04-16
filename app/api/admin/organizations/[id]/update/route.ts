@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 export async function PATCH(
   request: NextRequest,
@@ -48,7 +49,7 @@ export async function PATCH(
         secteur,
         credits: credits || 0,
         tarif_par_proposition: tarif_par_proposition || 5,
-        claude_model: claude_model || 'claude-3-7-sonnet-20250219',
+        claude_model: claude_model || DEFAULT_CLAUDE_MODEL,
         prompt_template: ensureChampsActifsPlaceholder(String(prompt_template || '')),
         champs_defaut: champs_defaut || [],
         updated_at: new Date().toISOString(),
