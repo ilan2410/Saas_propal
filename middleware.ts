@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Routes publiques (pas de vérification)
-  const publicRoutes = ['/login', '/register', '/auth/callback', '/'];
+  const publicRoutes = ['/login', '/register', '/auth/callback', '/forgot-password', '/reset-password', '/'];
   if (publicRoutes.includes(request.nextUrl.pathname)) {
     return supabaseResponse;
   }

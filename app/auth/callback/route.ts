@@ -4,13 +4,31 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const token_hash = requestUrl.searchParams.get('token_hash');
+  const type = requestUrl.searchParams.get('type') as 'email' | 'recovery' | 'invite' | 'magiclink' | null;
+  const next = requestUrl.searchParams.get('next');
 
-  if (!code) {
+  const supabase = await createClient();
+
+  if (token_hash && type) {
+    const { error } = await supabase.auth.verifyOtp({ token_hash, type });
+    if (error) {
+      console.error('Erreur verifyOtp:', error);
+      return NextResponse.redirect(new URL('/login?error=invalid_token', request.url));
+    }
+  } else if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      console.error('Erreur exchangeCodeForSession:', error);
+      return NextResponse.redirect(new URL('/login?error=invalid_code', request.url));
+    }
+  } else {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const supabase = await createClient();
-  await supabase.auth.exchangeCodeForSession(code);
+  if (next) {
+    return NextResponse.redirect(new URL(next, request.url));
+  }
 
   const {
     data: { user },

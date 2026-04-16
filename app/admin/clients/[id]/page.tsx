@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, CreditCard, FileText, BarChart, Plus, Settings, Eye } from 'lucide-react';
+import { AdminClientActions } from '@/components/admin/AdminClientActions';
 import {
   formatCurrency,
   formatDate,
@@ -373,6 +374,17 @@ export default async function ClientDetailPage({
           </table>
         </div>
       </div>
+      {/* Gestion du compte */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900">Gestion du compte</h2>
+          <p className="text-sm text-gray-600 mt-1">Mot de passe et suppression du client</p>
+        </div>
+        <div className="p-6">
+          <AdminClientActions clientId={id} clientName={org.nom} />
+        </div>
+      </div>
+
       </div>
     </div>
   );
