@@ -62,12 +62,43 @@ export default async function ResumePropositionPage({
   const dataToEdit: Record<string, unknown> =
     dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw) ? (dataRaw as Record<string, unknown>) : {};
 
+  // Déduire l'étape à partir des données réellement disponibles en base
+  // (plus fiable que current_step seul, qui peut ne pas refléter l'état exact)
+  const hasExtractedData =
+    proposition.extracted_data &&
+    typeof proposition.extracted_data === 'object' &&
+    !Array.isArray(proposition.extracted_data) &&
+    Object.keys(proposition.extracted_data as Record<string, unknown>).length > 0;
+  const hasFilledData =
+    proposition.filled_data &&
+    typeof proposition.filled_data === 'object' &&
+    !Array.isArray(proposition.filled_data) &&
+    Object.keys(proposition.filled_data as Record<string, unknown>).length > 0;
+  const hasSuggestions = !!proposition.suggestions_generees || !!proposition.suggestions_editees;
+  const hasDocuments = documents_urls.length > 0;
+
+  let inferredStep = 1;
+  if (hasSuggestions) {
+    inferredStep = 5;
+  } else if (hasExtractedData || hasFilledData) {
+    inferredStep = 4;
+  } else if (hasDocuments) {
+    inferredStep = 3;
+  } else if (proposition.template_id) {
+    inferredStep = 2;
+  }
+
+  const persistedStep = Number(proposition.current_step || 0);
+  // On prend le max entre l'étape persistée et l'étape déduite afin de ne jamais
+  // renvoyer l'utilisateur en arrière alors que les données sont déjà présentes.
+  const baseStep = Math.max(inferredStep, persistedStep || 1);
+
   const stepParam = resolvedSearchParams?.step;
   const stepRaw = Array.isArray(stepParam) ? stepParam[0] : stepParam;
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
   const initialStep = Math.max(
     1,
-    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : Number(proposition.current_step || 1))
+    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
   );
 
   return (
