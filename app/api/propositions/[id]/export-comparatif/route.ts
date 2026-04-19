@@ -188,6 +188,16 @@ export async function POST(
     const footerText = sp.footer_text || org?.pdf_footer_text || `Généré par PropoBoost pour ${companyName}`;
     const primaryColor = sp.primary_color;
     const outputFormat = sp.output_format === 'word' ? 'word' : 'pdf';
+    const logoSize = sp.logo_size;
+    const logoPosition = sp.logo_position;
+    const titleText = sp.title_text;
+    const titleSize = sp.title_size;
+    const titleColor = sp.title_color;
+    const subtitleText = sp.subtitle_text;
+    const subtitleSize = sp.subtitle_size;
+    const subtitleColor = sp.subtitle_color;
+    const titleAlignment = sp.title_alignment;
+    const subtitleAlignment = sp.subtitle_alignment;
 
     const safeFileBase = `comparatif-telecom-${(resolvedClientName || 'client').replace(/[^a-zA-Z0-9-_]/g, '_')}`;
 
@@ -227,6 +237,16 @@ export async function POST(
       footerText,
       companyName,
       primaryColor,
+      logoSize,
+      logoPosition,
+      titleText,
+      titleSize,
+      titleColor,
+      subtitleText,
+      subtitleSize,
+      subtitleColor,
+      titleAlignment,
+      subtitleAlignment,
     });
 
     console.log('🟢 [PDF Export] PDF généré, taille:', pdfBytes.length, 'bytes');

@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, PageSizes, PDFPage, PDFFont, RGB } from 'pdf-lib';
-import { SuggestionsGenerees, Suggestion } from '@/types';
+import { SuggestionsGenerees, Suggestion, SpLogoSize, SpLogoPosition, SpTextAlignment } from '@/types';
 
 interface GeneratorOptions {
   suggestions: SuggestionsGenerees;
@@ -8,11 +8,52 @@ interface GeneratorOptions {
   footerText?: string;
   companyName?: string;
   primaryColor?: string; // hex #RRGGBB
+  logoSize?: SpLogoSize;
+  logoPosition?: SpLogoPosition;
+  titleText?: string;
+  titleSize?: number;
+  titleColor?: string;
+  subtitleText?: string;
+  subtitleSize?: number;
+  subtitleColor?: string;
+  titleAlignment?: SpTextAlignment;
+  subtitleAlignment?: SpTextAlignment;
 }
 
 // Couleur primaire par défaut (équivalent de rgb(0.05, 0.25, 0.45))
 export const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 export const DEFAULT_SP_FOOTER_PREFIX = 'Document généré par';
+export const DEFAULT_SP_TITLE_TEXT = 'ANALYSE COMPARATIVE';
+export const DEFAULT_SP_SUBTITLE_TEXT = 'Optimisation des services telecoms';
+export const DEFAULT_SP_TITLE_SIZE = 32;
+export const DEFAULT_SP_SUBTITLE_SIZE = 16;
+
+function logoDims(size: SpLogoSize | undefined): { maxW: number; maxH: number } {
+  switch (size) {
+    case 'small':
+      return { maxW: 80, maxH: 40 };
+    case 'large':
+      return { maxW: 200, maxH: 100 };
+    case 'medium':
+    default:
+      return { maxW: 140, maxH: 70 };
+  }
+}
+
+function fitLogo(
+  img: { width: number; height: number },
+  maxW: number,
+  maxH: number
+): { w: number; h: number } {
+  const ratio = img.width / img.height;
+  let h = maxH;
+  let w = h * ratio;
+  if (w > maxW) {
+    w = maxW;
+    h = w / ratio;
+  }
+  return { w, h };
+}
 
 function hexToRgb(hex: string): RGB {
   try {
@@ -416,7 +457,17 @@ export async function generateComparatifPdf({
   logoUrl, 
   footerText,
   companyName = 'PropoBoost',
-  primaryColor
+  primaryColor,
+  logoSize,
+  logoPosition,
+  titleText,
+  titleSize,
+  titleColor,
+  subtitleText,
+  subtitleSize,
+  subtitleColor,
+  titleAlignment,
+  subtitleAlignment,
 }: GeneratorOptions): Promise<Uint8Array> {
   const colors = buildColors(primaryColor);
   const pdfDoc = await PDFDocument.create();
@@ -451,52 +502,151 @@ export async function generateComparatifPdf({
     typeof clientName === 'string' && clientName.trim() ? clientName.trim() : 'Client';
   const safeClientName = sanitizePdfText(resolvedClientName) || 'Client';
 
+  // Résolution des valeurs de personnalisation
+  const resolvedTitleText = sanitizePdfText(titleText || DEFAULT_SP_TITLE_TEXT) || DEFAULT_SP_TITLE_TEXT;
+  const resolvedSubtitleText = subtitleText !== undefined
+    ? sanitizePdfText(subtitleText)
+    : DEFAULT_SP_SUBTITLE_TEXT;
+  const resolvedTitleSize = Math.max(10, Math.min(60, titleSize || DEFAULT_SP_TITLE_SIZE));
+  const resolvedSubtitleSize = Math.max(8, Math.min(40, subtitleSize || DEFAULT_SP_SUBTITLE_SIZE));
+  const resolvedTitleColor = titleColor ? hexToRgb(titleColor) : colors.white;
+  const resolvedSubtitleColor = subtitleColor ? hexToRgb(subtitleColor) : rgb(0.8, 0.9, 1);
+  const resolvedLogoPosition: SpLogoPosition = logoPosition || 'right';
+  const resolvedTitleAlignment: SpTextAlignment = titleAlignment || 'left';
+  const resolvedSubtitleAlignment: SpTextAlignment = subtitleAlignment || resolvedTitleAlignment;
+  const resolvedFooterText = footerText || `Document genere par ${companyName}`;
+
   // ============================================
   // PAGE 1 - COUVERTURE
   // ============================================
   const page1 = pdfDoc.addPage([width, height]);
-  
-  // Bandeau supérieur
-  drawRoundedRect(page1, 0, height - 120, width, 120, colors.primary);
 
-  // Logo optionnel (en haut à droite du bandeau)
+  // Dimensions logo
+  const { maxW: logoMaxW, maxH: logoMaxH } = logoDims(logoSize);
+  const logoDraw = embeddedLogo ? fitLogo(embeddedLogo, logoMaxW, logoMaxH) : { w: 0, h: 0 };
+
+  // Hauteur du bandeau adaptative selon la position et la taille du logo
+  const titleBlockHeight = resolvedTitleSize + 8 + (resolvedSubtitleText ? resolvedSubtitleSize : 0);
+  const sideBannerHeight = Math.max(120, logoDraw.h + 50, titleBlockHeight + 50);
+  const stackedBannerHeight = Math.max(
+    140,
+    logoDraw.h + titleBlockHeight + 50
+  );
+  const bannerHeight =
+    embeddedLogo && (resolvedLogoPosition === 'above' || resolvedLogoPosition === 'below' || resolvedLogoPosition === 'center')
+      ? stackedBannerHeight
+      : sideBannerHeight;
+  const bannerTop = height;
+  const bannerBottom = height - bannerHeight;
+
+  // Bandeau supérieur
+  drawRoundedRect(page1, 0, bannerBottom, width, bannerHeight, colors.primary);
+
+  // Calcul des positions (titre + sous-titre + logo)
+  const titleWidth = helveticaBold.widthOfTextAtSize(resolvedTitleText, resolvedTitleSize);
+  const subtitleWidth = resolvedSubtitleText
+    ? helvetica.widthOfTextAtSize(resolvedSubtitleText, resolvedSubtitleSize)
+    : 0;
+
+  let titleX = margins.left;
+  let titleY = bannerTop - 50 - resolvedTitleSize * 0.3;
+  let subtitleX = margins.left;
+  let subtitleY = titleY - (resolvedTitleSize * 0.4) - 12;
+  let logoX = width - margins.right - logoDraw.w;
+  let logoY = bannerTop - 25 - logoDraw.h;
+
   if (embeddedLogo) {
-    const maxLogoH = 70;
-    const maxLogoW = 140;
-    const ratio = embeddedLogo.width / embeddedLogo.height;
-    let drawH = maxLogoH;
-    let drawW = drawH * ratio;
-    if (drawW > maxLogoW) {
-      drawW = maxLogoW;
-      drawH = drawW / ratio;
+    switch (resolvedLogoPosition) {
+      case 'left': {
+        logoX = margins.left;
+        logoY = bannerTop - (bannerHeight / 2) - (logoDraw.h / 2);
+        titleX = margins.left + logoDraw.w + 20;
+        subtitleX = titleX;
+        break;
+      }
+      case 'center': {
+        logoX = (width - logoDraw.w) / 2;
+        logoY = bannerTop - 20 - logoDraw.h;
+        titleX = (width - titleWidth) / 2;
+        titleY = logoY - 20 - resolvedTitleSize * 0.3;
+        subtitleX = (width - subtitleWidth) / 2;
+        subtitleY = titleY - (resolvedTitleSize * 0.4) - 10;
+        break;
+      }
+      case 'above': {
+        logoX = margins.left;
+        logoY = bannerTop - 20 - logoDraw.h;
+        titleY = logoY - 20 - resolvedTitleSize * 0.3;
+        subtitleY = titleY - (resolvedTitleSize * 0.4) - 10;
+        break;
+      }
+      case 'below': {
+        titleY = bannerTop - 40 - resolvedTitleSize * 0.3;
+        subtitleY = titleY - (resolvedTitleSize * 0.4) - 10;
+        logoX = margins.left;
+        logoY = subtitleY - 15 - logoDraw.h;
+        break;
+      }
+      case 'right':
+      default: {
+        logoX = width - margins.right - logoDraw.w;
+        logoY = bannerTop - (bannerHeight / 2) - (logoDraw.h / 2);
+        break;
+      }
     }
+
     page1.drawImage(embeddedLogo.image, {
-      x: width - margins.right - drawW,
-      y: height - 25 - drawH,
-      width: drawW,
-      height: drawH,
+      x: logoX,
+      y: logoY,
+      width: logoDraw.w,
+      height: logoDraw.h,
     });
   }
 
+  // Application de l'alignement horizontal demandé pour le titre et le sous-titre
+  // On détermine la zone de texte disponible selon la position du logo, puis on
+  // recalcule titleX/subtitleX en fonction de l'alignement choisi.
+  {
+    let textLeft = margins.left;
+    let textRight = width - margins.right;
+    if (embeddedLogo) {
+      if (resolvedLogoPosition === 'left') {
+        textLeft = logoX + logoDraw.w + 20;
+      } else if (resolvedLogoPosition === 'right') {
+        textRight = logoX - 20;
+      }
+    }
+    const regionWidth = Math.max(0, textRight - textLeft);
+    const applyAlign = (textW: number, align: SpTextAlignment): number => {
+      if (align === 'center') return textLeft + Math.max(0, (regionWidth - textW) / 2);
+      if (align === 'right') return textRight - textW;
+      return textLeft;
+    };
+    titleX = applyAlign(titleWidth, resolvedTitleAlignment);
+    subtitleX = applyAlign(subtitleWidth, resolvedSubtitleAlignment);
+  }
+
   // Titre principal
-  page1.drawText('ANALYSE COMPARATIVE', {
-    x: margins.left,
-    y: height - 70,
-    size: 32,
+  page1.drawText(resolvedTitleText, {
+    x: titleX,
+    y: titleY,
+    size: resolvedTitleSize,
     font: helveticaBold,
-    color: colors.white,
-  });
-  
-  page1.drawText('Optimisation des services telecoms', {
-    x: margins.left,
-    y: height - 100,
-    size: 16,
-    font: helvetica,
-    color: rgb(0.8, 0.9, 1),
+    color: resolvedTitleColor,
   });
 
+  if (resolvedSubtitleText) {
+    page1.drawText(resolvedSubtitleText, {
+      x: subtitleX,
+      y: subtitleY,
+      size: resolvedSubtitleSize,
+      font: helvetica,
+      color: resolvedSubtitleColor,
+    });
+  }
+
   // Bloc client
-  let yPos = height - 180;
+  let yPos = bannerBottom - 60;
   
   drawRoundedRect(page1, margins.left, yPos - 80, contentWidth, 90, colors.lightGray);
   
@@ -529,8 +679,8 @@ export async function generateComparatifPdf({
     color: colors.darkGray,
   });
 
-  // Résumé chiffré - 3 blocs
-  yPos = height - 320;
+  // Résumé chiffré - 3 blocs (positionné dynamiquement sous le bloc client)
+  yPos = bannerBottom - 200;
   const blockWidth = (contentWidth - 20) / 3;
   
   // Bloc 1 - Coût actuel
@@ -667,9 +817,9 @@ export async function generateComparatifPdf({
     yPos -= 6;
   }
 
-  // Footer page 1
+  // Footer page 1 (identique aux autres pages)
   drawRoundedRect(page1, 0, 0, width, 40, colors.lightGray);
-  page1.drawText(sanitizePdfText(`Document genere par ${companyName}`), {
+  page1.drawText(sanitizePdfText(resolvedFooterText), {
     x: margins.left,
     y: 15,
     size: 9,

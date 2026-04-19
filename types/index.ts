@@ -73,12 +73,30 @@ export interface OrganizationPreferences {
 
 export type SpOutputFormat = 'pdf' | 'word';
 
+export type SpLogoSize = 'small' | 'medium' | 'large';
+export type SpLogoPosition = 'left' | 'right' | 'center' | 'above' | 'below';
+export type SpTextAlignment = 'left' | 'center' | 'right';
+
 export interface SpCustomization {
   logo_url?: string;
+  /** @deprecated conservé pour rétro-compatibilité, plus modifiable depuis l'UI */
   company_name?: string;
   primary_color?: string; // format hex #RRGGBB
   footer_text?: string;
   output_format?: SpOutputFormat;
+  // Personnalisation du logo
+  logo_size?: SpLogoSize;
+  logo_position?: SpLogoPosition; // position relative au titre
+  // Personnalisation du titre
+  title_text?: string;
+  title_size?: number; // en points
+  title_color?: string; // hex #RRGGBB
+  title_alignment?: SpTextAlignment; // alignement horizontal du titre
+  // Personnalisation du sous-titre
+  subtitle_text?: string;
+  subtitle_size?: number; // en points
+  subtitle_color?: string; // hex #RRGGBB
+  subtitle_alignment?: SpTextAlignment; // alignement horizontal du sous-titre
 }
 
 // Template de proposition

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
@@ -98,6 +98,102 @@ function startOfYear(d: Date): Date {
   return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
 }
 
+// Aperçu du bandeau SP (réplique simplifiée du PDF)
+function SpPreviewBanner({
+  primaryColor,
+  logoUrl,
+  logoPosition,
+  logoSize,
+  titleText,
+  titleColor,
+  titleAlignment,
+  subtitleText,
+  subtitleColor,
+  subtitleAlignment,
+}: {
+  primaryColor: string;
+  logoUrl?: string;
+  logoPosition: SpLogoPosition;
+  logoSize: SpLogoSize;
+  titleText: string;
+  titleColor: string;
+  titleAlignment: SpTextAlignment;
+  subtitleText: string;
+  subtitleColor: string;
+  subtitleAlignment: SpTextAlignment;
+}) {
+  const alignToTextClass = (a: SpTextAlignment) =>
+    a === 'center' ? 'text-center' : a === 'right' ? 'text-right' : 'text-left';
+  const logoHeight =
+    logoSize === 'small' ? 24 : logoSize === 'large' ? 52 : 36;
+  // eslint-disable-next-line @next/next/no-img-element
+  const logo = logoUrl ? (
+    <img
+      src={logoUrl}
+      alt="logo"
+      style={{ height: `${logoHeight}px` }}
+      className="object-contain bg-white/10 rounded px-1"
+    />
+  ) : null;
+
+  const titleNode = (
+    <div className="leading-tight w-full" style={{ color: titleColor }}>
+      <div className={`font-bold text-lg truncate ${alignToTextClass(titleAlignment)}`}>{titleText}</div>
+      {subtitleText && (
+        <div
+          className={`text-xs mt-0.5 truncate ${alignToTextClass(subtitleAlignment)}`}
+          style={{ color: subtitleColor }}
+        >
+          {subtitleText}
+        </div>
+      )}
+    </div>
+  );
+
+  let layout;
+  if (!logo) {
+    layout = <div className="p-4" style={{ backgroundColor: primaryColor }}>{titleNode}</div>;
+  } else if (logoPosition === 'left') {
+    layout = (
+      <div className="p-4 flex items-center gap-3" style={{ backgroundColor: primaryColor }}>
+        {logo}
+        <div className="flex-1 min-w-0">{titleNode}</div>
+      </div>
+    );
+  } else if (logoPosition === 'center') {
+    layout = (
+      <div className="p-4 flex flex-col items-center gap-2" style={{ backgroundColor: primaryColor }}>
+        {logo}
+        <div className="text-center">{titleNode}</div>
+      </div>
+    );
+  } else if (logoPosition === 'above') {
+    layout = (
+      <div className="p-4 flex flex-col gap-2" style={{ backgroundColor: primaryColor }}>
+        {logo}
+        {titleNode}
+      </div>
+    );
+  } else if (logoPosition === 'below') {
+    layout = (
+      <div className="p-4 flex flex-col gap-2" style={{ backgroundColor: primaryColor }}>
+        {titleNode}
+        {logo}
+      </div>
+    );
+  } else {
+    // right (default)
+    layout = (
+      <div className="p-4 flex items-center justify-between gap-3" style={{ backgroundColor: primaryColor }}>
+        <div className="flex-1 min-w-0">{titleNode}</div>
+        {logo}
+      </div>
+    );
+  }
+
+  return layout;
+}
+
 export default function SettingsPage({ 
   organization, 
   userEmail, 
@@ -165,19 +261,43 @@ export default function SettingsPage({
   const defaultFooterText =
     organization.pdf_footer_text || `Généré par PropoBoost pour ${defaultCompanyName || 'Organisation'}`;
   const defaultLogoUrl = organization.pdf_header_logo_url || organization.logo_url || '';
+  const DEFAULT_SP_TITLE_TEXT = 'ANALYSE COMPARATIVE';
+  const DEFAULT_SP_SUBTITLE_TEXT = 'Optimisation des services télécoms';
+  const DEFAULT_SP_TITLE_COLOR = '#FFFFFF';
+  const DEFAULT_SP_SUBTITLE_COLOR = '#CCE5FF';
+  const DEFAULT_SP_TITLE_SIZE = 32;
+  const DEFAULT_SP_SUBTITLE_SIZE = 16;
   const initialSp: SpCustomization = organization.preferences?.sp_customization || {};
   const [spCustom, setSpCustom] = useState<{
     logo_url: string;
-    company_name: string;
     primary_color: string;
     footer_text: string;
     output_format: SpOutputFormat;
+    logo_size: SpLogoSize;
+    logo_position: SpLogoPosition;
+    title_text: string;
+    title_size: number;
+    title_color: string;
+    title_alignment: SpTextAlignment;
+    subtitle_text: string;
+    subtitle_size: number;
+    subtitle_color: string;
+    subtitle_alignment: SpTextAlignment;
   }>({
     logo_url: initialSp.logo_url ?? defaultLogoUrl,
-    company_name: initialSp.company_name ?? defaultCompanyName,
     primary_color: initialSp.primary_color ?? DEFAULT_SP_PRIMARY_HEX,
     footer_text: initialSp.footer_text ?? defaultFooterText,
     output_format: initialSp.output_format ?? 'pdf',
+    logo_size: initialSp.logo_size ?? 'medium',
+    logo_position: initialSp.logo_position ?? 'right',
+    title_text: initialSp.title_text ?? DEFAULT_SP_TITLE_TEXT,
+    title_size: initialSp.title_size ?? DEFAULT_SP_TITLE_SIZE,
+    title_color: initialSp.title_color ?? DEFAULT_SP_TITLE_COLOR,
+    title_alignment: initialSp.title_alignment ?? 'left',
+    subtitle_text: initialSp.subtitle_text ?? DEFAULT_SP_SUBTITLE_TEXT,
+    subtitle_size: initialSp.subtitle_size ?? DEFAULT_SP_SUBTITLE_SIZE,
+    subtitle_color: initialSp.subtitle_color ?? DEFAULT_SP_SUBTITLE_COLOR,
+    subtitle_alignment: initialSp.subtitle_alignment ?? 'left',
   });
   const [isSpSaving, setIsSpSaving] = useState(false);
 
@@ -661,14 +781,32 @@ export default function SettingsPage({
       toast.error('La couleur doit être au format hexadécimal (#RRGGBB)');
       return;
     }
+    // Validation couleurs titre/sous-titre
+    if (!/^#[0-9a-fA-F]{6}$/.test(spCustom.title_color)) {
+      toast.error('La couleur du titre doit être au format hexadécimal (#RRGGBB)');
+      return;
+    }
+    if (!/^#[0-9a-fA-F]{6}$/.test(spCustom.subtitle_color)) {
+      toast.error('La couleur du sous-titre doit être au format hexadécimal (#RRGGBB)');
+      return;
+    }
     setIsSpSaving(true);
     try {
       const payload: SpCustomization = {
         logo_url: spCustom.logo_url || undefined,
-        company_name: spCustom.company_name || undefined,
         primary_color: spCustom.primary_color,
         footer_text: spCustom.footer_text || undefined,
         output_format: spCustom.output_format,
+        logo_size: spCustom.logo_size,
+        logo_position: spCustom.logo_position,
+        title_text: spCustom.title_text || undefined,
+        title_size: spCustom.title_size,
+        title_color: spCustom.title_color,
+        title_alignment: spCustom.title_alignment,
+        subtitle_text: spCustom.subtitle_text,
+        subtitle_size: spCustom.subtitle_size,
+        subtitle_color: spCustom.subtitle_color,
+        subtitle_alignment: spCustom.subtitle_alignment,
       };
       const res = await fetch('/api/settings/update-preferences', {
         method: 'PATCH',
@@ -688,10 +826,19 @@ export default function SettingsPage({
   const handleResetSpCustomization = () => {
     setSpCustom({
       logo_url: defaultLogoUrl,
-      company_name: defaultCompanyName,
       primary_color: DEFAULT_SP_PRIMARY_HEX,
       footer_text: defaultFooterText,
       output_format: 'pdf',
+      logo_size: 'medium',
+      logo_position: 'right',
+      title_text: DEFAULT_SP_TITLE_TEXT,
+      title_size: DEFAULT_SP_TITLE_SIZE,
+      title_color: DEFAULT_SP_TITLE_COLOR,
+      title_alignment: 'left',
+      subtitle_text: DEFAULT_SP_SUBTITLE_TEXT,
+      subtitle_size: DEFAULT_SP_SUBTITLE_SIZE,
+      subtitle_color: DEFAULT_SP_SUBTITLE_COLOR,
+      subtitle_alignment: 'left',
     });
     toast.info('Valeurs par défaut restaurées (pensez à enregistrer)');
   };
@@ -1631,16 +1778,52 @@ export default function SettingsPage({
                   </div>
                 </div>
 
-                {/* Nom entreprise */}
+                {/* Taille du logo */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l&apos;entreprise (affiché dans la SP)</label>
-                  <input
-                    type="text"
-                    value={spCustom.company_name}
-                    onChange={(e) => setSpCustom({ ...spCustom, company_name: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder={defaultCompanyName || 'Nom affiché sur le document'}
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Taille du logo</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['small', 'medium', 'large'] as SpLogoSize[]).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setSpCustom({ ...spCustom, logo_size: size })}
+                        className={`p-2 rounded-md border-2 text-sm font-medium transition-all ${
+                          spCustom.logo_size === size
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        {size === 'small' ? 'Petit' : size === 'medium' ? 'Moyen' : 'Grand'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Position du logo */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Position du logo (par rapport au titre)</label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {([
+                      { id: 'left', label: 'Gauche' },
+                      { id: 'right', label: 'Droite' },
+                      { id: 'above', label: 'Dessus' },
+                      { id: 'below', label: 'Dessous' },
+                      { id: 'center', label: 'Centré' },
+                    ] as Array<{ id: SpLogoPosition; label: string }>).map((pos) => (
+                      <button
+                        key={pos.id}
+                        type="button"
+                        onClick={() => setSpCustom({ ...spCustom, logo_position: pos.id })}
+                        className={`p-2 rounded-md border-2 text-xs font-medium transition-all ${
+                          spCustom.logo_position === pos.id
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        {pos.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Couleur primaire */}
@@ -1667,6 +1850,139 @@ export default function SettingsPage({
 
               {/* Colonne droite */}
               <div className="space-y-5">
+                {/* Titre principal */}
+                <div className="space-y-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <label className="block text-sm font-semibold text-gray-800">Titre principal</label>
+                  <input
+                    type="text"
+                    value={spCustom.title_text}
+                    onChange={(e) => setSpCustom({ ...spCustom, title_text: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    placeholder={DEFAULT_SP_TITLE_TEXT}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Taille (pt)</label>
+                      <input
+                        type="number"
+                        min={10}
+                        max={60}
+                        value={spCustom.title_size}
+                        onChange={(e) => setSpCustom({ ...spCustom, title_size: parseInt(e.target.value) || DEFAULT_SP_TITLE_SIZE })}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Couleur</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={/^#[0-9a-fA-F]{6}$/.test(spCustom.title_color) ? spCustom.title_color : DEFAULT_SP_TITLE_COLOR}
+                          onChange={(e) => setSpCustom({ ...spCustom, title_color: e.target.value })}
+                          className="w-10 h-9 border border-gray-300 rounded cursor-pointer p-0"
+                        />
+                        <input
+                          type="text"
+                          value={spCustom.title_color}
+                          onChange={(e) => setSpCustom({ ...spCustom, title_color: e.target.value })}
+                          className="flex-1 p-2 border border-gray-300 rounded-md text-xs font-mono"
+                          placeholder="#FFFFFF"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Alignement</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { id: 'left', label: 'Gauche' },
+                        { id: 'center', label: 'Centré' },
+                        { id: 'right', label: 'Droite' },
+                      ] as Array<{ id: SpTextAlignment; label: string }>).map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSpCustom({ ...spCustom, title_alignment: a.id })}
+                          className={`p-2 rounded-md border-2 text-xs font-medium transition-all ${
+                            spCustom.title_alignment === a.id
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                          }`}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sous-titre */}
+                <div className="space-y-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <label className="block text-sm font-semibold text-gray-800">Sous-titre</label>
+                  <input
+                    type="text"
+                    value={spCustom.subtitle_text}
+                    onChange={(e) => setSpCustom({ ...spCustom, subtitle_text: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    placeholder={DEFAULT_SP_SUBTITLE_TEXT}
+                  />
+                  <p className="text-xs text-gray-500">Laissez vide pour masquer le sous-titre.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Taille (pt)</label>
+                      <input
+                        type="number"
+                        min={8}
+                        max={40}
+                        value={spCustom.subtitle_size}
+                        onChange={(e) => setSpCustom({ ...spCustom, subtitle_size: parseInt(e.target.value) || DEFAULT_SP_SUBTITLE_SIZE })}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Couleur</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={/^#[0-9a-fA-F]{6}$/.test(spCustom.subtitle_color) ? spCustom.subtitle_color : DEFAULT_SP_SUBTITLE_COLOR}
+                          onChange={(e) => setSpCustom({ ...spCustom, subtitle_color: e.target.value })}
+                          className="w-10 h-9 border border-gray-300 rounded cursor-pointer p-0"
+                        />
+                        <input
+                          type="text"
+                          value={spCustom.subtitle_color}
+                          onChange={(e) => setSpCustom({ ...spCustom, subtitle_color: e.target.value })}
+                          className="flex-1 p-2 border border-gray-300 rounded-md text-xs font-mono"
+                          placeholder="#CCE5FF"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Alignement</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { id: 'left', label: 'Gauche' },
+                        { id: 'center', label: 'Centré' },
+                        { id: 'right', label: 'Droite' },
+                      ] as Array<{ id: SpTextAlignment; label: string }>).map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSpCustom({ ...spCustom, subtitle_alignment: a.id })}
+                          className={`p-2 rounded-md border-2 text-xs font-medium transition-all ${
+                            spCustom.subtitle_alignment === a.id
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                          }`}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Mention pied de page */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Mention en pied de page</label>
@@ -1677,7 +1993,7 @@ export default function SettingsPage({
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Ex: Document confidentiel - Société XYZ - SIRET 123 456 789"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Texte affiché en pied de chaque page de la SP.</p>
+                  <p className="text-xs text-gray-500 mt-1">Texte affiché en pied de chaque page de la SP (identique sur toutes les pages).</p>
                 </div>
 
                 {/* Format de sortie */}
@@ -1711,22 +2027,18 @@ export default function SettingsPage({
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Aperçu</label>
                   <div className="rounded-lg border border-gray-200 overflow-hidden">
-                    <div
-                      className="p-4 flex items-center justify-between"
-                      style={{ backgroundColor: spCustom.primary_color }}
-                    >
-                      <span className="text-white font-bold text-lg">ANALYSE COMPARATIVE</span>
-                      {spCustom.logo_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={spCustom.logo_url} alt="logo" className="h-8 object-contain bg-white/10 rounded px-2" />
-                      )}
-                    </div>
-                    <div className="p-3 bg-white">
-                      <p className="text-xs text-gray-500 uppercase">Préparé pour</p>
-                      <p className="text-base font-bold" style={{ color: spCustom.primary_color }}>
-                        {spCustom.company_name || 'Votre entreprise'}
-                      </p>
-                    </div>
+                    <SpPreviewBanner
+                      primaryColor={spCustom.primary_color}
+                      logoUrl={spCustom.logo_url}
+                      logoPosition={spCustom.logo_position}
+                      logoSize={spCustom.logo_size}
+                      titleText={spCustom.title_text || DEFAULT_SP_TITLE_TEXT}
+                      titleColor={spCustom.title_color}
+                      titleAlignment={spCustom.title_alignment}
+                      subtitleText={spCustom.subtitle_text}
+                      subtitleColor={spCustom.subtitle_color}
+                      subtitleAlignment={spCustom.subtitle_alignment}
+                    />
                     <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 truncate">
                       {spCustom.footer_text || 'Pied de page'}
                     </div>
