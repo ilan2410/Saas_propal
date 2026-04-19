@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,6 +73,10 @@ export async function POST(request: NextRequest) {
       champs_actifs: champsActifs,
       file_config: fileConfig,
       statut: 'brouillon',
+      claude_model:
+        typeof body.claude_model === 'string' && body.claude_model
+          ? body.claude_model
+          : DEFAULT_CLAUDE_MODEL,
     };
 
     if (body.prompt_template !== undefined) {

@@ -341,6 +341,7 @@ export function Step4EditData({
 
   const [templateInfo, setTemplateInfo] = useState<{
     file_url: string;
+    file_type: string;
     file_config: unknown;
     champs_actifs: string[];
   } | null>(null);
@@ -398,9 +399,14 @@ export function Step4EditData({
           const template = data.template || data;
           setTemplateInfo({
             file_url: template.file_url,
+            file_type: template.file_type || 'excel',
             file_config: template.file_config || {},
             champs_actifs: template.champs_actifs || [],
           });
+          // Pour les templates Word, passer en mode formulaire (pas de vue Excel disponible)
+          if (template.file_type === 'word') {
+            setViewMode('form');
+          }
           
           // Ouvrir toutes les catégories par défaut
           const categories = new Set<string>();
@@ -721,31 +727,33 @@ export function Step4EditData({
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {/* Toggle vue Excel / Formulaire */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('excel')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'excel'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              Vue Excel
-            </button>
-            <button
-              onClick={() => setViewMode('form')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'form'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <List className="w-4 h-4" />
-              Formulaire
-            </button>
-          </div>
+          {/* Toggle vue Excel / Formulaire - masqué pour les templates Word */}
+          {templateInfo?.file_type !== 'word' && (
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('excel')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'excel'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Vue Excel
+              </button>
+              <button
+                onClick={() => setViewMode('form')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === 'form'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <List className="w-4 h-4" />
+                Formulaire
+              </button>
+            </div>
+          )}
           
           <button
             onClick={handleGenererSuggestions}
