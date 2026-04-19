@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
@@ -23,8 +23,12 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle,
-  CreditCard as CreditCardIcon
+  CreditCard as CreditCardIcon,
+  Palette,
+  FileDown
 } from 'lucide-react';
+
+const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
 interface SettingsPageProps {
   organization: Organization;
@@ -45,7 +49,7 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence';
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -155,6 +159,27 @@ export default function SettingsPage({
       montant: 50
     }
   });
+
+  // SP Customization State
+  const defaultCompanyName = organization.nom || '';
+  const defaultFooterText =
+    organization.pdf_footer_text || `Généré par PropoBoost pour ${defaultCompanyName || 'Organisation'}`;
+  const defaultLogoUrl = organization.pdf_header_logo_url || organization.logo_url || '';
+  const initialSp: SpCustomization = organization.preferences?.sp_customization || {};
+  const [spCustom, setSpCustom] = useState<{
+    logo_url: string;
+    company_name: string;
+    primary_color: string;
+    footer_text: string;
+    output_format: SpOutputFormat;
+  }>({
+    logo_url: initialSp.logo_url ?? defaultLogoUrl,
+    company_name: initialSp.company_name ?? defaultCompanyName,
+    primary_color: initialSp.primary_color ?? DEFAULT_SP_PRIMARY_HEX,
+    footer_text: initialSp.footer_text ?? defaultFooterText,
+    output_format: initialSp.output_format ?? 'pdf',
+  });
+  const [isSpSaving, setIsSpSaving] = useState(false);
 
   // Appearance State
   const [appearance, setAppearance] = useState<{
@@ -601,6 +626,76 @@ export default function SettingsPage({
     }
   };
 
+  const handleUploadSpLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Le fichier est trop volumineux (max 2MB)');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const toastId = toast.loading('Téléchargement du logo SP...');
+    try {
+      const res = await fetch('/api/settings/upload-sp-logo', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Erreur upload');
+      }
+      const data = await res.json();
+      setSpCustom((prev) => ({ ...prev, logo_url: data.logo_url }));
+      toast.success('Logo SP mis à jour', { id: toastId });
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur upload logo SP', { id: toastId });
+    }
+  };
+
+  const handleSaveSpCustomization = async () => {
+    if (isSpSaving) return;
+    // Validation couleur hex
+    if (!/^#[0-9a-fA-F]{6}$/.test(spCustom.primary_color)) {
+      toast.error('La couleur doit être au format hexadécimal (#RRGGBB)');
+      return;
+    }
+    setIsSpSaving(true);
+    try {
+      const payload: SpCustomization = {
+        logo_url: spCustom.logo_url || undefined,
+        company_name: spCustom.company_name || undefined,
+        primary_color: spCustom.primary_color,
+        footer_text: spCustom.footer_text || undefined,
+        output_format: spCustom.output_format,
+      };
+      const res = await fetch('/api/settings/update-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sp_customization: payload }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      toast.success('Personnalisation SP enregistrée');
+      router.refresh();
+    } catch (error) {
+      toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSpSaving(false);
+    }
+  };
+
+  const handleResetSpCustomization = () => {
+    setSpCustom({
+      logo_url: defaultLogoUrl,
+      company_name: defaultCompanyName,
+      primary_color: DEFAULT_SP_PRIMARY_HEX,
+      footer_text: defaultFooterText,
+      output_format: 'pdf',
+    });
+    toast.info('Valeurs par défaut restaurées (pensez à enregistrer)');
+  };
+
   const handleUpdateAppearance = async () => {
     setIsLoading(true);
     try {
@@ -684,6 +779,7 @@ export default function SettingsPage({
           <option value="facturation">Facturation</option>
           <option value="donnees">Données</option>
           <option value="apparence">Apparence</option>
+          <option value="sp">Personnalisation SP</option>
         </select>
       </div>
 
@@ -695,6 +791,7 @@ export default function SettingsPage({
         <TabButton id="facturation" label="Facturation" icon={CreditCard} />
         <TabButton id="donnees" label="Données" icon={Database} />
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
+        <TabButton id="sp" label="Personnalisation SP" icon={Palette} />
       </div>
 
       {/* Content Area */}
@@ -1470,6 +1567,178 @@ export default function SettingsPage({
               <Button onClick={handleUpdateAppearance} disabled={isLoading}>
                 {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Enregistrer
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 7: PERSONNALISATION SP */}
+        {activeTab === 'sp' && (
+          <div className="p-6 space-y-8">
+            <div className="border-b border-gray-100 pb-4 flex justify-between items-start gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Personnalisation de la Situation Proposée</h2>
+                <p className="text-sm text-gray-500">
+                  Personnalisez le document généré par l&apos;IA (logo, couleur, mentions, format de sortie).
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleResetSpCustomization}>
+                Réinitialiser
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Colonne gauche */}
+              <div className="space-y-5">
+                {/* Logo */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Logo du document</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center overflow-hidden">
+                      {spCustom.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={spCustom.logo_url} alt="Logo SP" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-gray-400 text-xs text-center px-2">Aucun logo</span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        id="sp-logo-upload"
+                        type="file"
+                        accept=".png,.jpg,.jpeg"
+                        className="hidden"
+                        onChange={handleUploadSpLogo}
+                      />
+                      <label
+                        htmlFor="sp-logo-upload"
+                        className="inline-block px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4 inline mr-1" />
+                        Choisir un logo
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1">PNG ou JPG. Max 2MB.</p>
+                      {spCustom.logo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setSpCustom((p) => ({ ...p, logo_url: '' }))}
+                          className="text-xs text-red-600 hover:underline mt-1"
+                        >
+                          Retirer le logo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nom entreprise */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l&apos;entreprise (affiché dans la SP)</label>
+                  <input
+                    type="text"
+                    value={spCustom.company_name}
+                    onChange={(e) => setSpCustom({ ...spCustom, company_name: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder={defaultCompanyName || 'Nom affiché sur le document'}
+                  />
+                </div>
+
+                {/* Couleur primaire */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Couleur principale (backgrounds)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(spCustom.primary_color) ? spCustom.primary_color : DEFAULT_SP_PRIMARY_HEX}
+                      onChange={(e) => setSpCustom({ ...spCustom, primary_color: e.target.value })}
+                      className="w-12 h-10 border border-gray-300 rounded-md cursor-pointer p-0"
+                    />
+                    <input
+                      type="text"
+                      value={spCustom.primary_color}
+                      onChange={(e) => setSpCustom({ ...spCustom, primary_color: e.target.value })}
+                      className="flex-1 p-2 border border-gray-300 rounded-md font-mono text-sm"
+                      placeholder="#0D4073"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Format hexadécimal, ex. <code className="font-mono">#0D4073</code></p>
+                </div>
+              </div>
+
+              {/* Colonne droite */}
+              <div className="space-y-5">
+                {/* Mention pied de page */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mention en pied de page</label>
+                  <textarea
+                    value={spCustom.footer_text}
+                    onChange={(e) => setSpCustom({ ...spCustom, footer_text: e.target.value })}
+                    rows={3}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Document confidentiel - Société XYZ - SIRET 123 456 789"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Texte affiché en pied de chaque page de la SP.</p>
+                </div>
+
+                {/* Format de sortie */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Format de sortie</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['pdf', 'word'] as SpOutputFormat[]).map((fmt) => (
+                      <button
+                        key={fmt}
+                        type="button"
+                        onClick={() => setSpCustom({ ...spCustom, output_format: fmt })}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
+                          spCustom.output_format === fmt
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        {fmt === 'pdf' ? <FileText className="w-5 h-5" /> : <FileDown className="w-5 h-5" />}
+                        <div className="text-left">
+                          <div className="text-sm font-semibold uppercase">{fmt}</div>
+                          <div className="text-xs text-gray-500">
+                            {fmt === 'pdf' ? 'Format par défaut' : 'Document modifiable'}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Aperçu couleur */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Aperçu</label>
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div
+                      className="p-4 flex items-center justify-between"
+                      style={{ backgroundColor: spCustom.primary_color }}
+                    >
+                      <span className="text-white font-bold text-lg">ANALYSE COMPARATIVE</span>
+                      {spCustom.logo_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={spCustom.logo_url} alt="logo" className="h-8 object-contain bg-white/10 rounded px-2" />
+                      )}
+                    </div>
+                    <div className="p-3 bg-white">
+                      <p className="text-xs text-gray-500 uppercase">Préparé pour</p>
+                      <p className="text-base font-bold" style={{ color: spCustom.primary_color }}>
+                        {spCustom.company_name || 'Votre entreprise'}
+                      </p>
+                    </div>
+                    <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 truncate">
+                      {spCustom.footer_text || 'Pied de page'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-gray-100">
+              <Button onClick={handleSaveSpCustomization} disabled={isSpSaving}>
+                {isSpSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Enregistrer la personnalisation
               </Button>
             </div>
           </div>

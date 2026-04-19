@@ -95,11 +95,14 @@ export function SuggestionsPanel({
       const arrayBuffer = await response.arrayBuffer();
       if (arrayBuffer.byteLength === 0) return;
 
-      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      const respType = response.headers.get('content-type') || 'application/pdf';
+      const isWord = respType.includes('msword') || respType.includes('officedocument.word');
+      const ext = isWord ? 'doc' : 'pdf';
+      const blob = new Blob([arrayBuffer], { type: respType });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `comparatif-telecom-${clientName || 'client'}.pdf`;
+      a.download = `comparatif-telecom-${clientName || 'client'}.${ext}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

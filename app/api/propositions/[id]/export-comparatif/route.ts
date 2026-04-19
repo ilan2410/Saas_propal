@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateComparatifPdf } from '@/lib/pdf/comparatif-generator';
-import { SuggestionsGenerees } from '@/types';
+import { generateComparatifWord } from '@/lib/word/comparatif-generator';
+import { OrganizationPreferences, SpCustomization, SuggestionsGenerees } from '@/types';
 
 type OrganizationPdfSettings = {
   nom?: string | null;
   pdf_header_logo_url?: string | null;
   pdf_footer_text?: string | null;
+  logo_url?: string | null;
+  preferences?: OrganizationPreferences | null;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -152,7 +155,9 @@ export async function POST(
         organizations (
           nom,
           pdf_header_logo_url,
-          pdf_footer_text
+          pdf_footer_text,
+          logo_url,
+          preferences
         )
       `)
       .eq('id', id)
@@ -175,13 +180,53 @@ export async function POST(
         : undefined;
 
     console.log('🔵 [PDF Export] Organisation:', org?.nom);
-    console.log('🔵 [PDF Export] Génération du PDF...');
 
+    // Personnalisation SP (logo, couleur, footer, format...)
+    const sp: SpCustomization = (org?.preferences?.sp_customization as SpCustomization | undefined) || {};
+    const companyName = (sp.company_name && sp.company_name.trim()) || org?.nom || 'Organisation';
+    const logoUrl = sp.logo_url || org?.pdf_header_logo_url || org?.logo_url || undefined;
+    const footerText = sp.footer_text || org?.pdf_footer_text || `Généré par PropoBoost pour ${companyName}`;
+    const primaryColor = sp.primary_color;
+    const outputFormat = sp.output_format === 'word' ? 'word' : 'pdf';
+
+    const safeFileBase = `comparatif-telecom-${(resolvedClientName || 'client').replace(/[^a-zA-Z0-9-_]/g, '_')}`;
+
+    if (outputFormat === 'word') {
+      console.log('🔵 [Export] Génération Word...');
+      const wordBuffer = await generateComparatifWord({
+        suggestions: { suggestions, synthese } as SuggestionsGenerees,
+        clientName: resolvedClientName,
+        logoUrl,
+        footerText,
+        companyName,
+        primaryColor,
+      });
+
+      if (!wordBuffer || wordBuffer.length === 0) {
+        return NextResponse.json(
+          { error: 'Erreur génération Word', details: 'Le fichier Word généré est vide' },
+          { status: 500 }
+        );
+      }
+
+      return new NextResponse(wordBuffer as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/msword',
+          'Content-Disposition': `attachment; filename="${safeFileBase}.doc"`,
+          'Content-Length': wordBuffer.length.toString(),
+        },
+      });
+    }
+
+    console.log('🔵 [PDF Export] Génération du PDF...');
     const pdfBytes = await generateComparatifPdf({
       suggestions: { suggestions, synthese } as SuggestionsGenerees,
       clientName: resolvedClientName,
-      logoUrl: org?.pdf_header_logo_url ?? undefined,
-      footerText: org?.pdf_footer_text || `Généré par PropoBoost pour ${org?.nom || 'Organisation'}`,
+      logoUrl,
+      footerText,
+      companyName,
+      primaryColor,
     });
 
     console.log('🟢 [PDF Export] PDF généré, taille:', pdfBytes.length, 'bytes');
@@ -204,7 +249,7 @@ export async function POST(
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="comparatif-telecom-${resolvedClientName || 'client'}.pdf"`,
+        'Content-Disposition': `attachment; filename="${safeFileBase}.pdf"`,
         'Content-Length': buffer.length.toString(),
       },
     });

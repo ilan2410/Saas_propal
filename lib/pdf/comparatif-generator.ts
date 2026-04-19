@@ -7,25 +7,57 @@ interface GeneratorOptions {
   logoUrl?: string;
   footerText?: string;
   companyName?: string;
+  primaryColor?: string; // hex #RRGGBB
 }
 
-// Couleurs du thème
-const colors = {
-  primary: rgb(0.05, 0.25, 0.45),      // Bleu foncé professionnel
-  secondary: rgb(0.1, 0.5, 0.7),        // Bleu moyen
-  accent: rgb(0.0, 0.6, 0.5),           // Turquoise
-  success: rgb(0.1, 0.6, 0.3),          // Vert
-  danger: rgb(0.8, 0.2, 0.2),           // Rouge
-  warning: rgb(0.9, 0.6, 0.1),          // Orange
-  lightGray: rgb(0.95, 0.95, 0.95),     // Gris très clair
-  mediumGray: rgb(0.7, 0.7, 0.7),       // Gris moyen
-  darkGray: rgb(0.3, 0.3, 0.3),         // Gris foncé
-  white: rgb(1, 1, 1),
-  black: rgb(0, 0, 0),
-  chartActuel: rgb(0.6, 0.6, 0.65),     // Gris bleuté pour actuel
-  chartPropose: rgb(0.18, 0.55, 0.78),  // Bleu vif pour proposé
-  chartGrid: rgb(0.85, 0.85, 0.85),     // Gris clair pour la grille
-};
+// Couleur primaire par défaut (équivalent de rgb(0.05, 0.25, 0.45))
+export const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
+export const DEFAULT_SP_FOOTER_PREFIX = 'Document généré par';
+
+function hexToRgb(hex: string): RGB {
+  try {
+    const h = hex.replace('#', '').trim();
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) throw new Error('invalid');
+    const r = parseInt(h.substring(0, 2), 16) / 255;
+    const g = parseInt(h.substring(2, 4), 16) / 255;
+    const b = parseInt(h.substring(4, 6), 16) / 255;
+    return rgb(r, g, b);
+  } catch {
+    return rgb(0.05, 0.25, 0.45);
+  }
+}
+
+function lightenRgb(color: RGB, factor: number): RGB {
+  const r = Math.min(1, color.red + (1 - color.red) * factor);
+  const g = Math.min(1, color.green + (1 - color.green) * factor);
+  const b = Math.min(1, color.blue + (1 - color.blue) * factor);
+  return rgb(r, g, b);
+}
+
+// Couleurs du thème (secondary/accent dérivés de primary pour rester cohérents)
+function buildColors(primaryHex?: string) {
+  const primary = hexToRgb(primaryHex || DEFAULT_SP_PRIMARY_HEX);
+  const secondary = lightenRgb(primary, 0.35);
+  const accent = lightenRgb(primary, 0.2);
+  return {
+    primary,
+    secondary,
+    accent,
+    success: rgb(0.1, 0.6, 0.3),          // Vert
+    danger: rgb(0.8, 0.2, 0.2),           // Rouge
+    warning: rgb(0.9, 0.6, 0.1),          // Orange
+    lightGray: rgb(0.95, 0.95, 0.95),     // Gris très clair
+    mediumGray: rgb(0.7, 0.7, 0.7),       // Gris moyen
+    darkGray: rgb(0.3, 0.3, 0.3),         // Gris foncé
+    white: rgb(1, 1, 1),
+    black: rgb(0, 0, 0),
+    chartActuel: rgb(0.6, 0.6, 0.65),     // Gris bleuté pour actuel
+    chartPropose: rgb(0.18, 0.55, 0.78),  // Bleu vif pour proposé
+    chartGrid: rgb(0.85, 0.85, 0.85),     // Gris clair pour la grille
+  };
+}
+
+type Colors = ReturnType<typeof buildColors>;
 
 // Helpers
 function drawRoundedRect(
@@ -178,7 +210,8 @@ function drawModernChart(
   propose: number,
   isEconomy: boolean,
   helvetica: PDFFont,
-  helveticaBold: PDFFont
+  helveticaBold: PDFFont,
+  colors: Colors
 ) {
   const chartPadding = { top: 45, bottom: 55, left: 55, right: 130 };
   const chartWidth = width - chartPadding.left - chartPadding.right;
@@ -380,14 +413,33 @@ function drawModernChart(
 export async function generateComparatifPdf({ 
   suggestions, 
   clientName, 
-  logoUrl: _logoUrl, 
+  logoUrl, 
   footerText,
-  companyName = 'PropoBoost'
+  companyName = 'PropoBoost',
+  primaryColor
 }: GeneratorOptions): Promise<Uint8Array> {
+  const colors = buildColors(primaryColor);
   const pdfDoc = await PDFDocument.create();
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const helveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+
+  // Embed optional logo (png/jpg)
+  let embeddedLogo: { image: Awaited<ReturnType<typeof pdfDoc.embedPng>>; width: number; height: number } | null = null;
+  if (logoUrl) {
+    try {
+      const res = await fetch(logoUrl);
+      if (res.ok) {
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        const buf = await res.arrayBuffer();
+        const isJpg = ct.includes('jpeg') || ct.includes('jpg');
+        const img = isJpg ? await pdfDoc.embedJpg(buf) : await pdfDoc.embedPng(buf);
+        embeddedLogo = { image: img, width: img.width, height: img.height };
+      }
+    } catch (e) {
+      console.warn('⚠️ Logo SP non chargé:', e);
+    }
+  }
 
   const [width, height] = PageSizes.A4;
   const margins = { top: 60, bottom: 60, left: 50, right: 50 };
@@ -406,7 +458,26 @@ export async function generateComparatifPdf({
   
   // Bandeau supérieur
   drawRoundedRect(page1, 0, height - 120, width, 120, colors.primary);
-  
+
+  // Logo optionnel (en haut à droite du bandeau)
+  if (embeddedLogo) {
+    const maxLogoH = 70;
+    const maxLogoW = 140;
+    const ratio = embeddedLogo.width / embeddedLogo.height;
+    let drawH = maxLogoH;
+    let drawW = drawH * ratio;
+    if (drawW > maxLogoW) {
+      drawW = maxLogoW;
+      drawH = drawW / ratio;
+    }
+    page1.drawImage(embeddedLogo.image, {
+      x: width - margins.right - drawW,
+      y: height - 25 - drawH,
+      width: drawW,
+      height: drawH,
+    });
+  }
+
   // Titre principal
   page1.drawText('ANALYSE COMPARATIVE', {
     x: margins.left,
@@ -754,7 +825,8 @@ export async function generateComparatifPdf({
       synthese.cout_total_propose,
       isEconomy,
       helvetica,
-      helveticaBold
+      helveticaBold,
+      colors
     );
   }
 

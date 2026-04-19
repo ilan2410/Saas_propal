@@ -176,7 +176,7 @@ export function Step3ExtractData({
                   Extraction en cours...
                 </h3>
                 <p className="text-gray-600 text-lg">
-                  le système analyse vos documents avec son intelligence artificielle
+                 Analyse vos documents en cours...
                 </p>
               </div>
 

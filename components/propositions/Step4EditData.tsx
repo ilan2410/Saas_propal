@@ -645,12 +645,17 @@ export function Step4EditData({
         return;
       }
 
+      // Déterminer le type depuis la réponse (pdf ou word)
+      const respType = response.headers.get('content-type') || 'application/pdf';
+      const isWord = respType.includes('msword') || respType.includes('officedocument.word');
+      const ext = isWord ? 'doc' : 'pdf';
+
       // Créer le blob et télécharger manuellement
-      const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+      const blob = new Blob([arrayBuffer], { type: respType });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `comparatif-telecom-${resolvedClientName || 'client'}.pdf`;
+      a.download = `comparatif-telecom-${resolvedClientName || 'client'}.${ext}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

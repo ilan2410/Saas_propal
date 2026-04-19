@@ -68,6 +68,17 @@ export interface OrganizationPreferences {
     seuil?: number;
     montant?: number;
   };
+  sp_customization?: SpCustomization;
+}
+
+export type SpOutputFormat = 'pdf' | 'word';
+
+export interface SpCustomization {
+  logo_url?: string;
+  company_name?: string;
+  primary_color?: string; // format hex #RRGGBB
+  footer_text?: string;
+  output_format?: SpOutputFormat;
 }
 
 // Template de proposition
