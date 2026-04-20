@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import mammoth from 'mammoth';
 import {
   analyzeWithClaude,
   extractTablesXml,
@@ -55,6 +54,9 @@ export async function POST(request: NextRequest) {
     const textPerPage = await extractTextByPage(docxBuffer);
     // Fallback si mammoth n'a renvoyé qu'une seule page
     if (textPerPage.length < pageImageUrls.length) {
+      const mammothMod = await import('mammoth');
+      const mammoth =
+        (mammothMod as unknown as { default?: typeof mammothMod }).default ?? mammothMod;
       const { value } = await mammoth.extractRawText({ buffer: docxBuffer });
       const sizePerPage = Math.ceil(value.length / Math.max(1, pageImageUrls.length));
       while (textPerPage.length < pageImageUrls.length) {
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // XML des tableaux (globaux — le découpage par page Word est fragile)
-    const tablesXml = extractTablesXml(docxBuffer);
+    const tablesXml = await extractTablesXml(docxBuffer);
 
     // Télécharger en base64 les images des pages sélectionnées
     const pagesPayload: Array<{ pageNumber: number; imageBase64: string; text: string }> = [];

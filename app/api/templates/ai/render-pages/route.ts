@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import mammoth from 'mammoth';
 import {
   renderDocxToPdf,
   renderPdfToImages,
@@ -70,7 +69,11 @@ export async function POST(request: NextRequest) {
       pageImageUrls.push(publicUrl);
     }
 
-    // 3. Texte complet (mammoth)
+    // 3. Texte complet (mammoth) — import dynamique pour éviter l'évaluation
+    // du module natif pendant la phase "Collecting page data" du build Next.js
+    const mammothMod = await import('mammoth');
+    const mammoth =
+      (mammothMod as unknown as { default?: typeof mammothMod }).default ?? mammothMod;
     const { value: docxText } = await mammoth.extractRawText({ buffer: input.buffer });
 
     return NextResponse.json({

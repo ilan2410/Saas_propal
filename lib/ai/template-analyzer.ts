@@ -14,11 +14,8 @@
  * (c.f. `components/admin/organizationFormConfig.ts`)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import libreConvert from 'libreoffice-convert';
-import { pdf as pdfToImg } from 'pdf-to-img';
-import mammoth from 'mammoth';
-import PizZip from 'pizzip';
+import type AnthropicType from '@anthropic-ai/sdk';
+type Anthropic = AnthropicType;
 import { promisify } from 'util';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 import {
@@ -27,14 +24,32 @@ import {
   type Secteur,
 } from './fields-catalog';
 
-const convertAsync = promisify<Buffer, string, undefined, Buffer>(
-  libreConvert.convert as unknown as (
-    doc: Buffer,
-    ext: string,
-    filter: undefined,
-    callback: (err: Error | null, data: Buffer) => void
-  ) => void
-);
+/**
+ * Les modules natifs (`libreoffice-convert`, `pdf-to-img`, `mammoth`, `pizzip`,
+ * `@anthropic-ai/sdk`) sont importés de manière dynamique pour éviter qu'ils
+ * soient évalués au chargement du module route pendant la phase
+ * "Collecting page data" du build Next.js (ce qui peut provoquer des erreurs
+ * comme `TypeError: The "path" argument must be of type string`).
+ */
+
+let _convertAsync:
+  | ((doc: Buffer, ext: string, filter: undefined) => Promise<Buffer>)
+  | null = null;
+
+async function getConvertAsync() {
+  if (_convertAsync) return _convertAsync;
+  const mod = await import('libreoffice-convert');
+  const libreConvert = (mod as unknown as { default?: typeof mod }).default ?? mod;
+  _convertAsync = promisify<Buffer, string, undefined, Buffer>(
+    libreConvert.convert as unknown as (
+      doc: Buffer,
+      ext: string,
+      filter: undefined,
+      callback: (err: Error | null, data: Buffer) => void
+    ) => void
+  );
+  return _convertAsync;
+}
 
 // ------------------------------------------------------------------
 // Types
@@ -98,6 +113,7 @@ export interface AIAnalysis {
  * Convertit un .docx en PDF via LibreOffice.
  */
 export async function renderDocxToPdf(buffer: Buffer): Promise<Buffer> {
+  const convertAsync = await getConvertAsync();
   return convertAsync(buffer, '.pdf', undefined);
 }
 
@@ -105,6 +121,7 @@ export async function renderDocxToPdf(buffer: Buffer): Promise<Buffer> {
  * Convertit un PDF en une liste de PNG (une par page).
  */
 export async function renderPdfToImages(pdfBuffer: Buffer): Promise<Buffer[]> {
+  const { pdf: pdfToImg } = await import('pdf-to-img');
   const images: Buffer[] = [];
   const doc = await pdfToImg(pdfBuffer, { scale: 2 });
   for await (const page of doc) {
@@ -124,11 +141,13 @@ export async function renderPdfToImages(pdfBuffer: Buffer): Promise<Buffer[]> {
  */
 export async function extractTextByPage(docxBuffer: Buffer): Promise<string[]> {
   // Texte complet via mammoth
+  const mammothMod = await import('mammoth');
+  const mammoth = (mammothMod as unknown as { default?: typeof mammothMod }).default ?? mammothMod;
   const { value: fullText } = await mammoth.extractRawText({ buffer: docxBuffer });
 
   // Découpage heuristique via form feed (\f) que mammoth insère pour certains breaks
   const parts = fullText.split(/\f/);
-  if (parts.length > 1) return parts.map((p) => p.trim());
+  if (parts.length > 1) return parts.map((p: string) => p.trim());
 
   // Fallback : tout sur une seule page
   return [fullText.trim()];
@@ -139,9 +158,11 @@ export async function extractTextByPage(docxBuffer: Buffer): Promise<string[]> {
  * purement visuel (géré par Word au rendu), on retourne ici tous les
  * tableaux avec leur index d'apparition dans le flux.
  */
-export function extractTablesXml(docxBuffer: Buffer): string[] {
+export async function extractTablesXml(docxBuffer: Buffer): Promise<string[]> {
   try {
-    const zip = new PizZip(docxBuffer);
+    const PizZipMod = await import('pizzip');
+    const PizZip = (PizZipMod as unknown as { default?: typeof PizZipMod }).default ?? PizZipMod;
+    const zip = new (PizZip as unknown as { new (buf: Buffer): { file(name: string): { asText(): string } | null } })(docxBuffer);
     const doc = zip.file('word/document.xml');
     if (!doc) return [];
     const xml = doc.asText();
@@ -220,8 +241,10 @@ Pas de texte avant ou après le JSON.`;
 // Claude call
 // ------------------------------------------------------------------
 
-function getAnthropic(): Anthropic {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+async function getAnthropic(): Promise<Anthropic> {
+  const mod = await import('@anthropic-ai/sdk');
+  const AnthropicCtor = (mod as unknown as { default: new (opts: { apiKey: string }) => AnthropicType }).default;
+  return new AnthropicCtor({ apiKey: process.env.ANTHROPIC_API_KEY! });
 }
 
 export function resolveClaudeModel(orgClaudeModel?: string | null): string {
@@ -263,7 +286,7 @@ async function analyzePageWithClaude(params: {
   catalogText: string;
 }): Promise<{ result: ClaudePageResult; usage: { input: number; output: number } }> {
   const { imageBase64, pageText, tablesXml, claudeModel, catalogText, pageNumber } = params;
-  const anthropic = getAnthropic();
+  const anthropic = await getAnthropic();
 
   const userText = `PAGE ${pageNumber}
 
@@ -407,7 +430,7 @@ export async function chatRefineAnalysis(params: {
   secteur: Secteur;
 }): Promise<{ response: string; updatedAnalysis: AIAnalysis }> {
   const { message, analysis, history, claudeModel, secteur } = params;
-  const anthropic = getAnthropic();
+  const anthropic = await getAnthropic();
   const catalog = buildFieldsCatalog(secteur);
   const catalogText = formatCatalogForPrompt(catalog);
 
@@ -431,7 +454,7 @@ Actions disponibles :
 - add_variable, remove_variable, rename_variable, merge_tables, remove_table.
 Pas de texte hors du JSON.`;
 
-  const messages: Anthropic.MessageParam[] = [
+  const messages: AnthropicType.MessageParam[] = [
     ...history.map((h) => ({ role: h.role, content: h.content })),
     { role: 'user' as const, content: message },
   ];

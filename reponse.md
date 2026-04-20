@@ -152,3 +152,61 @@ Rien à rajouter. Ton `.env.local` est déjà suffisant (`ANTHROPIC_API_KEY` + c
 ---
 
 Si un point bloque ou si tu veux ajuster le prompt / l'UI / la stratégie d'injection, dis-le moi et je fais la modif ciblée.
+
+---
+
+# 🔧 Correctif build Docker (20 avril 2026)
+
+## Symptôme
+
+Build Docker échoue pendant `next build` à la phase **« Collecting page data »** :
+
+```
+TypeError: The "path" argument must be of type string. Received type number (64273)
+    at module evaluation (.next/server/chunks/[root-of-the-server]__...js)
+    ...
+    at Object.<anonymous> (.next/server/app/api/templates/ai/analyze/route.js:19:3)
+Error: Failed to collect page data for /api/templates/ai/analyze
+```
+
+## Cause racine
+
+Next.js 16 (Turbopack) **évalue le module route** pendant la phase « Collecting page data » pour détecter les flags (`runtime`, `dynamic`, etc.). Or `app/api/templates/ai/analyze/route.ts` importait au niveau top-level `@/lib/ai/template-analyzer`, qui lui-même importait **à l'évaluation du module** des dépendances natives lourdes :
+
+- `libreoffice-convert`
+- `pdf-to-img`
+- `mammoth`
+- `pizzip`
+- `@anthropic-ai/sdk`
+
+L'une d'elles (probablement `libreoffice-convert` ou `pdf-to-img`) exécute du code au chargement qui appelle `path.join(...)` avec un argument numérique (PID/temp dir), ce qui plante en environnement de build.
+
+## Correctif
+
+**Import dynamique** de toutes les deps natives, uniquement à l'intérieur des fonctions — elles ne sont plus évaluées au chargement du module route.
+
+Fichiers modifiés :
+
+- `lib/ai/template-analyzer.ts`
+  - Import `type` uniquement pour `@anthropic-ai/sdk`.
+  - `libreoffice-convert` → lazy via `getConvertAsync()` (cache).
+  - `pdf-to-img` → `await import('pdf-to-img')` dans `renderPdfToImages`.
+  - `mammoth` → `await import('mammoth')` dans `extractTextByPage`.
+  - `pizzip` → `await import('pizzip')` dans `extractTablesXml` (fonction devenue `async`).
+  - `getAnthropic()` devient `async` et instancie le SDK via import dynamique.
+
+- `app/api/templates/ai/analyze/route.ts`
+  - Suppression de `import mammoth from 'mammoth'` top-level.
+  - `mammoth` importé dynamiquement dans le fallback de découpage.
+  - `extractTablesXml(docxBuffer)` → désormais `await`.
+
+- `app/api/templates/ai/render-pages/route.ts`
+  - Suppression de `import mammoth from 'mammoth'` top-level.
+  - `mammoth` importé dynamiquement juste avant l'extraction du texte complet.
+
+## Impact
+
+- Build Docker : la phase « Collecting page data » ne charge plus les binaires natifs → plus d'erreur `ERR_INVALID_ARG_TYPE`.
+- Runtime : aucun changement fonctionnel. Les deps sont chargées à la première invocation de chaque route (cold-start légèrement plus long la première fois, négligeable).
+- Aucune breaking change côté API / UI.
+
