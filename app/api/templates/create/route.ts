@@ -79,6 +79,15 @@ export async function POST(request: NextRequest) {
           : DEFAULT_CLAUDE_MODEL,
     };
 
+    // Mode de création (classique ou IA)
+    if (body.creation_mode === 'ai' || body.creation_mode === 'classic') {
+      insertData.creation_mode = body.creation_mode;
+    }
+    // Analyse IA (uniquement si mode AI)
+    if (body.ai_analysis && typeof body.ai_analysis === 'object') {
+      insertData.ai_analysis = body.ai_analysis;
+    }
+
     if (body.prompt_template !== undefined) {
       insertData.prompt_template = ensureChampsActifsPlaceholder(String(body.prompt_template));
     }

@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check } from 'lucide-react';
+import { Check, Sparkles, Wrench } from 'lucide-react';
 import { Step1SelectFields } from './Step1SelectFields';
 import { Step2UploadTemplate } from './Step2UploadTemplate';
 import { Step3Test } from './Step3Test';
 import { type ArrayMapping } from './ExcelArrayMapper';
+import { Step2AIMode } from './ai-mode/Step2AIMode';
+import type { AIAnalysis } from './ai-mode/types';
 
 const STEPS = [
   { id: 1, name: 'Champs', description: 'Sélectionner les champs' },
@@ -26,6 +28,8 @@ export interface TemplateData {
   file_name: string;
   file_size_mb: number;
   merge_config?: string[];
+  creation_mode?: 'classic' | 'ai';
+  ai_analysis?: AIAnalysis | null;
 }
 
 interface WizardProps {
@@ -75,6 +79,16 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
     champs_actifs: initialTemplate?.champs_actifs || [],
     ...initialTemplate,
   });
+
+  // Mode de création (défaut: 'ai' pour Word, 'classic' pour Excel/PDF)
+  const isWord = (initialTemplate?.file_type || 'word') === 'word';
+  const [creationMode, setCreationMode] = useState<'classic' | 'ai'>(
+    initialTemplate?.creation_mode
+      ? initialTemplate.creation_mode
+      : isWord
+      ? 'ai'
+      : 'classic'
+  );
   
   // État Excel persistant
   const [excelState, setExcelState] = useState<ExcelState>({
@@ -137,6 +151,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
       const dataToSend = {
         ...templateData,
         nom: templateData.nom || `Template ${new Date().toLocaleDateString('fr-FR')}`,
+        creation_mode: creationMode,
       };
       
       console.log(`${mode === 'create' ? 'Création' : 'Mise à jour'} template avec:`, dataToSend);
@@ -233,37 +248,79 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
         </nav>
       </div>
 
+      {/* Toggle Mode IA / Classique (uniquement pour Word) */}
+      {(templateData.file_type === 'word' || !templateData.file_type) && currentStep <= 2 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-700 mr-2">Mode de création :</span>
+          <button
+            onClick={() => setCreationMode('ai')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+              creationMode === 'ai'
+                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            Mode IA (Recommandé)
+          </button>
+          <button
+            onClick={() => setCreationMode('classic')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+              creationMode === 'classic'
+                ? 'bg-gray-800 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            Mode Classique
+          </button>
+        </div>
+      )}
+
       {/* Step Content */}
       <div className="bg-white rounded-lg border border-gray-200 p-8">
-        {currentStep === 1 && (
-          <Step1SelectFields
+        {creationMode === 'ai' && (templateData.file_type === 'word' || !templateData.file_type) ? (
+          <Step2AIMode
             templateData={templateData}
             updateTemplateData={updateTemplateData}
-            onNext={nextStep}
-            onSave={mode === 'edit' ? handleComplete : undefined}
-            defaultFields={defaultFields}
-            secteur={secteur}
-          />
-        )}
-        {currentStep === 2 && (
-          <Step2UploadTemplate
-            templateData={templateData}
-            updateTemplateData={updateTemplateData}
-            excelState={excelState}
-            updateExcelState={updateExcelState}
-            secteur={secteur}
-            onNext={nextStep}
-            onPrev={prevStep}
-            isLoading={isLoading}
-            onSave={mode === 'edit' ? handleComplete : undefined}
-          />
-        )}
-        {currentStep === 3 && (
-          <Step3Test
-            templateData={templateData}
+            secteur={(secteur as 'telephonie') || 'telephonie'}
+            onPrev={currentStep > 1 ? prevStep : undefined}
             onComplete={handleComplete}
-            onPrev={prevStep}
+            initialAnalysis={initialTemplate?.ai_analysis || null}
           />
+        ) : (
+          <>
+            {currentStep === 1 && (
+              <Step1SelectFields
+                templateData={templateData}
+                updateTemplateData={updateTemplateData}
+                onNext={nextStep}
+                onSave={mode === 'edit' ? handleComplete : undefined}
+                defaultFields={defaultFields}
+                secteur={secteur}
+              />
+            )}
+            {currentStep === 2 && (
+              <Step2UploadTemplate
+                templateData={templateData}
+                updateTemplateData={updateTemplateData}
+                excelState={excelState}
+                updateExcelState={updateExcelState}
+                secteur={secteur}
+                onNext={nextStep}
+                onPrev={prevStep}
+                isLoading={isLoading}
+                onSave={mode === 'edit' ? handleComplete : undefined}
+              />
+            )}
+            {currentStep === 3 && (
+              <Step3Test
+                templateData={templateData}
+                onComplete={handleComplete}
+                onPrev={prevStep}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
