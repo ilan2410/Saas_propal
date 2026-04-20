@@ -210,3 +210,172 @@ Fichiers modifiés :
 - Runtime : aucun changement fonctionnel. Les deps sont chargées à la première invocation de chaque route (cold-start légèrement plus long la première fois, négligeable).
 - Aucune breaking change côté API / UI.
 
+
+---
+
+# 🐛 Debug : `POST /api/templates/ai/render-pages 500` (20 avril 2026)
+
+## Ce que j'ai besoin de toi pour trancher
+
+La route renvoie déjà le détail de l'erreur dans la réponse JSON (`{ error, details }` — voir `@c:\Users\ilan\CascadeProjects\Saas_propal\app\api\templates\ai\render-pages\route.ts:86-95`). Donc **ouvre l'onglet Network de Chrome**, clique sur la requête `render-pages` en erreur, onglet **Response** / **Preview**, et donne-moi la valeur du champ `details`. OU donne-moi les logs serveur (`docker logs` ou équivalent) filtrés sur `[AI] render-pages error:`.
+
+Sans ce message, je ne peux que lister les causes probables ci-dessous par ordre de vraisemblance.
+
+## Causes probables (par ordre décroissant)
+
+### 1. LibreOffice manquant / inaccessible dans le conteneur (le plus probable)
+
+`renderDocxToPdf` appelle `libreoffice-convert`, qui spawn le binaire **`soffice`** (il cherche dans le `PATH`, il **n'utilise pas** ta variable `LIBREOFFICE_PATH`). Symptômes typiques :
+
+```
+Error: spawn soffice ENOENT
+```
+ou
+```
+Error: Could not find soffice binary
+```
+
+**Fix** : dans ton `Dockerfile`, s'assurer que l'image contient :
+```dockerfile
+RUN apt-get update && apt-get install -y libreoffice libreoffice-writer --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+```
+et que `soffice` est accessible (`which soffice` doit renvoyer `/usr/bin/soffice`).
+
+Si le binaire est à un chemin non-standard, le plus simple est un symlink :
+```dockerfile
+RUN ln -sf /usr/bin/libreoffice /usr/bin/soffice
+```
+
+### 2. Le `fetch(fileUrl)` côté serveur échoue (bucket privé)
+
+La route reçoit `{ fileUrl }` et fait `await fetch(fileUrl)` pour récupérer le .docx. Si le bucket Supabase `templates` est **privé**, le `publicUrl` renvoie bien une URL, mais un `GET` direct dessus renvoie **400/403**, et `resp.ok` est `false` → `readInput` renvoie `null` → la route répond **400 "No file provided"**, pas 500.
+
+Donc si ton erreur est un 500 et pas un 400, ce n'est probablement PAS cette cause. Mais à vérifier si tu as migré le bucket en privé récemment.
+
+**Fix possible** : soit laisser le bucket public, soit remplacer le flux actuel par un upload direct de fichier (multipart) — la route supporte déjà les deux (voir `readInput` lignes 15-39).
+
+### 3. `pdf-to-img` / rendu PDF
+
+La lib `pdf-to-img` (qui utilise `pdfjs-dist` + `@napi-rs/canvas` en interne) peut planter à l'exécution si une dépendance native manque dans le conteneur Alpine (fontconfig, libjpeg, etc.). Symptômes :
+```
+Error: Cannot find module '@napi-rs/canvas-linux-x64-musl'
+```
+ou
+```
+Error: libfontconfig.so.1: cannot open shared object file
+```
+
+**Fix (Alpine)** :
+```dockerfile
+RUN apk add --no-cache fontconfig ttf-dejavu cairo pango giflib libjpeg-turbo
+```
+**Fix (Debian/Ubuntu — plus probable chez toi)** : normalement OK si LibreOffice est déjà installé, car il tire les fonts.
+
+### 4. RLS Supabase Storage refuse l'INSERT
+
+L'upload utilise le path `${user.id}/ai/${tempId}/pages/page-N.png`. Si ta policy RLS sur `storage.objects` bucket `templates` vérifie `organization_id` (et pas `user.id`), l'upload échoue. Mais le code **log juste l'erreur et `continue`** (lignes 64-67), donc ça n'émet pas de 500 — ça retourne juste `pageImageUrls: []`. Donc **pas la cause du 500**, mais à vérifier si après correction tu n'as pas d'images.
+
+### 5. Mémoire / timeout LibreOffice
+
+Sur des .docx complexes, `soffice` peut mettre >60s ou manquer de mémoire → le convert reject. `maxDuration = 120` est déjà à 2 min, mais certaines plateformes (Vercel hors Pro) capent avant.
+
+## Améliorations à appliquer en tout cas
+
+1. **Logger davantage** dans `render-pages/route.ts` avant chaque étape pour isoler la phase qui plante :
+   ```ts
+   console.log('[AI] 1/ Téléchargement fichier...');
+   console.log('[AI] 2/ docx -> pdf');
+   console.log('[AI] 3/ pdf -> images');
+   ```
+2. **Propager explicitement** l'erreur si `pageImageUrls.length === 0` au lieu de renvoyer `success: true` avec un tableau vide (ça masque le vrai problème RLS).
+3. **Honorer `LIBREOFFICE_PATH`** : puisque tu as déjà cette variable d'env, la passer à `libreoffice-convert` en l'injectant dans le `PATH` au démarrage, ou utiliser le 4ᵉ argument `filter` pour forcer le chemin (la lib expose un champ `tmpOptions` depuis la v1.6). Sinon, symlinker `soffice`.
+
+## Action demandée
+
+Renvoie-moi le **`details`** du JSON de la réponse 500 (Network tab → Response). Je pourrai alors faire le correctif ciblé plutôt que de patcher toutes les causes à l'aveugle.
+
+---
+
+# ✅ Diagnostic confirmé (20 avril 2026, 14h34)
+
+Tu m'as envoyé deux erreurs distinctes. Voilà le verdict.
+
+## Erreur 1 — `Could not find soffice binary` → **cause du 500**
+
+```
+[AI] render-pages error: Error: Could not find soffice binary
+ POST /api/templates/ai/render-pages 500
+```
+
+C'était exactement la **cause #1** que je listais plus haut. Le chemin `C:\Users\ilan\AppData\Local\Temp\libreofficeConvert_...` confirme que **tu tournes en local sous Windows** (pas dans Docker). Ton `Dockerfile` installe bien LibreOffice (`@c:\Users\ilan\CascadeProjects\Saas_propal\Dockerfile:26-37`) donc la **prod est OK**, c'est uniquement **ton poste de dev** qui n'a pas `soffice` dans le `PATH`.
+
+### Fix Windows (à faire une fois)
+
+1. **Installer LibreOffice** : https://www.libreoffice.org/download/download/ → installe la version "Fresh" 64-bit. Par défaut ça pose le binaire dans :
+   ```
+   C:\Program Files\LibreOffice\program\soffice.exe
+   ```
+2. **Ajouter au PATH** (⚠️ c'est ce que `libreoffice-convert` regarde, il ignore `LIBREOFFICE_PATH`) :
+   - `Win + R` → `sysdm.cpl` → onglet **Avancé** → **Variables d'environnement**.
+   - Dans **Path** (utilisateur ou système), ajoute : `C:\Program Files\LibreOffice\program`
+3. **Redémarrer ton terminal ET le serveur Next** (sinon le nouveau PATH n'est pas vu par `node`).
+4. Vérifier :
+   ```powershell
+   soffice --version
+   ```
+   doit renvoyer quelque chose comme `LibreOffice 24.x ...`.
+
+Après ça, `/api/templates/ai/render-pages` retournera 200.
+
+## Erreur 2 — `ENOTEMPTY: rmdir ... libreofficeConvert_...` → **bug connu de la lib sur Windows**
+
+```
+Error: ENOTEMPTY: directory not empty, rmdir 'C:\Users\ilan\AppData\Local\Temp\libreofficeConvert_...'
+ ⨯ unhandledRejection
+```
+
+Bug récurrent de `libreoffice-convert` sur Windows : la lib supprime son dossier temporaire **juste après** avoir lu le PDF, mais `soffice.exe` garde parfois un handle ouvert quelques ms → `rmdir` échoue avec `ENOTEMPTY`. Comme c'est déclenché dans un callback détaché (pas dans notre `await`), ça remonte en **`unhandledRejection`** et **crash le dev server Next**.
+
+Ce n'est **pas** ce qui provoque le 500 (le 500 vient de l'erreur 1), mais une fois l'erreur 1 corrigée, **l'erreur 2 restera** et continuera à spammer. Deux options :
+
+### Option A — Ignorer proprement ce rejet spécifique (recommandé, 1 fichier)
+
+Ajoute un handler global qui silencie **uniquement** ce cas (le reste continue de remonter). Créer `@c:\Users\ilan\CascadeProjects\Saas_propal\lib\ai\libreoffice-cleanup-guard.ts` :
+
+```ts
+// Guard contre les ENOTEMPTY de libreoffice-convert sur Windows.
+// Bug upstream : https://github.com/elwerene/libreoffice-convert/issues/…
+let installed = false;
+export function installLibreofficeCleanupGuard() {
+  if (installed) return;
+  installed = true;
+  process.on('unhandledRejection', (err) => {
+    const e = err as NodeJS.ErrnoException;
+    if (
+      e?.code === 'ENOTEMPTY' &&
+      typeof e?.path === 'string' &&
+      e.path.includes('libreofficeConvert_')
+    ) {
+      // Ignoré : cleanup non critique
+      return;
+    }
+    throw err;
+  });
+}
+```
+
+Puis appelle `installLibreofficeCleanupGuard()` au tout début de `getConvertAsync()` dans `@c:\Users\ilan\CascadeProjects\Saas_propal\lib\ai\template-analyzer.ts:39-52`.
+
+### Option B — Forcer un dossier temp dédié et le nettoyer nous-mêmes
+
+Plus propre sur le long terme mais plus de code : patcher `renderDocxToPdf` pour écrire le .docx dans un tmp à nous, spawn `soffice --headless --convert-to pdf` directement, et supprimer le dossier en `try/finally` avec retry. Abandonne `libreoffice-convert`. À faire **seulement** si l'option A ne suffit pas.
+
+## Recap
+
+| # | Erreur | Cause | Fix |
+|---|---|---|---|
+| 1 | `Could not find soffice binary` (500) | LibreOffice pas dans le PATH Windows local | Installer + PATH + redémarrer |
+| 2 | `ENOTEMPTY rmdir libreofficeConvert_...` (unhandledRejection) | Bug connu `libreoffice-convert` sur Windows | Handler global qui swallow ce code précis (option A) |
+
+Dis-moi si tu veux que j'applique **l'option A** directement (fichier + hook dans `template-analyzer.ts`) — c'est 5 lignes.

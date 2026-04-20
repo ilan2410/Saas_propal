@@ -21,8 +21,27 @@ WORKDIR /app
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# LibreOffice (pour libreoffice-convert : .docx -> .pdf)
+# + fonts et libs natives nécessaires à pdf-to-img / @napi-rs/canvas
+RUN apk add --no-cache \
+      libreoffice \
+      libreoffice-writer \
+      ttf-dejavu \
+      ttf-liberation \
+      fontconfig \
+      cairo \
+      pango \
+      giflib \
+      libjpeg-turbo \
+ && ln -sf /usr/bin/libreoffice /usr/bin/soffice \
+ && soffice --version
+
+# Cache LibreOffice writable par l'utilisateur nextjs
+ENV HOME=/home/nextjs
+
 RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN adduser --system --uid 1001 --home /home/nextjs nextjs
+RUN mkdir -p /home/nextjs && chown -R nextjs:nodejs /home/nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
