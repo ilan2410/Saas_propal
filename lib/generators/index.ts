@@ -411,8 +411,30 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
     }
   }
 
+  // Aplatir les donnees pour Docxtemplater.
+  // Docxtemplater resout {{client.nom}} via la cle plate "client.nom",
+  // pas via l'objet imbrique.
+  const flatData: UnknownRecord = {};
+  const flattenForDocx = (obj: unknown, prefix = '') => {
+    if (!isPlainObject(obj)) return;
+    for (const [key, val] of Object.entries(obj)) {
+      const flatKey = prefix ? `${prefix}.${key}` : key;
+      if (
+        typeof val === 'string' ||
+        typeof val === 'number' ||
+        val === null ||
+        val === undefined
+      ) {
+        flatData[flatKey] = formatValueForWord(val);
+      } else if (isPlainObject(val)) {
+        flattenForDocx(val, flatKey);
+      }
+    }
+  };
+  flattenForDocx(baseData);
+
   try {
-    doc.render(mappedData);
+    doc.render({ ...mappedData, ...flatData });
   } catch (error) {
     const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
     const details =
