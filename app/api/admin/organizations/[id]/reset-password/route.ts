@@ -40,7 +40,7 @@ export async function POST(
 
       const origin = process.env.NEXT_PUBLIC_URL || request.headers.get('origin') || '';
       const { error } = await supabaseAdmin.auth.resetPasswordForEmail(org.email, {
-        redirectTo: `${origin}/auth/callback?next=/reset-password`,
+        redirectTo: `${origin}/auth/callback`,
       });
 
       if (error) throw error;

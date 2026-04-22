@@ -3,35 +3,41 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const appOrigin = process.env.NEXT_PUBLIC_URL || request.nextUrl.origin;
   const code = requestUrl.searchParams.get('code');
   const token_hash = requestUrl.searchParams.get('token_hash');
   const type = requestUrl.searchParams.get('type') as 'email' | 'recovery' | 'invite' | 'magiclink' | null;
   const next = requestUrl.searchParams.get('next');
 
   const supabase = await createClient();
+  const redirectToApp = (path: string) => NextResponse.redirect(new URL(path, appOrigin));
 
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
     if (error) {
       console.error('Erreur verifyOtp:', error);
-      return NextResponse.redirect(new URL('/login?error=invalid_token', request.url));
+      return redirectToApp('/login?error=invalid_token');
     }
 
     if (type === 'recovery') {
-      return NextResponse.redirect(new URL('/reset-password', request.url));
+      return redirectToApp('/reset-password');
     }
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       console.error('Erreur exchangeCodeForSession:', error);
-      return NextResponse.redirect(new URL('/login?error=invalid_code', request.url));
+      return redirectToApp('/login?error=invalid_code');
+    }
+
+    if (type === 'recovery') {
+      return redirectToApp('/reset-password');
     }
   } else {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return redirectToApp('/login');
   }
 
-  if (next) {
-    return NextResponse.redirect(new URL(next, request.url));
+  if (next?.startsWith('/')) {
+    return redirectToApp(next);
   }
 
   const {
@@ -39,12 +45,12 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return redirectToApp('/login');
   }
 
   const role = user.user_metadata?.role;
   if (role === 'admin') {
-    return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+    return redirectToApp('/admin/dashboard');
   }
 
   const { data: organization } = await supabase
@@ -54,7 +60,7 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (!organization?.secteur) {
-    return NextResponse.redirect(new URL('/onboarding', request.url));
+    return redirectToApp('/onboarding');
   }
 
   const allowedHomePages = new Set(['/dashboard', '/templates', '/propositions']);
@@ -68,7 +74,7 @@ export async function GET(request: NextRequest) {
       ? preferences.page_accueil
       : '/dashboard';
 
-  const response = NextResponse.redirect(new URL(home, request.url));
+  const response = NextResponse.redirect(new URL(home, appOrigin));
 
   if (typeof preferences.theme === 'string') {
     response.cookies.set('appearance_theme', preferences.theme, {
