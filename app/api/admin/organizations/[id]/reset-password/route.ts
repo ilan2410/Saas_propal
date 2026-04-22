@@ -38,7 +38,7 @@ export async function POST(
         return NextResponse.json({ error: 'Client introuvable' }, { status: 404 });
       }
 
-      const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
+      const origin = process.env.NEXT_PUBLIC_URL || request.headers.get('origin') || '';
       const { error } = await supabaseAdmin.auth.resetPasswordForEmail(org.email, {
         redirectTo: `${origin}/auth/callback?next=/reset-password`,
       });
