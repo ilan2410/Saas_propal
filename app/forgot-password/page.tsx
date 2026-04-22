@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+import { createImplicitClient } from '@/lib/supabase/client';
 import { Loader2, ArrowLeft, Mail } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
@@ -17,7 +17,7 @@ export default function ForgotPasswordPage() {
     setError('');
 
     try {
-      const supabase = createClient();
+      const supabase = createImplicitClient();
       const origin = process.env.NEXT_PUBLIC_URL || window.location.origin;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {

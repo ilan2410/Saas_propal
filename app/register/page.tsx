@@ -4,11 +4,11 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { createImplicitClient } from '@/lib/supabase/client';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => createImplicitClient(), []);
 
   const [nomEntreprise, setNomEntreprise] = useState('');
   const [email, setEmail] = useState('');
