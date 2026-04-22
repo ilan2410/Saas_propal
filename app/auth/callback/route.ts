@@ -16,6 +16,10 @@ export async function GET(request: NextRequest) {
       console.error('Erreur verifyOtp:', error);
       return NextResponse.redirect(new URL('/login?error=invalid_token', request.url));
     }
+
+    if (type === 'recovery') {
+      return NextResponse.redirect(new URL('/reset-password', request.url));
+    }
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
