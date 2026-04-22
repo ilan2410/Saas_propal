@@ -153,6 +153,7 @@ export function Step2UploadTemplate({
   const [parseError, setParseError] = useState<string | null>(null);
   const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null);
   const [wordParseError, setWordParseError] = useState<string | null>(null);
+  const [wordParseMessages, setWordParseMessages] = useState<string[]>([]);
   const [copiedKeys, setCopiedKeys] = useState<Record<string, true>>({});
   const [showHelp, setShowHelp] = useState(false);
   const [currentHelpStep, setCurrentHelpStep] = useState(0);
@@ -268,7 +269,8 @@ export function Step2UploadTemplate({
       setParseError(null);
       setWordPreviewHtml(null);
       setWordParseError(null);
-      
+      setWordParseMessages([]);
+
       try {
         const formData = new FormData();
         formData.append('file', selectedFile);
@@ -408,14 +410,17 @@ export function Step2UploadTemplate({
     markCopied(key);
   };
 
-  const validateWordVariables = (html: string) => {
+  const validateWordVariables = (html: string, parsedVariables?: string[]) => {
     const errors: ValidationError[] = [];
     const foundSimpleFields: string[] = [];
     const missingSimpleFields: string[] = [];
 
     champsSimples.forEach((field) => {
       const pattern = `{{${field}}}`;
-      if (html.includes(pattern)) {
+      // Prefer the API-parsed variables (raw text, handles split runs in Word XML)
+      // Fall back to HTML search for backward compatibility
+      const found = parsedVariables ? parsedVariables.includes(field) : html.includes(pattern);
+      if (found) {
         foundSimpleFields.push(field);
       } else {
         missingSimpleFields.push(field);
@@ -560,6 +565,7 @@ export function Step2UploadTemplate({
     setStep('parse-word');
     setWordPreviewHtml(null);
     setWordParseError(null);
+    setWordParseMessages([]);
     setValidationResults(null);
 
     try {
@@ -577,9 +583,16 @@ export function Step2UploadTemplate({
 
       const result = (await response.json().catch(() => null)) as unknown;
       const html = isRecord(result) ? getString(result, 'html') : undefined;
+      const apiVariables = isRecord(result) && Array.isArray(result.variables)
+        ? (result.variables as unknown[]).filter((v): v is string => typeof v === 'string')
+        : undefined;
+      const messages = isRecord(result) && Array.isArray(result.messages)
+        ? (result.messages as unknown[]).filter((m): m is string => typeof m === 'string')
+        : [];
       setWordPreviewHtml(html || null);
-      if (html && hasUploadedBefore) {
-        const validation = validateWordVariables(html);
+      setWordParseMessages(messages);
+      if (hasUploadedBefore) {
+        const validation = validateWordVariables(html || '', apiVariables);
         setValidationResults(validation);
       }
       setHasUploadedBefore(true);
@@ -658,6 +671,7 @@ export function Step2UploadTemplate({
     setStep('upload');
     setWordPreviewHtml(null);
     setWordParseError(null);
+    setWordParseMessages([]);
     setCopiedKeys({});
     setValidationResults(null);
     setHasUploadedBefore(false);
@@ -1596,6 +1610,14 @@ export function Step2UploadTemplate({
             ) : (
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
                 <p className="text-sm text-gray-500">Aucun aperçu disponible. Uploadez un fichier Word pour voir l&apos;aperçu.</p>
+                {wordParseMessages.length > 0 && (
+                  <details className="mt-3 text-left">
+                    <summary className="text-xs text-amber-600 cursor-pointer">Détails de conversion ({wordParseMessages.length} avertissement{wordParseMessages.length > 1 ? 's' : ''})</summary>
+                    <ul className="mt-2 text-xs text-amber-700 space-y-1">
+                      {wordParseMessages.map((m, i) => <li key={i}>{m}</li>)}
+                    </ul>
+                  </details>
+                )}
               </div>
             )}
           </div>
