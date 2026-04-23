@@ -31,8 +31,50 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
-function extractMonthlyPrice(line: UnknownRecord): number {
-  const keys = [
+function isLikelyPriceKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.includes('prix') ||
+    normalized.includes('tarif') ||
+    normalized.includes('montant') ||
+    normalized.includes('cout') ||
+    normalized.includes('coût') ||
+    normalized.includes('total_ht') ||
+    normalized.includes('totalttc') ||
+    normalized.includes('total_ttc')
+  );
+}
+
+function isLikelyIdentifierKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return [
+    'numero',
+    'num',
+    'ligne',
+    'tel',
+    'telephone',
+    'téléphone',
+    'mobile',
+    'id',
+    'reference',
+    'référence',
+    'ref',
+    'rio',
+    'siret',
+    'poste',
+    'compte',
+    'contrat',
+    'ndi',
+    'identifiant',
+  ].some((token) => normalized.includes(token));
+}
+
+function isPlausiblePrice(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 100000;
+}
+
+function extractMonthlyPrice(line: UnknownRecord): number | null {
+  const exactKeys = [
     'prix_mensuel',
     'montant_mensuel',
     'tarif_mensuel',
@@ -44,17 +86,48 @@ function extractMonthlyPrice(line: UnknownRecord): number {
     'total',
   ];
 
-  for (const k of keys) {
+  for (const k of exactKeys) {
     const num = toNumber(line[k]);
-    if (num !== null) return num;
+    if (num !== null && isPlausiblePrice(num)) return num;
   }
 
-  for (const v of Object.values(line)) {
-    const num = toNumber(v);
-    if (num !== null) return num;
+  for (const [key, value] of Object.entries(line)) {
+    if (isLikelyIdentifierKey(key) || !isLikelyPriceKey(key)) continue;
+    const num = toNumber(value);
+    if (num !== null && isPlausiblePrice(num)) return num;
   }
 
-  return 0;
+  for (const [key, value] of Object.entries(line)) {
+    if (isLikelyIdentifierKey(key)) continue;
+    if (typeof value !== 'string') continue;
+    const lowered = value.toLowerCase();
+    const hasMoneyHint = lowered.includes('€') || lowered.includes('eur') || /[.,]\d{1,2}\b/.test(lowered);
+    if (!hasMoneyHint) continue;
+    const num = toNumber(value);
+    if (num !== null && isPlausiblePrice(num)) return num;
+  }
+
+  return null;
+}
+
+function extractPriceFromCatalogueItem(item: unknown): number | null {
+  if (!isPlainObject(item)) return null;
+
+  const candidates = [
+    item.prix_mensuel,
+    item.tarif_mensuel,
+    item.montant_mensuel,
+    item.prix,
+    item.tarif,
+    item.montant,
+  ];
+
+  for (const candidate of candidates) {
+    const num = toNumber(candidate);
+    if (num !== null && isPlausiblePrice(num)) return num;
+  }
+
+  return null;
 }
 
 function shouldExcludePath(pathLower: string): boolean {
@@ -199,7 +272,7 @@ type SuggestionResult = {
 };
 
 function buildFallbackSuggestion(line: UnknownRecord) {
-  const prix = extractMonthlyPrice(line);
+  const prix = extractMonthlyPrice(line) ?? 0;
   return {
     ligne_actuelle: line,
     produit_propose_nom: 'Aucun produit similaire trouvé',
@@ -232,6 +305,47 @@ function findSupplierInCatalogue(catalogue: unknown[], produitId?: string, produ
   return undefined;
 }
 
+function findCatalogueItem(catalogue: unknown[], produitId?: string, produitNom?: string): UnknownRecord | undefined {
+  const id = typeof produitId === 'string' && produitId.trim() ? produitId.trim() : undefined;
+  const nom = typeof produitNom === 'string' && produitNom.trim() ? produitNom.trim().toLowerCase() : undefined;
+
+  if (!id && !nom) return undefined;
+
+  for (const item of catalogue) {
+    if (!isPlainObject(item)) continue;
+
+    const itemId = typeof item.id === 'string' ? item.id : undefined;
+    const itemNom = typeof item.nom === 'string' ? item.nom : undefined;
+
+    if (id && itemId === id) return item;
+    if (nom && itemNom && itemNom.toLowerCase() === nom) return item;
+  }
+
+  return undefined;
+}
+
+function resolveCurrentPrice(rawPrice: unknown, line: UnknownRecord): number {
+  const extracted = extractMonthlyPrice(line);
+  if (extracted !== null) return extracted;
+
+  const candidate = toNumber(rawPrice);
+  if (candidate !== null && isPlausiblePrice(candidate)) return candidate;
+
+  return 0;
+}
+
+function resolveProposedPrice(rawPrice: unknown, fallbackCurrentPrice: number, catalogueItem?: UnknownRecord): number {
+  const cataloguePrice = extractPriceFromCatalogueItem(catalogueItem);
+  if (cataloguePrice !== null) return cataloguePrice;
+
+  if (!catalogueItem) return fallbackCurrentPrice;
+
+  const candidate = toNumber(rawPrice);
+  if (candidate !== null && isPlausiblePrice(candidate)) return candidate;
+
+  return fallbackCurrentPrice;
+}
+
 function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknown[]): SuggestionResult {
   const empty: SuggestionResult = {
     suggestions: lines.map((l) => buildFallbackSuggestion(l)),
@@ -253,9 +367,6 @@ function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknow
     .filter(Boolean)
     .map((s) => {
       const ligneActuelle = isPlainObject(s!.ligne_actuelle) ? (s!.ligne_actuelle as UnknownRecord) : {};
-      const prixActuel = toNumber(s!.prix_actuel) ?? extractMonthlyPrice(ligneActuelle);
-      const prixPropose = toNumber(s!.prix_propose) ?? prixActuel;
-      const economieMensuelle = toNumber(s!.economie_mensuelle) ?? prixActuel - prixPropose;
       const produitProposeNom =
         typeof s!.produit_propose_nom === 'string' && s!.produit_propose_nom.trim()
           ? s!.produit_propose_nom
@@ -264,19 +375,28 @@ function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknow
         typeof s!.justification === 'string' && s!.justification.trim()
           ? s!.justification
           : "Aucun produit de votre catalogue ne semble correspondre à cette ligne/service.";
+      const prixActuel = resolveCurrentPrice(s!.prix_actuel, ligneActuelle);
 
       const out: SuggestionResult['suggestions'][number] = {
         ligne_actuelle: ligneActuelle,
         produit_propose_nom: produitProposeNom,
         prix_actuel: prixActuel,
-        prix_propose: prixPropose,
-        economie_mensuelle: economieMensuelle,
+        prix_propose: prixActuel,
+        economie_mensuelle: 0,
         justification,
       };
 
       if (typeof s!.produit_propose_id === 'string' && s!.produit_propose_id.trim()) {
         out.produit_propose_id = s!.produit_propose_id;
       }
+
+      const catalogueItem = findCatalogueItem(catalogue, out.produit_propose_id, out.produit_propose_nom);
+      const prixPropose = resolveProposedPrice(s!.prix_propose, prixActuel, catalogueItem);
+      const economieMensuelle = prixActuel - prixPropose;
+
+      out.prix_actuel = prixActuel;
+      out.prix_propose = prixPropose;
+      out.economie_mensuelle = economieMensuelle;
 
       const fournisseur = findSupplierInCatalogue(catalogue, out.produit_propose_id, out.produit_propose_nom);
       if (fournisseur) out.produit_propose_fournisseur = fournisseur;
@@ -381,6 +501,8 @@ INSTRUCTIONS:
    - "ligne_actuelle" doit être l'élément correspondant de "LIGNES À ANALYSER"
    - "produit_propose_id" doit être l'id d'un produit existant du catalogue (ou omis si aucun produit ne convient)
    - "produit_propose_nom" doit être le nom exact d'un produit existant du catalogue (ou "Aucun produit similaire trouvé" si aucun produit ne convient)
+   - N'utilise JAMAIS un identifiant technique comme prix: "numero_ligne", "numero", "id", "reference", "ndi", téléphone, etc. ne sont pas des montants
+   - Si aucun tarif mensuel fiable n'est présent dans la ligne actuelle, mets "prix_actuel" = 0
    - Si aucun produit ne convient: mets "prix_propose" = "prix_actuel" et "economie_mensuelle" = 0, et explique pourquoi
 2. Privilégie ${
       objectif === 'economie'

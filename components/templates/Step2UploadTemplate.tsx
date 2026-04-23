@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, Loader2, FileSpreadsheet, FileText, X, Check, Play, HelpCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
@@ -154,6 +154,9 @@ export function Step2UploadTemplate({
   const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null);
   const [wordParseError, setWordParseError] = useState<string | null>(null);
   const [wordParseMessages, setWordParseMessages] = useState<string[]>([]);
+  const [isRenderingDocx, setIsRenderingDocx] = useState(false);
+  const [docxRenderError, setDocxRenderError] = useState<string | null>(null);
+  const docxPreviewRef = useRef<HTMLDivElement>(null);
   const [copiedKeys, setCopiedKeys] = useState<Record<string, true>>({});
   const [showHelp, setShowHelp] = useState(false);
   const [currentHelpStep, setCurrentHelpStep] = useState(0);
@@ -184,6 +187,35 @@ export function Step2UploadTemplate({
     return 'upload';
   };
   const [step, setStep] = useState<Step>(getInitialStep());
+
+  // Render docx-preview when a Word file is ready
+  useEffect(() => {
+    if (step !== 'preview-word' || !file) return;
+
+    let cancelled = false;
+    setIsRenderingDocx(true);
+    setDocxRenderError(null);
+
+    (async () => {
+      try {
+        const { renderAsync } = await import('docx-preview');
+        const arrayBuffer = await file.arrayBuffer();
+        if (cancelled || !docxPreviewRef.current) return;
+        docxPreviewRef.current.innerHTML = '';
+        await renderAsync(arrayBuffer, docxPreviewRef.current, undefined, {
+          className: 'docx',
+          inWrapper: false,
+          ignoreWidth: false,
+        });
+      } catch {
+        if (!cancelled) setDocxRenderError("Impossible de générer l'aperçu pour ce document.");
+      } finally {
+        if (!cancelled) setIsRenderingDocx(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [file, step]);
 
   // Aide contextuelle - étapes
   const helpSteps = [
@@ -566,6 +598,9 @@ export function Step2UploadTemplate({
     setWordPreviewHtml(null);
     setWordParseError(null);
     setWordParseMessages([]);
+    setDocxRenderError(null);
+    setIsRenderingDocx(false);
+    if (docxPreviewRef.current) docxPreviewRef.current.innerHTML = '';
     setValidationResults(null);
 
     try {
@@ -672,6 +707,9 @@ export function Step2UploadTemplate({
     setWordPreviewHtml(null);
     setWordParseError(null);
     setWordParseMessages([]);
+    setDocxRenderError(null);
+    setIsRenderingDocx(false);
+    if (docxPreviewRef.current) docxPreviewRef.current.innerHTML = '';
     setCopiedKeys({});
     setValidationResults(null);
     setHasUploadedBefore(false);
@@ -1598,26 +1636,24 @@ export function Step2UploadTemplate({
               <span className="text-2xl">👁️</span>
               Aperçu de votre document
             </h4>
-            {wordPreviewHtml ? (
-              <div className="border-2 border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                <iframe
-                  title="Aperçu Word"
-                  sandbox=""
-                  className="w-full h-[420px] bg-white"
-                  srcDoc={`<!doctype html><html><head><meta charset="utf-8"/><style>body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;padding:20px} .prose{max-width:none} table{border-collapse:collapse;margin:10px 0} td,th{border:1px solid #e5e7eb;padding:8px}</style></head><body>${wordPreviewHtml}</body></html>`}
-                />
+            {file ? (
+              <div className="border-2 border-gray-200 rounded-lg overflow-auto shadow-sm bg-white" style={{ minHeight: 420, maxHeight: 600 }}>
+                {isRenderingDocx && (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 text-blue-600 animate-spin mr-3" />
+                    <span className="text-gray-600">Génération de l&apos;aperçu...</span>
+                  </div>
+                )}
+                {docxRenderError && !isRenderingDocx && (
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-red-500">{docxRenderError}</p>
+                  </div>
+                )}
+                <div ref={docxPreviewRef} className={isRenderingDocx ? 'hidden' : 'p-4'} />
               </div>
             ) : (
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
                 <p className="text-sm text-gray-500">Aucun aperçu disponible. Uploadez un fichier Word pour voir l&apos;aperçu.</p>
-                {wordParseMessages.length > 0 && (
-                  <details className="mt-3 text-left">
-                    <summary className="text-xs text-amber-600 cursor-pointer">Détails de conversion ({wordParseMessages.length} avertissement{wordParseMessages.length > 1 ? 's' : ''})</summary>
-                    <ul className="mt-2 text-xs text-amber-700 space-y-1">
-                      {wordParseMessages.map((m, i) => <li key={i}>{m}</li>)}
-                    </ul>
-                  </details>
-                )}
               </div>
             )}
           </div>
