@@ -8,7 +8,7 @@ import { Step2UploadDocuments } from './Step2UploadDocuments';
 import { Step3ExtractData } from './Step3ExtractData';
 import { Step4EditData } from './Step4EditData';
 import { Step5Generate } from './Step5Generate';
-import type { SuggestionsGenerees } from '@/types';
+import type { SuggestionsGenerees, SuggestionsSpCompletes, SpQuestionReponse } from '@/types';
 
 const STEPS = [
   { id: 1, name: 'Template', description: 'Sélection' },
@@ -27,6 +27,8 @@ export interface PropositionData {
   copieurs_count?: number;
   suggestions_generees?: SuggestionsGenerees | null;
   suggestions_editees?: SuggestionsGenerees | null;
+  sp_reponses?: SpQuestionReponse[];
+  suggestions_sp_completes?: SuggestionsSpCompletes;
 }
 
 export type PropositionTemplateSummary = {
