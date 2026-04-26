@@ -5,6 +5,7 @@ import { Upload, Loader2, FileSpreadsheet, FileText, X, Check, Play, HelpCircle,
 import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
+import { SpCustomVariablesEditor } from './SpCustomVariablesEditor';
 
 interface SheetMapping {
   sheetName: string;
@@ -1714,6 +1715,15 @@ export function Step2UploadTemplate({
                   </div>
                 ))}
               </div>
+
+              {/* Variables SP custom */}
+              {templateData?.id && (
+                <SpCustomVariablesEditor
+                  templateId={templateData.id}
+                  fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
+                  onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}
+                />
+              )}
             </div>
           )}
 
