@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateClaudeApiKey } from '@/lib/ai/claude';
 import Anthropic from '@anthropic-ai/sdk';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig } from '@/types';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -431,6 +432,112 @@ function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknow
   };
 }
 
+function formatEuro(value: number): string {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+type SpLigneBaseRaw = Omit<SpLigneMobile, 'sp_type_ligne'>;
+
+function buildSpLigne(raw: UnknownRecord): SpLigneBaseRaw {
+  const prixActuel = typeof raw._prix_actuel_raw === 'number' ? raw._prix_actuel_raw : 0;
+  const prixPropose = typeof raw._prix_propose_raw === 'number' ? raw._prix_propose_raw : prixActuel;
+  const economie = prixActuel - prixPropose;
+  return {
+    sp_nom_ligne: String(raw.sp_nom_ligne ?? ''),
+    sp_produit: String(raw.sp_produit ?? 'Aucun produit semblable trouvé'),
+    sp_produit_id: typeof raw.sp_produit_id === 'string' ? raw.sp_produit_id : undefined,
+    sp_produit_fournisseur: typeof raw.sp_produit_fournisseur === 'string' ? raw.sp_produit_fournisseur : undefined,
+    sp_prix_actuel: formatEuro(prixActuel),
+    sp_prix_propose: formatEuro(prixPropose),
+    sp_economie: formatEuro(economie),
+    sp_analyse: String(raw.sp_analyse ?? ''),
+    sp_justification: String(raw.sp_justification ?? ''),
+    _prix_actuel_raw: prixActuel,
+    _prix_propose_raw: prixPropose,
+    _economie_raw: economie,
+  };
+}
+
+function buildSpMateriel(raw: UnknownRecord): SpMateriel {
+  const prix = typeof raw._prix_mensuel_raw === 'number' ? raw._prix_mensuel_raw : 0;
+  return {
+    sp_materiel_nom: String(raw.sp_materiel_nom ?? ''),
+    sp_materiel_ref: typeof raw.sp_materiel_ref === 'string' ? raw.sp_materiel_ref : undefined,
+    sp_materiel_prix_mensuel: formatEuro(prix),
+    sp_materiel_duree_engagement: String(raw.sp_materiel_duree_engagement ?? ''),
+    sp_materiel_commentaire: String(raw.sp_materiel_commentaire ?? ''),
+    sp_materiel_produit_id: typeof raw.sp_materiel_produit_id === 'string' ? raw.sp_materiel_produit_id : undefined,
+    sp_materiel_fournisseur: typeof raw.sp_materiel_fournisseur === 'string' ? raw.sp_materiel_fournisseur : undefined,
+    sp_type_ligne: 'Materiel',
+    _prix_mensuel_raw: prix,
+  };
+}
+
+function buildSpCompletes(
+  raw: UnknownRecord,
+  baseResult: SuggestionResult,
+  adresseFacturation: SpAdresse | undefined,
+  adresseLivraison: SpAdresse | null | undefined,
+  livraisonIdentique: boolean,
+  wordCfg: WordConfig,
+): SuggestionsSpCompletes {
+  const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
+  const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
+  const rawInternet = Array.isArray(raw.sp_internet) ? raw.sp_internet as UnknownRecord[] : [];
+  const rawMateriel = Array.isArray(raw.sp_materiel) ? raw.sp_materiel as UnknownRecord[] : [];
+
+  const sp_lignes_mobiles: SpLigneMobile[] = rawMobiles.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Mobile' as const }));
+  const sp_lignes_fixes: SpLigneFixe[] = rawFixes.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Fixe' as const }));
+  const sp_internet: SpInternet[] = rawInternet.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Internet' as const }));
+  const sp_materiel: SpMateriel[] = rawMateriel.map(buildSpMateriel);
+
+  const toutes = [...sp_lignes_mobiles, ...sp_lignes_fixes, ...sp_internet];
+  const economieTotale = toutes.reduce((s, l) => s + l._economie_raw, 0);
+  const totalActuel = toutes.reduce((s, l) => s + l._prix_actuel_raw, 0);
+  const totalPropose = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
+
+  const result: SuggestionsSpCompletes = {
+    ...baseResult,
+    sp_fournisseur_propose: typeof raw.sp_fournisseur_propose === 'string' ? raw.sp_fournisseur_propose : undefined,
+    sp_adresse_facturation: adresseFacturation,
+    sp_adresse_livraison: livraisonIdentique ? undefined : adresseLivraison,
+    sp_livraison_identique: livraisonIdentique,
+    sp_lignes_mobiles,
+    sp_lignes_fixes,
+    sp_internet,
+    sp_materiel,
+    sp_fixes_mobiles: [...sp_lignes_fixes, ...sp_lignes_mobiles],
+    sp_fixes_mobiles_internet: [...sp_lignes_fixes, ...sp_lignes_mobiles, ...sp_internet],
+    sp_toutes_lignes: toutes,
+    sp_tout: [...toutes, ...sp_materiel],
+    sp_economie_mensuelle: formatEuro(economieTotale),
+    sp_economie_annuelle: formatEuro(economieTotale * 12),
+    sp_total_actuel: formatEuro(totalActuel),
+    sp_total_propose: formatEuro(totalPropose),
+    sp_ameliorations: typeof raw.sp_ameliorations === 'string' ? raw.sp_ameliorations : '',
+    sp_nb_lignes: String(toutes.length),
+    sp_est_economie: economieTotale > 0 ? 'Oui' : 'Non',
+  };
+
+  if (wordCfg.spTableauxFusionnes) {
+    for (const fusion of wordCfg.spTableauxFusionnes) {
+      const items: unknown[] = [];
+      const map: Record<string, unknown[]> = {
+        mobiles: sp_lignes_mobiles,
+        fixes: sp_lignes_fixes,
+        internet: sp_internet,
+        materiel: sp_materiel,
+      };
+      for (const cat of fusion.categories) {
+        items.push(...(map[cat] ?? []));
+      }
+      result[fusion.id] = items;
+    }
+  }
+
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -453,7 +560,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { situation_actuelle, catalogue, preferences, proposition_id } = body ?? {};
+    const {
+      situation_actuelle,
+      catalogue,
+      preferences,
+      proposition_id,
+      sp_questions_reponses,
+      force_regenerate,
+    } = body ?? {};
+
+    const fournisseur_prefere: string | undefined = isPlainObject(preferences) && typeof preferences.fournisseur_prefere === 'string' ? preferences.fournisseur_prefere : undefined;
+    const proposer_materiel: boolean = isPlainObject(preferences) && preferences.proposer_materiel === true;
+    const adresse_facturation: SpAdresse | undefined = isPlainObject(preferences) && isPlainObject(preferences.adresse_facturation) ? preferences.adresse_facturation as unknown as SpAdresse : undefined;
+    const adresse_livraison: SpAdresse | null | undefined = isPlainObject(preferences) ? (isPlainObject(preferences.adresse_livraison) ? preferences.adresse_livraison as unknown as SpAdresse : null) : undefined;
+    const livraison_identique: boolean = isPlainObject(preferences) && preferences.livraison_identique === true;
+    const spReponses: SpQuestionReponse[] = Array.isArray(sp_questions_reponses) ? sp_questions_reponses as SpQuestionReponse[] : [];
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
       const { data: proposition, error: propError } = await supabase
@@ -467,7 +588,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
       }
 
-      if (proposition.suggestions_generees) {
+      if (proposition.suggestions_generees && !force_regenerate) {
         return NextResponse.json(proposition.suggestions_generees);
       }
     }
@@ -476,11 +597,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'catalogue invalide' }, { status: 400 });
     }
 
-    const objectif = preferences?.objectif || 'equilibre';
-    const budgetMax = preferences?.budget_max;
     const lignesAAnalyser = collectLinesToAnalyze(situation_actuelle ?? {});
 
-    const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle du client et propose la meilleure combinaison de produits de notre catalogue.
+    const reponsesSummary = spReponses.length > 0
+      ? `\nRÉPONSES AUX QUESTIONS SP:\n${JSON.stringify(spReponses, null, 2)}`
+      : '';
+
+    const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle et génère une proposition complète.
 
 SITUATION ACTUELLE:
 ${JSON.stringify(situation_actuelle ?? {}, null, 2)}
@@ -490,60 +613,39 @@ ${JSON.stringify(lignesAAnalyser, null, 2)}
 
 NOTRE CATALOGUE (${catalogue.length} produits):
 ${JSON.stringify(catalogue, null, 2)}
+${reponsesSummary}
+${fournisseur_prefere ? `\nFOURNISSEUR PRÉFÉRÉ: ${fournisseur_prefere}` : ''}
 
-OBJECTIF: ${objectif}
-${budgetMax ? `BUDGET MAX: ${budgetMax}€/mois` : ''}
+RÈGLE ABSOLUE 1 — PRODUITS:
+- Tu ne peux proposer QUE des produits qui existent dans NOTRE CATALOGUE avec leur ID exact.
+- Si aucun produit du catalogue ne convient: produit_propose_nom = "Aucun produit semblable trouvé", produit_propose_id = null, prix_propose = prix_actuel, economie_mensuelle = 0
+- INTERDICTION ABSOLUE de reprendre un produit de la situation actuelle ou d'inventer un produit.
+
+RÈGLE ABSOLUE 2 — FOURNISSEUR:
+- ${fournisseur_prefere ? `Fournisseur préféré: ${fournisseur_prefere}. Privilégier ses produits EN PRIORITÉ.` : 'Aucun fournisseur préféré spécifié.'}
+- Si aucun produit du fournisseur préféré ne convient: retourner "Aucun produit semblable trouvé".
+
+RÈGLE ABSOLUE 3 — MATÉRIEL:
+- N'inclure sp_materiel QUE si proposer_materiel = ${proposer_materiel}.
+- Le matériel doit venir du catalogue (catégorie equipement) uniquement.
 
 INSTRUCTIONS:
-1. Pour CHAQUE élément de "LIGNES À ANALYSER" (et dans le même ordre), retourne exactement 1 entrée dans "suggestions"
-2. La longueur de "suggestions" DOIT être exactement ${lignesAAnalyser.length}
-3. Pour chaque entrée:
-   - "ligne_actuelle" doit être l'élément correspondant de "LIGNES À ANALYSER"
-   - "produit_propose_id" doit être l'id d'un produit existant du catalogue (ou omis si aucun produit ne convient)
-   - "produit_propose_nom" doit être le nom exact d'un produit existant du catalogue (ou "Aucun produit similaire trouvé" si aucun produit ne convient)
-   - N'utilise JAMAIS un identifiant technique comme prix: "numero_ligne", "numero", "id", "reference", "ndi", téléphone, etc. ne sont pas des montants
-   - Si aucun tarif mensuel fiable n'est présent dans la ligne actuelle, mets "prix_actuel" = 0
-   - Si aucun produit ne convient: mets "prix_propose" = "prix_actuel" et "economie_mensuelle" = 0, et explique pourquoi
-2. Privilégie ${
-      objectif === 'economie'
-        ? 'les économies maximales'
-        : objectif === 'performance'
-          ? 'la meilleure performance'
-          : "l'équilibre coût/performance"
-    }
-3. Calcule les économies mensuelles et annuelles selon la formule :
-   • economie_mensuelle = prix_actuel - prix_propose
-   • Si le résultat est POSITIF → économie réelle
-   • Si le résultat est NÉGATIF → surcoût (produit proposé plus cher)
-4. Justifie chaque choix
-5. Ne propose JAMAIS un produit qui n'existe pas dans NOTRE CATALOGUE
+1. Pour chaque ligne dans LIGNES À ANALYSER (même ordre), une entrée dans "suggestions".
+2. Catégoriser chaque ligne: Mobile, Fixe, Internet selon son type.
+3. Retourner aussi les tableaux sp_lignes_mobiles, sp_lignes_fixes, sp_internet${proposer_materiel ? ', sp_materiel' : ''}.
+4. Utiliser les _raw pour les nombres (non formatés), ex: _prix_actuel_raw: 29.9
 
-RETOURNE UN JSON:
+RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
 {
-  "suggestions": [
-    {
-      "ligne_actuelle": {...},
-      "produit_propose_id": "uuid",
-      "produit_propose_nom": "...",
-      "prix_actuel": 0,
-      "prix_propose": 0,
-      "economie_mensuelle": 0,  // = prix_actuel - prix_propose (positif = économie, négatif = surcoût)
-      "justification": "..."
-    }
-  ],
-  "synthese": {
-    "cout_total_actuel": 0,
-    "cout_total_propose": 0,
-    "economie_mensuelle": 0,  // = cout_total_actuel - cout_total_propose
-    "economie_annuelle": 0,   // = economie_mensuelle * 12
-    "ameliorations": ["..."]
-  }
-}
-
-IMPORTANT - GESTION DES SURCOÛTS:
-- Si le produit proposé est plus cher, l'économie_mensuelle sera NÉGATIVE
-- Dans la justification, explique clairement pourquoi le surcoût est justifié (meilleure performance, engagement plus court, etc.)
-- L'objectif "${objectif}" doit guider tes choix, même si cela implique un léger surcoût pour une meilleure performance ou qualité`;
+  "suggestions": [{"ligne_actuelle": {}, "produit_propose_id": "uuid", "produit_propose_nom": "...", "prix_actuel": 0, "prix_propose": 0, "economie_mensuelle": 0, "justification": "..."}],
+  "synthese": {"cout_total_actuel": 0, "cout_total_propose": 0, "economie_mensuelle": 0, "economie_annuelle": 0, "ameliorations": ["..."]},
+  "sp_lignes_mobiles": [{"sp_nom_ligne": "...", "sp_produit": "...", "sp_produit_id": "uuid-ou-null", "sp_produit_fournisseur": "...", "sp_type_ligne": "Mobile", "_prix_actuel_raw": 0, "_prix_propose_raw": 0, "_economie_raw": 0, "sp_analyse": "...", "sp_justification": "..."}],
+  "sp_lignes_fixes": [],
+  "sp_internet": [],
+  ${proposer_materiel ? '"sp_materiel": [{"sp_materiel_nom": "...", "sp_materiel_ref": "...", "sp_materiel_produit_id": "uuid-ou-null", "sp_materiel_fournisseur": "...", "sp_type_ligne": "Materiel", "_prix_mensuel_raw": 0, "sp_materiel_duree_engagement": "...", "sp_materiel_commentaire": "..."}],' : '"sp_materiel": [],'}
+  "sp_fournisseur_propose": "...",
+  "sp_ameliorations": "..."
+}`;
 
     const model = process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-haiku-4-5-20251001';
 
@@ -558,22 +660,60 @@ IMPORTANT - GESTION DES SURCOÛTS:
 
     const normalized = normalizeResult(result, lignesAAnalyser, catalogue);
 
-    // Sauvegarde en BDD si proposition_id est présent
+    // Construction des données SP complètes si l'IA a retourné des tableaux SP
+    let suggestionsSpCompletes: SuggestionsSpCompletes | null = null;
+    const rawResult = isPlainObject(result) ? result as UnknownRecord : {};
+
+    if (
+      Array.isArray(rawResult.sp_lignes_mobiles) ||
+      Array.isArray(rawResult.sp_lignes_fixes) ||
+      Array.isArray(rawResult.sp_internet)
+    ) {
+      let wordCfg: WordConfig = { formatVariables: '', fieldMappings: {} };
+      if (typeof proposition_id === 'string' && proposition_id.length > 0) {
+        const { data: prop } = await supabase
+          .from('propositions')
+          .select('template_id')
+          .eq('id', proposition_id)
+          .single();
+        if (prop?.template_id) {
+          const { data: tmpl } = await supabase
+            .from('proposition_templates')
+            .select('file_config')
+            .eq('id', prop.template_id)
+            .single();
+          if (isPlainObject(tmpl?.file_config)) {
+            wordCfg = tmpl.file_config as unknown as WordConfig;
+          }
+        }
+      }
+      suggestionsSpCompletes = buildSpCompletes(
+        rawResult,
+        normalized,
+        adresse_facturation,
+        adresse_livraison,
+        livraison_identique,
+        wordCfg,
+      );
+    }
+
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
+      const updatePayload: UnknownRecord = { suggestions_generees: normalized };
+      if (suggestionsSpCompletes) {
+        updatePayload.suggestions_sp_completes = suggestionsSpCompletes;
+      }
       const { error: updateError } = await supabase
         .from('propositions')
-        .update({ 
-          suggestions_generees: normalized,
-        })
+        .update(updatePayload)
         .eq('id', proposition_id)
         .eq('organization_id', user.id);
-      
+
       if (updateError) {
         console.error('Erreur sauvegarde suggestions:', updateError);
       }
     }
 
-    return NextResponse.json(normalized);
+    return NextResponse.json(suggestionsSpCompletes ?? normalized);
   } catch {
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
