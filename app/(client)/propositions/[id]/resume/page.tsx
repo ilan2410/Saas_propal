@@ -75,10 +75,13 @@ export default async function ResumePropositionPage({
     !Array.isArray(proposition.filled_data) &&
     Object.keys(proposition.filled_data as Record<string, unknown>).length > 0;
   const hasSuggestions = !!proposition.suggestions_generees || !!proposition.suggestions_editees;
+  const hasSpCompletes = !!proposition.suggestions_sp_completes;
   const hasDocuments = documents_urls.length > 0;
 
   let inferredStep = 1;
-  if (hasSuggestions) {
+  if (hasSpCompletes) {
+    inferredStep = 6;
+  } else if (hasSuggestions) {
     inferredStep = 5;
   } else if (hasExtractedData || hasFilledData) {
     inferredStep = 4;
@@ -98,7 +101,7 @@ export default async function ResumePropositionPage({
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
   const initialStep = Math.max(
     1,
-    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
+    Math.min(6, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
   );
 
   return (
@@ -128,6 +131,8 @@ export default async function ResumePropositionPage({
           donnees_extraites: dataToEdit,
           suggestions_generees: proposition.suggestions_generees || null,
           suggestions_editees: proposition.suggestions_editees || null,
+          suggestions_sp_completes: proposition.suggestions_sp_completes || null,
+          sp_reponses: proposition.sp_reponses || [],
         }}
       />
     </div>

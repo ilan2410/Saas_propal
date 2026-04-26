@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List, Sparkles, Loader2 } from 'lucide-react';
+import { Save, ChevronDown, ChevronRight, Plus, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, List } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { ExcelDataEditor } from './ExcelDataEditor';
-import { EditableSuggestionsView } from './EditableSuggestionsView';
-import { SuggestionsGenerees, CatalogueProduit, Suggestion, SuggestionsSynthese } from '@/types';
 import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
@@ -317,26 +315,7 @@ export function Step4EditData({
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'simple' | 'complex'>('simple');
   const [viewMode, setViewMode] = useState<'excel' | 'form'>('excel');
-  const [suggestions, setSuggestions] = useState<SuggestionsGenerees | null>(
-    (propositionData.suggestions_editees ||
-      propositionData.suggestions_generees ||
-      null) as SuggestionsGenerees | null
-  );
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-  const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
-
   useEffect(() => {
-    const loadCatalogue = async () => {
-      try {
-        const response = await fetch('/api/catalogue');
-        const data = await response.json();
-        setCatalogue(data.produits || []);
-      } catch (e) {
-        console.error("Erreur chargement catalogue", e);
-      }
-    };
-    loadCatalogue();
   }, []);
 
   const [templateInfo, setTemplateInfo] = useState<{
@@ -568,113 +547,6 @@ export function Step4EditData({
     }
   };
 
-  const handleGenererSuggestions = async () => {
-    if (suggestions) return;
-    setIsLoadingSuggestions(true);
-    try {
-      if (!propositionData.proposition_id) {
-        throw new Error('Proposition introuvable');
-      }
-
-      const catalogueRes = await fetch('/api/catalogue');
-      const catalogueJson = await catalogueRes.json();
-      if (!catalogueRes.ok) {
-        throw new Error(catalogueJson?.error || 'Erreur chargement catalogue');
-      }
-
-      const res = await fetch('/api/propositions/generer-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          situation_actuelle: editedData,
-          catalogue: catalogueJson?.produits || [],
-          preferences: { objectif: 'equilibre' },
-          proposition_id: propositionData.proposition_id,
-        }),
-      });
-
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result?.error || 'Erreur génération suggestions');
-      }
-
-      setSuggestions(result);
-      updatePropositionData({ suggestions_generees: result });
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Erreur lors de la génération');
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
-  };
-
- const handleDownloadPdf = async (customSuggestions?: Suggestion[], customSynthese?: SuggestionsSynthese) => {
-    const suggestionsToUse = customSuggestions || suggestions?.suggestions;
-    const syntheseToUse = customSynthese || suggestions?.synthese;
-
-    if (!suggestionsToUse || !syntheseToUse || !propositionData.proposition_id) {
-      console.log('❌ Pas de suggestions ou proposition_id');
-      return;
-    }
-    
-    setIsDownloadingPdf(true);
-    try {
-      const response = await fetch(`/api/propositions/${propositionData.proposition_id}/export-comparatif`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          suggestions: suggestionsToUse,
-          synthese: syntheseToUse,
-          proposition_id: propositionData.proposition_id
-        })
-      });
-
-      // Vérifier si c'est une erreur JSON
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        const errorData = await response.json();
-        console.error('❌ Erreur serveur:', errorData);
-        throw new Error(errorData.details || errorData.error || 'Erreur lors de la génération du PDF');
-      }
-
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP ${response.status}`);
-      }
-
-      // Récupérer les bytes
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Si le buffer est vide mais la réponse était OK avec content-type PDF,
-      // c'est probablement que le navigateur a géré le téléchargement lui-même
-      if (arrayBuffer.byteLength === 0) {
-        console.log('ℹ️ Buffer vide - le navigateur a peut-être géré le téléchargement directement');
-        // Ne pas throw d'erreur, le téléchargement a probablement fonctionné
-        return;
-      }
-
-      // Déterminer le type depuis la réponse (pdf ou word)
-      const respType = response.headers.get('content-type') || 'application/pdf';
-      const isWord = respType.includes('msword') || respType.includes('officedocument.word');
-      const ext = isWord ? 'doc' : 'pdf';
-
-      // Créer le blob et télécharger manuellement
-      const blob = new Blob([arrayBuffer], { type: respType });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `comparatif-telecom-${resolvedClientName || 'client'}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      console.log('✅ Téléchargement lancé');
-    } catch (error) {
-      console.error('❌ Erreur téléchargement PDF:', error);
-      alert(error instanceof Error ? error.message : 'Erreur lors du téléchargement du PDF');
-    } finally {
-      setIsDownloadingPdf(false);
-    }
-  };
 
   // Compter les champs simples (total des champs dans fieldsByCategory)
   const simpleFieldsCount = Object.values(fieldsByCategory).reduce((acc, fields) => acc + fields.length, 0);
@@ -755,19 +627,6 @@ export function Step4EditData({
             </div>
           )}
           
-          <button
-            onClick={handleGenererSuggestions}
-            disabled={isLoadingSuggestions || suggestions !== null}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            {isLoadingSuggestions ? (
-              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-            ) : (
-              <Sparkles className="w-4 h-4 text-purple-600" />
-            )}
-            {suggestions !== null ? 'Suggestions SP (déjà générées)' : isLoadingSuggestions ? 'Génération...' : 'Suggestions SP'}
-          </button>
-
           <div className="flex items-center gap-2 bg-green-50 px-4 py-2 rounded-lg">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-green-800">
@@ -776,23 +635,6 @@ export function Step4EditData({
           </div>
         </div>
       </div>
-
-      {suggestions !== null && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            Suggestions SP
-          </h3>
-          <EditableSuggestionsView 
-            suggestions={suggestions} 
-            propositionId={propositionData.proposition_id || ''}
-            catalogue={catalogue}
-            clientName={resolvedClientName || undefined}
-            onDownloadPdf={handleDownloadPdf}
-            isDownloading={isDownloadingPdf}
-          />
-        </div>
-      )}
 
       {/* Vue Excel */}
       {viewMode === 'excel' && (
