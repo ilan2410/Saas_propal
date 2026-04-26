@@ -47,7 +47,13 @@ export async function PATCH(
     if (body.statut !== undefined) {
       updateData.statut = body.statut;
     }
-    
+    if (body.suggestions_sp_completes !== undefined) {
+      updateData.suggestions_sp_completes = body.suggestions_sp_completes;
+    }
+    if (body.sp_reponses !== undefined) {
+      updateData.sp_reponses = body.sp_reponses;
+    }
+
     console.log('Données à mettre à jour:', updateData);
 
     // Vérifier qu'on a quelque chose à mettre à jour
