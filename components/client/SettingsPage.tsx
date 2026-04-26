@@ -25,8 +25,10 @@ import {
   CheckCircle,
   CreditCard as CreditCardIcon,
   Palette,
-  FileDown
+  FileDown,
+  Bot
 } from 'lucide-react';
+import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -49,7 +51,7 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp';
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -927,6 +929,7 @@ export default function SettingsPage({
           <option value="donnees">Données</option>
           <option value="apparence">Apparence</option>
           <option value="sp">Personnalisation SP</option>
+          <option value="sp-questions">Questions SP</option>
         </select>
       </div>
 
@@ -939,6 +942,7 @@ export default function SettingsPage({
         <TabButton id="donnees" label="Données" icon={Database} />
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
         <TabButton id="sp" label="Personnalisation SP" icon={Palette} />
+        <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
       </div>
 
       {/* Content Area */}
@@ -2053,6 +2057,19 @@ export default function SettingsPage({
                 Enregistrer la personnalisation
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* SECTION 8: QUESTIONS SP */}
+        {activeTab === 'sp-questions' && (
+          <div className="p-6 space-y-6">
+            <div className="border-b border-gray-100 pb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Constructeur de questions SP</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Configurez les questions posées lors de la génération de la Situation Proposée, par template Word.
+              </p>
+            </div>
+            <SpQuestionsManager templates={templates} />
           </div>
         )}
       </div>
