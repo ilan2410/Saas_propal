@@ -435,11 +435,13 @@ export interface SpLigneMobile {
   _economie_raw: number;
 }
 
-export interface SpLigneFixe extends Omit<SpLigneMobile, 'sp_type_ligne'> {
+interface SpLigneBase extends Omit<SpLigneMobile, 'sp_type_ligne'> {}
+
+export interface SpLigneFixe extends SpLigneBase {
   sp_type_ligne: 'Fixe';
 }
 
-export interface SpInternet extends Omit<SpLigneMobile, 'sp_type_ligne'> {
+export interface SpInternet extends SpLigneBase {
   sp_type_ligne: 'Internet';
 }
 
@@ -470,7 +472,6 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_fixes_mobiles_internet?: (SpLigneMobile | SpLigneFixe | SpInternet)[];
   sp_toutes_lignes?: (SpLigneMobile | SpLigneFixe | SpInternet)[];
   sp_tout?: (SpLigneMobile | SpLigneFixe | SpInternet | SpMateriel)[];
-  [key: string]: unknown;
 
   sp_economie_mensuelle: string;
   sp_economie_annuelle: string;
@@ -479,6 +480,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_ameliorations: string;
   sp_nb_lignes: string;
   sp_est_economie: string;
+  [key: string]: unknown;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────
