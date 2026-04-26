@@ -50,6 +50,7 @@ export async function POST(
       donnees,
       organization_id: user.id,
       proposition_id: id,
+      suggestions_sp_completes: proposition.suggestions_sp_completes ?? null,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes

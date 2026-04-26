@@ -7,6 +7,8 @@ import ExcelJS from 'exceljs';
 import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import { createServiceClient } from '@/lib/supabase/server';
+import { buildSpWordData } from './sp-word-data';
+import type { SuggestionsSpCompletes, WordConfig } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -105,6 +107,7 @@ interface GenerateOptions {
   donnees: UnknownRecord;
   organization_id: string;
   proposition_id: string;
+  suggestions_sp_completes?: SuggestionsSpCompletes | null;
 }
 
 /**
@@ -433,8 +436,14 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
   };
   flattenForDocx(baseData);
 
+  // Injecter les données SP (les clés SA ont la priorité sur SP)
+  const spCompletes = (options.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
+  const wordCfg = (isPlainObject(fileConfig) ? fileConfig : {}) as unknown as WordConfig;
+  const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
+  const finalData = { ...spData, ...mappedData, ...flatData };
+
   try {
-    doc.render({ ...mappedData, ...flatData });
+    doc.render(finalData);
   } catch (error) {
     const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
     const details =
