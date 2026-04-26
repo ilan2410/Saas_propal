@@ -62,6 +62,49 @@ function getArrayOfRecords(obj: Record<string, unknown>, key: string): Record<st
   return v.filter(isRecord);
 }
 
+const SP_SIMPLE_VARS = [
+  { key: 'sp_economie_mensuelle', label: 'Économie mensuelle (ex: "45,00 €")' },
+  { key: 'sp_economie_annuelle', label: 'Économie annuelle' },
+  { key: 'sp_total_actuel', label: 'Total situation actuelle HT' },
+  { key: 'sp_total_propose', label: 'Total situation proposée HT' },
+  { key: 'sp_ameliorations', label: "Points clés de l'offre proposée" },
+  { key: 'sp_fournisseur_propose', label: 'Fournisseur retenu' },
+  { key: 'sp_nb_lignes', label: 'Nombre de lignes analysées' },
+  { key: 'sp_est_economie', label: '"Oui" ou "Non"' },
+  { key: 'sp_adresse_facturation', label: 'Adresse facturation complète' },
+  { key: 'sp_adresse_facturation_rue', label: 'Rue facturation' },
+  { key: 'sp_adresse_facturation_cp', label: 'Code postal facturation' },
+  { key: 'sp_adresse_facturation_ville', label: 'Ville facturation' },
+  { key: 'sp_adresse_livraison', label: 'Adresse livraison complète' },
+  { key: 'sp_adresse_livraison_rue', label: 'Rue livraison' },
+  { key: 'sp_adresse_livraison_cp', label: 'Code postal livraison' },
+  { key: 'sp_adresse_livraison_ville', label: 'Ville livraison' },
+  { key: 'sp_livraison_identique', label: '"Oui" ou "Non"' },
+];
+
+const SP_TABLE_BLOCKS = [
+  {
+    arrayId: 'sp_lignes_mobiles',
+    label: 'Tableau lignes mobiles',
+    fullBlock: `{{#sp_lignes_mobiles}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_mobiles}}`,
+  },
+  {
+    arrayId: 'sp_lignes_fixes',
+    label: 'Tableau lignes fixes',
+    fullBlock: `{{#sp_lignes_fixes}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_fixes}}`,
+  },
+  {
+    arrayId: 'sp_internet',
+    label: 'Tableau Internet',
+    fullBlock: `{{#sp_internet}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_internet}}`,
+  },
+  {
+    arrayId: 'sp_materiel',
+    label: 'Tableau matériel',
+    fullBlock: `{{#sp_materiel}}\n{{sp_materiel_nom}}  {{sp_materiel_ref}}  {{sp_materiel_prix_mensuel}}  {{sp_materiel_duree_engagement}}  {{sp_materiel_commentaire}}\n{{/sp_materiel}}`,
+  },
+];
+
 export function Step2UploadTemplate({
   templateData,
   updateTemplateData,
@@ -1626,6 +1669,50 @@ export function Step2UploadTemplate({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Section Variables SP - Word uniquement */}
+          {templateData?.file_type === 'word' && (
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                Variables Situation Proposée (SP)
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Word uniquement</span>
+              </h3>
+
+              <div className="space-y-2 mb-6">
+                <p className="text-sm text-gray-600 font-medium">Variables simples</p>
+                <div className="grid grid-cols-1 gap-1">
+                  {SP_SIMPLE_VARS.map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-50">
+                      <div>
+                        <code className="text-xs text-blue-700 font-mono">{`{{${key}}}`}</code>
+                        <span className="text-xs text-gray-500 ml-2">{label}</span>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`{{${key}}}`)}
+                        className="text-xs text-gray-400 hover:text-gray-700 px-2 py-0.5 border rounded"
+                      >Copier</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 font-medium">Tableaux dynamiques</p>
+                {SP_TABLE_BLOCKS.map((block) => (
+                  <div key={block.arrayId} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-800">{block.label}</p>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(block.fullBlock)}
+                        className="text-xs text-blue-600 hover:text-blue-800 px-2 py-0.5 border border-blue-200 rounded"
+                      >Copier le bloc complet</button>
+                    </div>
+                    <pre className="text-xs text-gray-600 bg-gray-50 rounded p-2 overflow-x-auto">{block.fullBlock}</pre>
+                  </div>
+                ))}
               </div>
             </div>
           )}
