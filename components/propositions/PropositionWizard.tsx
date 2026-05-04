@@ -239,7 +239,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
               if (propositionData.suggestions_sp_completes) {
                 return <Step5EditSp propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
               }
-              return <Step5SpQuestions propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={() => {}} onPrev={prevStep} />;
+              return <Step5SpQuestions propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
             })()}
           </div>
         )}

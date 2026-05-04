@@ -62,6 +62,130 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const SITUATION_ACTUELLE_STRUCTURE = {
+  documents: [
+    {
+      type_document: 'facture|echeancier|contrat|autre',
+      numero_document: '...',
+      date_document: 'JJ/MM/AAAA',
+      periode_facturation: {
+        date_debut: 'JJ/MM/AAAA',
+        date_fin: 'JJ/MM/AAAA',
+      },
+    },
+  ],
+  operateurs: [
+    {
+      nom: 'Nom opérateur',
+      type: 'operateur_telecom',
+    },
+  ],
+  leasers: [
+    {
+      nom: 'Nom leaser',
+      type: 'organisme_financement',
+    },
+  ],
+  sites: [
+    {
+      nom: 'Site principal',
+      adresse: 'Adresse complète',
+      code_postal: '75001',
+      ville: 'Paris',
+    },
+  ],
+  abonnements: [
+    {
+      libelle: 'Abonnement',
+      operateur: 'Nom opérateur',
+      site: 'Site concerné',
+      quantite: '1',
+      tarif_brut_mensuel: 'XX.XX',
+      remise_mensuelle: 'XX.XX',
+      tarif_net_mensuel: 'XX.XX',
+      periode_facturation: 'mensuelle|trimestrielle|annuelle|autre',
+    },
+  ],
+  locations: [
+    {
+      libelle: 'Location matériel',
+      leaser: 'Nom leaser',
+      site: 'Site concerné',
+      materiel: 'Description',
+      quantite: '1',
+      loyer_brut_mensuel: 'XX.XX',
+      remise_mensuelle: 'XX.XX',
+      loyer_net_mensuel: 'XX.XX',
+    },
+  ],
+  lignes: [
+    {
+      numero_ligne: '0XXXXXXXXX',
+      type: 'fixe|mobile|internet|materiel',
+      libelle: 'Ligne ou matériel',
+      forfait: 'Nom forfait',
+      operateur: 'Nom opérateur',
+      leaser: 'Nom leaser si type=materiel',
+      site: 'Site concerné',
+      materiel: 'Description si type=materiel',
+      quantite: '1',
+      tarif_brut_mensuel: 'XX.XX',
+      remise_mensuelle: 'XX.XX',
+      tarif_net_mensuel: 'XX.XX',
+      date_fin_engagement_source: 'JJ/MM/AAAA',
+      date_limite_resiliation_calculee: 'JJ/MM/AAAA',
+    },
+  ],
+  periodes_facturation: [
+    {
+      date_debut: 'JJ/MM/AAAA',
+      date_fin: 'JJ/MM/AAAA',
+      periodicite: 'mensuelle|trimestrielle|annuelle|autre',
+    },
+  ],
+  engagements: [
+    {
+      libelle: 'Contrat/ligne/service',
+      date_fin_engagement_source: 'JJ/MM/AAAA',
+      date_limite_resiliation_calculee: 'JJ/MM/AAAA',
+      preavis_mois: 3,
+    },
+  ],
+  totaux: {
+    total_abonnements_source: 'XX.XX',
+    total_abonnements_calcule: 'XX.XX',
+    total_locations_source: 'XX.XX',
+    total_locations_calcule: 'XX.XX',
+    total_solution_actuelle_source: 'XX.XX',
+    total_solution_actuelle_calcule: 'XX.XX',
+    devise: 'EUR',
+    precision: 'HT|TTC|non_precise',
+  },
+  indemnites: {
+    montant_source: 'XX.XX',
+    montant_calcule: 'XX.XX',
+    methode_calcul: '...',
+  },
+  ligne_bon_commande_materiel: {
+    libelle: 'Remboursement de XX.XX € au titre du solde définitif de vos contrats téléphoniques.',
+    montant: 'XX.XX',
+  },
+};
+
+function ensureSituationActuelleStructure(root: Record<string, unknown>): void {
+  if (!isPlainObject(root.situation_actuelle)) {
+    root.situation_actuelle = {};
+  }
+  root.situation_actuelle = {
+    ...(root.situation_actuelle as Record<string, unknown>),
+    ...SITUATION_ACTUELLE_STRUCTURE,
+  };
+  delete root.location_materiel;
+  delete root.lignes_mobiles;
+  delete root.lignes_fixes;
+  delete root.lignes_internet;
+}
+
 function applyFieldPathToStructure(root: unknown, fieldPath: string): void {
   if (!isPlainObject(root)) return;
   if (!fieldPath || typeof fieldPath !== 'string') return;
@@ -237,13 +361,25 @@ export function updateExpectedJsonStructureFromFields(
 
   if (!isPlainObject(parsed)) return prompt;
 
+  if (fields.some((f) => f === 'situation_actuelle' || f.startsWith('situation_actuelle.'))) {
+    ensureSituationActuelleStructure(parsed);
+  }
+
   for (const f of fields) {
     applyFieldPathToStructure(parsed, f);
+  }
+
+  if (fields.some((f) => f === 'situation_actuelle' || f.startsWith('situation_actuelle.'))) {
+    ensureSituationActuelleStructure(parsed);
   }
 
   if (options?.prune) {
     const allowed = buildAllowedTree(fields);
     pruneStructureByAllowedTree(parsed, allowed);
+  }
+
+  if (fields.some((f) => f === 'situation_actuelle' || f.startsWith('situation_actuelle.'))) {
+    ensureSituationActuelleStructure(parsed);
   }
 
   const updatedJson = JSON.stringify(parsed, null, 2);

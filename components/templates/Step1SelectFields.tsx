@@ -32,7 +32,7 @@ import {
   getFieldsCount,
   getAllSelectedFields,
   getAllKnownFields,
-  TELECOM_LINES_CATEGORIES,
+  MERGEABLE_CATEGORIES,
   getSelectedTelecomCategories,
   getMergeLabel,
   generateMergedPrompt,
@@ -155,7 +155,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
     setSelectedQuestions(newQuestions);
     setIsExpectedJsonOutOfSync(true);
     
-    const isTelecomCategory = TELECOM_LINES_CATEGORIES.some(cat => cat.id === questionId);
+    const isTelecomCategory = MERGEABLE_CATEGORIES.some((cat) => cat.id === questionId);
     if (isTelecomCategory && activeMerges.includes(questionId)) {
       const newMerges = activeMerges.filter(id => id !== questionId);
       applyActiveMerges(newMerges.length >= 2 ? newMerges : []);
@@ -598,7 +598,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
                     
                     <div className="space-y-2.5 mb-4">
                       {selectedTelecomCats.map((catId) => {
-                        const cat = TELECOM_LINES_CATEGORIES.find(c => c.id === catId);
+                        const cat = MERGEABLE_CATEGORIES.find((c) => c.id === catId);
                         const isChecked = activeMerges.includes(catId);
                         return (
                           <label key={catId} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 cursor-pointer hover:bg-purple-50 transition-all">

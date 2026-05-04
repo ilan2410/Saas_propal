@@ -19,7 +19,7 @@ import {
   getFieldsCount,
   getAllSelectedFields,
   getAllKnownFields,
-  TELECOM_LINES_CATEGORIES,
+  MERGEABLE_CATEGORIES,
   getSelectedTelecomCategories,
   getMergeLabel,
   generateMergedPrompt,
@@ -337,7 +337,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     setSelectedQuestions(newQuestions);
     
     // Mettre à jour les fusions si une catégorie télécom est décochée
-    const isTelecomCategory = TELECOM_LINES_CATEGORIES.some(cat => cat.id === questionId);
+    const isTelecomCategory = MERGEABLE_CATEGORIES.some((cat) => cat.id === questionId);
     if (isTelecomCategory && activeMerges.includes(questionId)) {
       // Si on décoche une catégorie qui était dans la fusion, la retirer
       const newMerges = activeMerges.filter(id => id !== questionId);
@@ -715,7 +715,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                     {/* Checkboxes pour chaque catégorie télécom sélectionnée */}
                     <div className="space-y-2 mb-3">
                       {selectedTelecomCats.map((catId) => {
-                        const cat = TELECOM_LINES_CATEGORIES.find(c => c.id === catId);
+                        const cat = MERGEABLE_CATEGORIES.find((c) => c.id === catId);
                         return (
                           <label key={catId} className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -748,7 +748,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                           <pre className="mt-1 overflow-x-auto whitespace-pre-wrap bg-purple-50 p-2 rounded">
 {`"lignes": [
 ${activeMerges.map((catId) => {
-  const cat = TELECOM_LINES_CATEGORIES.find(c => c.id === catId);
+  const cat = MERGEABLE_CATEGORIES.find((c) => c.id === catId);
   return `  {"type": "${cat?.type}", "numero_ligne": "...", "forfait": "...", "tarif": "..."}`;
 }).join(',\n')}
 ]`}
