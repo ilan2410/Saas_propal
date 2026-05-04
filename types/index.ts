@@ -70,6 +70,7 @@ export interface OrganizationPreferences {
     montant?: number;
   };
   sp_customization?: SpCustomization;
+  sp_config_loyer?: SpConfigLoyer;
 }
 
 export type SpOutputFormat = 'pdf' | 'word';
@@ -381,6 +382,17 @@ export interface SpConsequence {
   filtre?: SpFiltresCatalogue;
 }
 
+export interface SpQuestionBoucle {
+  /** ID de la question dont la réponse donne le nombre d'itérations */
+  source_nombre_question_id?: string;
+  /** Nombre fixe d'itérations (alternatif à source_nombre_question_id) */
+  nombre_fixe?: number;
+  /** ID de la question dont la réponse (string[]) fournit les labels des itérations */
+  source_labels_question_id?: string;
+  /** Préfixe label par défaut (ex: "Site" → "Site 1", "Site 2"…) */
+  label_prefix?: string;
+}
+
 export interface SpQuestion {
   id: string;
   template_id: string;
@@ -402,6 +414,10 @@ export interface SpQuestion {
   edition_type?: 'adresse_complete' | 'texte' | 'nombre' | 'date';
   consequences: SpConsequence[];
   priorite_ia: 'normale' | 'haute';
+  /** Identifiant du groupe de boucle (toutes les questions avec le même id forment un bloc répété) */
+  groupe_boucle_id?: string;
+  /** Définition de la boucle (uniquement sur la première question du groupe) */
+  boucle?: SpQuestionBoucle;
 }
 
 export interface SpQuestionReponse {
@@ -480,7 +496,40 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_ameliorations: string;
   sp_nb_lignes: string;
   sp_est_economie: string;
+
+  // ── Récurrent / Ponctuel ───────────────────────────────────────
+  sp_total_recurrent?: string;
+  sp_total_ponctuel?: string;
+  sp_total_indemnites?: string;
+  sp_remise_mois_offert?: string;
+  sp_total_fas?: string;
+  sp_total_installation?: string;
+  sp_total_materiel_achat?: string;
+
+  // ── Loyer / Marge ──────────────────────────────────────────────
+  sp_loyer_mensuel?: string;
+  sp_loyer_trimestriel?: string;
+  sp_marge?: string;
+  sp_duree_mois?: number;
+  sp_trimestres?: number;
+  sp_mois_offerts?: number;
+
   [key: string]: unknown;
+}
+
+// ── Config Loyer ─────────────────────────────────────────────────
+
+export interface SpTauxDuree {
+  duree_mois: number;
+  taux_loyer: number;
+  mois_offerts: number;
+  trimestres: number;
+}
+
+export interface SpConfigLoyer {
+  taux_durees: SpTauxDuree[];
+  marge_suggestion_active: boolean;
+  marge_pourcentage_defaut?: number;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

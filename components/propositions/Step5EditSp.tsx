@@ -217,6 +217,63 @@ export function Step5EditSp({ propositionData, updatePropositionData, onNext, on
         ))}
       </div>
 
+      {/* Récurrent / Ponctuel / Loyer */}
+      {(sp.sp_total_recurrent || sp.sp_total_ponctuel || sp.sp_loyer_mensuel) && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Détails financiers</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {sp.sp_total_recurrent && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Total récurrent (mensuel)</p>
+                <p className="text-sm font-semibold text-blue-700">{sp.sp_total_recurrent}</p>
+              </div>
+            )}
+            {sp.sp_total_ponctuel && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Total ponctuel</p>
+                <p className="text-sm font-semibold text-orange-700">{sp.sp_total_ponctuel}</p>
+              </div>
+            )}
+            {sp.sp_remise_mois_offert && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Remise mois offerts</p>
+                <p className="text-sm font-semibold text-green-700">-{sp.sp_remise_mois_offert}</p>
+              </div>
+            )}
+            {sp.sp_loyer_mensuel && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Loyer mensuel</p>
+                <p className="text-sm font-semibold text-purple-700">{sp.sp_loyer_mensuel}</p>
+              </div>
+            )}
+            {sp.sp_loyer_trimestriel && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Loyer trimestriel</p>
+                <p className="text-sm font-semibold text-purple-600">{sp.sp_loyer_trimestriel}</p>
+              </div>
+            )}
+            {sp.sp_marge && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Marge appliquée</p>
+                <p className="text-sm font-semibold text-gray-700">{sp.sp_marge}</p>
+              </div>
+            )}
+            {sp.sp_duree_mois != null && sp.sp_duree_mois > 0 && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Durée contrat</p>
+                <p className="text-sm font-semibold text-gray-700">{sp.sp_duree_mois} mois ({sp.sp_trimestres} trim.)</p>
+              </div>
+            )}
+            {sp.sp_mois_offerts != null && sp.sp_mois_offerts > 0 && (
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Mois offerts</p>
+                <p className="text-sm font-semibold text-green-700">{sp.sp_mois_offerts} mois</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tableaux de lignes */}
       <div className="space-y-6">
         <LigneTable

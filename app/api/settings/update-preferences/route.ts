@@ -50,7 +50,10 @@ export async function PATCH(request: Request) {
       recharge_auto: {
         ...(currentPreferences.recharge_auto || {}),
         ...(newPreferences.recharge_auto || {})
-      }
+      },
+      ...(newPreferences.sp_config_loyer !== undefined
+        ? { sp_config_loyer: newPreferences.sp_config_loyer }
+        : {}),
     };
 
     const supabaseAdmin = createServiceClient();

@@ -1,18 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionSource, SpQuestionAffichage } from '@/types';
+import { SpConditionEditor } from './SpConditionEditor';
+import type {
+  SpQuestion,
+  SpQuestionSource,
+  SpQuestionAffichage,
+  SpGroupeConditions,
+  SpConditionLogique,
+  SpConsequence,
+  SpQuestionBoucle,
+} from '@/types';
 
 interface Props {
   templateId: string;
   onSaved: (q: SpQuestion) => void;
   onCancel: () => void;
   initial?: Partial<SpQuestion>;
+  /** All other questions in the template (for condition/consequence references) */
+  otherQuestions?: SpQuestion[];
 }
 
-type Block = 1 | 2 | 3 | 4;
+type Block = 1 | 2 | 3 | 4 | 5;
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -109,20 +120,48 @@ const BLOCK_TOOLTIPS: Record<Block, string> = {
   1: "D'où proviennent les choix proposés ? Catalogue, données SA extraites, ou saisie libre.",
   2: "Définissez sous quelles conditions cette question s'affiche (réponses précédentes, données SA…).",
   3: "Comment la question est présentée à l'utilisateur : type d'interface, libellé, aide.",
-  4: "Quelle variable SP sera remplie par la réponse, et à quelle priorité pour l'IA.",
+  4: "Variable SP remplie, conséquences (afficher/masquer/sauter), et priorité IA.",
+  5: "Optionnel — rattacher cette question à une boucle (multisite, multi-ligne…).",
 };
 
+const CONSEQUENCE_TYPES: { value: SpConsequence['type']; label: string; desc: string }[] = [
+  { value: 'renseigner_variable', label: 'Renseigner variable', desc: 'Stocke la réponse dans une variable SP' },
+  { value: 'afficher_question', label: 'Afficher question', desc: 'Rend visible une autre question' },
+  { value: 'masquer_question', label: 'Masquer question', desc: 'Cache une autre question' },
+  { value: 'aller_question', label: 'Aller à question', desc: 'Saute directement à une question' },
+  { value: 'filtrer_question', label: 'Filtrer catalogue', desc: 'Applique un filtre catalogue à une question' },
+];
+
 // ── Composant ─────────────────────────────────────────────────────────────────
-export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Props) {
+export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, otherQuestions = [] }: Props) {
   const [activeBlock, setActiveBlock] = useState<Block>(1);
   const [source, setSource] = useState<SpQuestionSource>(initial?.source ?? 'aucune');
   const [affichage, setAffichage] = useState<SpQuestionAffichage>(initial?.affichage ?? 'texte_court');
   const [libelle, setLibelle] = useState(initial?.libelle ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [obligatoire, setObligatoire] = useState(initial?.obligatoire ?? true);
-  const [variableCible, setVariableCible] = useState(initial?.consequences?.[0]?.variable_cible ?? '');
   const [prioriteIa, setPrioriteIa] = useState<'normale' | 'haute'>(initial?.priorite_ia ?? 'normale');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Conditions state
+  const [groupesConditions, setGroupesConditions] = useState<SpGroupeConditions[]>(
+    initial?.groupes_conditions ?? [],
+  );
+  const [logiqueDeclencheur, setLogiqueDeclencheur] = useState<SpConditionLogique>(
+    initial?.logique_declencheur ?? 'ET',
+  );
+
+  // Consequences state
+  const [consequences, setConsequences] = useState<SpConsequence[]>(
+    initial?.consequences ?? [],
+  );
+
+  // Boucle state
+  const [groupeBoucleId, setGroupeBoucleId] = useState<string>(initial?.groupe_boucle_id ?? '');
+  const [boucleEnabled, setBoucleEnabled] = useState<boolean>(!!initial?.boucle);
+  const [boucle, setBoucle] = useState<SpQuestionBoucle>(
+    initial?.boucle ?? { label_prefix: '' },
+  );
 
   const availableAffichages = AFFICHAGE_BY_SOURCE[source] ?? AFFICHAGE_BY_SOURCE.aucune;
 
@@ -138,9 +177,13 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
         obligatoire,
         priorite_ia: prioriteIa,
         actif: true,
-        consequences: variableCible ? [{ type: 'renseigner_variable', variable_cible: variableCible }] : [],
+        consequences: consequences.length > 0 ? consequences : [],
+        groupes_conditions: groupesConditions.length > 0 ? groupesConditions : undefined,
+        logique_declencheur: groupesConditions.length > 0 ? logiqueDeclencheur : undefined,
+        groupe_boucle_id: groupeBoucleId || undefined,
+        boucle: boucleEnabled ? boucle : undefined,
         template_id: templateId,
-        ordre: 0,
+        ordre: initial?.ordre ?? 0,
       };
 
       const isEdit = !!initial?.id;
@@ -160,21 +203,34 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
     }
   };
 
+  const addConsequence = () => {
+    setConsequences((prev) => [...prev, { type: 'renseigner_variable', variable_cible: '' }]);
+  };
+
+  const updateConsequence = (index: number, patch: Partial<SpConsequence>) => {
+    setConsequences((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  };
+
+  const removeConsequence = (index: number) => {
+    setConsequences((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const blockComplete: Record<Block, boolean> = {
     1: !!source,
     2: true,
     3: !!affichage && !!libelle,
     4: true,
+    5: true,
   };
 
-  const BLOCK_LABELS = ['Source', 'Conditions', 'Affichage', 'Résultat'] as const;
+  const BLOCK_LABELS = ['Source', 'Conditions', 'Affichage', 'Résultat', 'Boucle'] as const;
 
   return (
     <div className="space-y-6 max-w-2xl">
 
       {/* Navigation blocs */}
       <div className="flex items-center gap-2 flex-wrap">
-        {([1, 2, 3, 4] as Block[]).map((b) => (
+        {([1, 2, 3, 4, 5] as Block[]).map((b) => (
           <Tooltip key={b} text={BLOCK_TOOLTIPS[b]}>
             <button
               onClick={() => setActiveBlock(b)}
@@ -232,12 +288,15 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
             <InfoIcon tooltip="Les conditions permettent d'afficher ou masquer cette question selon les réponses aux questions précédentes ou les données SA. Sans condition, la question s'affiche toujours." />
           </div>
           <p className="text-sm text-gray-500">Quand cette question s&apos;affiche-t-elle ?</p>
-          <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
-            <p className="text-sm text-gray-600">✓ Toujours afficher (par défaut)</p>
-            <p className="text-xs text-gray-400 mt-1">
-              La configuration de conditions avancées (afficher si réponse X = Y) est disponible après création via le bouton modifier.
-            </p>
-          </div>
+          <SpConditionEditor
+            groupes={groupesConditions}
+            logiqueRacine={logiqueDeclencheur}
+            onChange={(g, l) => {
+              setGroupesConditions(g);
+              setLogiqueDeclencheur(l);
+            }}
+            otherQuestions={otherQuestions}
+          />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setActiveBlock(1)}>← Précédent</Button>
             <Button size="sm" onClick={() => setActiveBlock(3)}>Suivant →</Button>
@@ -325,39 +384,88 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
         </div>
       )}
 
-      {/* ── BLOC 4 — RÉSULTAT ──────────────────────────────────────────── */}
+      {/* ── BLOC 4 — RÉSULTAT & CONSÉQUENCES ──────────────────────────── */}
       {activeBlock === 4 && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-900">Bloc 4 — Résultat</h3>
-            <InfoIcon tooltip="Définissez ce qui se passe avec la réponse : quelle variable SP est remplie et avec quelle importance pour l'IA lors de la génération." />
+            <h3 className="font-semibold text-gray-900">Bloc 4 — Résultat &amp; Conséquences</h3>
+            <InfoIcon tooltip="Définissez ce qui se passe quand l'utilisateur répond : variable SP remplie, questions affichées/masquées, sauts, filtres, et priorité IA." />
           </div>
 
-          {/* Variable cible */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Variable SP renseignée</label>
-              <InfoIcon tooltip="La réponse de l'utilisateur sera stockée dans cette variable SP et injectée dans le document Word via {{sp_nom_variable}}. Elle doit commencer par sp_ et correspondre à une variable présente dans votre template Word." />
+          {/* Conséquences */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Conséquences</label>
+                <InfoIcon tooltip="Actions déclenchées quand l'utilisateur répond. Vous pouvez en ajouter plusieurs." />
+              </div>
+              <button
+                onClick={addConsequence}
+                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Ajouter
+              </button>
             </div>
-            <input
-              value={variableCible}
-              onChange={(e) => setVariableCible(e.target.value)}
-              placeholder="ex: sp_fournisseur_propose"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-400">
-              Doit commencer par <code className="bg-gray-100 px-1 rounded">sp_</code>. Laissez vide si la réponse n&apos;alimente pas directement une variable (ex: question de filtrage).
-            </p>
+
+            {consequences.length === 0 && (
+              <p className="text-xs text-gray-400">Aucune conséquence. Ajoutez-en pour renseigner une variable, naviguer, etc.</p>
+            )}
+
+            {consequences.map((cons, ci) => (
+              <div key={ci} className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={cons.type}
+                    onChange={(e) => updateConsequence(ci, { type: e.target.value as SpConsequence['type'] })}
+                    className="px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    {CONSEQUENCE_TYPES.map((ct) => (
+                      <option key={ct.value} value={ct.value}>{ct.label}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400 flex-1">
+                    {CONSEQUENCE_TYPES.find((ct) => ct.value === cons.type)?.desc}
+                  </span>
+                  <button onClick={() => removeConsequence(ci)} className="text-gray-400 hover:text-red-500">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {cons.type === 'renseigner_variable' && (
+                  <input
+                    value={cons.variable_cible ?? ''}
+                    onChange={(e) => updateConsequence(ci, { variable_cible: e.target.value })}
+                    placeholder="ex: sp_fournisseur_propose"
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                  />
+                )}
+
+                {(cons.type === 'afficher_question' || cons.type === 'masquer_question' || cons.type === 'aller_question' || cons.type === 'filtrer_question') && (
+                  <select
+                    value={cons.question_id ?? ''}
+                    onChange={(e) => updateConsequence(ci, { question_id: e.target.value || undefined })}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    <option value="">-- Sélectionner une question --</option>
+                    {otherQuestions.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.libelle.length > 50 ? q.libelle.slice(0, 50) + '…' : q.libelle}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* Priorité IA */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700">Priorité pour l&apos;IA</label>
-              <InfoIcon tooltip="Indique à l'IA l'importance de cette réponse lors de la génération SP. Haute = l'IA doit s'y conformer absolument, même si cela contredit ses suggestions habituelles." />
+              <InfoIcon tooltip="Indique à l'IA l'importance de cette réponse lors de la génération SP. Haute = l'IA doit s'y conformer absolument." />
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Tooltip text="L'IA tient compte de la réponse comme d'une indication forte, mais peut en tenir compte avec nuance selon le contexte global.">
+              <Tooltip text="L'IA tient compte de la réponse comme d'une indication forte, mais peut en tenir compte avec nuance.">
                 <button
                   onClick={() => setPrioriteIa('normale')}
                   className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
@@ -367,14 +475,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
                   Normale
                 </button>
               </Tooltip>
-              <Tooltip text="L'IA doit absolument respecter cette réponse. Elle prime sur toute autre logique. À utiliser pour les choix critiques : fournisseur retenu, adresse de facturation…">
+              <Tooltip text="L'IA doit absolument respecter cette réponse. Elle prime sur toute autre logique.">
                 <button
                   onClick={() => setPrioriteIa('haute')}
                   className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                     prioriteIa === 'haute' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  🔒 Haute — l&apos;IA doit l&apos;appliquer sans exception
+                  Haute — l&apos;IA doit l&apos;appliquer sans exception
                 </button>
               </Tooltip>
             </div>
@@ -382,6 +490,120 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial }: Pr
 
           <div className="flex gap-2 pt-2">
             <Button size="sm" variant="outline" onClick={() => setActiveBlock(3)}>← Précédent</Button>
+            <Button size="sm" onClick={() => setActiveBlock(5)}>Suivant →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BLOC 5 — BOUCLE ──────────────────────────────────────────── */}
+      {activeBlock === 5 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900">Bloc 5 — Boucle <span className="text-gray-400 font-normal">(optionnel)</span></h3>
+            <InfoIcon tooltip="Rattachez cette question à un groupe de boucle pour la répéter N fois (par site, par ligne…). Laissez vide si ce n'est pas une question en boucle." />
+          </div>
+
+          <div className="space-y-3">
+            {/* Groupe boucle ID */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700">Identifiant du groupe de boucle</label>
+              <input
+                value={groupeBoucleId}
+                onChange={(e) => setGroupeBoucleId(e.target.value)}
+                placeholder="ex: boucle_sites ou boucle_lignes"
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+              />
+              <p className="text-xs text-gray-400">
+                Toutes les questions avec le même identifiant forment un bloc répété. Laissez vide pour une question hors boucle.
+              </p>
+            </div>
+
+            {/* Boucle config (only if this is the group leader) */}
+            {groupeBoucleId && (
+              <div className="border border-purple-200 rounded-lg p-3 bg-purple-50/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="boucle_leader"
+                    checked={boucleEnabled}
+                    onChange={(e) => setBoucleEnabled(e.target.checked)}
+                  />
+                  <label htmlFor="boucle_leader" className="text-sm text-gray-700">
+                    Cette question définit la boucle (première du groupe)
+                  </label>
+                </div>
+
+                {boucleEnabled && (
+                  <div className="space-y-2 pl-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Source du nombre d&apos;itérations</label>
+                      <select
+                        value={boucle.source_nombre_question_id ?? '__fixe__'}
+                        onChange={(e) => {
+                          if (e.target.value === '__fixe__') {
+                            setBoucle((p) => ({ ...p, source_nombre_question_id: undefined, nombre_fixe: p.nombre_fixe ?? 2 }));
+                          } else {
+                            setBoucle((p) => ({ ...p, source_nombre_question_id: e.target.value, nombre_fixe: undefined }));
+                          }
+                        }}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                      >
+                        <option value="__fixe__">Nombre fixe</option>
+                        {otherQuestions.filter((q) => q.affichage === 'nombre').map((q) => (
+                          <option key={q.id} value={q.id}>
+                            Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {!boucle.source_nombre_question_id && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-600">Nombre fixe</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={boucle.nombre_fixe ?? 2}
+                          onChange={(e) => setBoucle((p) => ({ ...p, nombre_fixe: Number(e.target.value) || 2 }))}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-xs"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Source des labels (optionnel)</label>
+                      <select
+                        value={boucle.source_labels_question_id ?? ''}
+                        onChange={(e) => setBoucle((p) => ({ ...p, source_labels_question_id: e.target.value || undefined }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                      >
+                        <option value="">Aucune (utiliser le préfixe)</option>
+                        {otherQuestions.map((q) => (
+                          <option key={q.id} value={q.id}>
+                            Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600">Préfixe label par défaut</label>
+                      <input
+                        value={boucle.label_prefix ?? ''}
+                        onChange={(e) => setBoucle((p) => ({ ...p, label_prefix: e.target.value }))}
+                        placeholder="ex: Site"
+                        className="w-40 px-2 py-1 border border-gray-300 rounded text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button size="sm" variant="outline" onClick={() => setActiveBlock(4)}>← Précédent</Button>
             <Button size="sm" variant="outline" onClick={onCancel}>Annuler</Button>
             <Button size="sm" onClick={handleSave} disabled={!libelle.trim() || isSaving}>
               {isSaving ? 'Sauvegarde...' : initial?.id ? 'Mettre à jour' : 'Créer la question'}

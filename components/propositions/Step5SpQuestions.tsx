@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Bot, User, Loader2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, SpFiltresCatalogue, SpConsequence } from '@/types';
+import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -27,6 +28,97 @@ function formatReponseText(valeur: SpQuestionReponse['valeur']): string {
   return String(valeur);
 }
 
+// ── Helper: remap reponses for loop iteration context ───────────────
+// Within a loop, condition references to questions in the same group
+// should resolve to the answer from the same iteration.
+function remapReponsesForIteration(
+  reponses: SpQuestionReponse[],
+  allQuestions: SpQuestion[],
+  groupeBoucleId: string,
+  iterationIndex: number,
+): SpQuestionReponse[] {
+  const groupQuestionIds = new Set(
+    allQuestions.filter((q) => q.groupe_boucle_id === groupeBoucleId).map((q) => q.id),
+  );
+  return reponses.map((r) => {
+    // If this response is for a question in the same loop group,
+    // remap the iteration-suffixed id back to the base question id
+    // so that conditions referencing the base id resolve correctly.
+    const baseId = r.question_id.replace(/__iter_\d+$/, '');
+    if (groupQuestionIds.has(baseId)) {
+      const expectedId = `${baseId}__iter_${iterationIndex}`;
+      if (r.question_id === expectedId) {
+        return { ...r, question_id: baseId };
+      }
+      // Not from this iteration → skip by returning with a non-matching id
+      return { ...r, question_id: `__skip__${r.question_id}` };
+    }
+    return r;
+  });
+}
+
+// ── MultipleChoiceInput: inline component for boutons_choix_multiple ─
+function MultipleChoiceInput({
+  options,
+  onSubmit,
+}: {
+  options: string[];
+  onSubmit: (selected: string[]) => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = (opt: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(opt)) next.delete(opt);
+      else next.add(opt);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => toggle(opt)}
+            className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+              selected.has(opt)
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+      {selected.size > 0 && (
+        <Button
+          size="sm"
+          onClick={() => onSubmit(Array.from(selected))}
+        >
+          Valider ({selected.size} sélectionné{selected.size > 1 ? 's' : ''})
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ── Expanded question: a question instance (may be inside a loop iteration) ──
+interface ExpandedQuestion {
+  question: SpQuestion;
+  /** Unique key for this instance (question.id or question.id__iter_N) */
+  instanceId: string;
+  /** Display label (may be prefixed with loop iteration label) */
+  displayLabel: string;
+  /** Loop iteration index (-1 if not in a loop) */
+  iterationIndex: number;
+  /** Loop iteration label (e.g. "Site Paris") */
+  iterationLabel?: string;
+}
+
 export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev }: Props) {
   const [questions, setQuestions] = useState<SpQuestion[]>([]);
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(propositionData.sp_reponses ?? []);
@@ -40,10 +132,15 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
+  // Consequence-driven state
+  const [hiddenByConsequence, setHiddenByConsequence] = useState<Set<string>>(new Set());
+  const [shownByConsequence, setShownByConsequence] = useState<Set<string>>(new Set());
+  const [dynamicFilters, setDynamicFilters] = useState<Map<string, SpFiltresCatalogue>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
 
   const templateId = propositionData.template_id;
+  const donneesExtraites = (propositionData.donnees_extraites ?? {}) as Record<string, unknown>;
 
   useEffect(() => {
     if (!templateId) return;
@@ -62,46 +159,220 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     }).catch(() => setLoadingQuestions(false));
   }, [templateId]);
 
+  // ── Expand questions: handle loop groups ──────────────────────────
+  const expandedQuestions: ExpandedQuestion[] = (() => {
+    const result: ExpandedQuestion[] = [];
+    const processed = new Set<string>();
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (processed.has(q.id)) continue;
+
+      // Check if this question starts a loop
+      if (q.boucle && q.groupe_boucle_id) {
+        const groupId = q.groupe_boucle_id;
+        // Collect all questions in this loop group
+        const loopQuestions = questions.filter((lq) => lq.groupe_boucle_id === groupId);
+        loopQuestions.forEach((lq) => processed.add(lq.id));
+
+        // Determine iteration count
+        let iterationCount = q.boucle.nombre_fixe ?? 1;
+        const labels: string[] = [];
+
+        if (q.boucle.source_nombre_question_id) {
+          const rep = reponses.find((r) => r.question_id === q.boucle!.source_nombre_question_id);
+          if (rep) {
+            const n = Number(rep.valeur);
+            if (Number.isFinite(n) && n > 0) iterationCount = n;
+          }
+        }
+
+        if (q.boucle.source_labels_question_id) {
+          const rep = reponses.find((r) => r.question_id === q.boucle!.source_labels_question_id);
+          if (rep && Array.isArray(rep.valeur)) {
+            labels.push(...rep.valeur.map(String));
+          } else if (rep && typeof rep.valeur === 'string') {
+            labels.push(...rep.valeur.split(',').map((s) => s.trim()).filter(Boolean));
+          }
+        }
+
+        for (let iter = 0; iter < iterationCount; iter++) {
+          const iterLabel = labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
+          for (const lq of loopQuestions) {
+            result.push({
+              question: lq,
+              instanceId: `${lq.id}__iter_${iter}`,
+              displayLabel: `[${iterLabel}] ${lq.libelle}`,
+              iterationIndex: iter,
+              iterationLabel: iterLabel,
+            });
+          }
+        }
+      } else if (!q.groupe_boucle_id) {
+        // Normal question (not part of any loop group)
+        result.push({
+          question: q,
+          instanceId: q.id,
+          displayLabel: q.libelle,
+          iterationIndex: -1,
+        });
+      }
+      // Questions with groupe_boucle_id but no boucle are handled above via the group leader
+    }
+    return result;
+  })();
+
+  // ── Visibility check for an expanded question ─────────────────────
+  const isQuestionVisible = (eq: ExpandedQuestion): boolean => {
+    // Consequence-driven overrides
+    if (hiddenByConsequence.has(eq.question.id) || hiddenByConsequence.has(eq.instanceId)) return false;
+    if (shownByConsequence.has(eq.question.id) || shownByConsequence.has(eq.instanceId)) return true;
+
+    // For loop iterations, remap condition references to same iteration
+    const effectiveReponses = eq.iterationIndex >= 0
+      ? remapReponsesForIteration(reponses, questions, eq.question.groupe_boucle_id!, eq.iterationIndex)
+      : reponses;
+
+    return evaluateQuestionVisibility(eq.question, effectiveReponses, donneesExtraites, catalogue);
+  };
+
+  // ── Find next visible question from a given index ─────────────────
+  const findNextVisibleIndex = (fromIdx: number): number => {
+    for (let i = fromIdx + 1; i < expandedQuestions.length; i++) {
+      if (isQuestionVisible(expandedQuestions[i])) return i;
+    }
+    return expandedQuestions.length; // past end = done
+  };
+
   useEffect(() => {
-    if (questions.length > 0 && !hasInitialized.current) {
+    if (questions.length > 0 && expandedQuestions.length > 0 && !hasInitialized.current) {
       hasInitialized.current = true;
-      showQuestion(0);
+      // Find first visible question
+      const firstVisible = expandedQuestions.findIndex((eq) => isQuestionVisible(eq));
+      if (firstVisible >= 0) {
+        showQuestion(firstVisible);
+      } else {
+        setCurrentIdx(expandedQuestions.length);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questions]);
+  }, [questions, expandedQuestions.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
   const showQuestion = (idx: number) => {
-    if (idx >= questions.length) return;
+    if (idx >= expandedQuestions.length) return;
+    const eq = expandedQuestions[idx];
     setIsTyping(true);
     setTimeout(() => {
       setIsTyping(false);
       setCurrentIdx(idx);
-      setMessages((prev) => [...prev, { from: 'bot', text: questions[idx].libelle }]);
+      setMessages((prev) => [...prev, { from: 'bot', text: eq.displayLabel }]);
     }, 500);
   };
 
-  const recordAnswer = (questionId: string, valeur: SpQuestionReponse['valeur']) => {
-    const rep: SpQuestionReponse = { question_id: questionId, valeur };
-    const next = reponses.filter((r) => r.question_id !== questionId).concat(rep);
+  // ── Process consequences after answering ──────────────────────────
+  const processConsequences = (consequences: SpConsequence[], answeredValue: SpQuestionReponse['valeur']) => {
+    let jumpToQuestionId: string | null = null;
+
+    for (const c of consequences) {
+      switch (c.type) {
+        case 'afficher_question':
+          if (c.question_id) {
+            setShownByConsequence((prev) => new Set(prev).add(c.question_id!));
+            setHiddenByConsequence((prev) => {
+              const next = new Set(prev);
+              next.delete(c.question_id!);
+              return next;
+            });
+          }
+          break;
+        case 'masquer_question':
+          if (c.question_id) {
+            setHiddenByConsequence((prev) => new Set(prev).add(c.question_id!));
+            setShownByConsequence((prev) => {
+              const next = new Set(prev);
+              next.delete(c.question_id!);
+              return next;
+            });
+          }
+          break;
+        case 'aller_question':
+          if (c.question_id) jumpToQuestionId = c.question_id;
+          break;
+        case 'filtrer_question':
+          if (c.question_id && c.filtre) {
+            setDynamicFilters((prev) => new Map(prev).set(c.question_id!, c.filtre!));
+          }
+          break;
+        case 'renseigner_variable':
+          // Already handled by sending reponses to API
+          break;
+      }
+    }
+
+    return jumpToQuestionId;
+  };
+
+  const recordAnswer = (instanceId: string, valeur: SpQuestionReponse['valeur']) => {
+    const rep: SpQuestionReponse = { question_id: instanceId, valeur };
+    const next = reponses.filter((r) => r.question_id !== instanceId).concat(rep);
     setReponses(next);
     updatePropositionData({ sp_reponses: next });
     setMessages((prev) => [...prev, { from: 'user', text: formatReponseText(valeur) }]);
-    const nextIdx = currentIdx + 1;
-    if (nextIdx < questions.length) {
+
+    // Process consequences
+    const eq = expandedQuestions[currentIdx];
+    const jumpTo = eq ? processConsequences(eq.question.consequences ?? [], valeur) : null;
+
+    if (jumpTo) {
+      // Jump to specific question
+      const jumpIdx = expandedQuestions.findIndex(
+        (e) => e.question.id === jumpTo || e.instanceId === jumpTo,
+      );
+      if (jumpIdx >= 0) {
+        showQuestion(jumpIdx);
+        return;
+      }
+    }
+
+    // Find next visible question
+    const nextIdx = findNextVisibleIndex(currentIdx);
+    if (nextIdx < expandedQuestions.length) {
       showQuestion(nextIdx);
     } else {
-      setCurrentIdx(questions.length);
+      setCurrentIdx(expandedQuestions.length);
     }
   };
 
-  const currentQuestion = currentIdx < questions.length ? questions[currentIdx] : null;
-  const allObligatoryAnswered = questions
-    .filter((q) => q.obligatoire)
-    .every((q) => reponses.some((r) => r.question_id === q.id));
+  const currentExpanded = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
+  const currentQuestion = currentExpanded?.question ?? null;
+
+  // Compute catalogue options for current question (with dynamic filters)
+  const currentCatalogueOptions: CatalogueProduit[] = (() => {
+    if (!currentQuestion || (currentQuestion.source !== 'catalogue' && currentQuestion.source !== 'catalogue_et_sa')) return [];
+    let filtered = catalogue.filter((p) => p.actif);
+    // Apply question's own filters
+    if (currentQuestion.filtres_catalogue) {
+      filtered = filterCatalogueByFiltre(filtered, currentQuestion.filtres_catalogue);
+    }
+    // Apply dynamic filters from consequences
+    const dynFilter = currentExpanded ? dynamicFilters.get(currentQuestion.id) ?? dynamicFilters.get(currentExpanded.instanceId) : undefined;
+    if (dynFilter) {
+      filtered = filterCatalogueByFiltre(filtered, dynFilter);
+    }
+    if (currentQuestion.nombre_max_resultats) {
+      filtered = filtered.slice(0, currentQuestion.nombre_max_resultats);
+    }
+    return filtered;
+  })();
+
+  // Check if all obligatory visible questions are answered
+  const allObligatoryAnswered = expandedQuestions
+    .filter((eq) => eq.question.obligatoire && isQuestionVisible(eq))
+    .every((eq) => reponses.some((r) => r.question_id === eq.instanceId));
 
   const handleGenerateSP = async () => {
     setIsGenerating(true);
@@ -227,11 +498,16 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       </div>
 
       {/* Zone de saisie de la question courante */}
-      {currentQuestion && !isTyping && (
+      {currentQuestion && currentExpanded && !isTyping && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-blue-900">{currentQuestion.libelle}</p>
+          <p className="text-sm font-medium text-blue-900">{currentExpanded.displayLabel}</p>
           {currentQuestion.description && (
             <p className="text-xs text-blue-600">{currentQuestion.description}</p>
+          )}
+          {currentExpanded.iterationLabel && (
+            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
+              {currentExpanded.iterationLabel}
+            </span>
           )}
 
           {/* Oui / Non */}
@@ -243,7 +519,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   size="sm"
                   variant="outline"
                   className="bg-white"
-                  onClick={() => recordAnswer(currentQuestion.id, opt === 'Oui')}
+                  onClick={() => recordAnswer(currentExpanded.instanceId, opt === 'Oui')}
                 >
                   {opt}
                 </Button>
@@ -251,20 +527,29 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
             </div>
           )}
 
-          {/* Boutons choix unique (catalogue ou liste manuelle) */}
+          {/* Boutons choix unique / liste manuelle — avec support catalogue filtré */}
           {(currentQuestion.affichage === 'boutons_choix_unique' || currentQuestion.affichage === 'choix_liste_manuelle') && (
             <div className="flex flex-wrap gap-2">
-              {(currentQuestion.options_manuelles?.length ? currentQuestion.options_manuelles : fournisseurs).map((opt) => (
-                <Button
-                  key={opt}
-                  size="sm"
-                  variant="outline"
-                  className="bg-white"
-                  onClick={() => recordAnswer(currentQuestion.id, opt)}
-                >
-                  {opt}
-                </Button>
-              ))}
+              {(() => {
+                // Use catalogue options if source is catalogue, otherwise manual options or fournisseurs
+                const options: string[] =
+                  currentCatalogueOptions.length > 0
+                    ? currentCatalogueOptions.map((p) => p.nom)
+                    : currentQuestion.options_manuelles?.length
+                    ? currentQuestion.options_manuelles
+                    : fournisseurs;
+                return options.map((opt) => (
+                  <Button
+                    key={opt}
+                    size="sm"
+                    variant="outline"
+                    className="bg-white"
+                    onClick={() => recordAnswer(currentExpanded.instanceId, opt)}
+                  >
+                    {opt}
+                  </Button>
+                ));
+              })()}
               {currentQuestion.options_libres && (
                 <div className="flex gap-2 w-full mt-1">
                   <input
@@ -274,7 +559,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                     className="h-8 text-sm border border-gray-300 rounded px-2 flex-1"
                     onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                       if (e.key === 'Enter' && inputValue.trim()) {
-                        recordAnswer(currentQuestion.id, inputValue.trim());
+                        recordAnswer(currentExpanded.instanceId, inputValue.trim());
                         setInputValue('');
                       }
                     }}
@@ -283,7 +568,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                     size="sm"
                     onClick={() => {
                       if (inputValue.trim()) {
-                        recordAnswer(currentQuestion.id, inputValue.trim());
+                        recordAnswer(currentExpanded.instanceId, inputValue.trim());
                         setInputValue('');
                       }
                     }}
@@ -295,7 +580,65 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
             </div>
           )}
 
-          {/* Texte court / long / nombre / date */}
+          {/* Liste déroulante — with catalogue support */}
+          {currentQuestion.affichage === 'liste_deroulante' && (
+            <div className="flex gap-2">
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    recordAnswer(currentExpanded.instanceId, e.target.value);
+                  }
+                }}
+                className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white"
+              >
+                <option value="">Sélectionnez...</option>
+                {(currentCatalogueOptions.length > 0
+                  ? currentCatalogueOptions.map((p) => p.nom)
+                  : currentQuestion.options_manuelles ?? fournisseurs
+                ).map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Boutons choix multiple */}
+          {currentQuestion.affichage === 'boutons_choix_multiple' && (
+            <MultipleChoiceInput
+              options={
+                currentCatalogueOptions.length > 0
+                  ? currentCatalogueOptions.map((p) => p.nom)
+                  : currentQuestion.options_manuelles ?? fournisseurs
+              }
+              onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
+            />
+          )}
+
+          {/* Date */}
+          {currentQuestion.affichage === 'date' && (
+            <div className="flex gap-2">
+              <input
+                value={inputValue}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
+                type="date"
+                className="h-8 text-sm border border-gray-300 rounded px-2"
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (inputValue.trim()) {
+                    recordAnswer(currentExpanded.instanceId, inputValue.trim());
+                    setInputValue('');
+                  }
+                }}
+              >
+                Valider
+              </Button>
+            </div>
+          )}
+
+          {/* Texte court / nombre */}
           {(currentQuestion.affichage === 'texte_court' || currentQuestion.affichage === 'nombre') && (
             <div className="flex gap-2">
               <input
@@ -306,7 +649,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 className="h-8 text-sm border border-gray-300 rounded px-2 flex-1"
                 onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === 'Enter' && inputValue.trim()) {
-                    recordAnswer(currentQuestion.id, inputValue.trim());
+                    recordAnswer(currentExpanded.instanceId, inputValue.trim());
                     setInputValue('');
                   }
                 }}
@@ -315,7 +658,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 size="sm"
                 onClick={() => {
                   if (inputValue.trim()) {
-                    recordAnswer(currentQuestion.id, inputValue.trim());
+                    recordAnswer(currentExpanded.instanceId, inputValue.trim());
                     setInputValue('');
                   }
                 }}
@@ -338,7 +681,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 size="sm"
                 onClick={() => {
                   if (inputValue.trim()) {
-                    recordAnswer(currentQuestion.id, inputValue.trim());
+                    recordAnswer(currentExpanded.instanceId, inputValue.trim());
                     setInputValue('');
                   }
                 }}
@@ -375,7 +718,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 size="sm"
                 disabled={!adresseEdit.adresse || !adresseEdit.code_postal || !adresseEdit.ville}
                 onClick={() => {
-                  recordAnswer(currentQuestion.id, { ...adresseEdit });
+                  recordAnswer(currentExpanded.instanceId, { ...adresseEdit });
                   setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
                 }}
               >
@@ -387,10 +730,10 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
           {/* Confirmation SA */}
           {currentQuestion.affichage === 'confirmation_sa' && (
             <div className="flex gap-2">
-              <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => recordAnswer(currentQuestion.id, true)}>
+              <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => recordAnswer(currentExpanded.instanceId, true)}>
                 Oui, c&apos;est correct
               </Button>
-              <Button size="sm" variant="outline" className="bg-white" onClick={() => recordAnswer(currentQuestion.id, false)}>
+              <Button size="sm" variant="outline" className="bg-white" onClick={() => recordAnswer(currentExpanded.instanceId, false)}>
                 Non, modifier
               </Button>
             </div>

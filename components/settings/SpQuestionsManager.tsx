@@ -232,10 +232,37 @@ export function SpQuestionsManager({ templates }: Props) {
                         )}
 
                         {/* Badge variable cible */}
-                        {q.consequences?.[0]?.variable_cible && (
-                          <Tooltip text={`La réponse alimentera la variable {{${q.consequences[0].variable_cible}}} dans le template Word.`}>
+                        {q.consequences?.filter((c) => c.type === 'renseigner_variable' && c.variable_cible).map((c, ci) => (
+                          <Tooltip key={ci} text={`La réponse alimentera la variable {{${c.variable_cible}}} dans le template Word.`}>
                             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-mono cursor-help">
-                              {`{{${q.consequences[0].variable_cible}}}`}
+                              {`{{${c.variable_cible}}}`}
+                            </span>
+                          </Tooltip>
+                        ))}
+
+                        {/* Badge conséquences navigation */}
+                        {(q.consequences?.filter((c) => c.type !== 'renseigner_variable').length ?? 0) > 0 && (
+                          <Tooltip text={`${q.consequences!.filter((c) => c.type !== 'renseigner_variable').length} conséquence(s) de navigation/filtrage configurée(s).`}>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 cursor-help">
+                              {q.consequences!.filter((c) => c.type !== 'renseigner_variable').length} conséq.
+                            </span>
+                          </Tooltip>
+                        )}
+
+                        {/* Badge conditions */}
+                        {(q.groupes_conditions?.length ?? 0) > 0 && (
+                          <Tooltip text={`${q.groupes_conditions!.length} groupe(s) de conditions configuré(s) — cette question ne s'affiche que si les conditions sont remplies.`}>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 cursor-help">
+                              Conditionnel
+                            </span>
+                          </Tooltip>
+                        )}
+
+                        {/* Badge boucle */}
+                        {q.groupe_boucle_id && (
+                          <Tooltip text={`Fait partie du groupe de boucle "${q.groupe_boucle_id}"${q.boucle ? ' (définit la boucle)' : ''}.`}>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 cursor-help">
+                              Boucle{q.boucle ? ' (leader)' : ''}
                             </span>
                           </Tooltip>
                         )}
@@ -295,6 +322,7 @@ export function SpQuestionsManager({ templates }: Props) {
             </div>
             <SpQuestionBuilder
               templateId={buildingForTemplate}
+              otherQuestions={questionsByTemplate[buildingForTemplate] ?? []}
               onSaved={(q) => {
                 setQuestionsByTemplate((prev) => ({
                   ...prev,
@@ -316,6 +344,7 @@ export function SpQuestionsManager({ templates }: Props) {
             <SpQuestionBuilder
               templateId={editingQuestion.templateId}
               initial={editingQuestion.question}
+              otherQuestions={(questionsByTemplate[editingQuestion.templateId] ?? []).filter((q) => q.id !== editingQuestion.question.id)}
               onSaved={(q) => {
                 setQuestionsByTemplate((prev) => ({
                   ...prev,

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateClaudeApiKey } from '@/lib/ai/claude';
 import Anthropic from '@anthropic-ai/sdk';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpConfigLoyer } from '@/types';
+import { calculerLoyer, suggererMarge, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -480,6 +481,8 @@ function buildSpCompletes(
   adresseLivraison: SpAdresse | null | undefined,
   livraisonIdentique: boolean,
   wordCfg: WordConfig,
+  catalogueProduits?: CatalogueProduit[],
+  spConfigLoyer?: SpConfigLoyer,
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -495,6 +498,37 @@ function buildSpCompletes(
   const economieTotale = toutes.reduce((s, l) => s + l._economie_raw, 0);
   const totalActuel = toutes.reduce((s, l) => s + l._prix_actuel_raw, 0);
   const totalPropose = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
+
+  // ── Récurrent / Ponctuel breakdown via catalogue type_frequence ──
+  const catalogueMap = new Map<string, CatalogueProduit>();
+  if (catalogueProduits) {
+    for (const p of catalogueProduits) catalogueMap.set(p.id, p);
+  }
+
+  // Lines (mobiles/fixes/internet) are always recurrent (monthly)
+  const totalRecurrentLignes = totalPropose;
+
+  // Material: split by type_frequence
+  let totalMaterielRecurrent = 0;
+  let totalMaterielPonctuel = 0;
+  for (const m of sp_materiel) {
+    const catalogueItem = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+    const freq = catalogueItem?.type_frequence ?? 'mensuel';
+    if (freq === 'unique') {
+      totalMaterielPonctuel += m._prix_mensuel_raw; // one-time cost
+    } else {
+      totalMaterielRecurrent += m._prix_mensuel_raw;
+    }
+  }
+
+  const totalRecurrent = totalRecurrentLignes + totalMaterielRecurrent;
+  const totalPonctuel = totalMaterielPonctuel;
+
+  // ── Loyer calculation ──
+  const dureeMois = typeof raw.sp_duree_mois === 'number' ? raw.sp_duree_mois : 0;
+  const marge = suggererMarge(spConfigLoyer, totalPonctuel);
+  const loyer = dureeMois > 0 ? calculerLoyer(spConfigLoyer, totalPonctuel, dureeMois, marge) : null;
+  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(spConfigLoyer, totalRecurrent, dureeMois) : 0;
 
   const result: SuggestionsSpCompletes = {
     ...baseResult,
@@ -517,6 +551,19 @@ function buildSpCompletes(
     sp_ameliorations: typeof raw.sp_ameliorations === 'string' ? raw.sp_ameliorations : '',
     sp_nb_lignes: String(toutes.length),
     sp_est_economie: economieTotale > 0 ? 'Oui' : 'Non',
+    // Récurrent / Ponctuel
+    sp_total_recurrent: formatEuro(totalRecurrent),
+    sp_total_ponctuel: formatEuro(totalPonctuel),
+    sp_remise_mois_offert: remiseMoisOffert > 0 ? formatEuro(remiseMoisOffert) : undefined,
+    // Loyer
+    ...(loyer ? {
+      sp_loyer_mensuel: formatEuro(loyer.loyer_mensuel),
+      sp_loyer_trimestriel: formatEuro(loyer.loyer_trimestriel),
+      sp_marge: formatEuro(loyer.marge_appliquee),
+      sp_duree_mois: loyer.duree_mois,
+      sp_trimestres: loyer.trimestres,
+      sp_mois_offerts: loyer.mois_offerts,
+    } : {}),
   };
 
   if (wordCfg.spTableauxFusionnes) {
@@ -687,6 +734,17 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
           }
         }
       }
+      // Load org preferences for loyer config
+      let spConfigLoyer: SpConfigLoyer | undefined;
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('preferences')
+        .eq('id', user.id)
+        .single();
+      if (isPlainObject(orgData?.preferences) && isPlainObject((orgData.preferences as UnknownRecord).sp_config_loyer)) {
+        spConfigLoyer = (orgData.preferences as UnknownRecord).sp_config_loyer as unknown as SpConfigLoyer;
+      }
+
       suggestionsSpCompletes = buildSpCompletes(
         rawResult,
         normalized,
@@ -694,6 +752,8 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         adresse_livraison,
         livraison_identique,
         wordCfg,
+        catalogue as CatalogueProduit[],
+        spConfigLoyer,
       );
     }
 
