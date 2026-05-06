@@ -36,9 +36,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const existing: SpQuestion[] = (org?.sp_questions ?? []) as SpQuestion[];
   const forTemplate = existing.filter((q) => q.template_id === template_id);
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const newQuestion: SpQuestion = {
     ...body,
-    id: crypto.randomUUID(),
+    id: UUID_RE.test(body.id ?? '') ? body.id : crypto.randomUUID(),
     template_id,
     ordre: forTemplate.length + 1,
   };

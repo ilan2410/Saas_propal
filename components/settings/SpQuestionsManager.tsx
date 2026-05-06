@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
+import { SpAiGeneratorModal } from './SpAiGeneratorModal';
+import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
 
 interface Template { id: string; nom: string; file_type: string; }
 
@@ -84,6 +86,8 @@ export function SpQuestionsManager({ templates }: Props) {
   const [expanded, setExpanded] = useState<string | null>(wordTemplates[0]?.id ?? null);
   const [questionsByTemplate, setQuestionsByTemplate] = useState<Record<string, SpQuestion[]>>({});
   const [buildingForTemplate, setBuildingForTemplate] = useState<string | null>(null);
+  const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<string | null>(null);
+  const [simulatingForTemplate, setSimulatingForTemplate] = useState<string | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
 
   useEffect(() => {
@@ -295,17 +299,42 @@ export function SpQuestionsManager({ templates }: Props) {
                   </div>
                 ))}
 
-                <Tooltip text="Ouvre le constructeur de questions pour créer une nouvelle question SP pour ce template.">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setBuildingForTemplate(t.id)}
-                    className="w-full mt-2"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Ajouter une question
-                  </Button>
-                </Tooltip>
+                <div className="flex gap-2 mt-2">
+                  <Tooltip text="Ouvre le constructeur de questions pour créer une nouvelle question SP pour ce template.">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBuildingForTemplate(t.id)}
+                      className="flex-1"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Ajouter
+                    </Button>
+                  </Tooltip>
+                  <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setAiGeneratingForTemplate(t.id)}
+                      className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Générer IA
+                    </Button>
+                  </Tooltip>
+                  <Tooltip text="Simule le formulaire de questions pour tester les conditions et la logique du workflow.">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSimulatingForTemplate(t.id)}
+                      disabled={questions.filter((q) => q.actif).length === 0}
+                      className="flex-1 border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300 disabled:opacity-40"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Simuler
+                    </Button>
+                  </Tooltip>
+                </div>
               </div>
             )}
           </div>
@@ -316,9 +345,14 @@ export function SpQuestionsManager({ templates }: Props) {
       {buildingForTemplate && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-lg font-bold">Nouvelle question SP</h2>
-              <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse guide l'IA et peut alimenter une variable dans votre template Word." />
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold">Nouvelle question SP</h2>
+                <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse guide l'IA et peut alimenter une variable dans votre template Word." />
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setBuildingForTemplate(null)} className="h-7 w-7 p-0">
+                <X className="w-4 h-4" />
+              </Button>
             </div>
             <SpQuestionBuilder
               templateId={buildingForTemplate}
@@ -336,19 +370,102 @@ export function SpQuestionsManager({ templates }: Props) {
         </div>
       )}
 
+      {/* Modal simulateur */}
+      {simulatingForTemplate && (
+        <SpWorkflowSimulatorModal
+          questions={questionsByTemplate[simulatingForTemplate] ?? []}
+          templateNom={wordTemplates.find((t) => t.id === simulatingForTemplate)?.nom ?? ''}
+          onClose={() => setSimulatingForTemplate(null)}
+        />
+      )}
+
+      {/* Modal génération / modification IA */}
+      {aiGeneratingForTemplate && (
+        <SpAiGeneratorModal
+          templateId={aiGeneratingForTemplate}
+          nextOrdre={(questionsByTemplate[aiGeneratingForTemplate] ?? []).length + 1}
+          existingQuestions={questionsByTemplate[aiGeneratingForTemplate] ?? []}
+          onImport={async (questions, replace) => {
+            // Remap string IDs → UUIDs, keeping existing UUIDs intact
+            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const idMap = new Map<string, string>(
+              questions.map((q) => [
+                q.id,
+                UUID_RE.test(q.id ?? '') ? q.id : crypto.randomUUID(),
+              ])
+            );
+            const remapped = questions.map((q) => ({
+              ...q,
+              id: idMap.get(q.id)!,
+              groupes_conditions: q.groupes_conditions?.map((g) => ({
+                ...g,
+                conditions: g.conditions.map((c) => ({
+                  ...c,
+                  question_id: c.question_id ? (idMap.get(c.question_id) ?? c.question_id) : c.question_id,
+                })),
+              })),
+              consequences: (q.consequences ?? []).map((c) => ({
+                ...c,
+                question_id: c.question_id ? (idMap.get(c.question_id) ?? c.question_id) : c.question_id,
+              })),
+            }));
+
+            if (replace) {
+              // Replace all existing questions for this template in one request
+              const res = await fetch(`/api/templates/${aiGeneratingForTemplate}/sp-questions/replace`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questions: remapped }),
+              });
+              const data = await res.json() as { questions: SpQuestion[] };
+              setQuestionsByTemplate((prev) => ({
+                ...prev,
+                [aiGeneratingForTemplate]: (data.questions ?? []).sort((a, b) => a.ordre - b.ordre),
+              }));
+            } else {
+              // Append new questions
+              const saved: SpQuestion[] = [];
+              for (const q of remapped) {
+                const res = await fetch(`/api/templates/${aiGeneratingForTemplate}/sp-questions`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(q),
+                });
+                const data = await res.json() as { question: SpQuestion };
+                if (data.question) saved.push(data.question);
+              }
+              setQuestionsByTemplate((prev) => ({
+                ...prev,
+                [aiGeneratingForTemplate]: [
+                  ...(prev[aiGeneratingForTemplate] ?? []),
+                  ...saved,
+                ].sort((a, b) => a.ordre - b.ordre),
+              }));
+            }
+            setAiGeneratingForTemplate(null);
+          }}
+          onClose={() => setAiGeneratingForTemplate(null)}
+        />
+      )}
+
       {/* Modal édition */}
       {editingQuestion && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-bold mb-4">Modifier la question</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">Modifier la question</h2>
+              <Button size="sm" variant="ghost" onClick={() => setEditingQuestion(null)} className="h-7 w-7 p-0">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
             <SpQuestionBuilder
               templateId={editingQuestion.templateId}
               initial={editingQuestion.question}
-              otherQuestions={(questionsByTemplate[editingQuestion.templateId] ?? []).filter((q) => q.id !== editingQuestion.question.id)}
+              otherQuestions={(questionsByTemplate[editingQuestion.templateId] ?? []).filter((q) => q?.id !== editingQuestion.question.id)}
               onSaved={(q) => {
                 setQuestionsByTemplate((prev) => ({
                   ...prev,
-                  [editingQuestion.templateId]: (prev[editingQuestion.templateId] ?? []).map((existing) =>
+                  [editingQuestion.templateId]: (prev[editingQuestion.templateId] ?? []).filter(Boolean).map((existing) =>
                     existing.id === q.id ? q : existing
                   ),
                 }));

@@ -18,13 +18,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     .single();
 
   const all: SpQuestion[] = (org?.sp_questions ?? []) as SpQuestion[];
+  const updatedQuestion: SpQuestion = { ...body, id: qid, template_id } as SpQuestion;
   const updated = all.map((q) =>
-    q.id === qid && q.template_id === template_id
-      ? { ...q, ...body, id: qid, template_id }
-      : q
+    q.id === qid && q.template_id === template_id ? updatedQuestion : q
   );
   await supabase.from('organizations').update({ sp_questions: updated }).eq('id', user.id);
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ question: updatedQuestion });
 }
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {

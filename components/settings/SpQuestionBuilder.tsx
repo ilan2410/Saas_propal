@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { HelpCircle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SpConditionEditor } from './SpConditionEditor';
+import { SpAiAssistPanel } from './SpAiAssistPanel';
 import type {
   SpQuestion,
   SpQuestionSource,
@@ -611,6 +612,23 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
           </div>
         </div>
       )}
+
+      {/* ── ASSISTANT IA ─────────────────────────────────────────────── */}
+      <SpAiAssistPanel
+        currentQuestion={{ libelle, description, source, affichage, obligatoire, priorite_ia: prioriteIa }}
+        otherQuestions={otherQuestions}
+        onApply={(patch) => {
+          if (patch.libelle !== undefined) setLibelle(patch.libelle);
+          if (patch.description !== undefined) setDescription(patch.description);
+          if (patch.source !== undefined) {
+            setSource(patch.source);
+            setAffichage(AFFICHAGE_BY_SOURCE[patch.source][0].value);
+          }
+          if (patch.affichage !== undefined) setAffichage(patch.affichage);
+          if (patch.obligatoire !== undefined) setObligatoire(patch.obligatoire);
+          if (patch.priorite_ia !== undefined) setPrioriteIa(patch.priorite_ia);
+        }}
+      />
 
       {/* Aperçu */}
       {libelle && (
