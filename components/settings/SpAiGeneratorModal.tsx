@@ -3,7 +3,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Send, Sparkles, Check, AlertCircle, Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion } from '@/types';
+import type { SpQuestion, SpVariableCustom } from '@/types';
+
+interface SpVarOption {
+  key: string;
+  label: string;
+  group: string;
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -25,6 +31,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
   const [loading, setLoading] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<SpQuestion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [spVariables, setSpVariables] = useState<SpVarOption[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,6 +42,21 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Fetch SP variables for this template
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`/api/templates/${templateId}/sp-variables`)
+      .then((r) => r.json())
+      .then((data: { standard: string[]; custom: SpVariableCustom[] }) => {
+        const opts: SpVarOption[] = [
+          ...(data.standard ?? []).map((k) => ({ key: k, label: k, group: 'standard' })),
+          ...(data.custom ?? []).map((c) => ({ key: c.key, label: c.label, group: 'custom' })),
+        ];
+        setSpVariables(opts);
+      })
+      .catch(() => {});
+  }, [templateId]);
 
   const placeholder = isModifyMode
     ? `Décris la modification souhaitée...\n\nExemple : "Modifie la 1ère question en remplaçant les options par 'Site unique' et 'Site multiple'" ou "Ajoute une question sur la durée du contrat après la question de fibre"`
@@ -59,6 +81,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
           messages: newMessages,
           templateId,
           existingQuestions: isModifyMode ? existingQuestions : [],
+          spVariables,
         }),
       });
 

@@ -10,6 +10,7 @@ Tu aides l'utilisateur à remplir les champs d'une question SP. Tu peux :
 - Répondre à des questions sur les champs disponibles
 - Suggérer des valeurs pour les champs en fonction de ce que l'utilisateur décrit
 - Corriger ou améliorer un libellé, une description, des options
+- SUGGÉRER quelle variable SP serait la plus adaptée à la question
 
 ## Champs d'une question SP
 - **libelle** : texte affiché à l'utilisateur (clair, actionnable)
@@ -25,10 +26,18 @@ Tu aides l'utilisateur à remplir les champs d'une question SP. Tu peux :
 - **priorite_ia** : "normale" | "haute" (haute = l'IA doit l'appliquer sans exception)
 - **consequences** : actions déclenchées à la réponse (renseigner_variable, afficher_question, masquer_question, aller_question)
 
+## Variables SP
+La réponse à une question peut alimenter une variable SP qui sera insérée dans le document Word final.
+- Les variables existantes sont listées dans le contexte ci-dessous
+- Si une variable existante est compatible avec la question → suggère-la dans ton explication
+- Si aucune variable ne correspond → suggère la CRÉATION d'une nouvelle variable avec un nom en snake_case préfixé par "sp_" (ex: sp_type_fibre, sp_offre_tv, sp_nb_postes)
+- IMPORTANT : Quand tu suggères une NOUVELLE variable, inclut TOUJOURS une description utile (1-2 phrases) expliquant ce que cette variable contient, pour aider l'utilisateur et l'IA
+- Mentionne toujours ta suggestion de variable dans ton explication, comme : "Variable suggérée : sp_xxx (existante)" ou "Variable suggérée : sp_xxx (à créer)"
+
 ## Format de réponse
 
 ### Si tu conseilles ou expliques (pas de champs à remplir) :
-Réponds en texte naturel, court et direct.
+Réponds en texte naturel, court et direct. Inclus ta suggestion de variable si pertinent.
 
 ### Si tu proposes des valeurs de champs à appliquer directement :
 Réponds UNIQUEMENT avec ce JSON (pas de texte avant ni après) :
@@ -42,19 +51,27 @@ Réponds UNIQUEMENT avec ce JSON (pas de texte avant ni après) :
     "obligatoire": true,
     "priorite_ia": "normale"
   },
-  "explanation": "Explication courte de ce que tu as fait (1-2 phrases)"
+  "variable_suggestion": {
+    "key": "sp_xxx",
+    "exists": true,
+    "label": "Libellé explicatif",
+    "description": "Description courte (1-2 phrases) expliquant ce que contient cette variable"
+  },
+  "explanation": "Explication courte + suggestion de variable (1-2 phrases)"
 }
 
 N'inclus dans "patch" QUE les champs que tu veux modifier. Omet les champs que tu ne changes pas.
+Le champ "variable_suggestion" est OPTIONNEL — n'inclus le que si la question devrait alimenter une variable.
 Si l'utilisateur demande juste un conseil sans vouloir appliquer, réponds en texte.`;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, currentQuestion, otherQuestions = [] } = body as {
+    const { messages, currentQuestion, otherQuestions = [], spVariables = [] } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       currentQuestion: Record<string, unknown>;
       otherQuestions: Array<{ id: string; libelle: string }>;
+      spVariables?: Array<{ key: string; label: string; group: string }>;
     };
 
     if (!messages?.length) {
@@ -78,7 +95,11 @@ export async function POST(req: NextRequest) {
       ? `\nAutres questions du template (pour références) :\n${otherQuestions.map((q, i) => `${i + 1}. "${q.libelle}" (id: ${q.id})`).join('\n')}`
       : '';
 
-    const systemWithContext = `${SYSTEM_PROMPT}\n\n## État actuel de la question en cours d'édition\n${currentState}${otherContext}`;
+    const varsContext = spVariables.length > 0
+      ? `\n\n## Variables SP disponibles pour ce template\n${spVariables.map((v) => `- ${v.key}${v.group === 'custom' ? ` (custom — ${v.label})` : ' (standard)'}`).join('\n')}`
+      : '\n\n## Variables SP disponibles\nAucune variable custom définie. Variables standard : sp_economie_mensuelle, sp_economie_annuelle, sp_total_actuel, sp_total_propose, sp_ameliorations, sp_fournisseur_propose, sp_nb_lignes, sp_est_economie';
+
+    const systemWithContext = `${SYSTEM_PROMPT}\n\n## État actuel de la question en cours d'édition\n${currentState}${otherContext}${varsContext}`;
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -96,9 +117,18 @@ export async function POST(req: NextRequest) {
 
     if (jsonCandidate) {
       try {
-        const parsed = JSON.parse(jsonCandidate) as { patch: Record<string, unknown>; explanation: string };
+        const parsed = JSON.parse(jsonCandidate) as {
+          patch: Record<string, unknown>;
+          explanation: string;
+          variable_suggestion?: { key: string; exists: boolean; label: string };
+        };
         if (parsed.patch) {
-          return NextResponse.json({ type: 'patch', patch: parsed.patch, explanation: parsed.explanation ?? '' });
+          return NextResponse.json({
+            type: 'patch',
+            patch: parsed.patch,
+            explanation: parsed.explanation ?? '',
+            ...(parsed.variable_suggestion ? { variable_suggestion: parsed.variable_suggestion } : {}),
+          });
         }
       } catch {
         // fall through

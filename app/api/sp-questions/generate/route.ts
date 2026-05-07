@@ -96,18 +96,25 @@ Ne mets aucun texte avant ou après le JSON.`;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, templateId, existingQuestions = [] } = body as {
+    const { messages, templateId, existingQuestions = [], spVariables = [] } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       templateId: string;
       existingQuestions?: Array<Record<string, unknown>>;
+      spVariables?: Array<{ key: string; label: string; group: string }>;
     };
 
     if (!messages?.length) {
       return NextResponse.json({ error: 'Messages requis' }, { status: 400 });
     }
 
-    // Build system prompt — inject existing questions as context when in modify mode
+    // Build system prompt — inject variables + existing questions as context
     let systemPrompt = SYSTEM_PROMPT;
+
+    // Inject variables context
+    if (spVariables.length > 0) {
+      systemPrompt += `\n\n## Variables SP disponibles pour ce template\n${spVariables.map((v) => `- ${v.key}${v.group === 'custom' ? ` (custom — ${v.label})` : ' (standard)'}`).join('\n')}\n\nRègles variables :\n- Utilise les variables existantes quand c'est pertinent (type 'renseigner_variable' dans consequences)\n- Si aucune variable existante ne convient, crée-en avec un nom en sp_snake_case\n- Quand tu crées une NOUVELLE variable, génère TOUJOURS une description utile (1-2 phrases) qui sera stockée avec la variable pour aider l'utilisateur et l'IA\n- Chaque question qui alimente une donnée du document Word DOIT avoir une consequence 'renseigner_variable'`;
+    }
+
     if (existingQuestions.length > 0) {
       const existingSummary = existingQuestions
         .sort((a, b) => ((a.ordre as number) ?? 0) - ((b.ordre as number) ?? 0))

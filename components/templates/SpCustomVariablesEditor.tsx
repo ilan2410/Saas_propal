@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Edit2, Check, X } from 'lucide-react';
 import type { SpVariableCustom } from '@/types';
 
@@ -245,6 +245,37 @@ export function SpCustomVariablesEditor({ templateId, fileConfig, onSaved }: Pro
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [usedVariables, setUsedVariables] = useState<Set<string>>(new Set());
+
+  // Re-fetch from API on mount to pick up variables created elsewhere (e.g. SpQuestionBuilder)
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`/api/templates/${templateId}/sp-variables`)
+      .then((r) => r.json())
+      .then((data: { standard: string[]; custom: SpVariableCustom[] }) => {
+        setVars(data.custom ?? []);
+      })
+      .catch(() => {});
+  }, [templateId]);
+
+  // Fetch SP questions to detect which variables are actually used
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`/api/templates/${templateId}/sp-questions`)
+      .then((r) => r.json())
+      .then((data: { questions: Array<{ consequences?: Array<{ type: string; variable_cible?: string }> }> }) => {
+        const used = new Set<string>();
+        for (const q of data.questions ?? []) {
+          for (const c of q.consequences ?? []) {
+            if (c.type === 'renseigner_variable' && c.variable_cible) {
+              used.add(c.variable_cible);
+            }
+          }
+        }
+        setUsedVariables(used);
+      })
+      .catch(() => {});
+  }, [templateId]);
 
   const persistVars = async (updated: SpVariableCustom[]) => {
     if (!templateId) return;
@@ -296,18 +327,41 @@ export function SpCustomVariablesEditor({ templateId, fileConfig, onSaved }: Pro
           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-normal">
             {vars.length} variable{vars.length !== 1 ? 's' : ''}
           </span>
+          {vars.length > 0 && (
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-normal">
+              {vars.filter((v) => !usedVariables.has(v.key)).length} non utilisée{vars.filter((v) => !usedVariables.has(v.key)).length !== 1 ? 's' : ''}
+            </span>
+          )}
         </h4>
-        {!showForm && editingIdx === null && (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            disabled={!!isSaving}
-            className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Nouvelle variable
-          </button>
-        )}
+        <div className="flex gap-2">
+          {vars.filter((v) => !usedVariables.has(v.key)).length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm(`Supprimer ${vars.filter((v) => !usedVariables.has(v.key)).length} variable(s) non utilisée(s) ?`)) {
+                  const toKeep = vars.filter((v) => usedVariables.has(v.key));
+                  persistVars(toKeep);
+                }
+              }}
+              disabled={!!isSaving}
+              className="flex items-center gap-1 px-3 py-1.5 border border-red-200 rounded text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Nettoyer
+            </button>
+          )}
+          {!showForm && editingIdx === null && (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              disabled={!!isSaving}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nouvelle variable
+            </button>
+          )}
+        </div>
       </div>
 
       {saveError && (
@@ -347,6 +401,11 @@ export function SpCustomVariablesEditor({ templateId, fileConfig, onSaved }: Pro
                       }`}>
                         {v.type === 'tableau' ? `tableau (${v.rowFields?.length ?? 0} champs)` : v.type}
                       </span>
+                      {!usedVariables.has(v.key) && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">
+                          Non utilisée
+                        </span>
+                      )}
                     </button>
                     <div className="flex items-center gap-1 ml-2">
                       <button

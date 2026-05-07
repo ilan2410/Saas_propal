@@ -363,6 +363,13 @@ export function Step2UploadTemplate({
   } | null>(null);
   const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
   const [collapsedAdvanced, setCollapsedAdvanced] = useState<Record<string, boolean>>({});
+  const [isReplacingFile, setIsReplacingFile] = useState(false);
+
+  const hasExistingFile =
+    !!templateData.file_url &&
+    !!templateData.file_name &&
+    !isReplacingFile &&
+    !file;
   
   const champsActifs = Array.isArray(templateData.champs_actifs) ? templateData.champs_actifs : [];
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
@@ -885,7 +892,14 @@ export function Step2UploadTemplate({
       return;
     }
     if (!file) {
-      alert('Veuillez sélectionner un fichier Word (.docx) avant d\'enregistrer.');
+      // Fichier existant conservé : on met à jour la config sans re-uploader
+      const config = buildWordUploadConfig();
+      updateTemplateData({ file_config: config });
+      if (isSave && onSave) {
+        onSave();
+      } else {
+        onNext();
+      }
       return;
     }
     await handleUploadFile(file, 'word', buildWordUploadConfig(), isSave);
@@ -1060,34 +1074,104 @@ export function Step2UploadTemplate({
                 {savedMappings.length > 0 ? 'Modifier le mapping' : 'Configurer le mapping'}
               </button>
             </div>
-          ) : (
-            <div id="upload-zone" className="border-2 border-dashed border-gray-300 rounded-lg p-12">
-              <div className="text-center">
-                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <div className="mb-4">
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Choisir un fichier
-                  </label>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    className="hidden"
-                    accept=".xlsx,.xls,.docx,.pdf"
-                    onChange={handleFileChange}
-                  />
+          ) : hasExistingFile && isLoading ? (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                <div>
+                  <p className="font-medium text-gray-900">{templateData.file_name}</p>
+                  <p className="text-sm text-gray-500">Chargement du fichier...</p>
                 </div>
-                <p className="text-sm text-gray-500">
-                  Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  Taille maximale : 50 MB
-                </p>
               </div>
             </div>
+          ) : hasExistingFile ? (
+            <div className="space-y-4">
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {templateData.file_type === 'excel' ? (
+                      <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                    ) : (
+                      <FileText className="w-8 h-8 text-blue-600" />
+                    )}
+                    <div>
+                      <p className="font-medium text-gray-900">{templateData.file_name}</p>
+                      <p className="text-sm text-gray-500">
+                        {templateData.file_type === 'excel'
+                          ? 'Fichier Excel'
+                          : templateData.file_type === 'word'
+                          ? 'Document Word (.docx)'
+                          : 'Fichier PDF'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsReplacingFile(true)}
+                    className="text-sm text-gray-500 hover:text-red-600 flex items-center gap-1"
+                  >
+                    <X className="w-4 h-4" />
+                    Remplacer
+                  </button>
+                </div>
+              </div>
+
+              {templateData.file_type === 'word' && (
+                <button
+                  onClick={() => setStep('preview-word')}
+                  className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+                  Conserver ce fichier et configurer les variables
+                </button>
+              )}
+              {templateData.file_type === 'pdf' && (
+                <button
+                  onClick={onNext}
+                  className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+                  Conserver ce fichier et continuer
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div id="upload-zone" className="border-2 border-dashed border-gray-300 rounded-lg p-12">
+                <div className="text-center">
+                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <div className="mb-4">
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Upload className="w-5 h-5" />
+                      Choisir un fichier
+                    </label>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx,.xls,.docx,.pdf"
+                      onChange={handleFileChange}
+                    />
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)
+                  </p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Taille maximale : 50 MB
+                  </p>
+                </div>
+              </div>
+              {isReplacingFile && (
+                <button
+                  onClick={() => setIsReplacingFile(false)}
+                  className="w-full py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                >
+                  Annuler le remplacement
+                </button>
+              )}
+            </>
           )}
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

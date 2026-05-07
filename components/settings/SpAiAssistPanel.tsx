@@ -29,10 +29,25 @@ type AssistMessage =
   | { kind: 'chat'; role: 'user' | 'assistant'; content: string }
   | { kind: 'patch'; data: PatchMessage; applied: boolean };
 
+interface SpVariableOption {
+  key: string;
+  label: string;
+  group: string;
+}
+
+interface VariableSuggestion {
+  key: string;
+  exists: boolean;
+  label: string;
+  description?: string;
+}
+
 interface Props {
   currentQuestion: Partial<SpQuestion>;
   otherQuestions: SpQuestion[];
+  spVariables?: SpVariableOption[];
   onApply: (patch: Patch) => void;
+  onVariableSuggestion?: (suggestion: VariableSuggestion) => void;
 }
 
 const PATCH_LABELS: Record<string, string> = {
@@ -45,7 +60,7 @@ const PATCH_LABELS: Record<string, string> = {
   priorite_ia: 'Priorité IA',
 };
 
-export function SpAiAssistPanel({ currentQuestion, otherQuestions, onApply }: Props) {
+export function SpAiAssistPanel({ currentQuestion, otherQuestions, spVariables = [], onApply, onVariableSuggestion }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<AssistMessage[]>([]);
   const [input, setInput] = useState('');
@@ -88,6 +103,7 @@ export function SpAiAssistPanel({ currentQuestion, otherQuestions, onApply }: Pr
           messages: chatHistory,
           currentQuestion,
           otherQuestions: otherQuestions.map(({ id, libelle }) => ({ id, libelle })),
+          spVariables,
         }),
       });
 
@@ -95,13 +111,17 @@ export function SpAiAssistPanel({ currentQuestion, otherQuestions, onApply }: Pr
 
       const data = await res.json() as
         | { type: 'message'; content: string }
-        | { type: 'patch'; patch: Patch; explanation: string };
+        | { type: 'patch'; patch: Patch; explanation: string; variable_suggestion?: VariableSuggestion };
 
       if (data.type === 'patch') {
         setMessages((prev) => [
           ...prev,
           { kind: 'patch', data: { patch: data.patch, explanation: data.explanation }, applied: false },
         ]);
+        // Notify parent of variable suggestion
+        if (data.variable_suggestion && onVariableSuggestion) {
+          onVariableSuggestion(data.variable_suggestion);
+        }
       } else {
         setMessages((prev) => [
           ...prev,

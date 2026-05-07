@@ -74,7 +74,7 @@ function expandLoops(questions: SpQuestion[], reponses: Reponses): ExpandedQuest
         labels = answer;
       }
     }
-    const defaultPrefix = leader.boucle?.prefixe_label || 'Élément';
+    const defaultPrefix = leader.boucle?.label_prefix || 'Élément';
     for (let i = labels.length; i < iterationCount; i++) {
       labels.push(`${defaultPrefix} ${i + 1}`);
     }

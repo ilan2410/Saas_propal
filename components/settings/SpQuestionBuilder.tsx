@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HelpCircle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SpConditionEditor } from './SpConditionEditor';
@@ -13,7 +13,14 @@ import type {
   SpConditionLogique,
   SpConsequence,
   SpQuestionBoucle,
+  SpVariableCustom,
 } from '@/types';
+
+interface SpVariableOption {
+  key: string;
+  label: string;
+  group: 'standard' | 'custom';
+}
 
 interface Props {
   templateId: string;
@@ -143,6 +150,58 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
   const [obligatoire, setObligatoire] = useState(initial?.obligatoire ?? true);
   const [prioriteIa, setPrioriteIa] = useState<'normale' | 'haute'>(initial?.priorite_ia ?? 'normale');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Variables SP disponibles
+  const [spVariables, setSpVariables] = useState<SpVariableOption[]>([]);
+  const [showCreateVar, setShowCreateVar] = useState<number | null>(null); // index de la conséquence
+  const [newVarLabel, setNewVarLabel] = useState('');
+  const [newVarKey, setNewVarKey] = useState('');
+  const [newVarDescription, setNewVarDescription] = useState('');
+  const [creatingSaving, setCreatingSaving] = useState(false);
+
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`/api/templates/${templateId}/sp-variables`)
+      .then((r) => r.json())
+      .then((data: { standard: string[]; custom: SpVariableCustom[] }) => {
+        const opts: SpVariableOption[] = [
+          ...(data.standard ?? []).map((k) => ({ key: k, label: k, group: 'standard' as const })),
+          ...(data.custom ?? []).map((c) => ({ key: c.key, label: `${c.key} — ${c.label}`, group: 'custom' as const })),
+        ];
+        setSpVariables(opts);
+      })
+      .catch(() => {});
+  }, [templateId]);
+
+  const slugifyVar = (s: string) =>
+    'sp_' + s.toLowerCase()
+      .replace(/[éèê]/g, 'e').replace(/[àâ]/g, 'a').replace(/[ùû]/g, 'u')
+      .replace(/[ôö]/g, 'o').replace(/[îï]/g, 'i')
+      .replace(/[^a-z0-9_]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+
+  const handleCreateVariable = async (consIdx: number) => {
+    const key = newVarKey || slugifyVar(newVarLabel);
+    if (!key || !newVarLabel.trim()) return;
+    setCreatingSaving(true);
+    try {
+      const res = await fetch(`/api/templates/${templateId}/sp-variables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, label: newVarLabel.trim(), description: newVarDescription.trim(), type: 'string' }),
+      });
+      if (res.ok) {
+        const newOpt: SpVariableOption = { key, label: `${key} — ${newVarLabel.trim()}`, group: 'custom' };
+        setSpVariables((prev) => [...prev, newOpt]);
+        updateConsequence(consIdx, { variable_cible: key });
+        setShowCreateVar(null);
+        setNewVarLabel('');
+        setNewVarKey('');
+        setNewVarDescription('');
+      }
+    } finally {
+      setCreatingSaving(false);
+    }
+  };
 
   // Conditions state
   const [groupesConditions, setGroupesConditions] = useState<SpGroupeConditions[]>(
@@ -433,12 +492,91 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                 </div>
 
                 {cons.type === 'renseigner_variable' && (
-                  <input
-                    value={cons.variable_cible ?? ''}
-                    onChange={(e) => updateConsequence(ci, { variable_cible: e.target.value })}
-                    placeholder="ex: sp_fournisseur_propose"
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
-                  />
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <select
+                        value={cons.variable_cible ?? ''}
+                        onChange={(e) => {
+                          if (e.target.value === '__create__') {
+                            setShowCreateVar(ci);
+                          } else {
+                            updateConsequence(ci, { variable_cible: e.target.value });
+                          }
+                        }}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono bg-white"
+                      >
+                        <option value="">-- Sélectionner une variable --</option>
+                        <optgroup label="Variables standard">
+                          {spVariables.filter((v) => v.group === 'standard').map((v) => (
+                            <option key={v.key} value={v.key}>{v.key}</option>
+                          ))}
+                        </optgroup>
+                        {spVariables.filter((v) => v.group === 'custom').length > 0 && (
+                          <optgroup label="Variables custom">
+                            {spVariables.filter((v) => v.group === 'custom').map((v) => (
+                              <option key={v.key} value={v.key}>{v.label}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="─────────────">
+                          <option value="__create__">＋ Créer une nouvelle variable…</option>
+                        </optgroup>
+                      </select>
+                      {cons.variable_cible && (
+                        <code className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded whitespace-nowrap">
+                          {`{{${cons.variable_cible}}}`}
+                        </code>
+                      )}
+                    </div>
+
+                    {/* Mini-formulaire de création */}
+                    {showCreateVar === ci && (
+                      <div className="border border-blue-200 rounded-lg p-3 bg-blue-50 space-y-2">
+                        <p className="text-xs font-semibold text-blue-900">Nouvelle variable SP</p>
+                        <div className="space-y-1">
+                          <input
+                            value={newVarLabel}
+                            onChange={(e) => {
+                              setNewVarLabel(e.target.value);
+                              setNewVarKey(slugifyVar(e.target.value));
+                            }}
+                            placeholder="Libellé (ex: Type de fibre)"
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={newVarKey}
+                              onChange={(e) => setNewVarKey(e.target.value)}
+                              placeholder="Clé auto-générée"
+                              className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                            />
+                            <code className="text-xs text-blue-600">{`{{${newVarKey || 'sp_...'}}}`}</code>
+                          </div>
+                          <input
+                            value={newVarDescription}
+                            onChange={(e) => setNewVarDescription(e.target.value)}
+                            placeholder="Description (optionnel - aide l'IA et l'utilisateur)"
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleCreateVariable(ci)}
+                            disabled={creatingSaving || !newVarLabel.trim()}
+                            className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {creatingSaving ? 'Création…' : 'Créer'}
+                          </button>
+                          <button
+                            onClick={() => { setShowCreateVar(null); setNewVarLabel(''); setNewVarKey(''); setNewVarDescription(''); }}
+                            className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {(cons.type === 'afficher_question' || cons.type === 'masquer_question' || cons.type === 'aller_question' || cons.type === 'filtrer_question') && (
@@ -617,6 +755,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
       <SpAiAssistPanel
         currentQuestion={{ libelle, description, source, affichage, obligatoire, priorite_ia: prioriteIa }}
         otherQuestions={otherQuestions}
+        spVariables={spVariables}
         onApply={(patch) => {
           if (patch.libelle !== undefined) setLibelle(patch.libelle);
           if (patch.description !== undefined) setDescription(patch.description);
@@ -627,6 +766,21 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
           if (patch.affichage !== undefined) setAffichage(patch.affichage);
           if (patch.obligatoire !== undefined) setObligatoire(patch.obligatoire);
           if (patch.priorite_ia !== undefined) setPrioriteIa(patch.priorite_ia);
+        }}
+        onVariableSuggestion={(suggestion) => {
+          // If a variable is suggested and exists, auto-add a renseigner_variable consequence
+          if (suggestion.exists) {
+            const alreadyHas = consequences.some((c) => c.type === 'renseigner_variable' && c.variable_cible === suggestion.key);
+            if (!alreadyHas) {
+              setConsequences((prev) => [...prev, { type: 'renseigner_variable', variable_cible: suggestion.key }]);
+            }
+          }
+          // If doesn't exist, pre-fill the create form for when user goes to Bloc 4
+          if (!suggestion.exists) {
+            setNewVarLabel(suggestion.label);
+            setNewVarKey(suggestion.key);
+            setNewVarDescription(suggestion.description ?? '');
+          }
         }}
       />
 
