@@ -5,6 +5,7 @@ import { Upload, Loader2, FileSpreadsheet, FileText, X, Check, Play, HelpCircle,
 import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
+import { SpCustomVariablesEditor } from './SpCustomVariablesEditor';
 
 interface SheetMapping {
   sheetName: string;
@@ -60,6 +61,201 @@ function getArrayOfRecords(obj: Record<string, unknown>, key: string): Record<st
   const v = obj[key];
   if (!Array.isArray(v)) return [];
   return v.filter(isRecord);
+}
+
+const SP_SIMPLE_VARS = [
+  { key: 'sp_economie_mensuelle', label: 'Économie mensuelle (ex: "45,00 €")' },
+  { key: 'sp_economie_annuelle', label: 'Économie annuelle' },
+  { key: 'sp_total_actuel', label: 'Total situation actuelle HT' },
+  { key: 'sp_total_propose', label: 'Total situation proposée HT' },
+  { key: 'sp_ameliorations', label: "Points clés de l'offre proposée" },
+  { key: 'sp_fournisseur_propose', label: 'Fournisseur retenu' },
+  { key: 'sp_nb_lignes', label: 'Nombre de lignes analysées' },
+  { key: 'sp_est_economie', label: '"Oui" ou "Non"' },
+  { key: 'sp_adresse_facturation', label: 'Adresse facturation complète' },
+  { key: 'sp_adresse_facturation_rue', label: 'Rue facturation' },
+  { key: 'sp_adresse_facturation_cp', label: 'Code postal facturation' },
+  { key: 'sp_adresse_facturation_ville', label: 'Ville facturation' },
+  { key: 'sp_adresse_livraison', label: 'Adresse livraison complète' },
+  { key: 'sp_adresse_livraison_rue', label: 'Rue livraison' },
+  { key: 'sp_adresse_livraison_cp', label: 'Code postal livraison' },
+  { key: 'sp_adresse_livraison_ville', label: 'Ville livraison' },
+  { key: 'sp_livraison_identique', label: '"Oui" ou "Non"' },
+];
+
+const SP_TABLE_BLOCKS = [
+  {
+    arrayId: 'sp_lignes_mobiles',
+    label: 'Tableau lignes mobiles',
+    fullBlock: `{{#sp_lignes_mobiles}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_mobiles}}`,
+  },
+  {
+    arrayId: 'sp_lignes_fixes',
+    label: 'Tableau lignes fixes',
+    fullBlock: `{{#sp_lignes_fixes}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_fixes}}`,
+  },
+  {
+    arrayId: 'sp_internet',
+    label: 'Tableau Internet',
+    fullBlock: `{{#sp_internet}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_internet}}`,
+  },
+  {
+    arrayId: 'sp_materiel',
+    label: 'Tableau matériel',
+    fullBlock: `{{#sp_materiel}}\n{{sp_materiel_nom}}  {{sp_materiel_ref}}  {{sp_materiel_prix_mensuel}}  {{sp_materiel_duree_engagement}}  {{sp_materiel_commentaire}}\n{{/sp_materiel}}`,
+  },
+];
+
+const VARIABLE_HELP: Record<string, { label: string; description: string; example: string }> = {
+  fournisseur: {
+    label: 'Fournisseur actuel',
+    description: 'Nom du fournisseur, opérateur ou distributeur télécom actuellement identifié dans les documents.',
+    example: 'Orange Business',
+  },
+  'client.nom': {
+    label: 'Nom du contact',
+    description: 'Nom de famille de la personne contact chez le client.',
+    example: 'Dupont',
+  },
+  'client.prenom': {
+    label: 'Prénom du contact',
+    description: 'Prénom de la personne contact chez le client.',
+    example: 'Jean',
+  },
+  'client.email': {
+    label: 'Email du contact',
+    description: 'Adresse email professionnelle du contact client.',
+    example: 'jean.dupont@societe.fr',
+  },
+  'client.fonction': {
+    label: 'Fonction du contact',
+    description: 'Poste ou rôle du contact dans son entreprise.',
+    example: 'Directeur administratif',
+  },
+  'client.mobile': {
+    label: 'Téléphone mobile',
+    description: 'Numéro de téléphone portable du contact client.',
+    example: '06 12 34 56 78',
+  },
+  'client.fixe': {
+    label: 'Téléphone fixe',
+    description: 'Numéro de téléphone fixe du client ou de son entreprise.',
+    example: '01 45 67 89 10',
+  },
+  'client.fax': {
+    label: 'Fax',
+    description: 'Numéro de fax du client si cette information existe dans les documents.',
+    example: '01 45 67 89 11',
+  },
+  'client.raison_sociale': {
+    label: 'Raison sociale',
+    description: 'Nom officiel de l’entreprise cliente.',
+    example: 'Société ABC SARL',
+  },
+  'client.adresse': {
+    label: 'Adresse',
+    description: 'Adresse postale complète du client.',
+    example: '12 rue de Paris',
+  },
+  'client.code_postal': {
+    label: 'Code postal',
+    description: 'Code postal de l’adresse du client.',
+    example: '75008',
+  },
+  'client.ville': {
+    label: 'Ville',
+    description: 'Ville de l’adresse du client.',
+    example: 'Paris',
+  },
+  'client.siret': {
+    label: 'SIRET',
+    description: 'Numéro SIRET de l’entreprise cliente.',
+    example: '12345678900012',
+  },
+  'client.ape': {
+    label: 'Code APE',
+    description: 'Code d’activité principale de l’entreprise.',
+    example: '6202A',
+  },
+  'client.capital': {
+    label: 'Capital social',
+    description: 'Montant du capital social de l’entreprise.',
+    example: '10 000 €',
+  },
+  'client.forme_juridique': {
+    label: 'Forme juridique',
+    description: 'Statut juridique de l’entreprise cliente.',
+    example: 'SAS',
+  },
+  'client.rcs': {
+    label: 'RCS',
+    description: 'Ville ou numéro d’immatriculation au registre du commerce.',
+    example: 'RCS Paris 123 456 789',
+  },
+  'situation_actuelle.totaux.total_abonnements_source': {
+    label: 'Total abonnements lu',
+    description: 'Montant total des abonnements tel qu’il apparaît dans les documents source.',
+    example: '245.90',
+  },
+  'situation_actuelle.totaux.total_abonnements_calcule': {
+    label: 'Total abonnements calculé',
+    description: 'Total recalculé automatiquement à partir des abonnements détectés.',
+    example: '239.90',
+  },
+  'situation_actuelle.totaux.total_locations_source': {
+    label: 'Total locations lu',
+    description: 'Montant total des locations ou loyers tel qu’il apparaît dans les documents source.',
+    example: '89.00',
+  },
+  'situation_actuelle.totaux.total_locations_calcule': {
+    label: 'Total locations calculé',
+    description: 'Total recalculé automatiquement à partir des loyers ou locations détectés.',
+    example: '89.00',
+  },
+  'situation_actuelle.totaux.total_solution_actuelle_source': {
+    label: 'Total situation actuelle lu',
+    description: 'Montant global de la solution actuelle tel qu’il est indiqué dans les documents.',
+    example: '334.90',
+  },
+  'situation_actuelle.totaux.total_solution_actuelle_calcule': {
+    label: 'Total situation actuelle calculé',
+    description: 'Montant global recalculé à partir des abonnements, lignes et locations détectés.',
+    example: '328.90',
+  },
+  'situation_actuelle.indemnites.montant_source': {
+    label: 'Indemnités lues',
+    description: 'Montant des indemnités ou du solde à rembourser tel qu’il est lu dans les documents.',
+    example: '1200.00',
+  },
+  'situation_actuelle.indemnites.montant_calcule': {
+    label: 'Indemnités calculées',
+    description: 'Montant des indemnités recalculé ou normalisé automatiquement.',
+    example: '1200.00',
+  },
+  'situation_actuelle.ligne_bon_commande_materiel.libelle': {
+    label: 'Libellé bon de commande',
+    description: 'Phrase prête à insérer dans le bon de commande pour le remboursement du solde télécom.',
+    example: 'Remboursement de 1200.00 € au titre du solde définitif de vos contrats téléphoniques.',
+  },
+  'situation_actuelle.ligne_bon_commande_materiel.montant': {
+    label: 'Montant bon de commande',
+    description: 'Montant à afficher sur la ligne de bon de commande matériel.',
+    example: '1200.00',
+  },
+};
+
+function getVariableHelp(field: string): { label: string; description: string; example: string } {
+  const direct = VARIABLE_HELP[field];
+  if (direct) return direct;
+  const readable = field
+    .replace(/\[\]/g, '')
+    .replace(/\./g, ' > ')
+    .replace(/_/g, ' ');
+  return {
+    label: readable,
+    description: 'Information extraite automatiquement depuis les documents fournis.',
+    example: field.includes('date') ? '31/12/2026' : field.includes('montant') || field.includes('total') || field.includes('tarif') ? '99.90' : 'Exemple de valeur détectée',
+  };
 }
 
 export function Step2UploadTemplate({
@@ -167,6 +363,13 @@ export function Step2UploadTemplate({
   } | null>(null);
   const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
   const [collapsedAdvanced, setCollapsedAdvanced] = useState<Record<string, boolean>>({});
+  const [isReplacingFile, setIsReplacingFile] = useState(false);
+
+  const hasExistingFile =
+    !!templateData.file_url &&
+    !!templateData.file_name &&
+    !isReplacingFile &&
+    !file;
   
   const champsActifs = Array.isArray(templateData.champs_actifs) ? templateData.champs_actifs : [];
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
@@ -689,7 +892,14 @@ export function Step2UploadTemplate({
       return;
     }
     if (!file) {
-      alert('Veuillez sélectionner un fichier Word (.docx) avant d\'enregistrer.');
+      // Fichier existant conservé : on met à jour la config sans re-uploader
+      const config = buildWordUploadConfig();
+      updateTemplateData({ file_config: config });
+      if (isSave && onSave) {
+        onSave();
+      } else {
+        onNext();
+      }
       return;
     }
     await handleUploadFile(file, 'word', buildWordUploadConfig(), isSave);
@@ -864,34 +1074,104 @@ export function Step2UploadTemplate({
                 {savedMappings.length > 0 ? 'Modifier le mapping' : 'Configurer le mapping'}
               </button>
             </div>
-          ) : (
-            <div id="upload-zone" className="border-2 border-dashed border-gray-300 rounded-lg p-12">
-              <div className="text-center">
-                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <div className="mb-4">
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Choisir un fichier
-                  </label>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    className="hidden"
-                    accept=".xlsx,.xls,.docx,.pdf"
-                    onChange={handleFileChange}
-                  />
+          ) : hasExistingFile && isLoading ? (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                <div>
+                  <p className="font-medium text-gray-900">{templateData.file_name}</p>
+                  <p className="text-sm text-gray-500">Chargement du fichier...</p>
                 </div>
-                <p className="text-sm text-gray-500">
-                  Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  Taille maximale : 50 MB
-                </p>
               </div>
             </div>
+          ) : hasExistingFile ? (
+            <div className="space-y-4">
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {templateData.file_type === 'excel' ? (
+                      <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                    ) : (
+                      <FileText className="w-8 h-8 text-blue-600" />
+                    )}
+                    <div>
+                      <p className="font-medium text-gray-900">{templateData.file_name}</p>
+                      <p className="text-sm text-gray-500">
+                        {templateData.file_type === 'excel'
+                          ? 'Fichier Excel'
+                          : templateData.file_type === 'word'
+                          ? 'Document Word (.docx)'
+                          : 'Fichier PDF'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsReplacingFile(true)}
+                    className="text-sm text-gray-500 hover:text-red-600 flex items-center gap-1"
+                  >
+                    <X className="w-4 h-4" />
+                    Remplacer
+                  </button>
+                </div>
+              </div>
+
+              {templateData.file_type === 'word' && (
+                <button
+                  onClick={() => setStep('preview-word')}
+                  className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+                  Conserver ce fichier et configurer les variables
+                </button>
+              )}
+              {templateData.file_type === 'pdf' && (
+                <button
+                  onClick={onNext}
+                  className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+                  Conserver ce fichier et continuer
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div id="upload-zone" className="border-2 border-dashed border-gray-300 rounded-lg p-12">
+                <div className="text-center">
+                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <div className="mb-4">
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Upload className="w-5 h-5" />
+                      Choisir un fichier
+                    </label>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx,.xls,.docx,.pdf"
+                      onChange={handleFileChange}
+                    />
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)
+                  </p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Taille maximale : 50 MB
+                  </p>
+                </div>
+              </div>
+              {isReplacingFile && (
+                <button
+                  onClick={() => setIsReplacingFile(false)}
+                  className="w-full py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                >
+                  Annuler le remplacement
+                </button>
+              )}
+            </>
           )}
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1365,15 +1645,25 @@ export function Step2UploadTemplate({
               {champsSimples.map((field) => {
                 const token = `{{${field}}}`;
                 const copied = copiedKeys[token] !== undefined;
+                const help = getVariableHelp(field);
 
                 return (
                   <div
                     key={field}
-                    className={`flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
+                    className={`group relative flex items-center justify-between border rounded-lg px-3 py-2 transition-all ${
                       copied ? 'border-green-300 bg-green-50 shadow-sm' : 'border-gray-200 hover:border-blue-300'
                     }`}
                   >
-                    <span className="text-sm font-mono text-gray-900">{token}</span>
+                    <div className="min-w-0">
+                      <span className="text-sm font-mono text-gray-900 break-all">{token}</span>
+                      <span className="ml-2 text-xs text-gray-400">ⓘ</span>
+                    </div>
+                    <div className="pointer-events-none absolute left-3 top-full z-30 mt-2 hidden w-80 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-xl group-hover:block">
+                      <p className="font-bold text-gray-900">{help.label}</p>
+                      <p className="mt-1 text-gray-600">{help.description}</p>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Exemple</p>
+                      <p className="mt-1 rounded bg-blue-50 px-2 py-1 font-mono text-blue-800">{help.example}</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => copyAndMark(token, token)}
@@ -1567,14 +1857,24 @@ export function Step2UploadTemplate({
                                 {arr.rowFields.map((rf) => {
                                   const rfTag = `{{${rf.id}}}`;
                                   const rfCopied = copiedKeys[rfTag] !== undefined;
+                                  const rfHelp = getVariableHelp(rf.id);
                                   return (
                                     <div
                                       key={rf.id}
-                                      className={`flex items-center justify-between border rounded px-3 py-2 ${
+                                      className={`group relative flex items-center justify-between border rounded px-3 py-2 ${
                                         rfCopied ? 'border-green-300 bg-green-50' : 'border-gray-200'
                                       }`}
                                     >
-                                      <span className="text-xs font-mono text-gray-900">{rfTag}</span>
+                                      <div className="min-w-0">
+                                        <span className="text-xs font-mono text-gray-900 break-all">{rfTag}</span>
+                                        <span className="ml-1 text-[10px] text-gray-400">ⓘ</span>
+                                      </div>
+                                      <div className="pointer-events-none absolute left-3 top-full z-30 mt-2 hidden w-72 rounded-xl border border-gray-200 bg-white p-3 text-xs shadow-xl group-hover:block">
+                                        <p className="font-bold text-gray-900">{rfHelp.label}</p>
+                                        <p className="mt-1 text-gray-600">{rfHelp.description}</p>
+                                        <p className="mt-2 font-semibold uppercase tracking-wide text-gray-400">Exemple</p>
+                                        <p className="mt-1 rounded bg-purple-50 px-2 py-1 font-mono text-purple-800">{rfHelp.example}</p>
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => copyAndMark(rfTag, rfTag)}
@@ -1627,6 +1927,73 @@ export function Step2UploadTemplate({
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Section Variables SP - Word uniquement */}
+          {templateData?.file_type === 'word' && (
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                Variables Situation Proposée (SP)
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Word uniquement</span>
+              </h3>
+
+              <div className="space-y-2 mb-6">
+                <p className="text-sm text-gray-600 font-medium">Variables simples</p>
+                <div className="grid grid-cols-1 gap-1">
+                  {SP_SIMPLE_VARS.map(({ key, label }) => {
+                    const help = {
+                      label,
+                      description: 'Variable remplie automatiquement avec les informations de la situation proposée générée par le système.',
+                      example: label.includes('€') ? label.replace(/^.*ex:\s*/i, '').replace(/[()"]/g, '') : getVariableHelp(key).example,
+                    };
+                    return (
+                      <div key={key} className="group relative flex items-center justify-between py-1 px-2 rounded hover:bg-gray-50">
+                        <div className="min-w-0">
+                          <code className="text-xs text-blue-700 font-mono break-all">{`{{${key}}}`}</code>
+                          <span className="text-xs text-gray-500 ml-2">{label}</span>
+                          <span className="ml-2 text-[10px] text-gray-400">ⓘ</span>
+                        </div>
+                        <div className="pointer-events-none absolute left-2 top-full z-30 mt-2 hidden w-80 rounded-xl border border-gray-200 bg-white p-3 text-xs shadow-xl group-hover:block">
+                          <p className="font-bold text-gray-900">{help.label}</p>
+                          <p className="mt-1 text-gray-600">{help.description}</p>
+                          <p className="mt-2 font-semibold uppercase tracking-wide text-gray-400">Exemple</p>
+                          <p className="mt-1 rounded bg-blue-50 px-2 py-1 font-mono text-blue-800">{help.example}</p>
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(`{{${key}}}`)}
+                          className="text-xs text-gray-400 hover:text-gray-700 px-2 py-0.5 border rounded"
+                        >Copier</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 font-medium">Tableaux dynamiques</p>
+                {SP_TABLE_BLOCKS.map((block) => (
+                  <div key={block.arrayId} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-800">{block.label}</p>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(block.fullBlock)}
+                        className="text-xs text-blue-600 hover:text-blue-800 px-2 py-0.5 border border-blue-200 rounded"
+                      >Copier le bloc complet</button>
+                    </div>
+                    <pre className="text-xs text-gray-600 bg-gray-50 rounded p-2 overflow-x-auto">{block.fullBlock}</pre>
+                  </div>
+                ))}
+              </div>
+
+              {/* Variables SP custom */}
+              {templateData?.id && (
+                <SpCustomVariablesEditor
+                  templateId={templateData.id}
+                  fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
+                  onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}
+                />
+              )}
             </div>
           )}
 

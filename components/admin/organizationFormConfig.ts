@@ -63,6 +63,54 @@ export const SIMPLE_QUESTIONS = {
         'location_materiel[].materiel', 'location_materiel[].tarif',
         'location_materiel[].date_fin_engagement'
       ]
+    },
+    {
+      id: 'situation_actuelle',
+      question: '📊 Situation actuelle complète',
+      description: 'Factures, échéanciers, opérateurs, leasers, sites, remises, engagements, totaux et indemnités',
+      fields: [
+        'situation_actuelle.documents[].type_document',
+        'situation_actuelle.documents[].numero_document',
+        'situation_actuelle.documents[].date_document',
+        'situation_actuelle.operateurs[].nom',
+        'situation_actuelle.leasers[].nom',
+        'situation_actuelle.sites[].nom',
+        'situation_actuelle.sites[].adresse',
+        'situation_actuelle.abonnements[].libelle',
+        'situation_actuelle.abonnements[].operateur',
+        'situation_actuelle.abonnements[].site',
+        'situation_actuelle.abonnements[].tarif_brut_mensuel',
+        'situation_actuelle.abonnements[].remise_mensuelle',
+        'situation_actuelle.abonnements[].tarif_net_mensuel',
+        'situation_actuelle.locations[].libelle',
+        'situation_actuelle.locations[].leaser',
+        'situation_actuelle.locations[].site',
+        'situation_actuelle.locations[].loyer_brut_mensuel',
+        'situation_actuelle.locations[].remise_mensuelle',
+        'situation_actuelle.locations[].loyer_net_mensuel',
+        'situation_actuelle.lignes[].numero_ligne',
+        'situation_actuelle.lignes[].type',
+        'situation_actuelle.lignes[].site',
+        'situation_actuelle.lignes[].tarif_brut_mensuel',
+        'situation_actuelle.lignes[].remise_mensuelle',
+        'situation_actuelle.lignes[].tarif_net_mensuel',
+        'situation_actuelle.lignes[].date_fin_engagement_source',
+        'situation_actuelle.lignes[].date_limite_resiliation_calculee',
+        'situation_actuelle.periodes_facturation[].date_debut',
+        'situation_actuelle.periodes_facturation[].date_fin',
+        'situation_actuelle.engagements[].date_fin_engagement_source',
+        'situation_actuelle.engagements[].date_limite_resiliation_calculee',
+        'situation_actuelle.totaux.total_abonnements_source',
+        'situation_actuelle.totaux.total_abonnements_calcule',
+        'situation_actuelle.totaux.total_locations_source',
+        'situation_actuelle.totaux.total_locations_calcule',
+        'situation_actuelle.totaux.total_solution_actuelle_source',
+        'situation_actuelle.totaux.total_solution_actuelle_calcule',
+        'situation_actuelle.indemnites.montant_source',
+        'situation_actuelle.indemnites.montant_calcule',
+        'situation_actuelle.ligne_bon_commande_materiel.libelle',
+        'situation_actuelle.ligne_bon_commande_materiel.montant'
+      ]
     }
   ],
   bureautique: [
@@ -242,6 +290,54 @@ export const SIMPLE_QUESTIONS = {
         'location_materiel[].materiel', 'location_materiel[].tarif',
         'location_materiel[].date_fin_engagement'
       ]
+    },
+    {
+      id: 'situation_actuelle',
+      question: '📊 Situation actuelle complète',
+      description: 'Factures, échéanciers, opérateurs, leasers, sites, remises, engagements, totaux et indemnités',
+      fields: [
+        'situation_actuelle.documents[].type_document',
+        'situation_actuelle.documents[].numero_document',
+        'situation_actuelle.documents[].date_document',
+        'situation_actuelle.operateurs[].nom',
+        'situation_actuelle.leasers[].nom',
+        'situation_actuelle.sites[].nom',
+        'situation_actuelle.sites[].adresse',
+        'situation_actuelle.abonnements[].libelle',
+        'situation_actuelle.abonnements[].operateur',
+        'situation_actuelle.abonnements[].site',
+        'situation_actuelle.abonnements[].tarif_brut_mensuel',
+        'situation_actuelle.abonnements[].remise_mensuelle',
+        'situation_actuelle.abonnements[].tarif_net_mensuel',
+        'situation_actuelle.locations[].libelle',
+        'situation_actuelle.locations[].leaser',
+        'situation_actuelle.locations[].site',
+        'situation_actuelle.locations[].loyer_brut_mensuel',
+        'situation_actuelle.locations[].remise_mensuelle',
+        'situation_actuelle.locations[].loyer_net_mensuel',
+        'situation_actuelle.lignes[].numero_ligne',
+        'situation_actuelle.lignes[].type',
+        'situation_actuelle.lignes[].site',
+        'situation_actuelle.lignes[].tarif_brut_mensuel',
+        'situation_actuelle.lignes[].remise_mensuelle',
+        'situation_actuelle.lignes[].tarif_net_mensuel',
+        'situation_actuelle.lignes[].date_fin_engagement_source',
+        'situation_actuelle.lignes[].date_limite_resiliation_calculee',
+        'situation_actuelle.periodes_facturation[].date_debut',
+        'situation_actuelle.periodes_facturation[].date_fin',
+        'situation_actuelle.engagements[].date_fin_engagement_source',
+        'situation_actuelle.engagements[].date_limite_resiliation_calculee',
+        'situation_actuelle.totaux.total_abonnements_source',
+        'situation_actuelle.totaux.total_abonnements_calcule',
+        'situation_actuelle.totaux.total_locations_source',
+        'situation_actuelle.totaux.total_locations_calcule',
+        'situation_actuelle.totaux.total_solution_actuelle_source',
+        'situation_actuelle.totaux.total_solution_actuelle_calcule',
+        'situation_actuelle.indemnites.montant_source',
+        'situation_actuelle.indemnites.montant_calcule',
+        'situation_actuelle.ligne_bon_commande_materiel.libelle',
+        'situation_actuelle.ligne_bon_commande_materiel.montant'
+      ]
     }
   ]
 };
@@ -309,6 +405,49 @@ export const TELEPHONIE_FIELDS = {
     'location_materiel[].materiel',
     'location_materiel[].tarif',
     'location_materiel[].date_fin_engagement',
+  ],
+  situation_actuelle: [
+    'situation_actuelle.documents[].type_document',
+    'situation_actuelle.documents[].numero_document',
+    'situation_actuelle.documents[].date_document',
+    'situation_actuelle.operateurs[].nom',
+    'situation_actuelle.leasers[].nom',
+    'situation_actuelle.sites[].nom',
+    'situation_actuelle.sites[].adresse',
+    'situation_actuelle.abonnements[].libelle',
+    'situation_actuelle.abonnements[].operateur',
+    'situation_actuelle.abonnements[].site',
+    'situation_actuelle.abonnements[].tarif_brut_mensuel',
+    'situation_actuelle.abonnements[].remise_mensuelle',
+    'situation_actuelle.abonnements[].tarif_net_mensuel',
+    'situation_actuelle.locations[].libelle',
+    'situation_actuelle.locations[].leaser',
+    'situation_actuelle.locations[].site',
+    'situation_actuelle.locations[].loyer_brut_mensuel',
+    'situation_actuelle.locations[].remise_mensuelle',
+    'situation_actuelle.locations[].loyer_net_mensuel',
+    'situation_actuelle.lignes[].numero_ligne',
+    'situation_actuelle.lignes[].type',
+    'situation_actuelle.lignes[].site',
+    'situation_actuelle.lignes[].tarif_brut_mensuel',
+    'situation_actuelle.lignes[].remise_mensuelle',
+    'situation_actuelle.lignes[].tarif_net_mensuel',
+    'situation_actuelle.lignes[].date_fin_engagement_source',
+    'situation_actuelle.lignes[].date_limite_resiliation_calculee',
+    'situation_actuelle.periodes_facturation[].date_debut',
+    'situation_actuelle.periodes_facturation[].date_fin',
+    'situation_actuelle.engagements[].date_fin_engagement_source',
+    'situation_actuelle.engagements[].date_limite_resiliation_calculee',
+    'situation_actuelle.totaux.total_abonnements_source',
+    'situation_actuelle.totaux.total_abonnements_calcule',
+    'situation_actuelle.totaux.total_locations_source',
+    'situation_actuelle.totaux.total_locations_calcule',
+    'situation_actuelle.totaux.total_solution_actuelle_source',
+    'situation_actuelle.totaux.total_solution_actuelle_calcule',
+    'situation_actuelle.indemnites.montant_source',
+    'situation_actuelle.indemnites.montant_calcule',
+    'situation_actuelle.ligne_bon_commande_materiel.libelle',
+    'situation_actuelle.ligne_bon_commande_materiel.montant',
   ],
 };
 
@@ -407,6 +546,7 @@ export const TELEPHONIE_CATEGORY_LABELS: Record<string, string> = {
   lignes_fixes: '📞 Lignes Fixes',
   lignes_internet: '🌐 Lignes Internet',
   location_materiel: '🔧 Location Matériel',
+  situation_actuelle: '📊 Situation actuelle',
 };
 
 export const BUREAUTIQUE_CATEGORY_LABELS: Record<string, string> = {
@@ -447,48 +587,73 @@ export const TELECOM_LINES_CATEGORIES = [
   { id: 'lignes_internet', label: '🌐 Lignes Internet', type: 'internet' },
 ];
 
-// Catégories non fusionnables (champs différents)
-export const NON_MERGEABLE_CATEGORIES = [
-  { id: 'location_materiel', label: '🔧 Location Matériel', type: 'materiel' },
+// Catégorie matériel, fusionnable optionnellement avec les lignes télécom
+export const MATERIEL_MERGEABLE_CATEGORY = {
+  id: 'location_materiel',
+  label: '🔧 Location Matériel',
+  type: 'materiel',
+};
+
+// Liste complète des catégories fusionnables (lignes télécom + matériel optionnel)
+export const MERGEABLE_CATEGORIES = [
+  ...TELECOM_LINES_CATEGORIES,
+  MATERIEL_MERGEABLE_CATEGORY,
 ];
 
-// Toutes les catégories tableau
-export const ALL_ARRAY_CATEGORIES = [...TELECOM_LINES_CATEGORIES, ...NON_MERGEABLE_CATEGORIES];
+// Conservé pour compatibilité ascendante (n'est plus utilisé en interne)
+export const NON_MERGEABLE_CATEGORIES: Array<{ id: string; label: string; type: string }> = [];
 
-// Fonction pour obtenir les catégories télécom sélectionnées (fusionnables)
+// Toutes les catégories tableau
+export const ALL_ARRAY_CATEGORIES = [...MERGEABLE_CATEGORIES];
+
+// Fonction pour obtenir les catégories sélectionnées qui sont fusionnables
 export function getSelectedTelecomCategories(selectedQuestions: string[]): string[] {
-  return TELECOM_LINES_CATEGORIES
-    .filter(cat => selectedQuestions.includes(cat.id))
-    .map(cat => cat.id);
+  return MERGEABLE_CATEGORIES
+    .filter((cat) => selectedQuestions.includes(cat.id))
+    .map((cat) => cat.id);
 }
 
 // Fonction pour générer le label de fusion dynamique
 export function getMergeLabel(categories: string[]): string {
-  const labels = categories.map(cat => {
-    const found = TELECOM_LINES_CATEGORIES.find(m => m.id === cat);
-    return found?.label.replace(/^[^\s]+\s/, '') || cat; // Retirer l'emoji
+  const labels = categories.map((cat) => {
+    const found = MERGEABLE_CATEGORIES.find((m) => m.id === cat);
+    return found?.label.replace(/^[^\s]+\s/, '') || cat;
   });
   return labels.join(' + ');
 }
-
-// Fonction pour générer le prompt adapté aux fusions dynamiques
 export function generateMergedPrompt(
   basePrompt: string,
   mergedCategories: string[]  // Catégories à fusionner
 ): string {
-  if (mergedCategories.length < 2) {
-    return basePrompt;
+  const promptWithoutPreviousMergeRule = basePrompt
+    .replace(/\n{0,2}RÈGLE DE FUSION TÉLÉCOM:\n(?:- .*\n?)+/g, '')
+    .trim();
+
+  const includesMateriel = mergedCategories.includes('location_materiel');
+  const mergedTypes = mergedCategories
+    .map((cat) => MERGEABLE_CATEGORIES.find((m) => m.id === cat)?.type)
+    .filter((t): t is string => Boolean(t));
+
+  if (promptWithoutPreviousMergeRule.includes('"situation_actuelle"')) {
+    return `${promptWithoutPreviousMergeRule}
+
+RÈGLE DE FUSION TÉLÉCOM:
+- Les catégories fusionnées (${getMergeLabel(mergedCategories)}) doivent être extraites dans situation_actuelle.lignes uniquement.
+- Utilise situation_actuelle.lignes[].type pour distinguer les valeurs parmi : ${mergedTypes.join(', ')}.
+- Ne crée pas de tableaux racine séparés lignes_mobiles, lignes_fixes, lignes_internet${includesMateriel ? ' ou location_materiel' : ''} lorsque situation_actuelle est présente.${includesMateriel ? `
+- Pour les éléments de type "materiel", remplis libellé/matériel, quantité, tarif/loyer, leaser si présent, et date de fin d'engagement dans situation_actuelle.lignes.` : ''}
+`;
   }
 
   // Déterminer les types pour chaque catégorie
-  const types = mergedCategories.map(cat => {
-    const found = TELECOM_LINES_CATEGORIES.find(m => m.id === cat);
-    return found?.type || cat;
-  });
+  const types = mergedTypes.length > 0 ? mergedTypes : mergedCategories;
 
   // Construire la structure JSON fusionnée
+  const mergedRowFields = includesMateriel
+    ? `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "libelle": "Ligne ou matériel", "forfait": "Nom forfait", "materiel": "Description matériel", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`
+    : `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`;
   const mergedStructure = `"lignes": [
-    {"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"}
+    {${mergedRowFields}}
   ]`;
 
   let modifiedPrompt = basePrompt;
@@ -744,13 +909,15 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
   const baseArrays = ARRAY_FIELDS[secteur as keyof typeof ARRAY_FIELDS] || [];
 
   // Si pas de fusion valide (moins de 2 catégories), on retourne la base
-  const validMerges = mergedCategories.filter(cat => 
-    TELECOM_LINES_CATEGORIES.some(tc => tc.id === cat)
+  const validMerges = mergedCategories.filter((cat) =>
+    MERGEABLE_CATEGORIES.some((tc) => tc.id === cat)
   );
-  
+
   if (validMerges.length < 2) {
     return baseArrays;
   }
+
+  const includesMateriel = validMerges.includes('location_materiel');
 
   // Créer le tableau fusionné
   const mergedArray: ArrayFieldDefinition = {
@@ -759,7 +926,13 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
     description: 'Liste consolidée des lignes (fusion)',
     rowFields: [
       { id: 'numero_ligne', label: 'Numéro', type: 'string' },
-      { id: 'type', label: 'Type', type: 'string' }, // Champ type ajouté
+      { id: 'type', label: 'Type', type: 'string' },
+      ...(includesMateriel
+        ? ([
+            { id: 'libelle', label: 'Libellé', type: 'string' },
+            { id: 'materiel', label: 'Matériel', type: 'string' },
+          ] as ArrayFieldDefinition['rowFields'])
+        : []),
       { id: 'forfait', label: 'Forfait', type: 'string' },
       { id: 'quantite', label: 'Quantité', type: 'number' },
       { id: 'tarif', label: 'Tarif', type: 'number' },

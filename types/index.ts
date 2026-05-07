@@ -70,6 +70,7 @@ export interface OrganizationPreferences {
     montant?: number;
   };
   sp_customization?: SpCustomization;
+  sp_config_loyer?: SpConfigLoyer;
 }
 
 export type SpOutputFormat = 'pdf' | 'word';
@@ -307,70 +308,121 @@ export type SuggestionsGenerees = {
 
 // ── Questions SP ──────────────────────────────────────────────────
 
-export type SpQuestionType =
-  | 'choix_catalogue'
+export type SpQuestionSource =
+  | 'catalogue'
+  | 'sa'
+  | 'aucune'
+  | 'catalogue_et_sa';
+
+export type SpQuestionAffichage =
+  | 'boutons_choix_unique'
+  | 'boutons_choix_multiple'
+  | 'liste_deroulante'
   | 'oui_non'
-  | 'adresse'
-  | 'libre';
+  | 'confirmation_sa'
+  | 'edition_sa'
+  | 'texte_court'
+  | 'texte_long'
+  | 'nombre'
+  | 'date'
+  | 'choix_liste_manuelle'
+  | 'adresse_complete';
+
+export type SpConditionOperateur =
+  | 'egal'
+  | 'different'
+  | 'vide'
+  | 'non_vide'
+  | 'contient'
+  | 'ne_contient_pas'
+  | 'superieur'
+  | 'inferieur'
+  | 'plus_de_elements'
+  | 'moins_de_elements'
+  | 'element_ou';
+
+export type SpConditionLogique = 'ET' | 'OU';
+
+export interface SpCondition {
+  id: string;
+  source: 'sa' | 'catalogue' | 'reponse_question';
+  variable_sa?: string;
+  sous_champ_sa?: string;
+  filtre_catalogue?: SpFiltresCatalogue;
+  question_id?: string;
+  operateur: SpConditionOperateur;
+  valeur?: string | number;
+  logique?: SpConditionLogique;
+}
+
+export interface SpGroupeConditions {
+  id: string;
+  conditions: SpCondition[];
+  logique_groupe?: SpConditionLogique;
+}
+
+export interface SpFiltresCatalogue {
+  categories?: string[];
+  fournisseurs?: string[];
+  type_facturation?: 'mensuel' | 'unique' | 'tous';
+  depuis_reponse_question?: string;
+  groupes?: SpGroupeConditions[];
+  logique_racine?: SpConditionLogique;
+}
+
+export interface SpConsequence {
+  type:
+    | 'renseigner_variable'
+    | 'afficher_question'
+    | 'masquer_question'
+    | 'filtrer_question'
+    | 'aller_question';
+  variable_cible?: string;
+  question_id?: string;
+  filtre?: SpFiltresCatalogue;
+}
+
+export interface SpQuestionBoucle {
+  /** ID de la question dont la réponse donne le nombre d'itérations */
+  source_nombre_question_id?: string;
+  /** Nombre fixe d'itérations (alternatif à source_nombre_question_id) */
+  nombre_fixe?: number;
+  /** ID de la question dont la réponse (string[]) fournit les labels des itérations */
+  source_labels_question_id?: string;
+  /** Préfixe label par défaut (ex: "Site" → "Site 1", "Site 2"…) */
+  label_prefix?: string;
+}
 
 export interface SpQuestion {
   id: string;
+  template_id: string;
   ordre: number;
   actif: boolean;
-  type: SpQuestionType;
-  question: string;
+  libelle: string;
   description?: string;
-  condition?: string;
-  variable_cible: string;
-  obligatoire: boolean;
+  source: SpQuestionSource;
+  filtres_catalogue?: SpFiltresCatalogue;
+  groupes_conditions?: SpGroupeConditions[];
+  logique_declencheur?: SpConditionLogique;
+  affichage: SpQuestionAffichage;
   options_libres?: boolean;
+  nombre_max_resultats?: number;
+  options_manuelles?: string[];
+  validation_format?: 'aucune' | 'email' | 'telephone' | 'siret';
+  obligatoire: boolean;
+  valeur_defaut?: string;
+  edition_type?: 'adresse_complete' | 'texte' | 'nombre' | 'date';
+  consequences: SpConsequence[];
+  priorite_ia: 'normale' | 'haute';
+  /** Identifiant du groupe de boucle (toutes les questions avec le même id forment un bloc répété) */
+  groupe_boucle_id?: string;
+  /** Définition de la boucle (uniquement sur la première question du groupe) */
+  boucle?: SpQuestionBoucle;
 }
-
-export const SP_QUESTIONS_DEFAUT: SpQuestion[] = [
-  {
-    id: 'q_fournisseur',
-    ordre: 1,
-    actif: true,
-    type: 'choix_catalogue',
-    question: 'Quel fournisseur préférez-vous pour cette offre ?',
-    description: 'Sélectionnez un fournisseur ou saisissez-en un manuellement.',
-    variable_cible: 'sp_fournisseur_propose',
-    obligatoire: true,
-    options_libres: true,
-  },
-  {
-    id: 'q_materiel',
-    ordre: 2,
-    actif: true,
-    type: 'oui_non',
-    question: 'Proposer du matériel ?',
-    description: "L'IA a analysé la SA et peut suggérer du matériel de remplacement.",
-    variable_cible: 'sp_materiel',
-    obligatoire: false,
-  },
-  {
-    id: 'q_adresse_fact',
-    ordre: 3,
-    actif: true,
-    type: 'adresse',
-    question: "L'adresse de facturation est bien au : {sa.adresse} ?",
-    variable_cible: 'sp_adresse_facturation',
-    obligatoire: true,
-  },
-  {
-    id: 'q_adresse_liv',
-    ordre: 4,
-    actif: true,
-    type: 'oui_non',
-    question: "L'adresse de livraison est la même que l'adresse de facturation ?",
-    variable_cible: 'sp_adresse_livraison',
-    obligatoire: true,
-  },
-];
 
 export interface SpQuestionReponse {
   question_id: string;
-  valeur: string | boolean | SpAdresse;
+  valeur: string | boolean | string[] | SpAdresse;
 }
 
 export interface SpAdresse {
@@ -387,18 +439,27 @@ export interface SpLigneMobile {
   sp_nom_ligne: string;
   sp_produit: string;
   sp_produit_id?: string;
+  sp_produit_fournisseur?: string;
   sp_prix_actuel: string;
   sp_prix_propose: string;
   sp_economie: string;
   sp_analyse: string;
   sp_justification: string;
+  sp_type_ligne: 'Mobile';
   _prix_actuel_raw: number;
   _prix_propose_raw: number;
   _economie_raw: number;
 }
 
-export interface SpLigneFixe extends SpLigneMobile {}
-export interface SpInternet extends SpLigneMobile {}
+interface SpLigneBase extends Omit<SpLigneMobile, 'sp_type_ligne'> {}
+
+export interface SpLigneFixe extends SpLigneBase {
+  sp_type_ligne: 'Fixe';
+}
+
+export interface SpInternet extends SpLigneBase {
+  sp_type_ligne: 'Internet';
+}
 
 export interface SpMateriel {
   sp_materiel_nom: string;
@@ -407,6 +468,8 @@ export interface SpMateriel {
   sp_materiel_duree_engagement: string;
   sp_materiel_commentaire: string;
   sp_materiel_produit_id?: string;
+  sp_materiel_fournisseur?: string;
+  sp_type_ligne: 'Materiel';
   _prix_mensuel_raw: number;
 }
 
@@ -433,6 +496,40 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_ameliorations: string;
   sp_nb_lignes: string;
   sp_est_economie: string;
+
+  // ── Récurrent / Ponctuel ───────────────────────────────────────
+  sp_total_recurrent?: string;
+  sp_total_ponctuel?: string;
+  sp_total_indemnites?: string;
+  sp_remise_mois_offert?: string;
+  sp_total_fas?: string;
+  sp_total_installation?: string;
+  sp_total_materiel_achat?: string;
+
+  // ── Loyer / Marge ──────────────────────────────────────────────
+  sp_loyer_mensuel?: string;
+  sp_loyer_trimestriel?: string;
+  sp_marge?: string;
+  sp_duree_mois?: number;
+  sp_trimestres?: number;
+  sp_mois_offerts?: number;
+
+  [key: string]: unknown;
+}
+
+// ── Config Loyer ─────────────────────────────────────────────────
+
+export interface SpTauxDuree {
+  duree_mois: number;
+  taux_loyer: number;
+  mois_offerts: number;
+  trimestres: number;
+}
+
+export interface SpConfigLoyer {
+  taux_durees: SpTauxDuree[];
+  marge_suggestion_active: boolean;
+  marge_pourcentage_defaut?: number;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────
@@ -447,5 +544,10 @@ export interface SpVariableCustom {
   key: string;
   label: string;
   description: string;
-  type: 'string' | 'number';
+  type: 'string' | 'number' | 'tableau';
+  rowFields?: Array<{
+    id: string;
+    label: string;
+    type: 'string' | 'number' | 'date';
+  }>;
 }

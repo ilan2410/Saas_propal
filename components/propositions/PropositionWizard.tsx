@@ -8,14 +8,17 @@ import { Step2UploadDocuments } from './Step2UploadDocuments';
 import { Step3ExtractData } from './Step3ExtractData';
 import { Step4EditData } from './Step4EditData';
 import { Step5Generate } from './Step5Generate';
-import type { SuggestionsGenerees } from '@/types';
+import { Step5SpQuestions } from './Step5SpQuestions';
+import { Step5EditSp } from './Step5EditSp';
+import type { SuggestionsGenerees, SuggestionsSpCompletes, SpQuestionReponse } from '@/types';
 
 const STEPS = [
   { id: 1, name: 'Template', description: 'Sélection' },
   { id: 2, name: 'Documents', description: 'Upload' },
   { id: 3, name: 'Extraction', description: 'IA' },
-  { id: 4, name: 'Édition', description: 'Vérification' },
-  { id: 5, name: 'Génération', description: 'Finalisation' },
+  { id: 4, name: 'Édition SA', description: 'Vérification' },
+  { id: 5, name: 'Situation Proposée', description: 'IA + Validation' },
+  { id: 6, name: 'Génération', description: 'Finalisation' },
 ];
 
 export interface PropositionData {
@@ -27,6 +30,8 @@ export interface PropositionData {
   copieurs_count?: number;
   suggestions_generees?: SuggestionsGenerees | null;
   suggestions_editees?: SuggestionsGenerees | null;
+  sp_reponses?: SpQuestionReponse[];
+  suggestions_sp_completes?: SuggestionsSpCompletes;
 }
 
 export type PropositionTemplateSummary = {
@@ -74,7 +79,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
   };
 
   const nextStep = () => {
-    if (currentStep < 5) {
+    if (currentStep < 6) {
       const next = currentStep + 1;
       setCurrentStep(next);
       persistProgress({ current_step: next, statut: 'draft' });
@@ -217,6 +222,28 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
           </div>
         )}
         {currentStep === 5 && (
+          <div id="step5-sp-questions">
+            {(() => {
+              const tpl = templates.find((t) => t.id === propositionData.template_id);
+              if (tpl?.file_type !== 'word') {
+                return (
+                  <div className="space-y-4">
+                    <p className="text-gray-500">L&apos;étape SP est disponible uniquement pour les templates Word.</p>
+                    <div className="flex gap-3">
+                      <button onClick={prevStep} className="px-4 py-2 border rounded">Précédent</button>
+                      <button onClick={nextStep} className="px-4 py-2 bg-green-600 text-white rounded">Continuer</button>
+                    </div>
+                  </div>
+                );
+              }
+              if (propositionData.suggestions_sp_completes) {
+                return <Step5EditSp propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
+              }
+              return <Step5SpQuestions propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
+            })()}
+          </div>
+        )}
+        {currentStep === 6 && (
           <div id="btn-generate-proposition">
             <Step5Generate
               propositionData={propositionData}

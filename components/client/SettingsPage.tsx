@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpConfigLoyer, SpTauxDuree } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
@@ -25,8 +25,12 @@ import {
   CheckCircle,
   CreditCard as CreditCardIcon,
   Palette,
-  FileDown
+  FileDown,
+  Bot,
+  Calculator,
+  Plus
 } from 'lucide-react';
+import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -49,7 +53,7 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp';
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-loyer';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -300,6 +304,19 @@ export default function SettingsPage({
     subtitle_alignment: initialSp.subtitle_alignment ?? 'left',
   });
   const [isSpSaving, setIsSpSaving] = useState(false);
+
+  // Loyer Config State
+  const initialLoyerConfig: SpConfigLoyer = organization.preferences?.sp_config_loyer ?? {
+    taux_durees: [
+      { duree_mois: 36, taux_loyer: 0.106, mois_offerts: 12, trimestres: 12 },
+      { duree_mois: 48, taux_loyer: 0.081, mois_offerts: 18, trimestres: 16 },
+      { duree_mois: 63, taux_loyer: 0.063, mois_offerts: 18, trimestres: 21 },
+    ],
+    marge_suggestion_active: true,
+    marge_pourcentage_defaut: 10,
+  };
+  const [loyerConfig, setLoyerConfig] = useState<SpConfigLoyer>(initialLoyerConfig);
+  const [isLoyerSaving, setIsLoyerSaving] = useState(false);
 
   // Appearance State
   const [appearance, setAppearance] = useState<{
@@ -843,6 +860,46 @@ export default function SettingsPage({
     toast.info('Valeurs par défaut restaurées (pensez à enregistrer)');
   };
 
+  const handleSaveLoyerConfig = async () => {
+    if (isLoyerSaving) return;
+    setIsLoyerSaving(true);
+    try {
+      const res = await fetch('/api/settings/update-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sp_config_loyer: loyerConfig }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      toast.success('Configuration loyer enregistrée');
+      router.refresh();
+    } catch {
+      toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setIsLoyerSaving(false);
+    }
+  };
+
+  const updateTauxDuree = (index: number, field: keyof SpTauxDuree, value: number) => {
+    setLoyerConfig((prev) => ({
+      ...prev,
+      taux_durees: prev.taux_durees.map((td, i) => (i === index ? { ...td, [field]: value } : td)),
+    }));
+  };
+
+  const addTauxDuree = () => {
+    setLoyerConfig((prev) => ({
+      ...prev,
+      taux_durees: [...prev.taux_durees, { duree_mois: 12, taux_loyer: 0.1, mois_offerts: 0, trimestres: 4 }],
+    }));
+  };
+
+  const removeTauxDuree = (index: number) => {
+    setLoyerConfig((prev) => ({
+      ...prev,
+      taux_durees: prev.taux_durees.filter((_, i) => i !== index),
+    }));
+  };
+
   const handleUpdateAppearance = async () => {
     setIsLoading(true);
     try {
@@ -927,6 +984,8 @@ export default function SettingsPage({
           <option value="donnees">Données</option>
           <option value="apparence">Apparence</option>
           <option value="sp">Personnalisation SP</option>
+          <option value="sp-questions">Questions SP</option>
+          <option value="sp-loyer">Calcul Loyer SP</option>
         </select>
       </div>
 
@@ -939,6 +998,8 @@ export default function SettingsPage({
         <TabButton id="donnees" label="Données" icon={Database} />
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
         <TabButton id="sp" label="Personnalisation SP" icon={Palette} />
+        <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
+        <TabButton id="sp-loyer" label="Calcul Loyer" icon={Calculator} />
       </div>
 
       {/* Content Area */}
@@ -2051,6 +2112,137 @@ export default function SettingsPage({
               <Button onClick={handleSaveSpCustomization} disabled={isSpSaving}>
                 {isSpSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Enregistrer la personnalisation
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 8: QUESTIONS SP */}
+        {activeTab === 'sp-questions' && (
+          <div className="p-6 space-y-6">
+            <div className="border-b border-gray-100 pb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Constructeur de questions SP</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Configurez les questions posées lors de la génération de la Situation Proposée, par template Word.
+              </p>
+            </div>
+            <SpQuestionsManager templates={templates} />
+          </div>
+        )}
+
+        {/* SECTION 9: CONFIG LOYER */}
+        {activeTab === 'sp-loyer' && (
+          <div className="p-6 space-y-6">
+            <div className="border-b border-gray-100 pb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Configuration du calcul de loyer</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Définissez les taux de loyer, durées, mois offerts et le pourcentage de marge par défaut pour les propositions SP.
+              </p>
+            </div>
+
+            {/* Taux par durée */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Barème de taux par durée</h3>
+                <Button size="sm" variant="outline" onClick={addTauxDuree}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Ajouter une durée
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 border-b">
+                      <th className="pb-2 pr-2">Durée (mois)</th>
+                      <th className="pb-2 pr-2">Taux loyer</th>
+                      <th className="pb-2 pr-2">Mois offerts</th>
+                      <th className="pb-2 pr-2">Trimestres</th>
+                      <th className="pb-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loyerConfig.taux_durees.map((td, idx) => (
+                      <tr key={idx} className="border-b border-gray-100">
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            value={td.duree_mois}
+                            onChange={(e) => updateTauxDuree(idx, 'duree_mois', Number(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={td.taux_loyer}
+                            onChange={(e) => updateTauxDuree(idx, 'taux_loyer', Number(e.target.value) || 0)}
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm font-mono"
+                          />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            value={td.mois_offerts}
+                            onChange={(e) => updateTauxDuree(idx, 'mois_offerts', Number(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input
+                            type="number"
+                            value={td.trimestres}
+                            onChange={(e) => updateTauxDuree(idx, 'trimestres', Number(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        </td>
+                        <td className="py-2">
+                          <button
+                            onClick={() => removeTauxDuree(idx)}
+                            className="text-gray-400 hover:text-red-500"
+                            disabled={loyerConfig.taux_durees.length <= 1}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Marge */}
+            <div className="space-y-3 border-t pt-4">
+              <h3 className="text-sm font-semibold text-gray-900">Suggestion de marge</h3>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="marge_active"
+                  checked={loyerConfig.marge_suggestion_active}
+                  onChange={(e) => setLoyerConfig((prev) => ({ ...prev, marge_suggestion_active: e.target.checked }))}
+                />
+                <label htmlFor="marge_active" className="text-sm text-gray-700">
+                  Suggérer automatiquement une marge lors de l&apos;édition de la SP
+                </label>
+              </div>
+              {loyerConfig.marge_suggestion_active && (
+                <div className="flex items-center gap-2 pl-6">
+                  <label className="text-sm text-gray-600">Marge par défaut :</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={loyerConfig.marge_pourcentage_defaut ?? 10}
+                    onChange={(e) => setLoyerConfig((prev) => ({ ...prev, marge_pourcentage_defaut: Number(e.target.value) || 0 }))}
+                    className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button onClick={handleSaveLoyerConfig} disabled={isLoyerSaving}>
+                {isLoyerSaving ? 'Sauvegarde...' : 'Enregistrer la configuration'}
               </Button>
             </div>
           </div>

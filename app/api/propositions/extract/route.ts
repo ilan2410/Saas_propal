@@ -10,10 +10,170 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function toNumber(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (typeof value === 'string') {
-    const parsed = Number(value.replace(',', '.'));
+    const parsed = Number(value.replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
+}
+
+function parseFrenchDate(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function formatFrenchDate(date: Date): string {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = date.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function subtractMonths(date: Date, months: number): Date {
+  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const originalDay = next.getUTCDate();
+  next.setUTCMonth(next.getUTCMonth() - months);
+  if (next.getUTCDate() !== originalDay) {
+    next.setUTCDate(0);
+  }
+  return next;
+}
+
+function normalizeMoney(value: unknown): number | null {
+  const n = toNumber(value);
+  return n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+function sumArrayValues(items: unknown, keys: string[]): number | null {
+  if (!Array.isArray(items)) return null;
+  const total = items.reduce((acc, item) => {
+    if (!isRecord(item)) return acc;
+    for (const key of keys) {
+      const n = normalizeMoney(item[key]);
+      if (n !== null) return acc + n;
+    }
+    return acc;
+  }, 0);
+  return total > 0 ? Math.round(total * 100) / 100 : null;
+}
+
+function normalizeAmountText(value: string): number | null {
+  const match = value.match(/(-?\d+(?:[\s.,]\d{2})?)/);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null;
+}
+
+function dedupeIdenticalSourceCalculatedSummary(summary: unknown): unknown {
+  if (typeof summary !== 'string') return summary;
+  const lines = summary.split('\n');
+  const output: string[] = [];
+  const normalizeSummaryLabel = (line: string) =>
+    line
+      .replace(/\*\*/g, '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\bsource\b/gi, '')
+      .replace(/\bcalcul[ée]?\b/gi, '')
+      .split(':')[0]
+      ?.replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const current = lines[i];
+    const next = lines[i + 1];
+    if (
+      next &&
+      /\(source[^)]*\)/i.test(current) &&
+      /\(calcul[ée]?[^)]*\)/i.test(next)
+    ) {
+      const currentLabel = normalizeSummaryLabel(current);
+      const nextLabel = normalizeSummaryLabel(next);
+      const currentAmount = normalizeAmountText(current);
+      const nextAmount = normalizeAmountText(next);
+
+      if (currentLabel && currentLabel === nextLabel && currentAmount !== null && currentAmount === nextAmount) {
+        output.push(current.replace(/\(source[^)]*\)/i, '(source confirmée par calcul)'));
+        i += 1;
+        continue;
+      }
+    }
+    output.push(current);
+  }
+
+  return output.join('\n');
+}
+
+function enrichSituationActuelle(data: unknown): Record<string, unknown> {
+  const root = isRecord(data) ? { ...data } : {};
+  if (typeof root.resume === 'string') {
+    root.resume = dedupeIdenticalSourceCalculatedSummary(root.resume);
+  }
+  if (!isRecord(root.situation_actuelle)) return root;
+
+  const situation = { ...root.situation_actuelle };
+
+  const enrichDateArray = (key: string) => {
+    const raw = situation[key];
+    if (!Array.isArray(raw)) return;
+    situation[key] = raw.map((item) => {
+      if (!isRecord(item)) return item;
+      const next = { ...item };
+      const source = next.date_fin_engagement_source ?? next.date_fin_engagement;
+      const parsed = parseFrenchDate(source);
+      if (parsed) {
+        next.date_fin_engagement_source = typeof source === 'string' ? source : formatFrenchDate(parsed);
+        next.date_limite_resiliation_calculee = formatFrenchDate(subtractMonths(parsed, 3));
+      }
+      return next;
+    });
+  };
+
+  enrichDateArray('lignes');
+  enrichDateArray('engagements');
+
+  const totaux = isRecord(situation.totaux) ? { ...situation.totaux } : {};
+  const totalAbonnementsCalcule = sumArrayValues(situation.abonnements, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
+  const totalLocationsCalcule = sumArrayValues(situation.locations, ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif']);
+  const totalLignesCalcule = sumArrayValues(situation.lignes, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
+
+  if (totalAbonnementsCalcule !== null) totaux.total_abonnements_calcule = totalAbonnementsCalcule;
+  if (totalLocationsCalcule !== null) totaux.total_locations_calcule = totalLocationsCalcule;
+
+  const totalSolutionCalcule =
+    (totalAbonnementsCalcule || 0) + (totalLocationsCalcule || 0) + (totalLignesCalcule || 0);
+  if (totalSolutionCalcule > 0) {
+    totaux.total_solution_actuelle_calcule = Math.round(totalSolutionCalcule * 100) / 100;
+  }
+  situation.totaux = totaux;
+
+  const indemnites = isRecord(situation.indemnites) ? { ...situation.indemnites } : {};
+  const montantIndemnites = normalizeMoney(indemnites.montant_calcule) ?? normalizeMoney(indemnites.montant_source);
+  if (montantIndemnites !== null) {
+    indemnites.montant_calcule = normalizeMoney(indemnites.montant_calcule) ?? montantIndemnites;
+    situation.indemnites = indemnites;
+    situation.ligne_bon_commande_materiel = {
+      ...(isRecord(situation.ligne_bon_commande_materiel) ? situation.ligne_bon_commande_materiel : {}),
+      libelle: `Remboursement de ${montantIndemnites.toFixed(2)} € au titre du solde définitif de vos contrats téléphoniques.`,
+      montant: montantIndemnites,
+    };
+  }
+
+  root.situation_actuelle = situation;
+  return root;
 }
 
 export async function POST(request: NextRequest) {
@@ -165,12 +325,22 @@ STRUCTURE JSON ATTENDUE:
     "forme_juridique": "SAS/SARL/etc",
     "rcs": "RCS"
   },
-  "lignes": [
-    {"numero_ligne": "0XXXXXXXXX", "type": "mobile|fixe|internet", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"}
-  ],
-  "location_materiel": [
-    {"type": "Location", "quantite": "1", "materiel": "Description", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"}
-  ]
+  "situation_actuelle": {
+    "documents": [
+      {"type_document": "facture|echeancier|contrat|autre", "numero_document": "...", "date_document": "JJ/MM/AAAA", "periode_facturation": {"date_debut": "JJ/MM/AAAA", "date_fin": "JJ/MM/AAAA"}}
+    ],
+    "operateurs": [{"nom": "Nom opérateur", "type": "operateur_telecom"}],
+    "leasers": [{"nom": "Nom leaser", "type": "organisme_financement"}],
+    "sites": [{"nom": "Site principal", "adresse": "Adresse complète", "code_postal": "75001", "ville": "Paris"}],
+    "abonnements": [{"libelle": "Abonnement", "operateur": "Nom opérateur", "site": "Site concerné", "quantite": "1", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "periode_facturation": "mensuelle|trimestrielle|annuelle|autre"}],
+    "locations": [{"libelle": "Location matériel", "leaser": "Nom leaser", "site": "Site concerné", "materiel": "Description", "quantite": "1", "loyer_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "loyer_net_mensuel": "XX.XX"}],
+    "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
+    "periodes_facturation": [{"date_debut": "JJ/MM/AAAA", "date_fin": "JJ/MM/AAAA", "periodicite": "mensuelle|trimestrielle|annuelle|autre"}],
+    "engagements": [{"libelle": "Contrat/ligne/service", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA", "preavis_mois": 3}],
+    "totaux": {"total_abonnements_source": "XX.XX", "total_abonnements_calcule": "XX.XX", "total_locations_source": "XX.XX", "total_locations_calcule": "XX.XX", "total_solution_actuelle_source": "XX.XX", "total_solution_actuelle_calcule": "XX.XX", "devise": "EUR", "precision": "HT|TTC|non_precise"},
+    "indemnites": {"montant_source": "XX.XX", "montant_calcule": "XX.XX", "methode_calcul": "..."},
+    "ligne_bon_commande_materiel": {"libelle": "Remboursement de XX.XX € au titre du solde définitif de vos contrats téléphoniques.", "montant": "XX.XX"}
+  }
 }
 
 CHAMPS À EXTRAIRE:
@@ -182,6 +352,16 @@ RÈGLES:
 - Les tarifs sont des nombres (29.99 et non "29,99€")
 - Les tableaux peuvent contenir plusieurs éléments
 - Extrais TOUTES les lignes trouvées dans le document
+- situation_actuelle est la source principale unique pour les lignes, abonnements, locations, engagements, totaux et indemnités.
+- Ne duplique pas les mêmes éléments dans d'anciens tableaux racine si situation_actuelle est demandée.
+- Si "situation_actuelle" est demandée, sépare strictement opérateur télécom et leaser/organisme de financement.
+- Si "situation_actuelle" est demandée, traite chaque facture, échéancier ou contrat comme un document distinct dans situation_actuelle.documents.
+- Si "situation_actuelle" est demandée, conserve les montants lus dans les champs *_source et ajoute les montants calculés dans les champs *_calcule.
+- Si "situation_actuelle" est demandée, sépare toujours tarif/loyer brut, remise et tarif/loyer net lorsque l'information existe.
+- Si "situation_actuelle" est demandée, détecte les sites multiples et rattache les lignes, abonnements et locations à leur site si possible.
+- Si "situation_actuelle" est demandée, pour chaque date de fin d'engagement, conserve la date trouvée dans date_fin_engagement_source et calcule date_limite_resiliation_calculee en retirant 3 mois.
+- Si "situation_actuelle" est demandée, calcule total_abonnements_calcule, total_locations_calcule et total_solution_actuelle_calcule sans écraser les totaux source.
+- Si "situation_actuelle" est demandée, extrait ou estime les indemnités dans indemnites.montant_source et indemnites.montant_calcule, puis prépare ligne_bon_commande_materiel.
 
 DOCUMENT(S):
 {documents}
@@ -206,9 +386,10 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
 
 INSTRUCTION COMPLÉMENTAIRE - RÉSUMÉ:
 - Ajoute un champ "resume" (string) dans le JSON retourné.
-- Le champ "resume" contient un résumé en français, structuré et lisible (titres + listes), basé uniquement sur les informations trouvées dans les documents.
+- Le champ "resume" contient un résumé en français, très complet, structuré et lisible (titres + listes), basé uniquement sur les informations trouvées dans les documents.
 - N'invente pas d'informations. Si une information est absente, indique "(non trouvé)" ou omets la sous-partie concernée.
-- Le résumé doit couvrir au minimum : Informations client, Fournisseur/Opérateur, Lignes/Services, Location/Matériel (si présent), Engagements/Facturation (si présent), puis une Synthèse en 3-5 puces.
+- Le résumé doit couvrir au minimum : Informations client, Fournisseur/Opérateur, Leaser si présent, Documents analysés, Sites/adresses, Lignes/Services, Abonnements, Locations/Matériel, Remises, Périodes de facturation, Engagements avec dates source et dates calculées à -3 mois, Totaux source et calculés, Indemnités, ligne prévue pour le bon de commande matériel, puis une Synthèse opérationnelle en 5-10 puces.
+- Le résumé doit être suffisamment détaillé pour pouvoir être réutilisé dans les étapes suivantes de génération de proposition commerciale.
 
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     
@@ -329,10 +510,11 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       return next;
     };
 
+    const enrichedExtractedData = enrichSituationActuelle(extractedData);
     const extractedDataFinal =
       organization.secteur === 'bureautique'
-        ? ensureBureautiqueArraysCount(extractedData, copieursCount)
-        : extractedData;
+        ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)
+        : enrichedExtractedData;
     
     console.log('✅ Extraction réussie');
 
