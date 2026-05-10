@@ -133,18 +133,20 @@ export async function POST(req: NextRequest) {
     }
 
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 64000,
       system: systemPrompt,
       messages,
     });
 
     const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
 
-    // Try to extract JSON — handles plain JSON, ```json blocks, or ``` blocks
+    // Try to extract JSON — handles plain JSON, ```json blocks, ``` blocks, or JSON embedded in text
     const jsonCandidate =
       raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1]?.trim() ??
-      (raw.startsWith('{') || raw.startsWith('[') ? raw : null);
+      (raw.startsWith('{') || raw.startsWith('[') ? raw : null) ??
+      raw.match(/(\{[\s\S]*\})/)?.[1]?.trim() ??
+      null;
 
     if (jsonCandidate) {
       try {

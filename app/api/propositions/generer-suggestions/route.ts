@@ -694,11 +694,11 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
   "sp_ameliorations": "..."
 }`;
 
-    const model = process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-haiku-4-5-20251001';
+    const model = process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-sonnet-4-6';
 
     const message = await anthropic.messages.create({
       model,
-      max_tokens: 4000,
+      max_tokens: 64000,
       messages: [{ role: 'user', content: prompt }],
     });
 

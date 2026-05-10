@@ -104,6 +104,35 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
           },
         ]);
       } else if (data.type === 'message' && data.content) {
+        // Fallback : tenter d'extraire un JSON questions embarqué dans le message
+        const jsonMatch = data.content.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ??
+          data.content.match(/(\{[\s\S]*"questions"[\s\S]*\})/);
+        const jsonStr = jsonMatch?.[1]?.trim();
+        if (jsonStr) {
+          try {
+            const parsed = JSON.parse(jsonStr) as { questions?: SpQuestion[] };
+            if (parsed.questions?.length) {
+              const withOrdre = parsed.questions.map((q, i) => ({
+                ...q,
+                template_id: templateId,
+                actif: true,
+                ordre: isModifyMode ? i + 1 : nextOrdre + i,
+              }));
+              setGeneratedQuestions(withOrdre);
+              const action = isModifyMode ? 'modifié' : 'généré';
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: `J'ai ${action} ${withOrdre.length} question${withOrdre.length > 1 ? 's' : ''}. Vérifie l'aperçu ci-dessous avant d'appliquer.`,
+                },
+              ]);
+              return;
+            }
+          } catch {
+            // JSON invalide, on affiche le message brut
+          }
+        }
         setMessages((prev) => [...prev, { role: 'assistant', content: data.content! }]);
       }
     } catch {
