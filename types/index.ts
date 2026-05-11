@@ -365,6 +365,7 @@ export interface SpFiltresCatalogue {
   categories?: string[];
   fournisseurs?: string[];
   type_facturation?: 'mensuel' | 'unique' | 'tous';
+  produits_ids?: string[];
   depuis_reponse_question?: string;
   groupes?: SpGroupeConditions[];
   logique_racine?: SpConditionLogique;

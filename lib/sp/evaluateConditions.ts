@@ -287,5 +287,9 @@ export function filterCatalogueByFiltre(
     result = result.filter((p) => p.type_frequence === filtre.type_facturation);
   }
 
+  if (filtre.produits_ids && filtre.produits_ids.length > 0) {
+    result = result.filter((p) => filtre.produits_ids!.includes(p.id));
+  }
+
   return result;
 }

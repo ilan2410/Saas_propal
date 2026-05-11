@@ -14,6 +14,8 @@ import type {
   SpConsequence,
   SpQuestionBoucle,
   SpVariableCustom,
+  SpFiltresCatalogue,
+  CatalogueProduit,
 } from '@/types';
 
 interface SpVariableOption {
@@ -140,6 +142,133 @@ const CONSEQUENCE_TYPES: { value: SpConsequence['type']; label: string; desc: st
   { value: 'filtrer_question', label: 'Filtrer catalogue', desc: 'Applique un filtre catalogue à une question' },
 ];
 
+// ── Catalogue filter ──────────────────────────────────────────────────────────
+const CATALOGUE_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'mobile', label: 'Mobile' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'fixe', label: 'Fixe' },
+  { value: 'cloud', label: 'Cloud' },
+  { value: 'equipement', label: 'Équipement' },
+  { value: 'autre', label: 'Autre' },
+];
+
+function FiltreCatalogueUI({
+  filtre,
+  onChange,
+  allProduits,
+  colorScheme = 'blue',
+}: {
+  filtre: SpFiltresCatalogue;
+  onChange: (f: SpFiltresCatalogue) => void;
+  allProduits: CatalogueProduit[];
+  colorScheme?: 'blue' | 'amber';
+}) {
+  const [search, setSearch] = useState('');
+  const active = colorScheme === 'blue'
+    ? 'bg-blue-600 text-white border-blue-600'
+    : 'bg-amber-600 text-white border-amber-600';
+  const hover = colorScheme === 'blue' ? 'hover:border-blue-400' : 'hover:border-amber-400';
+  const hasSpecificProducts = (filtre.produits_ids?.length ?? 0) > 0;
+
+  const displayedProducts = allProduits.filter((p) =>
+    !search || p.nom.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-3">
+      {!hasSpecificProducts && (
+        <>
+          <div className="space-y-1">
+            <p className="text-xs text-gray-500">Catégories <span className="text-gray-400">(laisser vide = toutes)</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              {CATALOGUE_CATEGORIES.map((cat) => {
+                const isSelected = filtre.categories?.includes(cat.value) ?? false;
+                return (
+                  <button key={cat.value} type="button"
+                    onClick={() => {
+                      const current = filtre.categories ?? [];
+                      const next = isSelected ? current.filter((c) => c !== cat.value) : [...current, cat.value];
+                      onChange({ ...filtre, categories: next.length > 0 ? next : undefined });
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${isSelected ? active : `bg-white text-gray-600 border-gray-300 ${hover}`}`}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs text-gray-500 shrink-0">Facturation</p>
+            <div className="flex gap-1.5">
+              {([
+                { value: 'tous', label: 'Tous' },
+                { value: 'mensuel', label: 'Mensuel' },
+                { value: 'unique', label: 'Ponctuel' },
+              ] as const).map((tf) => (
+                <button key={tf.value} type="button"
+                  onClick={() => onChange({ ...filtre, type_facturation: tf.value === 'tous' ? undefined : tf.value })}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${(filtre.type_facturation ?? 'tous') === tf.value ? active : `bg-white text-gray-600 border-gray-300 ${hover}`}`}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      <div className="border-t border-gray-100 pt-2">
+        <p className="text-xs text-gray-500 mb-1.5">
+          Produits spécifiques <span className="text-gray-400">(remplace les filtres ci-dessus si sélectionnés)</span>
+        </p>
+        {allProduits.length > 0 ? (
+          <>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher un produit..."
+              className="w-full text-xs border border-gray-200 rounded px-2 py-1 mb-1.5 focus:outline-none focus:border-blue-400"
+            />
+            <div className="max-h-36 overflow-y-auto space-y-0.5 border border-gray-100 rounded p-1 bg-white">
+              {displayedProducts.map((p) => {
+                const isSelected = filtre.produits_ids?.includes(p.id) ?? false;
+                return (
+                  <label key={p.id} className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        const current = filtre.produits_ids ?? [];
+                        const next = isSelected ? current.filter((id) => id !== p.id) : [...current, p.id];
+                        onChange({ ...filtre, produits_ids: next.length > 0 ? next : undefined });
+                      }}
+                      className="w-3 h-3 accent-blue-600"
+                    />
+                    <span className="text-xs text-gray-700 flex-1 truncate">{p.nom}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{p.categorie}</span>
+                  </label>
+                );
+              })}
+              {displayedProducts.length === 0 && (
+                <p className="text-xs text-gray-400 px-1 py-1">Aucun produit trouvé</p>
+              )}
+            </div>
+            {hasSpecificProducts && (
+              <button type="button" onClick={() => onChange({ ...filtre, produits_ids: undefined })}
+                className="mt-1 text-xs text-red-500 hover:underline">
+                Réinitialiser la sélection ({filtre.produits_ids!.length} produit{filtre.produits_ids!.length > 1 ? 's' : ''})
+              </button>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-gray-400">Chargement du catalogue...</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Composant ─────────────────────────────────────────────────────────────────
 export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, otherQuestions = [] }: Props) {
   const [activeBlock, setActiveBlock] = useState<Block>(1);
@@ -222,6 +351,25 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
   // Options libres (pour catalogue)
   const [optionsLibres, setOptionsLibres] = useState<boolean>(initial?.options_libres ?? false);
 
+  // Filtre catalogue
+  const [filtresCatalogue, setFiltresCatalogue] = useState<SpFiltresCatalogue>(
+    initial?.filtres_catalogue ?? {}
+  );
+  const [allProduits, setAllProduits] = useState<CatalogueProduit[]>([]);
+  const [produitsLoaded, setProduitsLoaded] = useState(false);
+
+  useEffect(() => {
+    if ((source === 'catalogue' || source === 'catalogue_et_sa') && !produitsLoaded) {
+      fetch('/api/catalogue')
+        .then((r) => r.json())
+        .then((d: { produits?: CatalogueProduit[] }) => {
+          setAllProduits(d.produits ?? []);
+          setProduitsLoaded(true);
+        })
+        .catch(() => setProduitsLoaded(true));
+    }
+  }, [source, produitsLoaded]);
+
   // Boucle state
   const [groupeBoucleId, setGroupeBoucleId] = useState<string>(initial?.groupe_boucle_id ?? '');
   const [boucleEnabled, setBoucleEnabled] = useState<boolean>(!!initial?.boucle);
@@ -242,6 +390,10 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
         affichage,
         options_manuelles: affichage === 'choix_liste_manuelle' && optionsManuelles.length > 0 ? optionsManuelles : undefined,
         options_libres: (source === 'catalogue' || source === 'catalogue_et_sa') && optionsLibres ? true : undefined,
+        filtres_catalogue: (source === 'catalogue' || source === 'catalogue_et_sa') &&
+          (filtresCatalogue.categories?.length || filtresCatalogue.type_facturation || filtresCatalogue.produits_ids?.length)
+          ? filtresCatalogue
+          : undefined,
         obligatoire,
         priorite_ia: prioriteIa,
         actif: true,
@@ -346,6 +498,22 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
               </Tooltip>
             ))}
           </div>
+
+          {(source === 'catalogue' || source === 'catalogue_et_sa') && (
+            <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/50 space-y-3">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold text-gray-700">Filtrer les produits affichés</p>
+                <InfoIcon tooltip="Restreint les produits du catalogue visibles pour cette question. Laissez tout vide pour afficher tous les produits." />
+              </div>
+              <FiltreCatalogueUI
+                filtre={filtresCatalogue}
+                onChange={setFiltresCatalogue}
+                allProduits={allProduits}
+                colorScheme="blue"
+              />
+            </div>
+          )}
+
           <Button size="sm" onClick={() => setActiveBlock(2)}>Suivant →</Button>
         </div>
       )}
@@ -685,6 +853,23 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                       </option>
                     ))}
                   </select>
+                )}
+
+                {cons.type === 'filtrer_question' && cons.question_id && (
+                  <div className="border border-amber-100 rounded-lg p-2 bg-amber-50/50 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-semibold text-gray-700">Filtre à appliquer</p>
+                      <InfoIcon tooltip="Quand cette réponse est donnée, le catalogue de la question cible sera filtré selon ces critères." />
+                    </div>
+                    <FiltreCatalogueUI
+                      filtre={cons.filtre ?? {}}
+                      onChange={(f) => updateConsequence(ci, {
+                        filtre: (f.categories?.length || f.type_facturation || f.produits_ids?.length) ? f : undefined,
+                      })}
+                      allProduits={allProduits}
+                      colorScheme="amber"
+                    />
+                  </div>
                 )}
               </div>
             ))}
