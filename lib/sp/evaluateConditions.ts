@@ -29,6 +29,61 @@ function toComparable(value: unknown): string | number | undefined {
   return String(value);
 }
 
+function normalizeBooleanString(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (['oui', 'true', 'vrai', '1', 'yes'].includes(normalized)) return 'true';
+  if (['non', 'false', 'faux', '0', 'no'].includes(normalized)) return 'false';
+  return normalized;
+}
+
+function areEquivalentValues(actual: unknown, expected: unknown): boolean {
+  const actualComparable = toComparable(actual);
+  const expectedComparable = toComparable(expected);
+
+  if (actualComparable == null || expectedComparable == null) return false;
+
+  if (typeof actualComparable === 'number' || typeof expectedComparable === 'number') {
+    const actualNum = toNumber(actualComparable);
+    const expectedNum = toNumber(expectedComparable);
+    if (actualNum != null && expectedNum != null) {
+      return actualNum === expectedNum;
+    }
+  }
+
+  return normalizeBooleanString(String(actualComparable)) === normalizeBooleanString(String(expectedComparable));
+}
+
+function toNormalizedTokens(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => toNormalizedTokens(item))
+      .filter(Boolean);
+  }
+
+  const comparable = toComparable(value);
+  if (comparable == null) return [];
+
+  const normalized = normalizeBooleanString(String(comparable));
+  return normalized
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function containsEquivalentValue(actual: unknown, expected: unknown): boolean {
+  const actualTokens = toNormalizedTokens(actual);
+  const expectedTokens = toNormalizedTokens(expected);
+
+  if (actualTokens.length === 0 || expectedTokens.length === 0) return false;
+
+  return expectedTokens.some((expectedToken) =>
+    actualTokens.some((actualToken) =>
+      actualToken === expectedToken || actualToken.includes(expectedToken),
+    ),
+  );
+}
+
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -109,23 +164,19 @@ function evaluateSingleCondition(
       return actualValue != null && comparable !== '' && comparable !== undefined;
 
     case 'egal':
-      if (comparable == null) return false;
-      return String(comparable).toLowerCase() === targetStr.toLowerCase();
+      return areEquivalentValues(actualValue, condition.valeur);
 
     case 'different':
       if (comparable == null) return targetStr !== '';
-      return String(comparable).toLowerCase() !== targetStr.toLowerCase();
+      return !areEquivalentValues(actualValue, condition.valeur);
 
     case 'contient': {
-      if (comparable == null) return false;
-      const strVal = String(comparable).toLowerCase();
-      return strVal.includes(targetStr.toLowerCase());
+      return containsEquivalentValue(actualValue, condition.valeur);
     }
 
     case 'ne_contient_pas': {
       if (comparable == null) return true;
-      const strVal = String(comparable).toLowerCase();
-      return !strVal.includes(targetStr.toLowerCase());
+      return !containsEquivalentValue(actualValue, condition.valeur);
     }
 
     case 'superieur': {

@@ -505,6 +505,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_total_fas?: string;
   sp_total_installation?: string;
   sp_total_materiel_achat?: string;
+  sp_fas_total?: string;
 
   // ── Loyer / Marge ──────────────────────────────────────────────
   sp_loyer_mensuel?: string;

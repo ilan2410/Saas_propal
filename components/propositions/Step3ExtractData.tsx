@@ -377,10 +377,6 @@ export function Step3ExtractData({
                 <span className="text-blue-600 mt-0.5">✏️</span>
                 <span>Vous pourrez vérifier et modifier toutes les données à l&apos;étape suivante</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-600 mt-0.5">💳</span>
-                <span>L&apos;extraction consomme vos crédits selon le volume de données traitées</span>
-              </li>
             </ul>
           </div>
         </div>

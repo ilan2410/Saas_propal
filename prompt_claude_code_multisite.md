@@ -23,6 +23,7 @@ Les fichiers sont générés par `generatePropositionFile` dans `lib/generators/
 ## PARTIE 1 — Extraction d'un composant partagé `SpQuestionnaireUI`
 
 ### Objectif
+
 Le questionnaire SP réel (`Step5SpQuestions`) et le simulateur (`SpWorkflowSimulatorModal`) doivent partager **exactement le même composant UI**. Si on modifie le design de l'un, l'autre est automatiquement mis à jour. La seule différence est la source des données SA.
 
 ### Ce qu'il faut faire
@@ -52,6 +53,7 @@ interface SpQuestionnaireUIProps {
 ```
 
 Ce composant contient :
+
 - Toute la logique de chat (messages, bulles, auto-avance, isTyping)
 - Toute la logique de conditions (groupes_conditions, consequences, hiddenByConsequence, etc.)
 - Toute la logique de boucles (expandedQuestions, groupe_boucle_id)
@@ -61,6 +63,7 @@ Ce composant contient :
 **2. Refactoriser `Step5SpQuestions.tsx`**
 
 Doit devenir un wrapper léger qui :
+
 - Charge les questions, catalogue, fournisseurs depuis l'API
 - Appelle `SpQuestionnaireUI` avec les données réelles (`propositionData.donnees_extraites`)
 - Reçoit le callback `onComplete` → appelle `/api/propositions/generer-suggestions` → `onNext()`
@@ -88,6 +91,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
 **3. Refactoriser `SpWorkflowSimulatorModal.tsx`**
 
 Doit :
+
 - Récupérer la dernière proposition générée de l'organisation via `GET /api/propositions/latest-extracted-data?template_id={templateId}`
 - Charger catalogue et fournisseurs
 - Appeler `SpQuestionnaireUI` avec `isSimulation={true}` et les données SA de la dernière proposition
@@ -108,6 +112,7 @@ Route qui retourne `extracted_data` de la dernière proposition (par `updated_at
 ## PARTIE 2 — Détection multisite post-extraction et flow séquentiel par site
 
 ### Objectif
+
 Quand l'IA extrait une SA avec `sites.length > 1`, afficher une modale de choix après le Step3. Si l'utilisateur choisit "par site", le wizard enchaîne les questions SP pour chaque site séquentiellement dans la même session, sans interruption.
 
 ### Ce qu'il faut faire
@@ -117,10 +122,10 @@ Quand l'IA extrait une SA avec `sites.length > 1`, afficher une modale de choix 
 Créer le fichier `supabase/migrations/[timestamp]_add_tarif_clone_site.sql` :
 
 ```sql
-ALTER TABLE organizations 
+ALTER TABLE organizations
 ADD COLUMN IF NOT EXISTS tarif_clone_site DECIMAL(10,2) DEFAULT 1.00;
 
-COMMENT ON COLUMN organizations.tarif_clone_site IS 
+COMMENT ON COLUMN organizations.tarif_clone_site IS
 'Coût en crédits pour générer une proposition supplémentaire à partir d une SA multisite déjà extraite (clone par site).';
 ```
 
@@ -145,15 +150,16 @@ ADD COLUMN IF NOT EXISTS is_multisite BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS parent_proposition_id UUID REFERENCES propositions(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS site_nom VARCHAR(255);
 
-COMMENT ON COLUMN propositions.parent_proposition_id IS 
+COMMENT ON COLUMN propositions.parent_proposition_id IS
 'Pour les propositions clonées depuis un multisite, référence la proposition parente dont les données SA ont été extraites.';
-COMMENT ON COLUMN propositions.site_nom IS 
+COMMENT ON COLUMN propositions.site_nom IS
 'Nom du site pour les propositions multisite (ex: Paris, Lyon).';
 ```
 
 **4. Créer `POST /api/propositions/:id/clone-site`**
 
 Route qui :
+
 1. Récupère la proposition parente (vérifie qu'elle appartient à l'organisation)
 2. Récupère `site_nom` depuis le body
 3. Filtre `extracted_data` pour ne garder que les données du site concerné :
@@ -172,16 +178,25 @@ Route qui :
 6. Retourne `{ proposition_id, extracted_data_filtered, credits_debited }`
 
 Body :
+
 ```typescript
-{ site_nom: string }
+{
+  site_nom: string;
+}
 ```
 
 **5. Ajouter la modale `MultisiteChoiceModal.tsx` dans `components/propositions/`**
 
 Props :
+
 ```typescript
 interface MultisiteChoiceModalProps {
-  sites: Array<{ nom: string; adresse: string; ville: string; nb_lignes: number }>
+  sites: Array<{
+    nom: string;
+    adresse: string;
+    ville: string;
+    nb_lignes: number;
+  }>;
   onChoiceParSite: () => void;
   onChoiceToutInclure: () => void;
   onChoicePasMultisite: () => void;
@@ -189,6 +204,7 @@ interface MultisiteChoiceModalProps {
 ```
 
 La modale affiche :
+
 - Titre : "Plusieurs sites détectés"
 - Sous-titre : "L'IA a identifié {n} adresses distinctes dans les documents. Vérifiez et choisissez comment procéder."
 - Liste des sites détectés avec : nom, ville, nombre de lignes/abonnements
@@ -200,20 +216,32 @@ La modale affiche :
 **6. Modifier `PropositionWizard.tsx` pour gérer le flow multisite**
 
 Ajouter dans `PropositionData` :
+
 ```typescript
 interface PropositionData {
   // ... existant ...
   // Multisite
-  multisite_sites?: Array<{ nom: string; adresse: string; ville: string; nb_lignes: number }>;
-  multisite_mode?: 'par_site' | 'tout_inclure' | null;
+  multisite_sites?: Array<{
+    nom: string;
+    adresse: string;
+    ville: string;
+    nb_lignes: number;
+  }>;
+  multisite_mode?: "par_site" | "tout_inclure" | null;
   multisite_current_site_index?: number;
-  multisite_propositions?: Array<{ site_nom: string; proposition_id: string; reponses?: SpQuestionReponse[]; generated?: boolean }>;
+  multisite_propositions?: Array<{
+    site_nom: string;
+    proposition_id: string;
+    reponses?: SpQuestionReponse[];
+    generated?: boolean;
+  }>;
 }
 ```
 
 Logique à ajouter dans `PropositionWizard` :
 
 Au Step3 (`onNext` depuis `Step3ExtractData`) :
+
 1. Lire `propositionData.donnees_extraites.situation_actuelle.sites`
 2. Si `sites.length > 1` → extraire les stats par site (nb_lignes) → ouvrir `MultisiteChoiceModal`
 3. Selon le choix :
@@ -231,6 +259,7 @@ Ajouter dans le rendu de `Step5SpQuestions` quand `multisite_mode === 'par_site'
 ```
 
 Modifier le `onComplete` du Step5 en mode multisite :
+
 1. Sauvegarder les réponses pour le site courant dans `multisite_propositions[currentIndex].reponses`
 2. Appeler `POST /api/propositions/:parentId/clone-site` avec `site_nom`
 3. Appeler `/api/propositions/generer-suggestions` avec le `proposition_id` du clone et les `extracted_data` filtrés
@@ -239,11 +268,13 @@ Modifier le `onComplete` du Step5 en mode multisite :
 6. Si dernier site → `onNext()` vers Step6
 
 Dans `Step5SpQuestions` en mode multisite, passer `siteLabel` à `SpQuestionnaireUI` :
+
 ```typescript
 siteLabel={`Site ${currentIndex + 1} sur ${totalSites} — ${currentSiteNom}`}
 ```
 
 **Navigation entre sites (révision)** :
+
 - Cliquer sur un site déjà complété (`generated === true`) → afficher ses réponses dans `SpQuestionnaireUI` en mode lecture avec un bouton "Modifier"
 - Cliquer sur "Modifier" → afficher un dialog d'avertissement :
 
@@ -259,6 +290,7 @@ Si confirmé → recharger le questionnaire SP pour ce site avec ses réponses i
 **7. Créer `POST /api/propositions/:id/regenerate`**
 
 Route qui :
+
 1. Vérifie que la proposition appartient à l'organisation
 2. Vérifie que la proposition a `parent_proposition_id` (c'est bien un clone)
 3. Débite `tarif_clone_site` crédits
@@ -267,6 +299,7 @@ Route qui :
 6. Retourne `{ success: true, credits_debited }`
 
 Body :
+
 ```typescript
 { sp_reponses: SpQuestionReponse[] }
 ```
@@ -276,6 +309,7 @@ Body :
 ## PARTIE 3 — Ajustements Step6 pour le multisite
 
 ### Objectif
+
 L'écran de génération finale (Step6 / `Step5Generate`) doit s'adapter en mode multisite pour afficher un récapitulatif de toutes les propositions générées.
 
 ### Ce qu'il faut faire
@@ -283,11 +317,12 @@ L'écran de génération finale (Step6 / `Step5Generate`) doit s'adapter en mode
 **1. Modifier `Step5Generate.tsx`**
 
 Si `propositionData.multisite_mode === 'par_site'` :
+
 - Afficher un récapitulatif "Propositions générées" avec la liste des sites :
 
 ```
 ✅ Proposition Paris — [Télécharger]
-✅ Proposition Lyon — [Télécharger]  
+✅ Proposition Lyon — [Télécharger]
 ✅ Proposition Bordeaux — [Télécharger]
 ```
 

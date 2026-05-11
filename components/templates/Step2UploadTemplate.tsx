@@ -81,6 +81,7 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_adresse_livraison_cp', label: 'Code postal livraison' },
   { key: 'sp_adresse_livraison_ville', label: 'Ville livraison' },
   { key: 'sp_livraison_identique', label: '"Oui" ou "Non"' },
+  { key: 'sp_fas_total', label: 'Total FAS (Frais d\'installation/mise en service)' },
 ];
 
 const SP_TABLE_BLOCKS = [

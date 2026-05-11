@@ -10,6 +10,7 @@ const SP_STANDARD_VARIABLES = [
   'sp_adresse_facturation', 'sp_adresse_facturation_rue', 'sp_adresse_facturation_cp',
   'sp_adresse_facturation_ville', 'sp_adresse_livraison', 'sp_adresse_livraison_rue',
   'sp_adresse_livraison_cp', 'sp_adresse_livraison_ville', 'sp_livraison_identique',
+  'sp_fas_total',
 ];
 
 export async function GET(_req: NextRequest, { params }: RouteParams) {

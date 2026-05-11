@@ -216,6 +216,12 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
     initial?.consequences ?? [],
   );
 
+  // Options manuelles (pour choix_liste_manuelle)
+  const [optionsManuelles, setOptionsManuelles] = useState<string[]>(initial?.options_manuelles ?? []);
+  const [newOption, setNewOption] = useState('');
+  // Options libres (pour catalogue)
+  const [optionsLibres, setOptionsLibres] = useState<boolean>(initial?.options_libres ?? false);
+
   // Boucle state
   const [groupeBoucleId, setGroupeBoucleId] = useState<string>(initial?.groupe_boucle_id ?? '');
   const [boucleEnabled, setBoucleEnabled] = useState<boolean>(!!initial?.boucle);
@@ -234,6 +240,8 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
         description: description || undefined,
         source,
         affichage,
+        options_manuelles: affichage === 'choix_liste_manuelle' && optionsManuelles.length > 0 ? optionsManuelles : undefined,
+        options_libres: (source === 'catalogue' || source === 'catalogue_et_sa') && optionsLibres ? true : undefined,
         obligatoire,
         priorite_ia: prioriteIa,
         actif: true,
@@ -278,7 +286,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
   const blockComplete: Record<Block, boolean> = {
     1: !!source,
     2: true,
-    3: !!affichage && !!libelle,
+    3: !!affichage && !!libelle && (affichage !== 'choix_liste_manuelle' || optionsManuelles.length > 0),
     4: true,
     5: true,
   };
@@ -325,6 +333,8 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                   onClick={() => {
                     setSource(s.value);
                     setAffichage(AFFICHAGE_BY_SOURCE[s.value][0].value);
+                    setOptionsManuelles([]);
+                    setOptionsLibres(false);
                   }}
                   className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
                     source === s.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
@@ -395,6 +405,89 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
               ))}
             </div>
           </div>
+
+          {/* Options manuelles (choix_liste_manuelle) */}
+          {affichage === 'choix_liste_manuelle' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Options de la liste *</label>
+                <InfoIcon tooltip="Définissez les choix que l'utilisateur pourra sélectionner. Ajoutez au moins une option." />
+              </div>
+              <div className="space-y-1.5">
+                {optionsManuelles.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={opt}
+                      onChange={(e) => {
+                        const next = [...optionsManuelles];
+                        next[i] = e.target.value;
+                        setOptionsManuelles(next);
+                      }}
+                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={() => setOptionsManuelles((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="text-gray-400 hover:text-red-500 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <input
+                    value={newOption}
+                    onChange={(e) => setNewOption(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newOption.trim()) {
+                        setOptionsManuelles((prev) => [...prev, newOption.trim()]);
+                        setNewOption('');
+                      }
+                    }}
+                    placeholder="Nouvelle option… (Entrée pour valider)"
+                    className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      if (newOption.trim()) {
+                        setOptionsManuelles((prev) => [...prev, newOption.trim()]);
+                        setNewOption('');
+                      }
+                    }}
+                    disabled={!newOption.trim()}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+              {optionsManuelles.length === 0 && (
+                <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                  ⚠ Ajoutez au moins une option pour que ce type de question fonctionne.
+                </p>
+              )}
+              {optionsManuelles.length > 0 && (
+                <p className="text-xs text-gray-400">
+                  {optionsManuelles.length} option{optionsManuelles.length > 1 ? 's' : ''} — l&apos;utilisateur choisira dans cette liste.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Options libres (catalogue) */}
+          {(source === 'catalogue' || source === 'catalogue_et_sa') && (
+            <div className="flex items-center gap-2 py-1">
+              <input
+                type="checkbox"
+                id="options_libres"
+                checked={optionsLibres}
+                onChange={(e) => setOptionsLibres(e.target.checked)}
+              />
+              <label htmlFor="options_libres" className="text-sm text-gray-700">
+                Autoriser une saisie libre en complément du catalogue
+              </label>
+              <InfoIcon tooltip="Si activé, l'utilisateur peut taper une valeur qui ne figure pas dans le catalogue (ex: un produit hors-catalogue)." />
+            </div>
+          )}
 
           {/* Libellé */}
           <div className="space-y-2">

@@ -73,14 +73,25 @@ interface SpQuestion {
 }
 \`\`\`
 
+## Combinaisons source ↔ affichage VALIDES (respecter strictement)
+- source "catalogue" → boutons_choix_unique | boutons_choix_multiple | liste_deroulante
+- source "sa" → oui_non | confirmation_sa | edition_sa
+- source "aucune" → oui_non | texte_court | texte_long | nombre | date | choix_liste_manuelle | adresse_complete
+- source "catalogue_et_sa" → boutons_choix_unique | boutons_choix_multiple | confirmation_sa
+
+NE JAMAIS utiliser boutons_choix_unique ou boutons_choix_multiple avec source "aucune" ou "sa".
+
 ## Règles importantes
 - Les IDs de questions doivent être descriptifs : "q_pto_type", "q_fibre_pto1", "q_fas", etc.
 - Pour les questions conditionnelles, utilise groupes_conditions avec source: 'reponse_question'
-- Pour les choix fixes (FTTH/DEDIEE, Simple/Double...) → affichage: 'boutons_choix_unique' avec options_manuelles
-- Pour Oui/Non simple → affichage: 'oui_non'
-- Chaque question qui a des branches doit avoir des consequences de type 'afficher_question' ou 'masquer_question'
+- Pour les choix fixes (FTTH/SDSL, Simple/Double, Oui/Non/En cours...) → source: 'aucune' + affichage: 'choix_liste_manuelle' + options_manuelles: ["option1", "option2", ...]
+- Pour choisir dans le catalogue produits → source: 'catalogue' + affichage: 'boutons_choix_unique' (sans options_manuelles, les options viennent du catalogue)
+- Pour Oui/Non simple → affichage: 'oui_non' (source 'aucune' ou 'sa')
+- Les branches conditionnelles doivent être pilotées via groupes_conditions
+- N'utilise 'afficher_question' ou 'masquer_question' que pour un affichage forcé non conditionnel
 - La variable_cible dans 'renseigner_variable' est en snake_case sans accents
 - Le champ "consequences" est OBLIGATOIRE sur chaque question. S'il n'y a aucune conséquence, mettre un tableau vide : "consequences": []
+- Quand affichage est 'choix_liste_manuelle', le champ options_manuelles est OBLIGATOIRE et doit contenir au moins 2 options
 
 ## Format de réponse
 
@@ -134,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 64000,
+      max_tokens: 16384,
       system: systemPrompt,
       messages,
     });

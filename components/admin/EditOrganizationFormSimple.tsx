@@ -17,6 +17,7 @@ type Organization = {
   secteur?: string;
   credits?: number;
   tarif_par_proposition?: number;
+  tarif_clone_site?: number;
 };
 interface Props {
   organization: Organization;
@@ -33,6 +34,7 @@ export function EditOrganizationFormSimple({ organization }: Props) {
     secteur: organization.secteur || 'telephonie',
     credits: organization.credits || 0,
     tarif_par_proposition: organization.tarif_par_proposition || 5,
+    tarif_clone_site: organization.tarif_clone_site ?? 1,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,6 +206,29 @@ export function EditOrganizationFormSimple({ organization }: Props) {
             </div>
             <p className="text-sm text-gray-500 mt-2">
               Montant déduit pour chaque proposition générée
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                Tarif clone site (€)
+              </span>
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.tarif_clone_site}
+                onChange={(e) => setFormData({ ...formData, tarif_clone_site: parseFloat(e.target.value) || 0 })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">€</span>
+            </div>
+            <p className="text-sm text-gray-500 mt-2">
+              Coût débité pour chaque proposition site supplémentaire (multisite, sans re-extraction)
             </p>
           </div>
         </div>

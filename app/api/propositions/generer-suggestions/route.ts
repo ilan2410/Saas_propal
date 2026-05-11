@@ -483,6 +483,7 @@ function buildSpCompletes(
   wordCfg: WordConfig,
   catalogueProduits?: CatalogueProduit[],
   spConfigLoyer?: SpConfigLoyer,
+  fasTotal = 0,
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -555,6 +556,7 @@ function buildSpCompletes(
     sp_total_recurrent: formatEuro(totalRecurrent),
     sp_total_ponctuel: formatEuro(totalPonctuel),
     sp_remise_mois_offert: remiseMoisOffert > 0 ? formatEuro(remiseMoisOffert) : undefined,
+    sp_fas_total: fasTotal > 0 ? formatEuro(fasTotal) : undefined,
     // Loyer
     ...(loyer ? {
       sp_loyer_mensuel: formatEuro(loyer.loyer_mensuel),
@@ -614,6 +616,7 @@ export async function POST(request: NextRequest) {
       proposition_id,
       sp_questions_reponses,
       force_regenerate,
+      sp_fas_total,
     } = body ?? {};
 
     const fournisseur_prefere: string | undefined = isPlainObject(preferences) && typeof preferences.fournisseur_prefere === 'string' ? preferences.fournisseur_prefere : undefined;
@@ -754,6 +757,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         wordCfg,
         catalogue as CatalogueProduit[],
         spConfigLoyer,
+        typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
       );
     }
 
