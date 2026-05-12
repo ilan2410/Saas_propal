@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Play, RotateCcw, Loader2 } from 'lucide-react';
+import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
@@ -21,6 +21,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [noProposition, setNoProposition] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
   const [completedReponses, setCompletedReponses] = useState<SpQuestionReponse[] | null>(null);
+  const [showSaInspector, setShowSaInspector] = useState(false);
 
   const activeQuestions = questions.filter((q) => q.actif).sort((a, b) => a.ordre - b.ordre);
 
@@ -62,6 +63,15 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {Object.keys(donneesExtraites).length > 0 && (
+              <button
+                onClick={() => setShowSaInspector((v) => !v)}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <Database className="w-3.5 h-3.5" />
+                Données SA
+              </button>
+            )}
             <button
               onClick={handleReset}
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
@@ -90,6 +100,20 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               <p className="text-xs text-gray-500">
                 Créez d&apos;abord une proposition pour utiliser le simulateur avec des données réelles.
               </p>
+            </div>
+          )}
+
+          {!loading && !noProposition && showSaInspector && (
+            <div className="mb-4 border border-green-200 rounded-lg bg-green-50/50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-green-800">Données SA extraites (pour configuration boucle)</p>
+                <button onClick={() => setShowSaInspector(false)} className="text-green-400 hover:text-green-600">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <pre className="text-xs text-green-900 overflow-auto max-h-64 font-mono whitespace-pre-wrap">
+                {JSON.stringify(donneesExtraites, null, 2)}
+              </pre>
             </div>
           )}
 

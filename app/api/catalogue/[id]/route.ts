@@ -18,16 +18,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
     const body = await request.json();
+    const { is_global, ...updates } = body ?? {};
 
     // Vérifier si l'utilisateur est admin
     const role = user.user_metadata?.role;
     // Si is_global est true et que l'utilisateur est admin, on modifie un produit global (organization_id = null)
     // Sinon, on modifie un produit pour l'organisation de l'utilisateur
-    const isGlobalProduct = body?.is_global === true && role === 'admin';
+    const isGlobalProduct = is_global === true && role === 'admin';
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+    }
 
     let query = supabase
       .from('catalogues_produits')
-      .update(body)
+      .update(updates)
       .eq('id', id);
 
     if (isGlobalProduct) {

@@ -62,12 +62,13 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json();
     const { ids, updates, is_global } = body;
+    const { is_global: _ignored, ...sanitizedUpdates } = updates ?? {};
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'No IDs provided' }, { status: 400 });
     }
 
-    if (!updates || Object.keys(updates).length === 0) {
+    if (!sanitizedUpdates || Object.keys(sanitizedUpdates).length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
@@ -77,7 +78,7 @@ export async function PATCH(request: NextRequest) {
 
     let query = supabase
       .from('catalogues_produits')
-      .update(updates)
+      .update(sanitizedUpdates)
       .in('id', ids);
 
     if (isGlobalOperation) {

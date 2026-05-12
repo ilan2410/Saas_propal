@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { HelpCircle, Plus, Trash2 } from 'lucide-react';
+import { HelpCircle, Plus, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SpConditionEditor } from './SpConditionEditor';
 import { SpAiAssistPanel } from './SpAiAssistPanel';
@@ -21,7 +21,7 @@ import type {
 interface SpVariableOption {
   key: string;
   label: string;
-  group: 'standard' | 'custom';
+  group: 'standard' | 'custom' | 'question';
 }
 
 interface Props {
@@ -54,6 +54,67 @@ function InfoIcon({ tooltip }: { tooltip: string }) {
       <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" />
     </Tooltip>
   );
+}
+
+// ── SA Schema helpers ─────────────────────────────────────────────────────────
+
+const SA_DEFAULT_SCHEMA: Record<string, string[]> = {
+  'situation_actuelle.lignes': [
+    'numero_ligne', 'type', 'forfait', 'operateur', 'site',
+    'tarif_brut_mensuel', 'tarif_net_mensuel', 'remise_mensuelle',
+    'date_fin_engagement_source', 'date_limite_resiliation_calculee',
+  ],
+  'situation_actuelle.abonnements': [
+    'libelle', 'operateur', 'site', 'quantite',
+    'tarif_brut_mensuel', 'tarif_net_mensuel', 'remise_mensuelle',
+  ],
+  'situation_actuelle.locations': [
+    'libelle', 'leaser', 'site', 'materiel', 'quantite',
+    'loyer_brut_mensuel', 'loyer_net_mensuel', 'remise_mensuelle',
+  ],
+  'situation_actuelle.engagements': [
+    'libelle', 'date_fin_engagement_source', 'date_limite_resiliation_calculee', 'preavis_mois',
+  ],
+  'situation_actuelle.sites': ['nom', 'adresse', 'code_postal', 'ville'],
+  'situation_actuelle.operateurs': ['nom', 'type'],
+  'situation_actuelle.documents': ['type_document', 'numero_document', 'date_document'],
+};
+
+function parseJsonFromPrompt(promptText: string): Record<string, unknown> | null {
+  const match = promptText.match(/STRUCTURE JSON ATTENDUE\s*:\s*(\{[\s\S]*?\})\s*(?:CHAMPS|RÈGLES)/);
+  if (!match) return null;
+  try { return JSON.parse(match[1]) as Record<string, unknown>; } catch { return null; }
+}
+
+function findArrayPathsInJson(obj: unknown, prefix = '', depth = 0): Record<string, string[]> {
+  if (depth > 3 || obj == null || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  const result: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+      result[path] = Object.keys(value[0] as Record<string, unknown>);
+    }
+    Object.assign(result, findArrayPathsInJson(value, path, depth + 1));
+  }
+  return result;
+}
+
+function getSaRealFieldValues(saData: Record<string, unknown>, path: string, field: string): string[] {
+  const parts = path.split('.');
+  let cur: unknown = saData;
+  for (const p of parts) {
+    if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) return [];
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  if (!Array.isArray(cur)) return [];
+  const seen = new Set<string>();
+  for (const item of cur) {
+    if (item != null && typeof item === 'object') {
+      const v = (item as Record<string, unknown>)[field];
+      if (v != null) seen.add(String(v));
+    }
+  }
+  return Array.from(seen);
 }
 
 // ── Données ───────────────────────────────────────────────────────────────────
@@ -345,6 +406,46 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
     initial?.consequences ?? [],
   );
 
+  const knownVariableKeys = new Set<string>();
+  const templateStandardVariables: SpVariableOption[] = [];
+  const templateCustomVariables: SpVariableOption[] = [];
+  for (const variable of spVariables) {
+    knownVariableKeys.add(variable.key);
+    if (variable.group === 'standard') templateStandardVariables.push(variable);
+    if (variable.group === 'custom') templateCustomVariables.push(variable);
+  }
+
+  const previousQuestionVariables: SpVariableOption[] = [];
+  const currentQuestionOrdre = initial?.ordre;
+  const orderedQuestions = [...otherQuestions].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+  for (const question of orderedQuestions) {
+    if (currentQuestionOrdre != null && question.ordre != null && question.ordre >= currentQuestionOrdre) continue;
+    for (const consequence of question.consequences ?? []) {
+      if (consequence.type !== 'renseigner_variable' || !consequence.variable_cible) continue;
+      if (knownVariableKeys.has(consequence.variable_cible)) continue;
+      const shortLabel =
+        question.libelle.length > 40 ? `${question.libelle.slice(0, 40)}…` : question.libelle;
+      previousQuestionVariables.push({
+        key: consequence.variable_cible,
+        label: `${consequence.variable_cible} — ${shortLabel}`,
+        group: 'question',
+      });
+      knownVariableKeys.add(consequence.variable_cible);
+    }
+  }
+
+  const selectedQuestionVariables: SpVariableOption[] = [];
+  for (const consequence of consequences) {
+    if (consequence.type !== 'renseigner_variable' || !consequence.variable_cible) continue;
+    if (knownVariableKeys.has(consequence.variable_cible)) continue;
+    selectedQuestionVariables.push({
+      key: consequence.variable_cible,
+      label: `${consequence.variable_cible} — variable de cette question`,
+      group: 'question',
+    });
+    knownVariableKeys.add(consequence.variable_cible);
+  }
+
   // Options manuelles (pour choix_liste_manuelle)
   const [optionsManuelles, setOptionsManuelles] = useState<string[]>(initial?.options_manuelles ?? []);
   const [newOption, setNewOption] = useState('');
@@ -376,6 +477,35 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
   const [boucle, setBoucle] = useState<SpQuestionBoucle>(
     initial?.boucle ?? { label_prefix: '' },
   );
+
+  // SA schema state (lazy-loaded when Tableau SA mode is activated)
+  const [saSchema, setSaSchema] = useState<Record<string, string[]>>(SA_DEFAULT_SCHEMA);
+  const [saRealData, setSaRealData] = useState<Record<string, unknown> | null>(null);
+  const [saSchemaLoading, setSaSchemaLoading] = useState(false);
+  const [saSchemaLoaded, setSaSchemaLoaded] = useState(false);
+
+  useEffect(() => {
+    if (boucle.source_sa_array === undefined || saSchemaLoaded || saSchemaLoading) return;
+    setSaSchemaLoading(true);
+    Promise.all([
+      fetch(`/api/templates/${templateId}`).then((r) => r.json()),
+      fetch(`/api/propositions/latest-extracted-data?template_id=${templateId}`).then((r) => r.json()),
+    ])
+      .then(([tplData, latestData]) => {
+        const promptText: string = tplData?.template?.prompt_template ?? '';
+        const parsed = parseJsonFromPrompt(promptText);
+        const fromPrompt = parsed ? findArrayPathsInJson(parsed) : {};
+        setSaSchema(Object.keys(fromPrompt).length > 0
+          ? { ...SA_DEFAULT_SCHEMA, ...fromPrompt }
+          : SA_DEFAULT_SCHEMA);
+        if (latestData?.extracted_data) {
+          setSaRealData(latestData.extracted_data as Record<string, unknown>);
+        }
+        setSaSchemaLoaded(true);
+      })
+      .catch(() => setSaSchemaLoaded(true))
+      .finally(() => setSaSchemaLoading(false));
+  }, [boucle.source_sa_array, templateId, saSchemaLoaded, saSchemaLoading]);
 
   const availableAffichages = AFFICHAGE_BY_SOURCE[source] ?? AFFICHAGE_BY_SOURCE.aucune;
 
@@ -767,14 +897,21 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                         className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono bg-white"
                       >
                         <option value="">-- Sélectionner une variable --</option>
+                        {(previousQuestionVariables.length > 0 || selectedQuestionVariables.length > 0) && (
+                          <optgroup label="Variables des questions">
+                            {[...previousQuestionVariables, ...selectedQuestionVariables].map((v) => (
+                              <option key={v.key} value={v.key}>{v.label}</option>
+                            ))}
+                          </optgroup>
+                        )}
                         <optgroup label="Variables standard">
-                          {spVariables.filter((v) => v.group === 'standard').map((v) => (
+                          {templateStandardVariables.map((v) => (
                             <option key={v.key} value={v.key}>{v.key}</option>
                           ))}
                         </optgroup>
-                        {spVariables.filter((v) => v.group === 'custom').length > 0 && (
+                        {templateCustomVariables.length > 0 && (
                           <optgroup label="Variables custom">
-                            {spVariables.filter((v) => v.group === 'custom').map((v) => (
+                            {templateCustomVariables.map((v) => (
                               <option key={v.key} value={v.key}>{v.label}</option>
                             ))}
                           </optgroup>
@@ -955,17 +1092,20 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-gray-600">Source du nombre d&apos;itérations</label>
                       <select
-                        value={boucle.source_nombre_question_id ?? '__fixe__'}
+                        value={boucle.source_sa_array !== undefined ? '__sa_array__' : (boucle.source_nombre_question_id ?? '__fixe__')}
                         onChange={(e) => {
                           if (e.target.value === '__fixe__') {
-                            setBoucle((p) => ({ ...p, source_nombre_question_id: undefined, nombre_fixe: p.nombre_fixe ?? 2 }));
+                            setBoucle((p) => ({ ...p, source_nombre_question_id: undefined, source_sa_array: undefined, source_sa_label_champ: undefined, nombre_fixe: p.nombre_fixe ?? 2 }));
+                          } else if (e.target.value === '__sa_array__') {
+                            setBoucle((p) => ({ ...p, source_nombre_question_id: undefined, nombre_fixe: undefined, source_sa_array: p.source_sa_array ?? '' }));
                           } else {
-                            setBoucle((p) => ({ ...p, source_nombre_question_id: e.target.value, nombre_fixe: undefined }));
+                            setBoucle((p) => ({ ...p, source_nombre_question_id: e.target.value, nombre_fixe: undefined, source_sa_array: undefined, source_sa_label_champ: undefined }));
                           }
                         }}
                         className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
                       >
                         <option value="__fixe__">Nombre fixe</option>
+                        <option value="__sa_array__">Tableau SA</option>
                         {otherQuestions.filter((q) => q.affichage === 'nombre').map((q) => (
                           <option key={q.id} value={q.id}>
                             Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
@@ -974,7 +1114,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                       </select>
                     </div>
 
-                    {!boucle.source_nombre_question_id && (
+                    {!boucle.source_nombre_question_id && !boucle.source_sa_array && (
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-gray-600">Nombre fixe</label>
                         <input
@@ -985,6 +1125,107 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                           onChange={(e) => setBoucle((p) => ({ ...p, nombre_fixe: Number(e.target.value) || 2 }))}
                           className="w-20 px-2 py-1 border border-gray-300 rounded text-xs"
                         />
+                      </div>
+                    )}
+
+                    {boucle.source_sa_array !== undefined && (
+                      <div className="space-y-2 border border-green-200 rounded p-2 bg-green-50/50">
+
+                        {/* a) Chemin SA */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-medium text-gray-600">Tableau SA</label>
+                            {saSchemaLoading && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                          </div>
+                          <select
+                            value={boucle.source_sa_array ?? ''}
+                            onChange={(e) => setBoucle((p) => ({
+                              ...p,
+                              source_sa_array: e.target.value || undefined,
+                              source_sa_filtre_champ: undefined,
+                              source_sa_filtre_valeur: undefined,
+                              source_sa_label_champ: undefined,
+                            }))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                          >
+                            <option value="">Choisir un tableau…</option>
+                            {Object.keys(saSchema).map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* b) Filtrer sur */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-600">
+                            Filtrer sur <span className="font-normal text-gray-400">(optionnel)</span>
+                          </label>
+                          <select
+                            value={boucle.source_sa_filtre_champ ?? ''}
+                            disabled={!boucle.source_sa_array}
+                            onChange={(e) => setBoucle((p) => ({
+                              ...p,
+                              source_sa_filtre_champ: e.target.value || undefined,
+                              source_sa_filtre_valeur: undefined,
+                            }))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono disabled:opacity-40"
+                          >
+                            <option value="">Aucun filtre</option>
+                            {(saSchema[boucle.source_sa_array ?? ''] ?? []).map((k) => (
+                              <option key={k} value={k}>{k}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* c) Valeur du filtre */}
+                        {boucle.source_sa_filtre_champ && (
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">Valeur du filtre</label>
+                            {(() => {
+                              const vals = saRealData
+                                ? getSaRealFieldValues(saRealData, boucle.source_sa_array ?? '', boucle.source_sa_filtre_champ)
+                                : [];
+                              return vals.length > 0 ? (
+                                <select
+                                  value={boucle.source_sa_filtre_valeur ?? ''}
+                                  onChange={(e) => setBoucle((p) => ({ ...p, source_sa_filtre_valeur: e.target.value || undefined }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                                >
+                                  <option value="">Toutes les valeurs</option>
+                                  {vals.map((v) => (
+                                    <option key={v} value={v}>{v}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  value={boucle.source_sa_filtre_valeur ?? ''}
+                                  onChange={(e) => setBoucle((p) => ({ ...p, source_sa_filtre_valeur: e.target.value || undefined }))}
+                                  placeholder="ex: mobile"
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                                />
+                              );
+                            })()}
+                          </div>
+                        )}
+
+                        {/* d) Sous-champ label */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-600">
+                            Label de chaque itération <span className="font-normal text-gray-400">(optionnel)</span>
+                          </label>
+                          <select
+                            value={boucle.source_sa_label_champ ?? ''}
+                            disabled={!boucle.source_sa_array}
+                            onChange={(e) => setBoucle((p) => ({ ...p, source_sa_label_champ: e.target.value || undefined }))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono disabled:opacity-40"
+                          >
+                            <option value="">Aucun (préfixe numéroté)</option>
+                            {(saSchema[boucle.source_sa_array ?? ''] ?? []).map((k) => (
+                              <option key={k} value={k}>{k}</option>
+                            ))}
+                          </select>
+                        </div>
+
                       </div>
                     )}
 

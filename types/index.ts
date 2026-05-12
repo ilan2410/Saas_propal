@@ -392,6 +392,14 @@ export interface SpQuestionBoucle {
   source_labels_question_id?: string;
   /** Préfixe label par défaut (ex: "Site" → "Site 1", "Site 2"…) */
   label_prefix?: string;
+  /** Champ SA contenant le tableau source des itérations — supporte les chemins imbriqués (ex: "situation_actuelle.lignes") */
+  source_sa_array?: string;
+  /** Sous-champ de chaque item SA à utiliser comme label d'itération (ex: "numero_ligne") */
+  source_sa_label_champ?: string;
+  /** Sous-champ sur lequel filtrer les items du tableau SA (ex: "type") */
+  source_sa_filtre_champ?: string;
+  /** Valeur attendue pour le filtre (ex: "mobile") */
+  source_sa_filtre_valeur?: string;
 }
 
 export interface SpQuestion {

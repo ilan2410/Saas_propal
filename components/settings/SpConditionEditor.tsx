@@ -44,6 +44,13 @@ const NEEDS_VALUE: SpConditionOperateur[] = [
   'superieur', 'inferieur', 'plus_de_elements', 'moins_de_elements', 'element_ou',
 ];
 
+const QUESTION_VALUE_SELECT_OPERATORS: SpConditionOperateur[] = [
+  'egal',
+  'different',
+  'contient',
+  'ne_contient_pas',
+];
+
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -63,6 +70,25 @@ function emptyGroupe(): SpGroupeConditions {
     conditions: [emptyCondition()],
     logique_groupe: 'ET',
   };
+}
+
+function getQuestionSelectableValues(question?: SpQuestion): string[] {
+  if (!question) return [];
+
+  if (question.affichage === 'oui_non') {
+    return ['Oui', 'Non'];
+  }
+
+  if (
+    question.affichage === 'boutons_choix_unique' ||
+    question.affichage === 'boutons_choix_multiple' ||
+    question.affichage === 'liste_deroulante' ||
+    question.affichage === 'choix_liste_manuelle'
+  ) {
+    return (question.options_manuelles ?? []).filter(Boolean);
+  }
+
+  return [];
 }
 
 export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions }: Props) {
@@ -176,6 +202,18 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
 
           {groupe.conditions.map((cond) => (
             <div key={cond.id} className="flex flex-wrap items-center gap-2 pl-4 text-xs">
+              {(() => {
+                const selectedQuestion = cond.source === 'reponse_question'
+                  ? otherQuestions.find((q) => q.id === cond.question_id)
+                  : undefined;
+                const selectableValues = getQuestionSelectableValues(selectedQuestion);
+                const useSelectForValue =
+                  cond.source === 'reponse_question' &&
+                  selectableValues.length > 0 &&
+                  QUESTION_VALUE_SELECT_OPERATORS.includes(cond.operateur);
+
+                return (
+                  <>
               {/* Source */}
               <select
                 value={cond.source}
@@ -238,14 +276,29 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
 
               {/* Value */}
               {NEEDS_VALUE.includes(cond.operateur) && (
-                <input
-                  value={cond.valeur != null ? String(cond.valeur) : ''}
-                  onChange={(e) =>
-                    updateCondition(groupe.id, cond.id, { valeur: e.target.value })
-                  }
-                  placeholder="Valeur"
-                  className="px-2 py-1 border border-gray-300 rounded bg-white w-32"
-                />
+                useSelectForValue ? (
+                  <select
+                    value={cond.valeur != null ? String(cond.valeur) : ''}
+                    onChange={(e) =>
+                      updateCondition(groupe.id, cond.id, { valeur: e.target.value })
+                    }
+                    className="px-2 py-1 border border-gray-300 rounded bg-white min-w-40 max-w-56"
+                  >
+                    <option value="">-- Valeur --</option>
+                    {selectableValues.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={cond.valeur != null ? String(cond.valeur) : ''}
+                    onChange={(e) =>
+                      updateCondition(groupe.id, cond.id, { valeur: e.target.value })
+                    }
+                    placeholder="Valeur"
+                    className="px-2 py-1 border border-gray-300 rounded bg-white w-32"
+                  />
+                )
               )}
 
               <button
@@ -255,6 +308,9 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
               >
                 <Trash2 className="w-3 h-3" />
               </button>
+                  </>
+                );
+              })()}
             </div>
           ))}
 

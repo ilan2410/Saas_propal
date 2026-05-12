@@ -24,7 +24,6 @@ import {
   Loader2,
   CheckCircle,
   CreditCard as CreditCardIcon,
-  Palette,
   FileDown,
   Bot,
   Calculator,
@@ -54,6 +53,7 @@ interface SettingsPageProps {
 }
 
 type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-loyer';
+const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-loyer'];
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -210,7 +210,8 @@ export default function SettingsPage({
 }: SettingsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const currentTab = (searchParams.get('tab') as TabId) || 'profil';
+  const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
+  const currentTab = VISIBLE_SETTINGS_TABS.includes(requestedTab) ? requestedTab : 'profil';
 
   const [isLoading, setIsLoading] = useState(false);
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
@@ -348,8 +349,9 @@ export default function SettingsPage({
 
   useEffect(() => {
     const tab = searchParams.get('tab') as TabId;
-    if (tab && tab !== activeTab) {
-      setActiveTab(tab);
+    const nextTab = tab && VISIBLE_SETTINGS_TABS.includes(tab) ? tab : 'profil';
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
     }
   }, [searchParams, activeTab]);
 
@@ -983,7 +985,6 @@ export default function SettingsPage({
           <option value="facturation">Facturation</option>
           <option value="donnees">Données</option>
           <option value="apparence">Apparence</option>
-          <option value="sp">Personnalisation SP</option>
           <option value="sp-questions">Questions SP</option>
           <option value="sp-loyer">Calcul Loyer SP</option>
         </select>
@@ -997,7 +998,6 @@ export default function SettingsPage({
         <TabButton id="facturation" label="Facturation" icon={CreditCard} />
         <TabButton id="donnees" label="Données" icon={Database} />
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
-        <TabButton id="sp" label="Personnalisation SP" icon={Palette} />
         <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
         <TabButton id="sp-loyer" label="Calcul Loyer" icon={Calculator} />
       </div>
