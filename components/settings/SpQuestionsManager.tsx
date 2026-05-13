@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, CornerDownRight, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, CornerDownRight, GripVertical, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
@@ -562,6 +562,66 @@ export function SpQuestionsManager({ templates }: Props) {
     setQuestionsByTemplate((prev) => ({ ...prev, [templateId]: [] }));
   };
 
+  const exportWorkflow = (templateId: string, templateNom: string) => {
+    const questions = (questionsByTemplate[templateId] ?? []).sort((a, b) => a.ordre - b.ordre);
+    const payload = {
+      type: 'sp-workflow-backup',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      template: { id: templateId, nom: templateNom },
+      questions,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeName = templateNom.toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'workflow';
+    link.href = url;
+    link.download = `sp-workflow-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const importWorkflow = (templateId: string, templateNom: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        const content = await file.text();
+        const parsed = JSON.parse(content) as { questions?: SpQuestion[] } | SpQuestion[];
+        const questions = Array.isArray(parsed) ? parsed : parsed.questions;
+
+        if (!Array.isArray(questions)) {
+          alert('Fichier invalide : aucune liste de questions trouvée.');
+          return;
+        }
+
+        if (!confirm(`Importer ce workflow dans "${templateNom}" ?\n\nCela remplacera les ${questionsByTemplate[templateId]?.length ?? 0} question(s) actuelles par ${questions.length} question(s) importée(s).`)) return;
+
+        const res = await fetch(`/api/templates/${templateId}/sp-questions/replace`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questions }),
+        });
+        const data = await res.json() as { questions?: SpQuestion[]; error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Erreur lors de l'import");
+
+        setQuestionsByTemplate((prev) => ({
+          ...prev,
+          [templateId]: (data.questions ?? []).sort((a, b) => a.ordre - b.ordre),
+        }));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Impossible d'importer ce workflow.");
+      }
+    };
+    input.click();
+  };
+
   const handleReorder = async (
     treeItems: TreeItem[],
     draggedId: string,
@@ -762,6 +822,29 @@ export function SpQuestionsManager({ templates }: Props) {
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
                       Tout supprimer
+                    </Button>
+                  </Tooltip>
+                  <Tooltip text="Télécharge une sauvegarde JSON complète de ce workflow.">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => exportWorkflow(t.id, t.nom)}
+                      disabled={questions.length === 0}
+                      className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:border-sky-300 disabled:opacity-40"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Exporter
+                    </Button>
+                  </Tooltip>
+                  <Tooltip text="Restaure un workflow depuis une sauvegarde JSON. Le workflow actuel sera remplacé après confirmation.">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => importWorkflow(t.id, t.nom)}
+                      className="border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Importer
                     </Button>
                   </Tooltip>
                   {questions.length === 0 ? (
