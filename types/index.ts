@@ -318,6 +318,7 @@ export type SpQuestionAffichage =
   | 'boutons_choix_unique'
   | 'boutons_choix_multiple'
   | 'liste_deroulante'
+  | 'liste_deroulante_choix_multiple'
   | 'oui_non'
   | 'confirmation_sa'
   | 'edition_sa'
@@ -377,10 +378,13 @@ export interface SpConsequence {
     | 'afficher_question'
     | 'masquer_question'
     | 'filtrer_question'
-    | 'aller_question';
+    | 'aller_question'
+    | 'afficher_message';
   variable_cible?: string;
   question_id?: string;
   filtre?: SpFiltresCatalogue;
+  message_texte?: string;
+  valeur_declencheur?: string;
 }
 
 export interface SpQuestionBoucle {

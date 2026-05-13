@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Database, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit } from '@/types';
@@ -25,6 +25,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showSaResume, setShowSaResume] = useState(false);
 
   const templateId = propositionData.template_id;
 
@@ -142,12 +143,42 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     );
   }
 
+  const saResume = (propositionData.donnees_extraites as Record<string, unknown> | undefined);
+  const saResumeText = saResume
+    ? ((saResume.resume as string) || (saResume['résumé'] as string) || '')
+    : '';
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Étape 5 : Situation Proposée</h2>
-        <p className="text-gray-600 mt-1">Répondez aux questions pour paramétrer votre proposition.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Étape 5 : Situation Proposée</h2>
+          <p className="text-gray-600 mt-1">Répondez aux questions pour paramétrer votre proposition.</p>
+        </div>
+        {saResumeText && (
+          <button
+            onClick={() => setShowSaResume((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0 mt-1"
+          >
+            <Database className="w-3.5 h-3.5" />
+            Données SA
+          </button>
+        )}
       </div>
+
+      {showSaResume && saResumeText && (
+        <div className="border border-green-200 rounded-lg bg-green-50/50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-green-800">Résumé SA</p>
+            <button onClick={() => setShowSaResume(false)} className="text-green-400 hover:text-green-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <pre className="text-xs text-green-900 overflow-auto max-h-64 whitespace-pre-wrap leading-relaxed">
+            {saResumeText}
+          </pre>
+        </div>
+      )}
 
       {generateError && (
         <div className="border border-red-200 rounded-lg bg-red-50 p-3">

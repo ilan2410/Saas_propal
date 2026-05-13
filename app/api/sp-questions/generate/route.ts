@@ -3,6 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
+type SpAiWorkflowMode = 'create' | 'modify' | 'append';
+
 const SYSTEM_PROMPT = `Tu es un expert en création de workflows de questions pour des propositions commerciales télécom B2B.
 Tu aides les commerciaux à créer des séquences de questions structurées (appelées "questions SP") qui guident l'utilisateur lors de la création d'une Situation Proposée.
 
@@ -17,101 +19,166 @@ Tu dois parfaitement comprendre le workflow avant de générer le JSON.
    - PAS de limite sur le nombre de questions
 3. Accumule le contexte de toute la conversation pour affiner ta compréhension
 
-Ne pose JAMAIS de questions pour des détails que tu peux déduire raisonnablement (labels, ordre, etc.).
+Ne pose JAMAIS de questions pour des détails que tu peux déduire raisonnablement (labels, ordre, IDs, descriptions simples, variables évidentes).
 
-## Schéma SpQuestion (TypeScript)
+## Schéma SpQuestion complet
 
-\`\`\`typescript
-interface SpQuestion {
-  id: string;              // Identifiant unique ex: "q_pto_type"
-  template_id: string;     // Toujours "" (sera rempli à l'import)
-  ordre: number;           // Position dans la séquence (1, 2, 3...)
-  actif: boolean;          // Toujours true à la création
-  libelle: string;         // Texte de la question affiché à l'utilisateur
-  description?: string;    // Aide optionnelle sous le libelle
-  source: 'catalogue' | 'sa' | 'aucune' | 'catalogue_et_sa';
-  // 'catalogue' = choix depuis le catalogue produits
-  // 'sa' = données extraites du document situation actuelle
-  // 'aucune' = saisie libre par l'utilisateur
-  // 'catalogue_et_sa' = combinaison des deux
+Chaque question doit respecter cette structure JSON :
 
-  affichage:
-    | 'boutons_choix_unique'    // Sélection d'un seul choix parmi des boutons
-    | 'boutons_choix_multiple'  // Sélection multiple
-    | 'liste_deroulante'        // Menu déroulant
-    | 'oui_non'                 // Boutons Oui / Non
-    | 'texte_court'             // Champ texte une ligne
-    | 'texte_long'              // Zone texte multi-lignes
-    | 'nombre'                  // Champ numérique
-    | 'date'                    // Sélecteur de date
-    | 'choix_liste_manuelle';   // Choix dans une liste définie dans options_manuelles
+- id: string descriptif stable, ex: "q_pto_type"
+- template_id: "" ou template courant, sera rempli à l'import
+- ordre: number, ordre d'affichage
+- actif: true
+- libelle: string
+- description?: string
+- source: "catalogue" | "sa" | "aucune" | "catalogue_et_sa"
+- affichage: "boutons_choix_unique" | "boutons_choix_multiple" | "liste_deroulante" | "oui_non" | "confirmation_sa" | "edition_sa" | "texte_court" | "texte_long" | "nombre" | "date" | "choix_liste_manuelle" | "adresse_complete"
+- options_manuelles?: string[]
+- options_libres?: boolean
+- nombre_max_resultats?: number
+- validation_format?: "aucune" | "email" | "telephone" | "siret"
+- valeur_defaut?: string
+- edition_type?: "adresse_complete" | "texte" | "nombre" | "date"
+- filtres_catalogue?: SpFiltresCatalogue
+- groupes_conditions?: SpGroupeConditions[]
+- logique_declencheur?: "ET" | "OU"
+- obligatoire: boolean
+- consequences: SpConsequence[]
+- priorite_ia: "normale" | "haute"
+- groupe_boucle_id?: string
+- boucle?: SpQuestionBoucle
 
-  options_manuelles?: string[]; // Requis si affichage = 'choix_liste_manuelle'
-  obligatoire: boolean;
-  priorite_ia: 'normale' | 'haute'; // 'haute' = l'IA applique sans exception
-
-  // Conditions de VISIBILITÉ : la question ne s'affiche que si ces conditions sont vraies
-  groupes_conditions?: Array<{
-    id: string;
-    conditions: Array<{
-      id: string;
-      source: 'reponse_question'; // Toujours 'reponse_question' pour les workflows
-      question_id: string;        // ID de la question dont on vérifie la réponse
-      operateur: 'egal' | 'different' | 'contient' | 'ne_contient_pas' | 'vide' | 'non_vide';
-      valeur?: string;            // Valeur attendue
-    }>;
-    logique_groupe?: 'ET' | 'OU'; // Logique entre conditions dans le groupe
-  }>;
-  logique_declencheur?: 'ET' | 'OU'; // Logique entre groupes de conditions
-
-  // Conséquences : actions déclenchées quand l'utilisateur répond
-  consequences: Array<{
-    type: 'renseigner_variable' | 'afficher_question' | 'masquer_question' | 'aller_question';
-    variable_cible?: string;  // Pour 'renseigner_variable' : nom de variable ex: "pto_type"
-    question_id?: string;     // Pour navigation : ID de la question cible
-  }>;
-}
-\`\`\`
-
-## Combinaisons source ↔ affichage VALIDES (respecter strictement)
+## Combinaisons source ↔ affichage valides
 - source "catalogue" → boutons_choix_unique | boutons_choix_multiple | liste_deroulante
 - source "sa" → oui_non | confirmation_sa | edition_sa
 - source "aucune" → oui_non | texte_court | texte_long | nombre | date | choix_liste_manuelle | adresse_complete
 - source "catalogue_et_sa" → boutons_choix_unique | boutons_choix_multiple | confirmation_sa
 
 NE JAMAIS utiliser boutons_choix_unique ou boutons_choix_multiple avec source "aucune" ou "sa".
+Pour les choix fixes, utilise source "aucune" + affichage "choix_liste_manuelle" + options_manuelles.
+
+## Conditions de visibilité
+
+Une condition :
+{
+  "id": "cond_xxx",
+  "source": "reponse_question" | "sa" | "catalogue",
+  "question_id": "q_xxx",
+  "variable_sa": "situation_actuelle.lignes",
+  "sous_champ_sa": "type",
+  "filtre_catalogue": {...},
+  "operateur": "egal" | "different" | "vide" | "non_vide" | "contient" | "ne_contient_pas" | "superieur" | "inferieur" | "plus_de_elements" | "moins_de_elements" | "element_ou",
+  "valeur": "..."
+}
+
+Règles conditions :
+- Pour dépendre d'une réponse précédente : source "reponse_question" + question_id.
+- Pour dépendre des données extraites SA : source "sa" + variable_sa, optionnellement sous_champ_sa.
+- Pour tester la présence de produits catalogue : source "catalogue" + filtre_catalogue.
+- Utilise groupes_conditions pour les branches conditionnelles, avec logique_groupe "ET" ou "OU".
+- Utilise logique_declencheur pour combiner plusieurs groupes.
+
+## Filtres catalogue
+
+SpFiltresCatalogue peut contenir :
+{
+  "categories": ["mobile", "internet", "fixe", "cloud", "equipement", "autre"],
+  "fournisseurs": ["Orange", "SFR"],
+  "type_facturation": "mensuel" | "unique" | "tous",
+  "produits_ids": ["..."],
+  "depuis_reponse_question": "q_xxx",
+  "groupes": [...],
+  "logique_racine": "ET" | "OU"
+}
+
+- Pour une question catalogue, mets filtres_catalogue si la question doit proposer seulement certaines catégories/fournisseurs/types.
+- Si l'utilisateur peut saisir un hors-catalogue, mets options_libres: true.
+
+## Conséquences
+
+Chaque question doit avoir consequences, même vide.
+Types disponibles :
+- renseigner_variable: variable_cible requis
+- afficher_question: question_id requis
+- masquer_question: question_id requis
+- aller_question: question_id requis
+- filtrer_question: question_id requis + filtre requis
+
+Préfère les conditions de visibilité pour les branches simples. Utilise filtrer_question pour filtrer dynamiquement une question catalogue cible selon une réponse.
+
+## Boucles
+
+Pour répéter un bloc de questions (multi-site, multi-ligne, multi-équipement) :
+- Toutes les questions répétées partagent le même groupe_boucle_id.
+- Seule la première question du groupe porte l'objet boucle.
+- boucle peut définir :
+  - nombre_fixe
+  - source_nombre_question_id, si une question nombre donne le nombre d'itérations
+  - source_labels_question_id, si une réponse donne les labels
+  - label_prefix, ex: "Site" ou "Ligne"
+  - source_sa_array, ex: "situation_actuelle.lignes"
+  - source_sa_label_champ, ex: "numero_ligne"
+  - source_sa_filtre_champ et source_sa_filtre_valeur, ex: type = mobile
 
 ## Règles importantes
-- Les IDs de questions doivent être descriptifs : "q_pto_type", "q_fibre_pto1", "q_fas", etc.
-- Pour les questions conditionnelles, utilise groupes_conditions avec source: 'reponse_question'
-- Pour les choix fixes (FTTH/SDSL, Simple/Double, Oui/Non/En cours...) → source: 'aucune' + affichage: 'choix_liste_manuelle' + options_manuelles: ["option1", "option2", ...]
-- Pour choisir dans le catalogue produits → source: 'catalogue' + affichage: 'boutons_choix_unique' (sans options_manuelles, les options viennent du catalogue)
-- Pour Oui/Non simple → affichage: 'oui_non' (source 'aucune' ou 'sa')
-- Les branches conditionnelles doivent être pilotées via groupes_conditions
-- N'utilise 'afficher_question' ou 'masquer_question' que pour un affichage forcé non conditionnel
-- La variable_cible dans 'renseigner_variable' est en snake_case sans accents
-- Le champ "consequences" est OBLIGATOIRE sur chaque question. S'il n'y a aucune conséquence, mettre un tableau vide : "consequences": []
-- Quand affichage est 'choix_liste_manuelle', le champ options_manuelles est OBLIGATOIRE et doit contenir au moins 2 options
+- Les IDs de questions doivent être descriptifs et rester stables.
+- Conserve les IDs existants quand une question existante n'est pas remplacée.
+- Génère de nouveaux IDs descriptifs pour les nouvelles questions.
+- La variable_cible dans renseigner_variable est en snake_case, idéalement préfixée par sp_ pour les variables Word.
+- Quand affichage est "choix_liste_manuelle", options_manuelles est obligatoire et doit contenir au moins 2 options.
+- Pour source "sa" + affichage "edition_sa", renseigne edition_type si le type attendu est évident.
+- Pour email/téléphone/SIRET, renseigne validation_format.
 
 ## Format de réponse
 
 ### Si tu as besoin de précisions :
 Réponds en texte naturel avec tes questions numérotées. Sois bref et précis.
 
-### Si tu génères le workflow :
-Réponds UNIQUEMENT avec un bloc JSON valide (sans markdown), sous cette forme exacte :
+### Si tu génères le workflow ou des questions :
+Réponds UNIQUEMENT avec un JSON valide, sans markdown, sous cette forme exacte :
 {"questions": [ ...tableau de SpQuestion... ]}
 
 Ne mets aucun texte avant ou après le JSON.`;
 
+function summarizeJson(value: unknown): string {
+  if (value == null) return '';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function buildExistingSummary(existingQuestions: Array<Record<string, unknown>>): string {
+  return [...existingQuestions]
+    .sort((a, b) => ((a.ordre as number) ?? 0) - ((b.ordre as number) ?? 0))
+    .map((q, i) => {
+      const parts = [
+        `${i + 1}. id="${q.id}" — "${q.libelle}"`,
+        `source=${q.source}`,
+        `affichage=${q.affichage}`,
+      ];
+      if (Array.isArray(q.options_manuelles) && q.options_manuelles.length > 0) parts.push(`options=${(q.options_manuelles as string[]).join('|')}`);
+      if (q.filtres_catalogue) parts.push(`filtres_catalogue=${summarizeJson(q.filtres_catalogue)}`);
+      if (Array.isArray(q.groupes_conditions) && q.groupes_conditions.length > 0) parts.push(`conditions=${summarizeJson(q.groupes_conditions)}`);
+      if (q.logique_declencheur) parts.push(`logique_declencheur=${q.logique_declencheur}`);
+      if (Array.isArray(q.consequences) && q.consequences.length > 0) parts.push(`consequences=${summarizeJson(q.consequences)}`);
+      if (q.groupe_boucle_id) parts.push(`groupe_boucle_id=${q.groupe_boucle_id}`);
+      if (q.boucle) parts.push(`boucle=${summarizeJson(q.boucle)}`);
+      return parts.join(' ; ');
+    })
+    .join('\n');
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, templateId, existingQuestions = [], spVariables = [] } = body as {
+    const { messages, templateId, existingQuestions = [], spVariables = [], mode = 'create' } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       templateId: string;
       existingQuestions?: Array<Record<string, unknown>>;
       spVariables?: Array<{ key: string; label: string; group: string }>;
+      mode?: SpAiWorkflowMode;
     };
 
     if (!messages?.length) {
@@ -127,20 +194,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingQuestions.length > 0) {
-      const existingSummary = existingQuestions
-        .sort((a, b) => ((a.ordre as number) ?? 0) - ((b.ordre as number) ?? 0))
-        .map((q, i) => {
-          const opts = Array.isArray(q.options_manuelles) && q.options_manuelles.length > 0
-            ? ` [options: ${(q.options_manuelles as string[]).join(', ')}]`
-            : '';
-          const cond = Array.isArray(q.groupes_conditions) && q.groupes_conditions.length > 0
-            ? ' [conditionnel]'
-            : '';
-          return `${i + 1}. id="${q.id}" — "${q.libelle}" (${q.affichage}${opts}${cond})`;
-        })
-        .join('\n');
+      const existingSummary = buildExistingSummary(existingQuestions);
 
-      systemPrompt += `\n\n## Workflow actuel du template (${existingQuestions.length} questions)\n${existingSummary}\n\n## Instructions pour la modification\n- Retourne le workflow COMPLET mis à jour (toutes les questions, modifiées ou non)\n- Conserve les IDs existants pour les questions non modifiées\n- Génère de nouveaux IDs descriptifs pour les nouvelles questions\n- L'ORDRE des questions dans le tableau JSON = leur ordre d'affichage (le champ "ordre" sera ignoré et réassigné automatiquement)\n- RESPECTE STRICTEMENT les instructions de positionnement : "à la fin" = dernière position du tableau, "après la question X" = juste après X dans le tableau, "au début" = première position\n- Retourne uniquement le JSON final complet, sans texte avant ou après`;
+      systemPrompt += `\n\n## Workflow actuel du template (${existingQuestions.length} questions)\n${existingSummary}`;
+    }
+
+    if (mode === 'modify') {
+      systemPrompt += `\n\n## Mode demandé : MODIFIER LE WORKFLOW EXISTANT\n- Retourne le workflow COMPLET mis à jour (toutes les questions, modifiées ou non)\n- Conserve les IDs existants pour les questions non modifiées\n- Supprime une question uniquement si l'utilisateur le demande explicitement\n- Génère de nouveaux IDs descriptifs pour les nouvelles questions\n- L'ORDRE des questions dans le tableau JSON = leur ordre d'affichage (le champ "ordre" sera réassigné automatiquement)\n- RESPECTE STRICTEMENT les instructions de positionnement : "à la fin" = dernière position du tableau, "après la question X" = juste après X dans le tableau, "au début" = première position\n- Retourne uniquement le JSON final complet, sans texte avant ou après`;
+    } else if (mode === 'append') {
+      systemPrompt += `\n\n## Mode demandé : AJOUTER DES QUESTIONS AU WORKFLOW EXISTANT\n- Retourne UNIQUEMENT les nouvelles questions à ajouter\n- Ne retourne aucune question existante, sauf si une nouvelle question a besoin de la citer dans question_id\n- Ne modifie pas les IDs ni le contenu des questions existantes\n- Tu peux référencer les IDs existants dans groupes_conditions, consequences.question_id, filtres_catalogue.depuis_reponse_question ou boucle.source_nombre_question_id\n- Place les nouvelles questions dans l'ordre demandé; l'application les ajoutera sans remplacer le workflow existant\n- Si l'utilisateur demande une modification d'une question existante, réponds en texte naturel pour lui indiquer d'utiliser le mode "Modifier workflow IA"\n- Retourne uniquement le JSON des nouvelles questions, sans texte avant ou après`;
+    } else {
+      systemPrompt += `\n\n## Mode demandé : CRÉER UN WORKFLOW\n- Retourne le workflow complet à créer\n- Génère des IDs descriptifs et stables\n- L'ordre du tableau JSON correspond à l'ordre d'affichage\n- Retourne uniquement le JSON final, sans texte avant ou après`;
     }
 
     const response = await anthropic.messages.create({

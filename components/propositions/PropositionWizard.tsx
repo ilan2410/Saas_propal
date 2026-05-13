@@ -231,6 +231,24 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
     if (!site || !parentId) return;
 
     try {
+      const fasTotal = reponses
+        .filter((r) => r.question_id.startsWith('fas_'))
+        .reduce((sum, r) => {
+          const val = r.valeur;
+          if (typeof val === 'string') {
+            try {
+              const parsed = JSON.parse(val);
+              if (typeof parsed === 'object' && parsed !== null) {
+                return sum + (Object.values(parsed) as string[]).reduce((s, v) => s + (parseFloat(String(v)) || 0), 0);
+              }
+            } catch {
+              // not JSON
+            }
+            return sum + (parseFloat(val) || 0);
+          }
+          return sum;
+        }, 0);
+
       // Clone the parent proposition for this site
       const cloneRes = await fetch(`/api/propositions/${parentId}/clone-site`, {
         method: 'POST',
@@ -264,6 +282,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
           proposition_id: cloneData.proposition_id,
           force_regenerate: true,
           sp_questions_reponses: reponses,
+          sp_fas_total: fasTotal,
           preferences: {},
         }),
       });

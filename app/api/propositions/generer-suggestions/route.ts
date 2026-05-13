@@ -348,7 +348,63 @@ function resolveProposedPrice(rawPrice: unknown, fallbackCurrentPrice: number, c
   return fallbackCurrentPrice;
 }
 
-function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknown[]): SuggestionResult {
+function buildPriceOverridesMap(spReponses: SpQuestionReponse[]): Map<string, number> {
+  const overrides = new Map<string, number>();
+
+  for (const reponse of spReponses) {
+    if (!reponse.question_id.startsWith('prix_')) continue;
+
+    if (typeof reponse.valeur === 'string') {
+      try {
+        const parsed = JSON.parse(reponse.valeur);
+        if (isPlainObject(parsed)) {
+          for (const [productName, value] of Object.entries(parsed)) {
+            const price = parseFloat(String(value));
+            if (productName.trim() && Number.isFinite(price)) {
+              overrides.set(productName.trim().toLowerCase(), price);
+            }
+          }
+          continue;
+        }
+      } catch {
+        // Single product price override, handled below.
+      }
+
+      const questionId = reponse.question_id.replace(/^prix_/, '');
+      const selectedProduct = spReponses.find((r) => r.question_id === questionId);
+      const selectedName = typeof selectedProduct?.valeur === 'string' ? selectedProduct.valeur.trim() : '';
+      const price = parseFloat(reponse.valeur);
+      if (selectedName && Number.isFinite(price)) {
+        overrides.set(selectedName.toLowerCase(), price);
+      }
+    }
+  }
+
+  return overrides;
+}
+
+function getPriceOverride(
+  priceOverrides: Map<string, number>,
+  produitId?: string,
+  produitNom?: string,
+): number | null {
+  if (produitNom) {
+    const byName = priceOverrides.get(produitNom.trim().toLowerCase());
+    if (byName != null && Number.isFinite(byName)) return byName;
+  }
+  if (produitId) {
+    const byId = priceOverrides.get(produitId.trim().toLowerCase());
+    if (byId != null && Number.isFinite(byId)) return byId;
+  }
+  return null;
+}
+
+function normalizeResult(
+  raw: unknown,
+  lines: UnknownRecord[],
+  catalogue: unknown[],
+  priceOverrides: Map<string, number>,
+): SuggestionResult {
   const empty: SuggestionResult = {
     suggestions: lines.map((l) => buildFallbackSuggestion(l)),
     synthese: {
@@ -393,7 +449,8 @@ function normalizeResult(raw: unknown, lines: UnknownRecord[], catalogue: unknow
       }
 
       const catalogueItem = findCatalogueItem(catalogue, out.produit_propose_id, out.produit_propose_nom);
-      const prixPropose = resolveProposedPrice(s!.prix_propose, prixActuel, catalogueItem);
+      const overriddenPrice = getPriceOverride(priceOverrides, out.produit_propose_id, out.produit_propose_nom);
+      const prixPropose = overriddenPrice ?? resolveProposedPrice(s!.prix_propose, prixActuel, catalogueItem);
       const economieMensuelle = prixActuel - prixPropose;
 
       out.prix_actuel = prixActuel;
@@ -439,9 +496,14 @@ function formatEuro(value: number): string {
 
 type SpLigneBaseRaw = Omit<SpLigneMobile, 'sp_type_ligne'>;
 
-function buildSpLigne(raw: UnknownRecord): SpLigneBaseRaw {
+function buildSpLigne(raw: UnknownRecord, priceOverrides: Map<string, number>): SpLigneBaseRaw {
   const prixActuel = typeof raw._prix_actuel_raw === 'number' ? raw._prix_actuel_raw : 0;
-  const prixPropose = typeof raw._prix_propose_raw === 'number' ? raw._prix_propose_raw : prixActuel;
+  const overriddenPrice = getPriceOverride(
+    priceOverrides,
+    typeof raw.sp_produit_id === 'string' ? raw.sp_produit_id : undefined,
+    typeof raw.sp_produit === 'string' ? raw.sp_produit : undefined,
+  );
+  const prixPropose = overriddenPrice ?? (typeof raw._prix_propose_raw === 'number' ? raw._prix_propose_raw : prixActuel);
   const economie = prixActuel - prixPropose;
   return {
     sp_nom_ligne: String(raw.sp_nom_ligne ?? ''),
@@ -459,8 +521,13 @@ function buildSpLigne(raw: UnknownRecord): SpLigneBaseRaw {
   };
 }
 
-function buildSpMateriel(raw: UnknownRecord): SpMateriel {
-  const prix = typeof raw._prix_mensuel_raw === 'number' ? raw._prix_mensuel_raw : 0;
+function buildSpMateriel(raw: UnknownRecord, priceOverrides: Map<string, number>): SpMateriel {
+  const overriddenPrice = getPriceOverride(
+    priceOverrides,
+    typeof raw.sp_materiel_produit_id === 'string' ? raw.sp_materiel_produit_id : undefined,
+    typeof raw.sp_materiel_nom === 'string' ? raw.sp_materiel_nom : undefined,
+  );
+  const prix = overriddenPrice ?? (typeof raw._prix_mensuel_raw === 'number' ? raw._prix_mensuel_raw : 0);
   return {
     sp_materiel_nom: String(raw.sp_materiel_nom ?? ''),
     sp_materiel_ref: typeof raw.sp_materiel_ref === 'string' ? raw.sp_materiel_ref : undefined,
@@ -483,6 +550,7 @@ function buildSpCompletes(
   wordCfg: WordConfig,
   catalogueProduits?: CatalogueProduit[],
   spConfigLoyer?: SpConfigLoyer,
+  priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
@@ -490,10 +558,10 @@ function buildSpCompletes(
   const rawInternet = Array.isArray(raw.sp_internet) ? raw.sp_internet as UnknownRecord[] : [];
   const rawMateriel = Array.isArray(raw.sp_materiel) ? raw.sp_materiel as UnknownRecord[] : [];
 
-  const sp_lignes_mobiles: SpLigneMobile[] = rawMobiles.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Mobile' as const }));
-  const sp_lignes_fixes: SpLigneFixe[] = rawFixes.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Fixe' as const }));
-  const sp_internet: SpInternet[] = rawInternet.map((r) => ({ ...buildSpLigne(r), sp_type_ligne: 'Internet' as const }));
-  const sp_materiel: SpMateriel[] = rawMateriel.map(buildSpMateriel);
+  const sp_lignes_mobiles: SpLigneMobile[] = rawMobiles.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Mobile' as const }));
+  const sp_lignes_fixes: SpLigneFixe[] = rawFixes.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Fixe' as const }));
+  const sp_internet: SpInternet[] = rawInternet.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Internet' as const }));
+  const sp_materiel: SpMateriel[] = rawMateriel.map((r) => buildSpMateriel(r, priceOverrides));
 
   const toutes = [...sp_lignes_mobiles, ...sp_lignes_fixes, ...sp_internet];
   const economieTotale = toutes.reduce((s, l) => s + l._economie_raw, 0);
@@ -708,7 +776,8 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
     const text = message.content[0].type === 'text' ? message.content[0].text : '';
     const result = extractJsonFromText(text);
 
-    const normalized = normalizeResult(result, lignesAAnalyser, catalogue);
+    const priceOverrides = buildPriceOverridesMap(spReponses);
+    const normalized = normalizeResult(result, lignesAAnalyser, catalogue, priceOverrides);
 
     // Construction des données SP complètes si l'IA a retourné des tableaux SP
     let suggestionsSpCompletes: SuggestionsSpCompletes | null = null;
@@ -757,6 +826,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         wordCfg,
         catalogue as CatalogueProduit[],
         spConfigLoyer,
+        priceOverrides,
         typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
       );
     }

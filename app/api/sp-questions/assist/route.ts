@@ -21,10 +21,17 @@ Tu aides l'utilisateur à remplir les champs d'une question SP. Tu peux :
   - Pour source "catalogue" : boutons_choix_unique | boutons_choix_multiple | liste_deroulante
   - Pour source "sa" : oui_non | confirmation_sa | edition_sa
   - Pour source "catalogue_et_sa" : boutons_choix_unique | boutons_choix_multiple | confirmation_sa
-- **options_manuelles** : tableau de strings (requis si affichage = "choix_liste_manuelle" ou si source="aucune" avec boutons)
+- **options_manuelles** : tableau de strings (requis si affichage = "choix_liste_manuelle")
+- **options_libres** : true si une question catalogue autorise une saisie hors-catalogue
+- **filtres_catalogue** : filtre par categories, fournisseurs, type_facturation, produits_ids, depuis_reponse_question, groupes/logique_racine
+- **groupes_conditions** et **logique_declencheur** : conditions de visibilité sur réponse précédente, SA ou catalogue
+- **validation_format** : aucune | email | telephone | siret
+- **valeur_defaut** : valeur préremplie
+- **edition_type** : adresse_complete | texte | nombre | date pour source "sa" + "edition_sa"
 - **obligatoire** : true | false
 - **priorite_ia** : "normale" | "haute" (haute = l'IA doit l'appliquer sans exception)
-- **consequences** : actions déclenchées à la réponse (renseigner_variable, afficher_question, masquer_question, aller_question)
+- **consequences** : actions déclenchées à la réponse (renseigner_variable, afficher_question, masquer_question, aller_question, filtrer_question)
+- **groupe_boucle_id** et **boucle** : répétition d'un bloc de questions par nombre fixe, réponse d'une question, labels ou tableau SA
 
 ## Variables SP
 La réponse à une question peut alimenter une variable SP qui sera insérée dans le document Word final.
@@ -48,8 +55,18 @@ Réponds UNIQUEMENT avec ce JSON (pas de texte avant ni après) :
     "source": "...",
     "affichage": "...",
     "options_manuelles": [...],
+    "options_libres": true,
+    "filtres_catalogue": {...},
+    "groupes_conditions": [...],
+    "logique_declencheur": "ET",
+    "validation_format": "aucune",
+    "valeur_defaut": "...",
+    "edition_type": "texte",
+    "consequences": [...],
     "obligatoire": true,
-    "priorite_ia": "normale"
+    "priorite_ia": "normale",
+    "groupe_boucle_id": "boucle_sites",
+    "boucle": {...}
   },
   "variable_suggestion": {
     "key": "sp_xxx",
@@ -61,6 +78,7 @@ Réponds UNIQUEMENT avec ce JSON (pas de texte avant ni après) :
 }
 
 N'inclus dans "patch" QUE les champs que tu veux modifier. Omet les champs que tu ne changes pas.
+Respecte strictement les combinaisons source/affichage et préfère les conditions de visibilité aux conséquences afficher/masquer pour les branches simples.
 Le champ "variable_suggestion" est OPTIONNEL — n'inclus le que si la question devrait alimenter une variable.
 Si l'utilisateur demande juste un conseil sans vouloir appliquer, réponds en texte.`;
 

@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, CornerDownRight, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, CornerDownRight, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpCondition } from '@/types';
+import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
 import { SpAiGeneratorModal } from './SpAiGeneratorModal';
 import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
 
 interface Template { id: string; nom: string; file_type: string; }
+type SpAiWorkflowMode = 'create' | 'modify' | 'append';
 
 interface Props {
   templates: Template[];
@@ -53,7 +54,8 @@ const SOURCE_TOOLTIPS: Record<string, string> = {
 const AFFICHAGE_LABELS: Record<string, string> = {
   boutons_choix_unique: 'Choix unique',
   boutons_choix_multiple: 'Choix multiple',
-  liste_deroulante: 'Liste déroulante',
+  liste_deroulante: 'Liste déroulante choix unique',
+  liste_deroulante_choix_multiple: 'Liste déroulante choix multiple',
   oui_non: 'Oui / Non',
   confirmation_sa: 'Confirmation SA',
   edition_sa: 'Édition SA',
@@ -68,7 +70,8 @@ const AFFICHAGE_LABELS: Record<string, string> = {
 const AFFICHAGE_TOOLTIPS: Record<string, string> = {
   boutons_choix_unique: "L'utilisateur sélectionne un seul choix parmi des boutons.",
   boutons_choix_multiple: "L'utilisateur peut sélectionner plusieurs choix.",
-  liste_deroulante: "Menu déroulant compact pour choisir parmi les options.",
+  liste_deroulante: "Menu déroulant compact pour choisir une seule option.",
+  liste_deroulante_choix_multiple: "Menu déroulant compact pour choisir plusieurs options.",
   oui_non: "Deux boutons Oui / Non.",
   confirmation_sa: "Affiche la valeur SA extraite et demande confirmation (lecture seule).",
   edition_sa: "Affiche la valeur SA et permet à l'utilisateur de la modifier.",
@@ -198,20 +201,69 @@ function buildTreeOrder(questions: SpQuestion[]): TreeItem[] {
   return result;
 }
 
+function generateUniqueVarKey(base: string, existing: Set<string>): string {
+  let suffix = 2;
+  let candidate = `${base}_${suffix}`;
+  while (existing.has(candidate)) { suffix++; candidate = `${base}_${suffix}`; }
+  return candidate;
+}
+
+function getQuestionsWithChildren(questions: SpQuestion[]): Set<string> {
+  const idSet = new Set(questions.map((q) => q.id));
+  const result = new Set<string>();
+  for (const q of questions) {
+    const parentId = (q.groupes_conditions ?? [])
+      .flatMap((g) => g.conditions)
+      .find((c) => c.source === 'reponse_question' && c.question_id && idSet.has(c.question_id))
+      ?.question_id;
+    if (parentId) result.add(parentId);
+  }
+  return result;
+}
+
+function collectDescendantQuestionIds(questions: SpQuestion[], rootId: string): Set<string> {
+  const idsToDelete = new Set<string>([rootId]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const question of questions) {
+      if (idsToDelete.has(question.id)) continue;
+      const dependsOnDeletedQuestion = (question.groupes_conditions ?? []).some((group) =>
+        group.conditions.some(
+          (condition) => condition.source === 'reponse_question'
+            && !!condition.question_id
+            && idsToDelete.has(condition.question_id),
+        ),
+      );
+      if (dependsOnDeletedQuestion) {
+        idsToDelete.add(question.id);
+        changed = true;
+      }
+    }
+  }
+
+  return idsToDelete;
+}
+
 // ── Carte question ────────────────────────────────────────────────────────────
 function QuestionCard({
   q,
-  templateId,
   onToggle,
   onEdit,
   onDelete,
+  onDuplicate,
+  onSimulateFrom,
+  isParent = false,
   showDragHandle = false,
 }: {
   q: SpQuestion;
-  templateId: string;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  onSimulateFrom: () => void;
+  isParent?: boolean;
   showDragHandle?: boolean;
 }) {
   return (
@@ -324,9 +376,21 @@ function QuestionCard({
 
       {/* Actions */}
       <div className="flex gap-1 shrink-0">
+        {isParent && (
+          <Tooltip text="Simuler le workflow depuis cette question">
+            <Button size="sm" variant="ghost" onClick={onSimulateFrom} className="h-7 w-7 p-0 text-green-500 hover:text-green-700 hover:bg-green-50">
+              <Play className="w-3.5 h-3.5" />
+            </Button>
+          </Tooltip>
+        )}
         <Tooltip text="Modifier cette question">
           <Button size="sm" variant="ghost" onClick={onEdit} className="h-7 w-7 p-0">
             <Edit2 className="w-3.5 h-3.5" />
+          </Button>
+        </Tooltip>
+        <Tooltip text="Dupliquer cette question (et ses enfants)">
+          <Button size="sm" variant="ghost" onClick={onDuplicate} className="h-7 w-7 p-0 text-blue-400 hover:text-blue-600 hover:bg-blue-50">
+            <Copy className="w-3.5 h-3.5" />
           </Button>
         </Tooltip>
         <Tooltip text="Supprimer définitivement cette question">
@@ -345,8 +409,8 @@ export function SpQuestionsManager({ templates }: Props) {
   const [expanded, setExpanded] = useState<string | null>(wordTemplates[0]?.id ?? null);
   const [questionsByTemplate, setQuestionsByTemplate] = useState<Record<string, SpQuestion[]>>({});
   const [buildingForTemplate, setBuildingForTemplate] = useState<string | null>(null);
-  const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<string | null>(null);
-  const [simulatingForTemplate, setSimulatingForTemplate] = useState<string | null>(null);
+  const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
+  const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
   const [draggingInfo, setDraggingInfo] = useState<{
     qId: string; depth: number; parentId: string | null; templateId: string;
@@ -370,11 +434,18 @@ export function SpQuestionsManager({ templates }: Props) {
   }, []);
 
   const deleteQuestion = async (templateId: string, qid: string) => {
-    if (!confirm('Supprimer cette question ?')) return;
+    const templateQuestions = questionsByTemplate[templateId] ?? [];
+    const idsToDelete = collectDescendantQuestionIds(templateQuestions, qid);
+    const descendantCount = idsToDelete.size - 1;
+    const confirmationMessage = descendantCount > 0
+      ? `Supprimer cette question et ses ${descendantCount} question${descendantCount > 1 ? 's' : ''} enfant${descendantCount > 1 ? 's' : ''} ?`
+      : 'Supprimer cette question ?';
+    if (!confirm(confirmationMessage)) return;
+
     await fetch(`/api/templates/${templateId}/sp-questions/${qid}`, { method: 'DELETE' });
     setQuestionsByTemplate((prev) => ({
       ...prev,
-      [templateId]: (prev[templateId] ?? []).filter((q) => q.id !== qid),
+      [templateId]: (prev[templateId] ?? []).filter((q) => !idsToDelete.has(q.id)),
     }));
   };
 
@@ -388,6 +459,96 @@ export function SpQuestionsManager({ templates }: Props) {
     setQuestionsByTemplate((prev) => ({
       ...prev,
       [templateId]: (prev[templateId] ?? []).map((existing) => existing.id === q.id ? updated : existing),
+    }));
+  };
+
+  const duplicateQuestion = async (templateId: string, questionId: string) => {
+    const questions = questionsByTemplate[templateId] ?? [];
+    const treeItems = buildTreeOrder(questions);
+
+    const startIdx = treeItems.findIndex((item) => item.q.id === questionId);
+    if (startIdx === -1) return;
+    const startDepth = treeItems[startIdx].depth;
+    let endIdx = startIdx + 1;
+    while (endIdx < treeItems.length && treeItems[endIdx].depth > startDepth) endIdx++;
+    const questionsToClone = treeItems.slice(startIdx, endIdx).map((item) => item.q);
+
+    const varRes = await fetch(`/api/templates/${templateId}/sp-variables`);
+    const { standard, custom } = await varRes.json();
+    const allVarKeys = new Set<string>([
+      ...(standard as string[]),
+      ...(custom as SpVariableCustom[]).map((v) => v.key),
+      ...questions.flatMap((q) => q.consequences?.filter((c) => c.variable_cible).map((c) => c.variable_cible!) ?? []),
+    ]);
+    const customVarMap = new Map<string, SpVariableCustom>(
+      (custom as SpVariableCustom[]).map((v) => [v.key, v])
+    );
+
+    const idMap = new Map<string, string>();
+    const varMap = new Map<string, string>();
+
+    for (const q of questionsToClone) {
+      idMap.set(q.id, crypto.randomUUID());
+      for (const c of q.consequences ?? []) {
+        if (c.type === 'renseigner_variable' && c.variable_cible && !varMap.has(c.variable_cible)) {
+          const newKey = generateUniqueVarKey(c.variable_cible, allVarKeys);
+          allVarKeys.add(newKey);
+          varMap.set(c.variable_cible, newKey);
+        }
+      }
+    }
+
+    for (const [oldKey, newKey] of varMap) {
+      const src = customVarMap.get(oldKey);
+      await fetch(`/api/templates/${templateId}/sp-variables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: newKey,
+          label: src ? `${src.label} (copie)` : newKey,
+          description: src?.description ?? '',
+          type: 'string',
+        }),
+      });
+    }
+
+    const newQuestions: SpQuestion[] = questionsToClone.map((q) => ({
+      ...q,
+      id: idMap.get(q.id)!,
+      groupes_conditions: q.groupes_conditions?.map((group) => ({
+        ...group,
+        conditions: group.conditions.map((cond) => ({
+          ...cond,
+          question_id: cond.question_id && idMap.has(cond.question_id)
+            ? idMap.get(cond.question_id)!
+            : cond.question_id,
+        })),
+      })),
+      consequences: q.consequences?.map((c) => ({
+        ...c,
+        question_id: c.question_id && idMap.has(c.question_id)
+          ? idMap.get(c.question_id)!
+          : c.question_id,
+        variable_cible: c.variable_cible && varMap.has(c.variable_cible)
+          ? varMap.get(c.variable_cible)!
+          : c.variable_cible,
+      })),
+    }));
+
+    const created: SpQuestion[] = [];
+    for (const nq of newQuestions) {
+      const res = await fetch(`/api/templates/${templateId}/sp-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nq),
+      });
+      const { question } = await res.json();
+      created.push(question);
+    }
+
+    setQuestionsByTemplate((prev) => ({
+      ...prev,
+      [templateId]: [...(prev[templateId] ?? []), ...created].sort((a, b) => a.ordre - b.ordre),
     }));
   };
 
@@ -454,6 +615,7 @@ export function SpQuestionsManager({ templates }: Props) {
         const activeCount = questions.filter((q) => q.actif).length;
         const conditionalCount = questions.filter((q) => (q.groupes_conditions?.length ?? 0) > 0).length;
         const treeItems = buildTreeOrder(questions);
+        const questionsWithChildren = getQuestionsWithChildren(questions);
 
         return (
           <div key={t.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -554,10 +716,12 @@ export function SpQuestionsManager({ templates }: Props) {
                         <div style={{ marginLeft: depth * 24 + 'px' }}>
                           <QuestionCard
                             q={q}
-                            templateId={t.id}
+                            isParent={depth === 0}
                             onToggle={() => toggleActive(t.id, q)}
                             onEdit={() => setEditingQuestion({ templateId: t.id, question: q })}
                             onDelete={() => deleteQuestion(t.id, q.id)}
+                            onDuplicate={() => duplicateQuestion(t.id, q.id)}
+                            onSimulateFrom={() => setSimulatingForTemplate({ templateId: t.id, startFromQuestionId: q.id })}
                             showDragHandle
                           />
                         </div>
@@ -600,22 +764,49 @@ export function SpQuestionsManager({ templates }: Props) {
                       Tout supprimer
                     </Button>
                   </Tooltip>
-                  <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setAiGeneratingForTemplate(t.id)}
-                      className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Générer IA
-                    </Button>
-                  </Tooltip>
+                  {questions.length === 0 ? (
+                    <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'create' })}
+                        className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Générer IA
+                      </Button>
+                    </Tooltip>
+                  ) : (
+                    <>
+                      <Tooltip text="Ajoute de nouvelles questions avec l'IA sans modifier le workflow existant.">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'append' })}
+                          className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Ajouter IA
+                        </Button>
+                      </Tooltip>
+                      <Tooltip text="Modifie le workflow complet avec l'IA. Cette action remplacera le workflow après validation.">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'modify' })}
+                          className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Modifier IA
+                        </Button>
+                      </Tooltip>
+                    </>
+                  )}
                   <Tooltip text="Simule le formulaire de questions pour tester les conditions et la logique du workflow.">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setSimulatingForTemplate(t.id)}
+                      onClick={() => setSimulatingForTemplate({ templateId: t.id })}
                       disabled={questions.filter((q) => q.actif).length === 0}
                       className="flex-1 border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300 disabled:opacity-40"
                     >
@@ -662,19 +853,23 @@ export function SpQuestionsManager({ templates }: Props) {
       {/* Modal simulateur */}
       {simulatingForTemplate && (
         <SpWorkflowSimulatorModal
-          questions={questionsByTemplate[simulatingForTemplate] ?? []}
-          templateId={simulatingForTemplate}
-          templateNom={wordTemplates.find((t) => t.id === simulatingForTemplate)?.nom ?? ''}
+          questions={questionsByTemplate[simulatingForTemplate.templateId] ?? []}
+          templateId={simulatingForTemplate.templateId}
+          templateNom={wordTemplates.find((t) => t.id === simulatingForTemplate.templateId)?.nom ?? ''}
+          startFromQuestionId={simulatingForTemplate.startFromQuestionId}
           onClose={() => setSimulatingForTemplate(null)}
         />
       )}
 
       {/* Modal génération / modification IA */}
-      {aiGeneratingForTemplate && (
+      {aiGeneratingForTemplate && (() => {
+        const aiTemplateId = aiGeneratingForTemplate.templateId;
+        return (
         <SpAiGeneratorModal
-          templateId={aiGeneratingForTemplate}
-          nextOrdre={(questionsByTemplate[aiGeneratingForTemplate] ?? []).length + 1}
-          existingQuestions={questionsByTemplate[aiGeneratingForTemplate] ?? []}
+          templateId={aiTemplateId}
+          mode={aiGeneratingForTemplate.mode}
+          nextOrdre={(questionsByTemplate[aiTemplateId] ?? []).length + 1}
+          existingQuestions={questionsByTemplate[aiTemplateId] ?? []}
           onImport={async (questions, replace) => {
             const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const idMap = new Map<string, string>(
@@ -700,7 +895,7 @@ export function SpQuestionsManager({ templates }: Props) {
             }));
 
             if (replace) {
-              const res = await fetch(`/api/templates/${aiGeneratingForTemplate}/sp-questions/replace`, {
+              const res = await fetch(`/api/templates/${aiTemplateId}/sp-questions/replace`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ questions: remapped }),
@@ -708,12 +903,12 @@ export function SpQuestionsManager({ templates }: Props) {
               const data = await res.json() as { questions: SpQuestion[] };
               setQuestionsByTemplate((prev) => ({
                 ...prev,
-                [aiGeneratingForTemplate]: (data.questions ?? []).sort((a, b) => a.ordre - b.ordre),
+                [aiTemplateId]: (data.questions ?? []).sort((a, b) => a.ordre - b.ordre),
               }));
             } else {
               const saved: SpQuestion[] = [];
               for (const q of remapped) {
-                const res = await fetch(`/api/templates/${aiGeneratingForTemplate}/sp-questions`, {
+                const res = await fetch(`/api/templates/${aiTemplateId}/sp-questions`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(q),
@@ -723,8 +918,8 @@ export function SpQuestionsManager({ templates }: Props) {
               }
               setQuestionsByTemplate((prev) => ({
                 ...prev,
-                [aiGeneratingForTemplate]: [
-                  ...(prev[aiGeneratingForTemplate] ?? []),
+                [aiTemplateId]: [
+                  ...(prev[aiTemplateId] ?? []),
                   ...saved,
                 ].sort((a, b) => a.ordre - b.ordre),
               }));
@@ -733,7 +928,8 @@ export function SpQuestionsManager({ templates }: Props) {
           }}
           onClose={() => setAiGeneratingForTemplate(null)}
         />
-      )}
+        );
+      })()}
 
       {/* Modal édition */}
       {editingQuestion && (

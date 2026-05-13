@@ -3,12 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Loader2, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion } from '@/types';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import type { SpQuestion, SpFiltresCatalogue, SpGroupeConditions, SpConsequence, SpQuestionBoucle } from '@/types';
 
 interface Patch {
   libelle?: string;
@@ -16,8 +11,18 @@ interface Patch {
   source?: SpQuestion['source'];
   affichage?: SpQuestion['affichage'];
   options_manuelles?: string[];
+  options_libres?: boolean;
+  filtres_catalogue?: SpFiltresCatalogue;
+  groupes_conditions?: SpGroupeConditions[];
+  logique_declencheur?: 'ET' | 'OU';
+  validation_format?: 'aucune' | 'email' | 'telephone' | 'siret';
+  valeur_defaut?: string;
+  edition_type?: 'adresse_complete' | 'texte' | 'nombre' | 'date';
+  consequences?: SpConsequence[];
   obligatoire?: boolean;
   priorite_ia?: 'normale' | 'haute';
+  groupe_boucle_id?: string;
+  boucle?: SpQuestionBoucle;
 }
 
 interface PatchMessage {
@@ -56,8 +61,18 @@ const PATCH_LABELS: Record<string, string> = {
   source: 'Source',
   affichage: 'Affichage',
   options_manuelles: 'Options',
+  options_libres: 'Options libres',
+  filtres_catalogue: 'Filtres catalogue',
+  groupes_conditions: 'Conditions',
+  logique_declencheur: 'Logique conditions',
+  validation_format: 'Validation',
+  valeur_defaut: 'Valeur par défaut',
+  edition_type: 'Type édition',
+  consequences: 'Conséquences',
   obligatoire: 'Obligatoire',
   priorite_ia: 'Priorité IA',
+  groupe_boucle_id: 'Groupe boucle',
+  boucle: 'Boucle',
 };
 
 export function SpAiAssistPanel({ currentQuestion, otherQuestions, spVariables = [], onApply, onVariableSuggestion }: Props) {

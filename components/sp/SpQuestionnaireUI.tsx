@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, User, ChevronRight } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
@@ -15,11 +15,42 @@ export interface SpQuestionnaireUIProps {
   initialReponses?: SpQuestionReponse[];
   isSimulation?: boolean;
   siteLabel?: string;
+  startFromQuestionId?: string;
 }
 
 type MessageBubble =
   | { from: 'bot'; text: string }
   | { from: 'user'; text: string };
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function getLoopItemsFromSa(
+  donneesExtraites: Record<string, unknown>,
+  sourceSaArray?: string,
+  filtreChamp?: string,
+  filtreValeur?: string,
+): Record<string, unknown>[] {
+  if (!sourceSaArray) return [];
+  const value = getNestedValue(donneesExtraites, sourceSaArray);
+  if (!Array.isArray(value)) return [];
+
+  const items = value.filter(
+    (item): item is Record<string, unknown> => item != null && typeof item === 'object' && !Array.isArray(item),
+  );
+
+  if (!filtreChamp || !filtreValeur) return items;
+
+  const expected = filtreValeur.trim().toLowerCase();
+  return items.filter((item) => String(item[filtreChamp] ?? '').trim().toLowerCase() === expected);
+}
 
 function formatReponseText(valeur: SpQuestionReponse['valeur']): string {
   if (typeof valeur === 'boolean') return valeur ? 'Oui' : 'Non';
@@ -61,19 +92,51 @@ function formatPrixProduit(p: CatalogueProduit): string | null {
   return null;
 }
 
+function getProduitPrixValue(p: CatalogueProduit): string {
+  if (p.type_frequence === 'mensuel' && p.prix_mensuel != null) return p.prix_mensuel.toString();
+  if (p.type_frequence === 'unique' && p.prix_vente != null) return p.prix_vente.toString();
+  return '';
+}
+
+function getProduitPrixLabel(p: CatalogueProduit): string {
+  return p.type_frequence === 'mensuel' ? 'Prix (€/mois)' : 'Prix (€)';
+}
+
+function formatProduitPrixValue(value: string, p: CatalogueProduit): string | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
+  return p.type_frequence === 'mensuel'
+    ? `${amount.toFixed(2).replace('.', ',')} €/mois`
+    : `${amount.toFixed(2).replace('.', ',')} €`;
+}
+
+function formatProduitFasValue(value: string): string {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return '0,00 €';
+  return `FAS ${amount.toFixed(2).replace('.', ',')} €`;
+}
+
 function CatalogueMultipleChoiceInput({
   products,
   onSubmit,
+  display = 'buttons',
 }: {
   products: CatalogueProduit[];
-  onSubmit: (selectedNames: string[], fasReponse?: { question_id: string; valeur: string }) => void;
+  onSubmit: (selectedNames: string[], extraReponses?: SpQuestionReponse[]) => void;
+  display?: 'buttons' | 'select';
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
-    products.forEach((p) => { init[p.nom] = p.prix_installation != null ? p.prix_installation.toString() : ''; });
+    products.forEach((p) => { init[p.nom] = p.prix_installation != null ? p.prix_installation.toString() : '0'; });
     return init;
   });
+  const [prixValues, setPrixValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    products.forEach((p) => { init[p.nom] = getProduitPrixValue(p); });
+    return init;
+  });
+  const [editingPrixFor, setEditingPrixFor] = useState<string | null>(null);
 
   const toggle = (nom: string) =>
     setSelected((prev) => { const s = new Set(prev); s.has(nom) ? s.delete(nom) : s.add(nom); return s; });
@@ -82,46 +145,119 @@ function CatalogueMultipleChoiceInput({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {products.map((p) => {
-          const prix = formatPrixProduit(p);
-          const isSelected = selected.has(p.nom);
-          return (
-            <button key={p.nom} type="button" onClick={() => toggle(p.nom)}
-              className={`text-left px-3 py-2 rounded-md border transition-colors ${
-                isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-              }`}
-            >
-              <div className="text-sm font-medium">{p.nom}</div>
-              {prix && <div className={`text-xs mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>{prix}</div>}
-            </button>
-          );
-        })}
-      </div>
+      {display === 'select' ? (
+        <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
+          {products.map((p) => {
+            const prix = formatPrixProduit(p);
+            const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+            const isSelected = selected.has(p.nom);
+            return (
+              <button
+                key={p.nom}
+                type="button"
+                onClick={() => toggle(p.nom)}
+                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                  isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
+                }`}
+              >
+                <div className="font-medium">{p.nom}</div>
+                {(prix || fas) && (
+                  <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                    {[prix, fas].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {products.map((p) => {
+            const prix = formatPrixProduit(p);
+            const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+            const isSelected = selected.has(p.nom);
+            return (
+              <button key={p.nom} type="button" onClick={() => toggle(p.nom)}
+                className={`text-left px-3 py-2 rounded-md border transition-colors ${
+                  isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                }`}
+              >
+                <div className="text-sm font-medium">{p.nom}</div>
+                {(prix || fas) && (
+                  <div className={`text-xs mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                    {[prix, fas].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {selectedProducts.length > 0 && (
         <div className="space-y-2 p-3 bg-white border border-gray-200 rounded-lg">
           {selectedProducts.map((p) => (
-            <div key={p.nom} className="flex items-center gap-2">
-              <span className="text-sm text-gray-700 flex-1 truncate">{p.nom}</span>
-              <label className="text-xs text-gray-500 shrink-0">FAS (€)</label>
-              <input
-                type="number" min="0" step="0.01"
-                value={fasValues[p.nom] ?? ''}
-                onChange={(e) => setFasValues((prev) => ({ ...prev, [p.nom]: e.target.value }))}
-                placeholder="0"
-                className="h-7 w-24 text-sm border border-gray-300 rounded px-2"
-              />
+            <div key={p.nom} className="space-y-2 rounded-md border border-gray-100 px-2 py-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{p.nom}</span>
+                {formatProduitPrixValue(prixValues[p.nom] ?? '', p) && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {formatProduitPrixValue(prixValues[p.nom] ?? '', p)}
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {formatProduitFasValue(fasValues[p.nom] ?? '0')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditingPrixFor((current) => current === p.nom ? null : p.nom)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                  aria-label={`Modifier le prix et le FAS de ${p.nom}`}
+                  title={`Modifier le prix et le FAS de ${p.nom}`}
+                >
+                  {editingPrixFor === p.nom ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              {editingPrixFor === p.nom && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 shrink-0">{getProduitPrixLabel(p)}</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={prixValues[p.nom] ?? ''}
+                      onChange={(e) => setPrixValues((prev) => ({ ...prev, [p.nom]: e.target.value }))}
+                      placeholder="0"
+                      className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 shrink-0">FAS (€)</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={fasValues[p.nom] ?? ''}
+                      onChange={(e) => setFasValues((prev) => ({ ...prev, [p.nom]: e.target.value }))}
+                      placeholder="0"
+                      className="h-7 w-24 text-sm border border-gray-300 rounded px-2"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           <Button size="sm" onClick={() => {
             const names = selectedProducts.map((p) => p.nom);
             const fasMap: Record<string, string> = {};
-            selectedProducts.forEach((p) => { if (fasValues[p.nom]?.trim()) fasMap[p.nom] = fasValues[p.nom].trim(); });
-            const fasReponse = Object.keys(fasMap).length > 0
-              ? { question_id: '__fas_placeholder__', valeur: JSON.stringify(fasMap) }
-              : undefined;
-            onSubmit(names, fasReponse);
+            const prixMap: Record<string, string> = {};
+            selectedProducts.forEach((p) => { fasMap[p.nom] = fasValues[p.nom]?.trim() || '0'; });
+            selectedProducts.forEach((p) => { if (prixValues[p.nom]?.trim()) prixMap[p.nom] = prixValues[p.nom].trim(); });
+            const extraReponses: SpQuestionReponse[] = [];
+            if (Object.keys(fasMap).length > 0) {
+              extraReponses.push({ question_id: '__fas_placeholder__', valeur: JSON.stringify(fasMap) });
+            }
+            if (Object.keys(prixMap).length > 0) {
+              extraReponses.push({ question_id: '__prix_placeholder__', valeur: JSON.stringify(prixMap) });
+            }
+            onSubmit(names, extraReponses.length > 0 ? extraReponses : undefined);
           }}>
             Valider ({selected.size} sélectionné{selected.size > 1 ? 's' : ''})
           </Button>
@@ -176,12 +312,58 @@ function MultipleChoiceInput({
   );
 }
 
+function MultipleSelectInput({
+  options,
+  onSubmit,
+}: {
+  options: string[];
+  onSubmit: (selected: string[]) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+
+  return (
+    <div className="space-y-2">
+      <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
+        {options.map((opt) => {
+          const isSelected = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setSelected((prev) => isSelected ? prev.filter((item) => item !== opt) : [...prev, opt])}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
+              }`}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {selected.length > 0 && (
+        <Button size="sm" onClick={() => onSubmit(selected)}>
+          Valider ({selected.length} sélectionné{selected.length > 1 ? 's' : ''})
+        </Button>
+      )}
+    </div>
+  );
+}
+
 interface ExpandedQuestion {
   question: SpQuestion;
   instanceId: string;
   displayLabel: string;
   iterationIndex: number;
   iterationLabel?: string;
+}
+
+interface QuestionnaireSnapshot {
+  reponses: SpQuestionReponse[];
+  messages: MessageBubble[];
+  hiddenByConsequence: Set<string>;
+  shownByConsequence: Set<string>;
+  dynamicFilters: Map<string, SpFiltresCatalogue>;
+  currentIdx: number;
 }
 
 function hasVisibilityConditions(question: SpQuestion): boolean {
@@ -197,6 +379,7 @@ export function SpQuestionnaireUI({
   initialReponses,
   isSimulation = false,
   siteLabel,
+  startFromQuestionId,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -211,7 +394,10 @@ export function SpQuestionnaireUI({
     instanceId: string;
     product: CatalogueProduit;
     fasValue: string;
+    prixValue: string;
+    prixEditing: boolean;
   } | null>(null);
+  const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
   // Track pending show timer to cancel it on re-init (prevents StrictMode duplicate messages)
@@ -235,6 +421,7 @@ export function SpQuestionnaireUI({
     setShownByConsequence(new Set());
     setDynamicFilters(new Map());
     setPendingCatalogueSelection(null);
+    setHistory([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions]);
 
@@ -261,6 +448,12 @@ export function SpQuestionnaireUI({
 
         let iterationCount = q.boucle.nombre_fixe ?? 1;
         const labels: string[] = [];
+        const loopItemsFromSa = getLoopItemsFromSa(
+          donneesExtraites,
+          q.boucle.source_sa_array,
+          q.boucle.source_sa_filtre_champ,
+          q.boucle.source_sa_filtre_valeur,
+        );
 
         if (q.boucle.source_nombre_question_id) {
           const rep = reponses.find((r) => r.question_id === q.boucle!.source_nombre_question_id);
@@ -268,6 +461,8 @@ export function SpQuestionnaireUI({
             const n = Number(rep.valeur);
             if (Number.isFinite(n) && n > 0) iterationCount = n;
           }
+        } else if (loopItemsFromSa.length > 0) {
+          iterationCount = loopItemsFromSa.length;
         }
 
         if (q.boucle.source_labels_question_id) {
@@ -277,6 +472,15 @@ export function SpQuestionnaireUI({
           } else if (rep && typeof rep.valeur === 'string') {
             labels.push(...rep.valeur.split(',').map((s) => s.trim()).filter(Boolean));
           }
+        } else if (q.boucle.source_sa_label_champ && loopItemsFromSa.length > 0) {
+          labels.push(
+            ...loopItemsFromSa.map((item, index) => {
+              const value = item[q.boucle!.source_sa_label_champ!];
+              return value != null && String(value).trim()
+                ? String(value).trim()
+                : `${q.boucle?.label_prefix || 'Item'} ${index + 1}`;
+            }),
+          );
         }
 
         for (let iter = 0; iter < iterationCount; iter++) {
@@ -353,11 +557,17 @@ export function SpQuestionnaireUI({
     if (questions.length > 0 && expandedQuestions.length > 0 && !hasInitialized.current) {
       hasInitialized.current = true;
       const initReponses = initialReponses ?? [];
-      const firstVisible = expandedQuestions.findIndex((eq) =>
-        isQuestionVisibleWith(eq, initReponses, new Set(), new Set())
-      );
-      if (firstVisible >= 0) {
-        showQuestion(firstVisible);
+      let startIdx = -1;
+      if (startFromQuestionId) {
+        startIdx = expandedQuestions.findIndex((eq) => eq.question.id === startFromQuestionId);
+      }
+      if (startIdx < 0) {
+        startIdx = expandedQuestions.findIndex((eq) =>
+          isQuestionVisibleWith(eq, initReponses, new Set(), new Set())
+        );
+      }
+      if (startIdx >= 0) {
+        showQuestion(startIdx);
       } else {
         setCurrentIdx(expandedQuestions.length);
       }
@@ -405,7 +615,7 @@ export function SpQuestionnaireUI({
   // ── Process consequences — returns updated sets synchronously ────────────────
   const processConsequences = (
     consequences: SpConsequence[],
-    _answeredValue: SpQuestionReponse['valeur'],
+    answeredValue: SpQuestionReponse['valeur'],
     currentHidden: Set<string>,
     currentShown: Set<string>,
   ): { jumpTo: string | null; newHidden: Set<string>; newShown: Set<string> } => {
@@ -414,7 +624,13 @@ export function SpQuestionnaireUI({
     const newHidden = new Set(currentHidden);
     const newShown = new Set(currentShown);
 
+    const matchesDeclencheur = (c: SpConsequence): boolean => {
+      if (!c.valeur_declencheur) return true;
+      return formatReponseText(answeredValue).toLowerCase() === c.valeur_declencheur.trim().toLowerCase();
+    };
+
     for (const c of consequences) {
+      if (!matchesDeclencheur(c)) continue;
       switch (c.type) {
         case 'afficher_question':
           if (c.question_id) {
@@ -436,6 +652,11 @@ export function SpQuestionnaireUI({
             setDynamicFilters((prev) => new Map(prev).set(c.question_id!, c.filtre!));
           }
           break;
+        case 'afficher_message':
+          if (c.message_texte?.trim()) {
+            setMessages((prev) => [...prev, { from: 'bot', text: c.message_texte! }]);
+          }
+          break;
         case 'renseigner_variable':
           break;
       }
@@ -448,13 +669,46 @@ export function SpQuestionnaireUI({
     return { jumpTo: jumpToQuestionId, newHidden, newShown };
   };
 
-  const recordAnswer = (instanceId: string, valeur: SpQuestionReponse['valeur'], fasReponse?: SpQuestionReponse) => {
+  const goBack = () => {
+    if (history.length === 0) return;
+    const snapshot = history[history.length - 1];
+    if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
+    setHistory((prev) => prev.slice(0, -1));
+    setReponses(snapshot.reponses);
+    setMessages(snapshot.messages);
+    setHiddenByConsequence(snapshot.hiddenByConsequence);
+    setShownByConsequence(snapshot.shownByConsequence);
+    setDynamicFilters(snapshot.dynamicFilters);
+    setCurrentIdx(snapshot.currentIdx);
+    setIsTyping(false);
+    setInputValue('');
+    setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
+    setPendingCatalogueSelection(null);
+  };
+
+  const recordAnswer = (instanceId: string, valeur: SpQuestionReponse['valeur'], extraReponses?: SpQuestionReponse[]) => {
+    // Save snapshot before changing state so "back" can restore this exact moment
+    setHistory((prev) => [...prev, {
+      reponses: [...reponses],
+      messages: [...messages],
+      hiddenByConsequence: new Set(hiddenByConsequence),
+      shownByConsequence: new Set(shownByConsequence),
+      dynamicFilters: new Map(dynamicFilters),
+      currentIdx,
+    }]);
+
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
+    const extra = extraReponses ?? [];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`];
     // Build updated reponses synchronously
     const nextReps = [
-      ...reponses.filter((r) => r.question_id !== instanceId && (!fasReponse || r.question_id !== fasReponse.question_id)),
+      ...reponses.filter((r) =>
+        r.question_id !== instanceId &&
+        !auxiliaryQuestionIds.includes(r.question_id) &&
+        !extra.some((er) => er.question_id === r.question_id)
+      ),
       rep,
-      ...(fasReponse ? [fasReponse] : []),
+      ...extra,
     ];
     setReponses(nextReps);
     setMessages((prev) => [...prev, { from: 'user', text: formatReponseText(valeur) }]);
@@ -557,6 +811,19 @@ export function SpQuestionnaireUI({
         <div ref={bottomRef} />
       </div>
 
+      {/* Back button */}
+      {history.length > 0 && !isTyping && (
+        <div className="flex">
+          <button
+            onClick={goBack}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-0.5"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Revenir à la question précédente
+          </button>
+        </div>
+      )}
+
       {/* Current question input */}
       {currentQuestion && currentExpanded && !isTyping && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
@@ -595,7 +862,9 @@ export function SpQuestionnaireUI({
                         onClick={() => setPendingCatalogueSelection({
                           instanceId: currentExpanded.instanceId,
                           product: p,
-                          fasValue: p.prix_installation != null ? p.prix_installation.toString() : '',
+                          fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
+                          prixValue: getProduitPrixValue(p),
+                          prixEditing: false,
                         })}
                         className={`text-left px-3 py-2 rounded-md border transition-colors ${
                           isPending ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
@@ -658,7 +927,9 @@ export function SpQuestionnaireUI({
                     if (p) setPendingCatalogueSelection({
                       instanceId: currentExpanded.instanceId,
                       product: p,
-                      fasValue: p.prix_installation != null ? p.prix_installation.toString() : '',
+                      fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
+                      prixValue: getProduitPrixValue(p),
+                      prixEditing: false,
                     });
                   } else {
                     recordAnswer(currentExpanded.instanceId, e.target.value);
@@ -666,10 +937,15 @@ export function SpQuestionnaireUI({
                 }}
                 className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white">
                 <option value="">Sélectionnez...</option>
-                {(currentCatalogueOptions.length > 0
-                  ? currentCatalogueOptions.map((p) => p.nom)
-                  : currentQuestion.options_manuelles ?? fournisseurs
-                ).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                {currentCatalogueOptions.length > 0
+                  ? currentCatalogueOptions.map((p) => {
+                    const prix = formatPrixProduit(p);
+                    const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                    return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
+                  })
+                  : (currentQuestion.options_manuelles ?? fournisseurs).map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
               </select>
             </div>
           )}
@@ -678,15 +954,47 @@ export function SpQuestionnaireUI({
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
-                onSubmit={(selectedNames, fasReponse) => {
-                  const finalFas = fasReponse
-                    ? { ...fasReponse, question_id: 'fas_' + currentExpanded.instanceId }
-                    : undefined;
-                  recordAnswer(currentExpanded.instanceId, selectedNames, finalFas);
+                onSubmit={(selectedNames, extraReponses) => {
+                  const nextExtras = (extraReponses ?? []).map((r) => {
+                    if (r.question_id === '__fas_placeholder__') {
+                      return { ...r, question_id: 'fas_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__prix_placeholder__') {
+                      return { ...r, question_id: 'prix_' + currentExpanded.instanceId };
+                    }
+                    return r;
+                  });
+                  recordAnswer(currentExpanded.instanceId, selectedNames, nextExtras);
                 }}
               />
             ) : (
               <MultipleChoiceInput
+                options={currentQuestion.options_manuelles ?? fournisseurs}
+                onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
+              />
+            )
+          )}
+
+          {currentQuestion.affichage === 'liste_deroulante_choix_multiple' && (
+            currentCatalogueOptions.length > 0 ? (
+              <CatalogueMultipleChoiceInput
+                products={currentCatalogueOptions}
+                display="select"
+                onSubmit={(selectedNames, extraReponses) => {
+                  const nextExtras = (extraReponses ?? []).map((r) => {
+                    if (r.question_id === '__fas_placeholder__') {
+                      return { ...r, question_id: 'fas_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__prix_placeholder__') {
+                      return { ...r, question_id: 'prix_' + currentExpanded.instanceId };
+                    }
+                    return r;
+                  });
+                  recordAnswer(currentExpanded.instanceId, selectedNames, nextExtras);
+                }}
+              />
+            ) : (
+              <MultipleSelectInput
                 options={currentQuestion.options_manuelles ?? fournisseurs}
                 onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
               />
@@ -763,28 +1071,55 @@ export function SpQuestionnaireUI({
             <div className="mt-1 p-3 bg-white border border-blue-300 rounded-lg space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium text-gray-800">{pendingCatalogueSelection.product.nom}</span>
-                {formatPrixProduit(pendingCatalogueSelection.product) && (
+                {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product) && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {formatPrixProduit(pendingCatalogueSelection.product)}
+                    {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product)}
                   </span>
                 )}
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {formatProduitFasValue(pendingCatalogueSelection.fasValue)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPendingCatalogueSelection((prev) => prev ? { ...prev, prixEditing: !prev.prixEditing } : null)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                  aria-label="Modifier le prix et le FAS"
+                  title="Modifier le prix et le FAS"
+                >
+                  {pendingCatalogueSelection.prixEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                </button>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-600 shrink-0">FAS (€) :</label>
-                <input
-                  type="number" min="0" step="0.01"
-                  value={pendingCatalogueSelection.fasValue}
-                  onChange={(e) => setPendingCatalogueSelection((prev) => prev ? { ...prev, fasValue: e.target.value } : null)}
-                  placeholder="0"
-                  className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
-                />
-              </div>
+              {pendingCatalogueSelection.prixEditing && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 shrink-0">{getProduitPrixLabel(pendingCatalogueSelection.product)} :</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={pendingCatalogueSelection.prixValue}
+                      onChange={(e) => setPendingCatalogueSelection((prev) => prev ? { ...prev, prixValue: e.target.value } : null)}
+                      placeholder="0"
+                      className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 shrink-0">FAS (€) :</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={pendingCatalogueSelection.fasValue}
+                      onChange={(e) => setPendingCatalogueSelection((prev) => prev ? { ...prev, fasValue: e.target.value } : null)}
+                      placeholder="0"
+                      className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
+                    />
+                  </div>
+                </div>
+              )}
               <Button size="sm" onClick={() => {
                 const fasVal = pendingCatalogueSelection.fasValue.trim();
-                const fasReponse: SpQuestionReponse | undefined = fasVal
-                  ? { question_id: 'fas_' + pendingCatalogueSelection.instanceId, valeur: fasVal }
-                  : undefined;
-                recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, fasReponse);
+                const prixVal = pendingCatalogueSelection.prixValue.trim();
+                const extras: SpQuestionReponse[] = [];
+                if (fasVal) extras.push({ question_id: 'fas_' + pendingCatalogueSelection.instanceId, valeur: fasVal });
+                if (prixVal) extras.push({ question_id: 'prix_' + pendingCatalogueSelection.instanceId, valeur: prixVal });
+                recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, extras.length > 0 ? extras : undefined);
                 setPendingCatalogueSelection(null);
               }}>
                 Valider

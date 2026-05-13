@@ -148,7 +148,8 @@ const SOURCES: { value: SpQuestionSource; label: string; desc: string; tooltip: 
 const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   boutons_choix_unique: "L'utilisateur clique sur un seul bouton parmi les choix proposés. Idéal pour choisir un fournisseur ou un forfait.",
   boutons_choix_multiple: "L'utilisateur peut cocher plusieurs réponses. Idéal pour sélectionner plusieurs produits ou services.",
-  liste_deroulante: "Menu déroulant compact. Utile quand il y a beaucoup de choix possibles.",
+  liste_deroulante: "Menu déroulant compact avec un seul choix possible. Utile quand il y a beaucoup de choix possibles.",
+  liste_deroulante_choix_multiple: "Menu déroulant compact permettant de sélectionner plusieurs choix. Utile quand il y a beaucoup de choix possibles.",
   oui_non: "Deux boutons Oui / Non. Pour les questions binaires simples.",
   confirmation_sa: "Affiche la valeur extraite du document SA et demande à l'utilisateur de confirmer. Pas de modification possible.",
   edition_sa: "Affiche la valeur extraite du SA et permet à l'utilisateur de la modifier avant de valider.",
@@ -164,7 +165,8 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
   catalogue: [
     { value: 'boutons_choix_unique', label: 'Boutons — choix unique' },
     { value: 'boutons_choix_multiple', label: 'Boutons — choix multiple' },
-    { value: 'liste_deroulante', label: 'Liste déroulante' },
+    { value: 'liste_deroulante', label: 'Liste déroulante — choix unique' },
+    { value: 'liste_deroulante_choix_multiple', label: 'Liste déroulante — choix multiple' },
   ],
   sa: [
     { value: 'oui_non', label: 'Oui / Non' },
@@ -183,6 +185,8 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
   catalogue_et_sa: [
     { value: 'boutons_choix_unique', label: 'Boutons — choix unique' },
     { value: 'boutons_choix_multiple', label: 'Boutons — choix multiple' },
+    { value: 'liste_deroulante', label: 'Liste déroulante — choix unique' },
+    { value: 'liste_deroulante_choix_multiple', label: 'Liste déroulante — choix multiple' },
     { value: 'confirmation_sa', label: 'Confirmation (lecture seule)' },
   ],
 };
@@ -201,6 +205,7 @@ const CONSEQUENCE_TYPES: { value: SpConsequence['type']; label: string; desc: st
   { value: 'masquer_question', label: 'Masquer question', desc: 'Cache une autre question' },
   { value: 'aller_question', label: 'Aller à question', desc: 'Saute directement à une question' },
   { value: 'filtrer_question', label: 'Filtrer catalogue', desc: 'Applique un filtre catalogue à une question' },
+  { value: 'afficher_message', label: 'Afficher un message', desc: 'Affiche un message dans le chat selon la réponse' },
 ];
 
 // ── Catalogue filter ──────────────────────────────────────────────────────────
@@ -212,6 +217,26 @@ const CATALOGUE_CATEGORIES: { value: string; label: string }[] = [
   { value: 'equipement', label: 'Équipement' },
   { value: 'autre', label: 'Autre' },
 ];
+
+function formatEuro(value: number): string {
+  return `${value.toFixed(2).replace('.', ',')} €`;
+}
+
+function formatProduitMeta(produit: CatalogueProduit): string | null {
+  const parts: string[] = [];
+
+  if (produit.type_frequence === 'mensuel' && produit.prix_mensuel != null) {
+    parts.push(`${formatEuro(produit.prix_mensuel)}/mois`);
+  } else if (produit.type_frequence === 'unique' && produit.prix_vente != null) {
+    parts.push(formatEuro(produit.prix_vente));
+  }
+
+  if (produit.prix_installation != null) {
+    parts.push(`FAS ${formatEuro(produit.prix_installation)}`);
+  }
+
+  return parts.length > 0 ? parts.join(' - ') : null;
+}
 
 function FiltreCatalogueUI({
   filtre,
@@ -294,6 +319,7 @@ function FiltreCatalogueUI({
             <div className="max-h-36 overflow-y-auto space-y-0.5 border border-gray-100 rounded p-1 bg-white">
               {displayedProducts.map((p) => {
                 const isSelected = filtre.produits_ids?.includes(p.id) ?? false;
+                const produitMeta = formatProduitMeta(p);
                 return (
                   <label key={p.id} className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-gray-50 cursor-pointer">
                     <input
@@ -306,7 +332,14 @@ function FiltreCatalogueUI({
                       }}
                       className="w-3 h-3 accent-blue-600"
                     />
-                    <span className="text-xs text-gray-700 flex-1 truncate">{p.nom}</span>
+                    <span className="flex items-baseline gap-1 text-xs text-gray-700 flex-1 min-w-0 overflow-hidden">
+                      <span className="truncate">{p.nom}</span>
+                      {produitMeta && (
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
+                          ({produitMeta})
+                        </span>
+                      )}
+                    </span>
                     <span className="text-xs text-gray-400 shrink-0">{p.categorie}</span>
                   </label>
                 );
@@ -344,10 +377,15 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
   // Variables SP disponibles
   const [spVariables, setSpVariables] = useState<SpVariableOption[]>([]);
   const [showCreateVar, setShowCreateVar] = useState<number | null>(null); // index de la conséquence
+  const [showRenameVar, setShowRenameVar] = useState<number | null>(null);
   const [newVarLabel, setNewVarLabel] = useState('');
   const [newVarKey, setNewVarKey] = useState('');
   const [newVarDescription, setNewVarDescription] = useState('');
   const [creatingSaving, setCreatingSaving] = useState(false);
+  const [renameVarKey, setRenameVarKey] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const [variableRenameMap, setVariableRenameMap] = useState<Record<string, { key: string; label: string }>>({});
 
   useEffect(() => {
     if (!templateId) return;
@@ -393,6 +431,70 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
     }
   };
 
+  const buildRenamedOptionLabel = (baseLabel: string, oldKey: string, nextKey: string) => {
+    if (baseLabel.startsWith(`${oldKey} — `)) {
+      return `${nextKey} — ${baseLabel.slice(oldKey.length + 3)}`;
+    }
+    return `${nextKey} — ${baseLabel}`;
+  };
+
+  const startRenameVariable = (consIdx: number, currentKey: string, currentLabel?: string) => {
+    setShowRenameVar(consIdx);
+    setRenameVarKey(currentKey);
+    setRenameError('');
+    if (currentLabel) {
+      setVariableRenameMap((prev) => ({
+        ...prev,
+        [currentKey]: prev[currentKey] ?? { key: currentKey, label: currentLabel },
+      }));
+    }
+  };
+
+  const handleRenameVariable = async (consIdx: number) => {
+    const oldKey = consequences[consIdx]?.variable_cible?.trim();
+    const nextKey = renameVarKey.trim();
+    if (!oldKey || !nextKey) return;
+
+    setRenameSaving(true);
+    setRenameError('');
+    try {
+      const res = await fetch(`/api/templates/${templateId}/sp-variables`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldKey, newKey: nextKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error ?? 'Erreur lors du renommage');
+      }
+
+      const selectedOption = [...templateCustomVariables, ...previousQuestionVariables, ...selectedQuestionVariables]
+        .find((v) => v.key === oldKey);
+      const nextLabel = selectedOption
+        ? buildRenamedOptionLabel(selectedOption.label, oldKey, nextKey)
+        : `${nextKey} — variable renommée`;
+
+      setSpVariables((prev) => prev.map((v) =>
+        v.key === oldKey ? { ...v, key: nextKey, label: buildRenamedOptionLabel(v.label, oldKey, nextKey) } : v,
+      ));
+      setVariableRenameMap((prev) => ({
+        ...prev,
+        [oldKey]: { key: nextKey, label: nextLabel },
+      }));
+      setConsequences((prev) => prev.map((c) =>
+        c.type === 'renseigner_variable' && c.variable_cible === oldKey
+          ? { ...c, variable_cible: nextKey }
+          : c,
+      ));
+      setShowRenameVar(null);
+      setRenameVarKey('');
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Erreur lors du renommage');
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   // Conditions state
   const [groupesConditions, setGroupesConditions] = useState<SpGroupeConditions[]>(
     initial?.groupes_conditions ?? [],
@@ -422,28 +524,33 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
     if (currentQuestionOrdre != null && question.ordre != null && question.ordre >= currentQuestionOrdre) continue;
     for (const consequence of question.consequences ?? []) {
       if (consequence.type !== 'renseigner_variable' || !consequence.variable_cible) continue;
-      if (knownVariableKeys.has(consequence.variable_cible)) continue;
+      const renamedVariable = variableRenameMap[consequence.variable_cible];
+      const variableKey = renamedVariable?.key ?? consequence.variable_cible;
+      if (knownVariableKeys.has(variableKey)) continue;
       const shortLabel =
         question.libelle.length > 40 ? `${question.libelle.slice(0, 40)}…` : question.libelle;
+      const variableLabel = renamedVariable?.label ?? `${variableKey} — ${shortLabel}`;
       previousQuestionVariables.push({
-        key: consequence.variable_cible,
-        label: `${consequence.variable_cible} — ${shortLabel}`,
+        key: variableKey,
+        label: variableLabel,
         group: 'question',
       });
-      knownVariableKeys.add(consequence.variable_cible);
+      knownVariableKeys.add(variableKey);
     }
   }
 
   const selectedQuestionVariables: SpVariableOption[] = [];
   for (const consequence of consequences) {
     if (consequence.type !== 'renseigner_variable' || !consequence.variable_cible) continue;
-    if (knownVariableKeys.has(consequence.variable_cible)) continue;
+    const renamedVariable = variableRenameMap[consequence.variable_cible];
+    const variableKey = renamedVariable?.key ?? consequence.variable_cible;
+    if (knownVariableKeys.has(variableKey)) continue;
     selectedQuestionVariables.push({
-      key: consequence.variable_cible,
-      label: `${consequence.variable_cible} — variable de cette question`,
+      key: variableKey,
+      label: renamedVariable?.label ?? `${variableKey} — variable de cette question`,
       group: 'question',
     });
-    knownVariableKeys.add(consequence.variable_cible);
+    knownVariableKeys.add(variableKey);
   }
 
   // Options manuelles (pour choix_liste_manuelle)
@@ -882,8 +989,25 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                   </button>
                 </div>
 
+                {/* Déclencheur conditionnel (optionnel pour tous les types) */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 shrink-0 whitespace-nowrap">Si la réponse est (optionnel) :</label>
+                  <input
+                    value={cons.valeur_declencheur ?? ''}
+                    onChange={(e) => updateConsequence(ci, { valeur_declencheur: e.target.value || undefined })}
+                    placeholder="Ex : Oui, Non, Orange… (vide = toujours)"
+                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
+                  />
+                </div>
+
                 {cons.type === 'renseigner_variable' && (
                   <div className="space-y-2">
+                    {(() => {
+                      const selectedVariable = [...templateStandardVariables, ...templateCustomVariables, ...previousQuestionVariables, ...selectedQuestionVariables]
+                        .find((v) => v.key === cons.variable_cible);
+                      const canRename = !!cons.variable_cible && selectedVariable?.group !== 'standard';
+                      return (
+                        <>
                     <div className="flex gap-2">
                       <select
                         value={cons.variable_cible ?? ''}
@@ -926,6 +1050,54 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                         </code>
                       )}
                     </div>
+
+                    {canRename && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startRenameVariable(ci, cons.variable_cible!, selectedVariable?.label)}
+                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          Renommer cette variable SP
+                        </button>
+                        <span className="text-[11px] text-gray-400">
+                          Le renommage mettra aussi à jour les autres questions du template.
+                        </span>
+                      </div>
+                    )}
+
+                    {showRenameVar === ci && cons.variable_cible && (
+                      <div className="border border-amber-200 rounded-lg p-3 bg-amber-50 space-y-2">
+                        <p className="text-xs font-semibold text-amber-900">Renommer la variable SP</p>
+                        <input
+                          value={renameVarKey}
+                          onChange={(e) => setRenameVarKey(e.target.value)}
+                          placeholder="Nouvelle clé (ex: sp_type_forfait_mobile)"
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                        />
+                        <code className="text-xs text-amber-700">{`{{${renameVarKey || cons.variable_cible}}}`}</code>
+                        {renameError && (
+                          <p className="text-xs text-red-600">{renameError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRenameVariable(ci)}
+                            disabled={renameSaving || !renameVarKey.trim()}
+                            className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {renameSaving ? 'Renommage…' : 'Renommer'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setShowRenameVar(null); setRenameVarKey(''); setRenameError(''); }}
+                            className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Mini-formulaire de création */}
                     {showCreateVar === ci && (
@@ -974,6 +1146,9 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                         </div>
                       </div>
                     )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -1005,6 +1180,19 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
                       })}
                       allProduits={allProduits}
                       colorScheme="amber"
+                    />
+                  </div>
+                )}
+
+                {cons.type === 'afficher_message' && (
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-500">Message à afficher dans le chat</label>
+                    <textarea
+                      value={cons.message_texte ?? ''}
+                      onChange={(e) => updateConsequence(ci, { message_texte: e.target.value || undefined })}
+                      placeholder="Ex : Demander confirmation avant."
+                      rows={2}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs resize-none"
                     />
                   </div>
                 )}
@@ -1272,7 +1460,22 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
 
       {/* ── ASSISTANT IA ─────────────────────────────────────────────── */}
       <SpAiAssistPanel
-        currentQuestion={{ libelle, description, source, affichage, obligatoire, priorite_ia: prioriteIa }}
+        currentQuestion={{
+          libelle,
+          description,
+          source,
+          affichage,
+          options_manuelles: optionsManuelles,
+          options_libres: optionsLibres,
+          filtres_catalogue: filtresCatalogue,
+          groupes_conditions: groupesConditions,
+          logique_declencheur: logiqueDeclencheur,
+          obligatoire,
+          priorite_ia: prioriteIa,
+          consequences,
+          groupe_boucle_id: groupeBoucleId,
+          boucle: boucleEnabled ? boucle : undefined,
+        }}
         otherQuestions={otherQuestions}
         spVariables={spVariables}
         onApply={(patch) => {
@@ -1283,8 +1486,19 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
             setAffichage(AFFICHAGE_BY_SOURCE[patch.source][0].value);
           }
           if (patch.affichage !== undefined) setAffichage(patch.affichage);
+          if (patch.options_manuelles !== undefined) setOptionsManuelles(patch.options_manuelles);
+          if (patch.options_libres !== undefined) setOptionsLibres(patch.options_libres);
+          if (patch.filtres_catalogue !== undefined) setFiltresCatalogue(patch.filtres_catalogue);
+          if (patch.groupes_conditions !== undefined) setGroupesConditions(patch.groupes_conditions);
+          if (patch.logique_declencheur !== undefined) setLogiqueDeclencheur(patch.logique_declencheur);
+          if (patch.consequences !== undefined) setConsequences(patch.consequences);
           if (patch.obligatoire !== undefined) setObligatoire(patch.obligatoire);
           if (patch.priorite_ia !== undefined) setPrioriteIa(patch.priorite_ia);
+          if (patch.groupe_boucle_id !== undefined) setGroupeBoucleId(patch.groupe_boucle_id);
+          if (patch.boucle !== undefined) {
+            setBoucleEnabled(true);
+            setBoucle(patch.boucle);
+          }
         }}
         onVariableSuggestion={(suggestion) => {
           // If a variable is suggested and exists, auto-add a renseigner_variable consequence

@@ -16,16 +16,20 @@ interface Message {
   content: string;
 }
 
+type SpAiWorkflowMode = 'create' | 'modify' | 'append';
+
 interface Props {
   templateId: string;
+  mode: SpAiWorkflowMode;
   nextOrdre: number;
   existingQuestions: SpQuestion[];
   onImport: (questions: SpQuestion[], replace: boolean) => void;
   onClose: () => void;
 }
 
-export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, onImport, onClose }: Props) {
-  const isModifyMode = existingQuestions.length > 0;
+export function SpAiGeneratorModal({ templateId, mode, nextOrdre, existingQuestions, onImport, onClose }: Props) {
+  const isModifyMode = mode === 'modify';
+  const isAppendMode = mode === 'append';
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,8 +63,10 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
   }, [templateId]);
 
   const placeholder = isModifyMode
-    ? `Décris la modification souhaitée...\n\nExemple : "Modifie la 1ère question en remplaçant les options par 'Site unique' et 'Site multiple'" ou "Ajoute une question sur la durée du contrat après la question de fibre"`
-    : `Décris le workflow que tu veux créer...\n\nExemple : "Simple PTO ou Double PTO. Si double PTO, demander le type de fibre pour PTO 1 (FTTH ou Dédiée) et PTO 2 (FTTH ou Dédiée)."`;
+    ? `Décris la modification souhaitée...\n\nExemple : "Modifie la 1ère question en remplaçant les options par 'Site unique' et 'Site multiple'"`
+    : isAppendMode
+      ? `Décris les questions à ajouter...\n\nExemple : "Ajoute une question sur la durée du contrat après la question de fibre"`
+      : `Décris le workflow que tu veux créer...\n\nExemple : "Simple PTO ou Double PTO. Si double PTO, demander le type de fibre pour PTO 1 (FTTH ou Dédiée) et PTO 2 (FTTH ou Dédiée)."`;
 
   const send = async () => {
     const trimmed = input.trim();
@@ -80,8 +86,9 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
         body: JSON.stringify({
           messages: newMessages,
           templateId,
-          existingQuestions: isModifyMode ? existingQuestions : [],
+          existingQuestions: mode === 'create' ? [] : existingQuestions,
           spVariables,
+          mode,
         }),
       });
 
@@ -95,7 +102,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
           ordre: isModifyMode ? i + 1 : nextOrdre + i,
         }));
         setGeneratedQuestions(withOrdre);
-        const action = isModifyMode ? 'modifié' : 'généré';
+        const action = isModifyMode ? 'modifié' : isAppendMode ? 'préparé' : 'généré';
         setMessages((prev) => [
           ...prev,
           {
@@ -119,7 +126,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
                 ordre: isModifyMode ? i + 1 : nextOrdre + i,
               }));
               setGeneratedQuestions(withOrdre);
-              const action = isModifyMode ? 'modifié' : 'généré';
+              const action = isModifyMode ? 'modifié' : isAppendMode ? 'préparé' : 'généré';
               setMessages((prev) => [
                 ...prev,
                 {
@@ -142,13 +149,6 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col shadow-2xl" style={{ maxHeight: '85vh' }}>
@@ -164,11 +164,13 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">
-                {isModifyMode ? 'Modifier le workflow avec l\'IA' : 'Générer avec l\'IA'}
+                {isModifyMode ? 'Modifier le workflow avec l\'IA' : isAppendMode ? 'Ajouter des questions avec l\'IA' : 'Générer avec l\'IA'}
               </h2>
               <p className="text-xs text-gray-400">
                 {isModifyMode
                   ? `${existingQuestions.length} question${existingQuestions.length > 1 ? 's' : ''} existante${existingQuestions.length > 1 ? 's' : ''} · décris ta modification`
+                  : isAppendMode
+                    ? `${existingQuestions.length} question${existingQuestions.length > 1 ? 's' : ''} existante${existingQuestions.length > 1 ? 's' : ''} · décris les ajouts`
                   : 'Décris ton workflow en langage naturel'}
               </p>
             </div>
@@ -179,7 +181,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
         </div>
 
         {/* Résumé des questions existantes (mode modification) */}
-        {isModifyMode && messages.length === 0 && (
+        {(isModifyMode || isAppendMode) && messages.length === 0 && (
           <div className="mx-5 mt-4 border border-orange-100 rounded-xl overflow-hidden shrink-0">
             <div className="bg-orange-50 px-3 py-2">
               <p className="text-xs font-semibold text-orange-700">Questions actuelles du workflow</p>
@@ -214,11 +216,13 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
                 }
               </div>
               <p className="text-sm font-medium text-gray-700">
-                {isModifyMode ? 'Que veux-tu modifier ?' : 'Décris ton workflow'}
+                {isModifyMode ? 'Que veux-tu modifier ?' : isAppendMode ? 'Quelles questions veux-tu ajouter ?' : 'Décris ton workflow'}
               </p>
               <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
                 {isModifyMode
                   ? "L'IA voit tes questions existantes et retournera le workflow complet mis à jour."
+                  : isAppendMode
+                    ? "L'IA voit tes questions existantes mais retournera uniquement les nouvelles questions à ajouter."
                   : "L'IA peut poser des questions de clarification si nécessaire avant de générer."}
               </p>
             </div>
@@ -276,7 +280,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
               <div className={`px-4 py-2.5 flex items-center justify-between ${isModifyMode ? 'bg-orange-50' : 'bg-violet-50'}`}>
                 <span className={`text-xs font-semibold ${isModifyMode ? 'text-orange-700' : 'text-violet-700'}`}>
                   {generatedQuestions.length} question{generatedQuestions.length > 1 ? 's' : ''}
-                  {isModifyMode ? ' — workflow mis à jour' : ' générée' + (generatedQuestions.length > 1 ? 's' : '')}
+                  {isModifyMode ? ' — workflow mis à jour' : isAppendMode ? ' à ajouter' : ' générée' + (generatedQuestions.length > 1 ? 's' : '')}
                 </span>
                 <Button
                   size="sm"
@@ -284,7 +288,7 @@ export function SpAiGeneratorModal({ templateId, nextOrdre, existingQuestions, o
                   className={`h-7 text-white text-xs px-3 ${isModifyMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-violet-600 hover:bg-violet-700'}`}
                 >
                   <Check className="w-3.5 h-3.5 mr-1.5" />
-                  {isModifyMode ? 'Remplacer le workflow' : 'Importer dans le template'}
+                  {isModifyMode ? 'Remplacer le workflow' : isAppendMode ? 'Ajouter au workflow' : 'Importer dans le template'}
                 </Button>
               </div>
               <div className="divide-y divide-gray-100">
