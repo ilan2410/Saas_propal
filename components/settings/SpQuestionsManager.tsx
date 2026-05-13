@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, CornerDownRight, GripVertical, Download, Upload } from 'lucide-react';
+import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, GripVertical, Download, Upload, Package, FileText, PenLine, Layers, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
@@ -191,7 +191,6 @@ function buildTreeOrder(questions: SpQuestion[]): TreeItem[] {
 
   roots.forEach((r, i) => addBranch(r, 0, i === roots.length - 1));
 
-  // Orphelins (conditions référençant une question extérieure)
   for (const q of questions) {
     if (!addedIds.has(q.id)) {
       result.push({ q, depth: 0, conditionSummary: '', isLastSibling: true });
@@ -246,9 +245,182 @@ function collectDescendantQuestionIds(questions: SpQuestion[], rootId: string): 
   return idsToDelete;
 }
 
+// ── Helpers lisibilité conditions / conséquences ──────────────────────────────
+
+function operatorToText(op: string, valeur?: string | number): string {
+  switch (op) {
+    case 'egal': return `= "${valeur ?? ''}"`;
+    case 'different': return `≠ "${valeur ?? ''}"`;
+    case 'non_vide': return 'est renseigné';
+    case 'vide': return 'est vide';
+    case 'contient': return `contient "${valeur ?? ''}"`;
+    case 'ne_contient_pas': return `ne contient pas "${valeur ?? ''}"`;
+    case 'superieur': return `> ${valeur ?? ''}`;
+    case 'inferieur': return `< ${valeur ?? ''}`;
+    case 'plus_de_elements': return `> ${valeur ?? ''} éléments`;
+    case 'moins_de_elements': return `< ${valeur ?? ''} éléments`;
+    case 'element_ou': return `contient "${valeur ?? ''}"`;
+    default: return op;
+  }
+}
+
+function getReadableConditions(q: SpQuestion, allQuestions: SpQuestion[]): string {
+  if (!q.groupes_conditions?.length) return '';
+
+  const idToLibelle = new Map(allQuestions.map((x) => [x.id, x.libelle]));
+
+  const groupTexts = q.groupes_conditions.map((group) => {
+    const condTexts = group.conditions.map((cond) => {
+      if (cond.source === 'reponse_question' && cond.question_id) {
+        const libelle = idToLibelle.get(cond.question_id);
+        const label = libelle
+          ? (libelle.length > 30 ? libelle.slice(0, 30) + '…' : libelle)
+          : 'Q?';
+        return `[${label}] ${operatorToText(cond.operateur, cond.valeur)}`;
+      }
+      if (cond.source === 'sa' && cond.variable_sa) {
+        const varLabel = cond.variable_sa.split('.').pop() ?? cond.variable_sa;
+        return `SA:${varLabel} ${operatorToText(cond.operateur, cond.valeur)}`;
+      }
+      return '';
+    }).filter(Boolean);
+
+    const logic = group.logique_groupe ?? 'ET';
+    return condTexts.join(` ${logic} `);
+  });
+
+  const rootLogic = q.logique_declencheur ?? 'ET';
+  return groupTexts.filter(Boolean).join(` ${rootLogic} `);
+}
+
+function getReadableConsequences(q: SpQuestion, allQuestions: SpQuestion[]): string {
+  if (!q.consequences?.length) return '';
+
+  const idToLibelle = new Map(allQuestions.map((x) => [x.id, x.libelle]));
+
+  const qRef = (id?: string) => {
+    if (!id) return 'Q?';
+    const lib = idToLibelle.get(id);
+    if (!lib) return 'Q?';
+    return lib.length > 25 ? lib.slice(0, 25) + '…' : lib;
+  };
+
+  const parts = q.consequences.map((c) => {
+    switch (c.type) {
+      case 'renseigner_variable':
+        return c.variable_cible ? `Stocke {{${c.variable_cible}}}` : null;
+      case 'afficher_question': {
+        const trigger = c.valeur_declencheur ? ` si "${c.valeur_declencheur}"` : '';
+        return `Affiche "${qRef(c.question_id)}"${trigger}`;
+      }
+      case 'masquer_question': {
+        const trigger = c.valeur_declencheur ? ` si "${c.valeur_declencheur}"` : '';
+        return `Masque "${qRef(c.question_id)}"${trigger}`;
+      }
+      case 'filtrer_question': {
+        return `Filtre "${qRef(c.question_id)}"`;
+      }
+      case 'aller_question': {
+        const trigger = c.valeur_declencheur ? ` si "${c.valeur_declencheur}"` : '';
+        return `Saute à "${qRef(c.question_id)}"${trigger}`;
+      }
+      case 'afficher_message': {
+        const trigger = c.valeur_declencheur ? ` si "${c.valeur_declencheur}"` : '';
+        return `Message${trigger}`;
+      }
+      default:
+        return null;
+    }
+  }).filter((x): x is string => x !== null);
+
+  return parts.join(' · ');
+}
+
+// ── Groupement boucle pour le rendu ───────────────────────────────────────────
+
+interface RenderGroup {
+  type: 'regular' | 'boucle_container';
+  boucleId?: string;
+  boucleLeader?: SpQuestion;
+  items: Array<{ treeItem: TreeItem; idx: number }>;
+}
+
+function getVisibleItemIndices(treeItems: TreeItem[], collapsedParents: Set<string>): boolean[] {
+  const visible: boolean[] = new Array(treeItems.length).fill(false);
+  for (let i = 0; i < treeItems.length; i++) {
+    const { depth } = treeItems[i];
+    if (depth === 0) { visible[i] = true; continue; }
+    for (let j = i - 1; j >= 0; j--) {
+      if (treeItems[j].depth === depth - 1) {
+        visible[i] = visible[j] && !collapsedParents.has(treeItems[j].q.id);
+        break;
+      }
+    }
+  }
+  return visible;
+}
+
+function groupTreeItemsForRender(items: Array<{ treeItem: TreeItem; idx: number }>): RenderGroup[] {
+  const groups: RenderGroup[] = [];
+  let i = 0;
+
+  while (i < items.length) {
+    const { treeItem: item, idx } = items[i];
+    if (item.q.groupe_boucle_id) {
+      const boucleId = item.q.groupe_boucle_id;
+      const boucleItems: Array<{ treeItem: TreeItem; idx: number }> = [];
+      let leader: SpQuestion | undefined;
+
+      while (i < items.length && items[i].treeItem.q.groupe_boucle_id === boucleId) {
+        if (items[i].treeItem.q.boucle) leader = items[i].treeItem.q;
+        boucleItems.push(items[i]);
+        i++;
+      }
+
+      groups.push({
+        type: 'boucle_container',
+        boucleId,
+        boucleLeader: leader ?? boucleItems[0]?.treeItem.q,
+        items: boucleItems,
+      });
+    } else {
+      groups.push({ type: 'regular', items: [{ treeItem: item, idx }] });
+      i++;
+    }
+  }
+
+  return groups;
+}
+
+function getBoucleHeaderText(leader: SpQuestion, allQuestions: SpQuestion[]): string {
+  const boucle = leader.boucle;
+  if (!boucle) return 'Répété';
+  if (boucle.nombre_fixe != null) return `Répété ${boucle.nombre_fixe} fois`;
+  if (boucle.source_nombre_question_id) {
+    const srcQ = allQuestions.find((q) => q.id === boucle.source_nombre_question_id);
+    const qRef = srcQ ? `Q${srcQ.ordre}` : 'Q?';
+    return `Répété selon [${qRef}]`;
+  }
+  if (boucle.source_sa_array) {
+    const arrayName = boucle.source_sa_array.split('.').pop() ?? boucle.source_sa_array;
+    return `Répété selon SA (${arrayName})`;
+  }
+  return 'Répété';
+}
+
+// ── Icônes source ─────────────────────────────────────────────────────────────
+const SOURCE_ICONS: Record<string, React.ElementType> = {
+  catalogue: Package,
+  sa: FileText,
+  aucune: PenLine,
+  catalogue_et_sa: Layers,
+};
+
 // ── Carte question ────────────────────────────────────────────────────────────
 function QuestionCard({
   q,
+  questionNumber,
+  allQuestions,
   onToggle,
   onEdit,
   onDelete,
@@ -256,8 +428,13 @@ function QuestionCard({
   onSimulateFrom,
   isParent = false,
   showDragHandle = false,
+  hasChildren = false,
+  isCollapsed = false,
+  onToggleCollapse,
 }: {
   q: SpQuestion;
+  questionNumber: number;
+  allQuestions: SpQuestion[];
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -265,140 +442,154 @@ function QuestionCard({
   onSimulateFrom: () => void;
   isParent?: boolean;
   showDragHandle?: boolean;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
+  const condText = getReadableConditions(q, allQuestions);
+  const consText = getReadableConsequences(q, allQuestions);
+  const SourceIcon = SOURCE_ICONS[q.source] ?? Package;
+
   return (
-    <div className={`flex items-start gap-3 p-3 border rounded-lg bg-white transition-colors ${q.actif ? 'border-gray-100 hover:border-gray-200' : 'border-gray-100 opacity-60'}`}>
-      {/* Drag handle */}
-      {showDragHandle && (
-        <div className="mt-0.5 shrink-0 cursor-grab text-gray-300 hover:text-gray-500">
-          <GripVertical className="w-4 h-4" />
-        </div>
-      )}
-      {/* Toggle actif */}
-      <Tooltip text={q.actif
-        ? "Question active — elle s'affiche lors de la génération SP. Cliquez pour désactiver."
-        : "Question désactivée — elle ne s'affiche pas. Cliquez pour activer."
-      }>
-        <button onClick={onToggle} className="mt-0.5 shrink-0">
-          {q.actif
-            ? <ToggleRight className="w-5 h-5 text-green-600" />
-            : <ToggleLeft className="w-5 h-5 text-gray-300" />
-          }
-        </button>
-      </Tooltip>
-
-      {/* Contenu */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium ${q.actif ? 'text-gray-900' : 'text-gray-400'}`}>
-          {q.libelle}
-        </p>
-        {q.description && (
-          <p className="text-xs text-gray-400 mt-0.5 truncate">{q.description}</p>
+    <div className={`border rounded-lg bg-white transition-colors ${q.actif ? 'border-gray-200 hover:border-gray-300' : 'border-gray-100 opacity-60'}`}>
+      {/* Zone 1 : Numéro + Toggle + Label + Actions */}
+      <div className="flex items-start gap-2 px-3 pt-3 pb-2">
+        {showDragHandle && (
+          <div className="mt-1 shrink-0 cursor-grab text-gray-300 hover:text-gray-500">
+            <GripVertical className="w-4 h-4" />
+          </div>
         )}
 
-        {/* Options manuelles preview */}
-        {q.affichage === 'choix_liste_manuelle' && (q.options_manuelles?.length ?? 0) > 0 && (
-          <p className="text-xs text-gray-400 mt-0.5 italic">
-            Options : {q.options_manuelles!.join(' · ')}
+        {hasChildren ? (
+          <Tooltip text={isCollapsed ? 'Déplier les sous-questions' : 'Replier les sous-questions'}>
+            <button
+              onClick={onToggleCollapse}
+              className="mt-0.5 shrink-0 inline-flex items-center gap-0.5 font-mono text-xs font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 min-w-[2rem] hover:bg-slate-200 transition-colors"
+            >
+              {isCollapsed
+                ? <ChevronRight className="w-3 h-3 shrink-0" />
+                : <ChevronDown className="w-3 h-3 shrink-0" />
+              }
+              Q{questionNumber}
+            </button>
+          </Tooltip>
+        ) : (
+          <span className="mt-0.5 shrink-0 inline-flex items-center justify-center font-mono text-xs font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 min-w-[2rem]">
+            Q{questionNumber}
+          </span>
+        )}
+
+        <Tooltip text={q.actif
+          ? "Question active — elle s'affiche lors de la génération SP. Cliquez pour désactiver."
+          : "Question désactivée — elle ne s'affiche pas. Cliquez pour activer."
+        }>
+          <button onClick={onToggle} className="mt-0.5 shrink-0">
+            {q.actif
+              ? <ToggleRight className="w-5 h-5 text-green-600" />
+              : <ToggleLeft className="w-5 h-5 text-gray-300" />
+            }
+          </button>
+        </Tooltip>
+
+        <div
+          className={`flex-1 min-w-0 ${hasChildren ? 'cursor-pointer' : ''}`}
+          onClick={hasChildren ? onToggleCollapse : undefined}
+        >
+          <p className={`text-sm font-medium leading-snug ${q.actif ? 'text-gray-900' : 'text-gray-400'}`}>
+            {q.libelle}
           </p>
-        )}
-
-        <div className="flex gap-1.5 mt-1.5 flex-wrap">
-          {/* Badge source */}
-          <Tooltip text={SOURCE_TOOLTIPS[q.source] ?? q.source}>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 cursor-help">
-              {SOURCE_LABELS[q.source] ?? q.source}
-            </span>
-          </Tooltip>
-
-          {/* Badge affichage */}
-          <Tooltip text={AFFICHAGE_TOOLTIPS[q.affichage] ?? q.affichage}>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 cursor-help">
-              {AFFICHAGE_LABELS[q.affichage] ?? q.affichage}
-            </span>
-          </Tooltip>
-
-          {/* Badge obligatoire */}
-          {q.obligatoire && (
-            <Tooltip text="Cette question est obligatoire — l'utilisateur devra y répondre avant de générer la SP.">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 cursor-help">
-                Obligatoire
-              </span>
-            </Tooltip>
-          )}
-
-          {/* Badge priorité haute */}
-          {q.priorite_ia === 'haute' && (
-            <Tooltip text="Priorité haute — l'IA appliquera cette réponse sans exception lors de la génération SP.">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 cursor-help">
-                🔒 Priorité haute
-              </span>
-            </Tooltip>
-          )}
-
-          {/* Badge variable cible */}
-          {q.consequences?.filter((c) => c.type === 'renseigner_variable' && c.variable_cible).map((c, ci) => (
-            <Tooltip key={ci} text={`La réponse alimentera la variable {{${c.variable_cible}}} dans le template Word.`}>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-mono cursor-help">
-                {`{{${c.variable_cible}}}`}
-              </span>
-            </Tooltip>
-          ))}
-
-          {/* Badge conséquences navigation */}
-          {(q.consequences?.filter((c) => c.type !== 'renseigner_variable').length ?? 0) > 0 && (
-            <Tooltip text={`${q.consequences!.filter((c) => c.type !== 'renseigner_variable').length} conséquence(s) de navigation/filtrage configurée(s).`}>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 cursor-help">
-                {q.consequences!.filter((c) => c.type !== 'renseigner_variable').length} conséq.
-              </span>
-            </Tooltip>
-          )}
-
-          {/* Badge conditions */}
-          {(q.groupes_conditions?.length ?? 0) > 0 && (
-            <Tooltip text={`${q.groupes_conditions!.length} groupe(s) de conditions — cette question ne s'affiche que si les conditions sont remplies.`}>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 cursor-help">
-                Conditionnel
-              </span>
-            </Tooltip>
-          )}
-
-          {/* Badge boucle */}
-          {q.groupe_boucle_id && (
-            <Tooltip text={`Fait partie du groupe de boucle "${q.groupe_boucle_id}"${q.boucle ? ' (définit la boucle)' : ''}.`}>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 cursor-help">
-                Boucle{q.boucle ? ' (leader)' : ''}
-              </span>
-            </Tooltip>
+          {q.description && (
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{q.description}</p>
           )}
         </div>
-      </div>
 
-      {/* Actions */}
-      <div className="flex gap-1 shrink-0">
-        {isParent && (
-          <Tooltip text="Simuler le workflow depuis cette question">
-            <Button size="sm" variant="ghost" onClick={onSimulateFrom} className="h-7 w-7 p-0 text-green-500 hover:text-green-700 hover:bg-green-50">
-              <Play className="w-3.5 h-3.5" />
+        <div className="flex gap-0.5 shrink-0">
+          {isParent && (
+            <Tooltip text="Simuler le workflow depuis cette question">
+              <Button size="sm" variant="ghost" onClick={onSimulateFrom} className="h-6 w-6 p-0 text-green-500 hover:text-green-700 hover:bg-green-50">
+                <Play className="w-3 h-3" />
+              </Button>
+            </Tooltip>
+          )}
+          <Tooltip text="Modifier cette question">
+            <Button size="sm" variant="ghost" onClick={onEdit} className="h-6 w-6 p-0 text-gray-400 hover:text-gray-700">
+              <Edit2 className="w-3 h-3" />
             </Button>
           </Tooltip>
-        )}
-        <Tooltip text="Modifier cette question">
-          <Button size="sm" variant="ghost" onClick={onEdit} className="h-7 w-7 p-0">
-            <Edit2 className="w-3.5 h-3.5" />
-          </Button>
-        </Tooltip>
-        <Tooltip text="Dupliquer cette question (et ses enfants)">
-          <Button size="sm" variant="ghost" onClick={onDuplicate} className="h-7 w-7 p-0 text-blue-400 hover:text-blue-600 hover:bg-blue-50">
-            <Copy className="w-3.5 h-3.5" />
-          </Button>
-        </Tooltip>
-        <Tooltip text="Supprimer définitivement cette question">
-          <Button size="sm" variant="ghost" onClick={onDelete} className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50">
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        </Tooltip>
+          <Tooltip text="Dupliquer cette question (et ses enfants)">
+            <Button size="sm" variant="ghost" onClick={onDuplicate} className="h-6 w-6 p-0 text-blue-400 hover:text-blue-600 hover:bg-blue-50">
+              <Copy className="w-3 h-3" />
+            </Button>
+          </Tooltip>
+          <Tooltip text="Supprimer définitivement cette question">
+            <Button size="sm" variant="ghost" onClick={onDelete} className="h-6 w-6 p-0 text-red-400 hover:text-red-600 hover:bg-red-50">
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </Tooltip>
+        </div>
       </div>
+
+      {/* Zone 2 : Type / Source / badges */}
+      <div className="px-3 pb-2 flex flex-wrap items-center gap-1.5">
+        <Tooltip text={SOURCE_TOOLTIPS[q.source] ?? q.source}>
+          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 cursor-help">
+            <SourceIcon className="w-3 h-3" />
+            {SOURCE_LABELS[q.source] ?? q.source}
+          </span>
+        </Tooltip>
+
+        <Tooltip text={AFFICHAGE_TOOLTIPS[q.affichage] ?? q.affichage}>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 cursor-help">
+            {AFFICHAGE_LABELS[q.affichage] ?? q.affichage}
+          </span>
+        </Tooltip>
+
+        {q.obligatoire && (
+          <Tooltip text="Cette question est obligatoire — l'utilisateur devra y répondre avant de générer la SP.">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 cursor-help">
+              Obligatoire
+            </span>
+          </Tooltip>
+        )}
+
+        {q.priorite_ia === 'haute' && (
+          <Tooltip text="Priorité haute — l'IA appliquera cette réponse sans exception lors de la génération SP.">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 cursor-help">
+              🔒 Priorité haute
+            </span>
+          </Tooltip>
+        )}
+
+        {q.boucle && (
+          <Tooltip text={`Définit le groupe de boucle "${q.groupe_boucle_id}" — contrôle le nombre d'itérations.`}>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 cursor-help">
+              Leader boucle
+            </span>
+          </Tooltip>
+        )}
+
+        {q.affichage === 'choix_liste_manuelle' && (q.options_manuelles?.length ?? 0) > 0 && (
+          <span className="text-xs text-gray-400 italic">
+            {q.options_manuelles!.join(' · ')}
+          </span>
+        )}
+      </div>
+
+      {/* Zone 3 : Conditions */}
+      {condText && (
+        <div className="mx-3 mb-2 flex items-start gap-1.5 bg-amber-50 border border-amber-100 rounded-md px-2.5 py-1.5">
+          <span className="text-xs font-semibold text-amber-700 shrink-0">S&apos;affiche si :</span>
+          <span className="text-xs text-amber-800 leading-snug">{condText}</span>
+        </div>
+      )}
+
+      {/* Zone 4 : Conséquences */}
+      {consText && (
+        <div className="mx-3 mb-2.5 flex items-start gap-1.5 bg-indigo-50 border border-indigo-100 rounded-md px-2.5 py-1.5">
+          <span className="text-xs font-semibold text-indigo-700 shrink-0">Effets :</span>
+          <span className="text-xs text-indigo-800 leading-snug">{consText}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -412,6 +603,7 @@ export function SpQuestionsManager({ templates }: Props) {
   const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
   const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
   const [draggingInfo, setDraggingInfo] = useState<{
     qId: string; depth: number; parentId: string | null; templateId: string;
   } | null>(null);
@@ -676,6 +868,82 @@ export function SpQuestionsManager({ templates }: Props) {
         const conditionalCount = questions.filter((q) => (q.groupes_conditions?.length ?? 0) > 0).length;
         const treeItems = buildTreeOrder(questions);
         const questionsWithChildren = getQuestionsWithChildren(questions);
+        const visibleFlags = getVisibleItemIndices(treeItems, collapsedParents);
+        const visibleItemsWithIdx = treeItems.map((treeItem, i) => ({ treeItem, idx: i })).filter((_, i) => visibleFlags[i]);
+        const renderGroups = groupTreeItemsForRender(visibleItemsWithIdx);
+
+        const renderItem = (q: SpQuestion, depth: number, idx: number) => {
+          const parentId = getParentId(treeItems, idx);
+          const isDragging = draggingInfo?.qId === q.id;
+          const isCompatibleTarget =
+            draggingInfo !== null &&
+            draggingInfo.qId !== q.id &&
+            draggingInfo.templateId === t.id &&
+            draggingInfo.depth === depth &&
+            draggingInfo.parentId === parentId;
+          const dropPos =
+            dragOverInfo?.templateId === t.id && dragOverInfo?.qId === q.id
+              ? dragOverInfo.position
+              : null;
+
+          return (
+            <div
+              key={q.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                setDraggingInfo({ qId: q.id, depth, parentId, templateId: t.id });
+              }}
+              onDragOver={(e) => {
+                if (!isCompatibleTarget) return;
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                if (dragOverInfo?.qId !== q.id || dragOverInfo?.position !== position || dragOverInfo?.templateId !== t.id)
+                  setDragOverInfo({ templateId: t.id, qId: q.id, position });
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node))
+                  if (dragOverInfo?.qId === q.id && dragOverInfo?.templateId === t.id) setDragOverInfo(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!draggingInfo || !isCompatibleTarget || !dragOverInfo) return;
+                handleReorder(treeItems, draggingInfo.qId, q.id, dragOverInfo.position, t.id);
+                setDraggingInfo(null);
+                setDragOverInfo(null);
+              }}
+              onDragEnd={() => { setDraggingInfo(null); setDragOverInfo(null); }}
+              className={`relative transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+              style={{
+                borderTop: dropPos === 'before' ? '2px solid #6366f1' : '2px solid transparent',
+                borderBottom: dropPos === 'after' ? '2px solid #6366f1' : '2px solid transparent',
+              }}
+            >
+              <div style={{ marginLeft: depth * 24 + 'px' }}>
+                <QuestionCard
+                  q={q}
+                  questionNumber={q.ordre}
+                  allQuestions={questions}
+                  isParent={depth === 0}
+                  hasChildren={questionsWithChildren.has(q.id)}
+                  isCollapsed={collapsedParents.has(q.id)}
+                  onToggleCollapse={() => setCollapsedParents((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(q.id)) next.delete(q.id); else next.add(q.id);
+                    return next;
+                  })}
+                  onToggle={() => toggleActive(t.id, q)}
+                  onEdit={() => setEditingQuestion({ templateId: t.id, question: q })}
+                  onDelete={() => deleteQuestion(t.id, q.id)}
+                  onDuplicate={() => duplicateQuestion(t.id, q.id)}
+                  onSimulateFrom={() => setSimulatingForTemplate({ templateId: t.id, startFromQuestionId: q.id })}
+                  showDragHandle
+                />
+              </div>
+            </div>
+          );
+        };
 
         return (
           <div key={t.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -693,7 +961,7 @@ export function SpQuestionsManager({ templates }: Props) {
                   </span>
                 </Tooltip>
                 {conditionalCount > 0 && (
-                  <Tooltip text={`${conditionalCount} question${conditionalCount > 1 ? 's' : ''} conditionnel${conditionalCount > 1 ? 'les' : 'le'} — les dépendances sont visibles dans l'arbre ci-dessous.`}>
+                  <Tooltip text={`${conditionalCount} question${conditionalCount > 1 ? 's' : ''} conditionnel${conditionalCount > 1 ? 'les' : 'le'} — les conditions sont visibles directement sur chaque carte.`}>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 cursor-help">
                       {conditionalCount} conditionnelle{conditionalCount > 1 ? 's' : ''}
                     </span>
@@ -711,93 +979,26 @@ export function SpQuestionsManager({ templates }: Props) {
                 )}
 
                 {/* ── Vue arbre ── */}
-                <div className="space-y-1">
-                  {treeItems.map(({ q, depth, conditionSummary }, idx) => {
-                    const parentId = getParentId(treeItems, idx);
-                    const isDragging = draggingInfo?.qId === q.id;
-                    const isCompatibleTarget =
-                      draggingInfo !== null &&
-                      draggingInfo.qId !== q.id &&
-                      draggingInfo.templateId === t.id &&
-                      draggingInfo.depth === depth &&
-                      draggingInfo.parentId === parentId;
-                    const dropPos =
-                      dragOverInfo?.templateId === t.id && dragOverInfo?.qId === q.id
-                        ? dragOverInfo.position
-                        : null;
-
-                    return (
-                      <div
-                        key={q.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          setDraggingInfo({ qId: q.id, depth, parentId, templateId: t.id });
-                        }}
-                        onDragOver={(e) => {
-                          if (!isCompatibleTarget) return;
-                          e.preventDefault();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                          if (dragOverInfo?.qId !== q.id || dragOverInfo?.position !== position || dragOverInfo?.templateId !== t.id)
-                            setDragOverInfo({ templateId: t.id, qId: q.id, position });
-                        }}
-                        onDragLeave={(e) => {
-                          if (!e.currentTarget.contains(e.relatedTarget as Node))
-                            if (dragOverInfo?.qId === q.id && dragOverInfo?.templateId === t.id) setDragOverInfo(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          if (!draggingInfo || !isCompatibleTarget || !dragOverInfo) return;
-                          handleReorder(treeItems, draggingInfo.qId, q.id, dragOverInfo.position, t.id);
-                          setDraggingInfo(null);
-                          setDragOverInfo(null);
-                        }}
-                        onDragEnd={() => { setDraggingInfo(null); setDragOverInfo(null); }}
-                        className={`relative transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
-                        style={{
-                          borderTop: dropPos === 'before' ? '2px solid #6366f1' : '2px solid transparent',
-                          borderBottom: dropPos === 'after' ? '2px solid #6366f1' : '2px solid transparent',
-                        }}
-                      >
-                        {/* Connecteur condition */}
-                        {conditionSummary && (
-                          <div
-                            className="flex items-center gap-1.5 mt-2 mb-1"
-                            style={{ paddingLeft: Math.max(0, depth - 1) * 24 + 8 + 'px' }}
-                          >
-                            <CornerDownRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-                            <span className="text-xs bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">
-                              {conditionSummary}
+                <div className="space-y-1.5">
+                  {renderGroups.map((group, gi) => {
+                    if (group.type === 'boucle_container') {
+                      return (
+                        <div key={`boucle-${group.boucleId}-${gi}`} className="rounded-lg border border-teal-200 bg-teal-50/30 p-2">
+                          <div className="flex items-center gap-1.5 px-1 pb-1.5 mb-1.5 border-b border-teal-200">
+                            <RefreshCw className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                            <span className="text-xs font-medium text-teal-700">
+                              {getBoucleHeaderText(group.boucleLeader!, questions)} — groupe &quot;{group.boucleId}&quot;
                             </span>
                           </div>
-                        )}
-                        {/* Carte avec indentation */}
-                        <div style={{ marginLeft: depth * 24 + 'px' }}>
-                          <QuestionCard
-                            q={q}
-                            isParent={depth === 0}
-                            onToggle={() => toggleActive(t.id, q)}
-                            onEdit={() => setEditingQuestion({ templateId: t.id, question: q })}
-                            onDelete={() => deleteQuestion(t.id, q.id)}
-                            onDuplicate={() => duplicateQuestion(t.id, q.id)}
-                            onSimulateFrom={() => setSimulatingForTemplate({ templateId: t.id, startFromQuestionId: q.id })}
-                            showDragHandle
-                          />
+                          <div className="space-y-1">
+                            {group.items.map(({ treeItem: { q, depth }, idx }) => renderItem(q, depth, idx))}
+                          </div>
                         </div>
-                      </div>
-                    );
+                      );
+                    }
+                    const { treeItem: { q, depth }, idx } = group.items[0];
+                    return renderItem(q, depth, idx);
                   })}
-
-                  {/* Légende arbre si questions conditionnelles */}
-                  {questions.some((q) => (q.groupes_conditions?.length ?? 0) > 0) && (
-                    <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100">
-                      <CornerDownRight className="w-3 h-3 text-gray-300" />
-                      <span className="text-xs text-gray-400">
-                        Les questions indentées s&apos;affichent uniquement si la condition est remplie.
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex gap-2 mt-2">
