@@ -23,6 +23,12 @@ function formatPrice(value: unknown): string {
   return `${num.toFixed(2)}€`;
 }
 
+function getFasModeLabel(produit: CatalogueProduit): string {
+  return produit.mode_fas === 'multiplie_par_quantite'
+    ? 'FAS x quantite'
+    : 'FAS fixe';
+}
+
 const ITEMS_PER_PAGE = 9;
 
 export function CatalogueView({ initialProducts, showHeader = true, isAdmin = false }: CatalogueViewProps) {
@@ -374,6 +380,13 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                 }>
                   <div className="text-sm text-gray-600">
                     {p.type_frequence === 'unique' ? 'Prix de vente' : 'Mensuel'}
+                    {p.prix_installation != null && (
+                      <div className="mt-1 flex">
+                        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                          {getFasModeLabel(p)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-lg font-bold text-gray-900">
                     {p.type_frequence === 'unique'

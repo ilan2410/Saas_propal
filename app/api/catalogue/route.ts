@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
         description: body?.description ?? null,
         fournisseur: body?.fournisseur ?? null,
         type_frequence: body?.type_frequence ?? 'mensuel',
+        mode_fas: body?.mode_fas ?? 'fixe_par_selection',
         prix_mensuel: body?.prix_mensuel,
         prix_vente: body?.prix_vente,
         prix_installation: body?.prix_installation ?? null,

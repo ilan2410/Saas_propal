@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
         : 'autre';
       
       const type_frequence = p.type_frequence === 'unique' ? 'unique' : 'mensuel';
+      const mode_fas = p.mode_fas === 'multiplie_par_quantite' ? 'multiplie_par_quantite' : 'fixe_par_selection';
 
       // Parse numbers
       const prix_mensuel = p.prix_mensuel ? parseFloat(String(p.prix_mensuel).replace(',', '.')) : null;
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
           description: p.description || null,
           fournisseur: p.fournisseur || null,
           type_frequence,
+          mode_fas,
           prix_mensuel,
           prix_vente,
           prix_installation,

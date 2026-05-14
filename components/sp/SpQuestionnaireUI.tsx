@@ -116,6 +116,31 @@ function formatProduitFasValue(value: string): string {
   return `FAS ${amount.toFixed(2).replace('.', ',')} €`;
 }
 
+function shouldMultiplyFas(product: CatalogueProduit): boolean {
+  return product.mode_fas === 'multiplie_par_quantite';
+}
+
+function getQuantityValue(value: string | number | undefined): number {
+  const parsed = Number.parseInt(String(value ?? '1'), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function formatProduitTotalValue(value: string, p: CatalogueProduit, quantity: string | number): string | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
+  const total = amount * getQuantityValue(quantity);
+  return p.type_frequence === 'mensuel'
+    ? `${total.toFixed(2).replace('.', ',')} €/mois`
+    : `${total.toFixed(2).replace('.', ',')} €`;
+}
+
+function formatProduitFasTotalValue(value: string, quantity: string | number): string {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return 'FAS 0,00 €';
+  const total = amount * getQuantityValue(quantity);
+  return `FAS ${total.toFixed(2).replace('.', ',')} €`;
+}
+
 function CatalogueMultipleChoiceInput({
   products,
   onSubmit,
@@ -134,6 +159,11 @@ function CatalogueMultipleChoiceInput({
   const [prixValues, setPrixValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     products.forEach((p) => { init[p.nom] = getProduitPrixValue(p); });
+    return init;
+  });
+  const [quantityValues, setQuantityValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    products.forEach((p) => { init[p.nom] = '1'; });
     return init;
   });
   const [editingPrixFor, setEditingPrixFor] = useState<string | null>(null);
@@ -200,13 +230,21 @@ function CatalogueMultipleChoiceInput({
             <div key={p.nom} className="space-y-2 rounded-md border border-gray-100 px-2 py-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{p.nom}</span>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  Qté {getQuantityValue(quantityValues[p.nom])}
+                </span>
                 {formatProduitPrixValue(prixValues[p.nom] ?? '', p) && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {formatProduitPrixValue(prixValues[p.nom] ?? '', p)}
+                    Unitaire: {formatProduitPrixValue(prixValues[p.nom] ?? '', p)}
                   </span>
                 )}
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {formatProduitFasValue(fasValues[p.nom] ?? '0')}
+                  Total: {formatProduitTotalValue(prixValues[p.nom] ?? '', p, quantityValues[p.nom]) ?? '0,00 €'}
+                </span>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {shouldMultiplyFas(p)
+                    ? formatProduitFasTotalValue(fasValues[p.nom] ?? '0', quantityValues[p.nom])
+                    : formatProduitFasValue(fasValues[p.nom] ?? '0')}
                 </span>
                 <button
                   type="button"
@@ -217,6 +255,17 @@ function CatalogueMultipleChoiceInput({
                 >
                   {editingPrixFor === p.nom ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
                 </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 shrink-0">Quantité</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={quantityValues[p.nom] ?? '1'}
+                  onChange={(e) => setQuantityValues((prev) => ({ ...prev, [p.nom]: e.target.value }))}
+                  className="h-7 w-20 text-sm border border-gray-300 rounded px-2"
+                />
               </div>
               {editingPrixFor === p.nom && (
                 <div className="space-y-2">
@@ -248,14 +297,28 @@ function CatalogueMultipleChoiceInput({
             const names = selectedProducts.map((p) => p.nom);
             const fasMap: Record<string, string> = {};
             const prixMap: Record<string, string> = {};
-            selectedProducts.forEach((p) => { fasMap[p.nom] = fasValues[p.nom]?.trim() || '0'; });
-            selectedProducts.forEach((p) => { if (prixValues[p.nom]?.trim()) prixMap[p.nom] = prixValues[p.nom].trim(); });
+            const quantiteMap: Record<string, string> = {};
+            selectedProducts.forEach((p) => {
+              const quantite = getQuantityValue(quantityValues[p.nom]);
+              quantiteMap[p.nom] = String(quantite);
+              fasMap[p.nom] = String(
+                shouldMultiplyFas(p)
+                  ? (Number(fasValues[p.nom] ?? '0') || 0) * quantite
+                  : (Number(fasValues[p.nom] ?? '0') || 0)
+              );
+              if (prixValues[p.nom]?.trim()) {
+                prixMap[p.nom] = String((Number(prixValues[p.nom]) || 0) * quantite);
+              }
+            });
             const extraReponses: SpQuestionReponse[] = [];
             if (Object.keys(fasMap).length > 0) {
               extraReponses.push({ question_id: '__fas_placeholder__', valeur: JSON.stringify(fasMap) });
             }
             if (Object.keys(prixMap).length > 0) {
               extraReponses.push({ question_id: '__prix_placeholder__', valeur: JSON.stringify(prixMap) });
+            }
+            if (Object.keys(quantiteMap).length > 0) {
+              extraReponses.push({ question_id: '__quantite_placeholder__', valeur: JSON.stringify(quantiteMap) });
             }
             onSubmit(names, extraReponses.length > 0 ? extraReponses : undefined);
           }}>
@@ -395,6 +458,7 @@ export function SpQuestionnaireUI({
     product: CatalogueProduit;
     fasValue: string;
     prixValue: string;
+    quantityValue: string;
     prixEditing: boolean;
   } | null>(null);
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
@@ -579,7 +643,9 @@ export function SpQuestionnaireUI({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Auto-advance when the displayed question becomes invisible due to a consequence
+  // Auto-advance when the displayed question becomes invisible (consequence or condition-based).
+  // currentIdx is included so the effect also fires after the 500ms typing timer updates the
+  // index — without it, a condition-based invisible last question is never skipped over.
   useEffect(() => {
     const eq = expandedQuestions[currentIdx];
     if (eq && !isTyping && !isQuestionVisibleWith(eq, reponses)) {
@@ -591,7 +657,7 @@ export function SpQuestionnaireUI({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hiddenByConsequence, shownByConsequence]);
+  }, [hiddenByConsequence, shownByConsequence, currentIdx]);
 
   const showQuestion = (idx: number) => {
     if (idx >= expandedQuestions.length) return;
@@ -699,7 +765,7 @@ export function SpQuestionnaireUI({
 
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
-    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`];
     // Build updated reponses synchronously
     const nextReps = [
       ...reponses.filter((r) =>
@@ -864,6 +930,7 @@ export function SpQuestionnaireUI({
                           product: p,
                           fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
                           prixValue: getProduitPrixValue(p),
+                          quantityValue: '1',
                           prixEditing: false,
                         })}
                         className={`text-left px-3 py-2 rounded-md border transition-colors ${
@@ -929,6 +996,7 @@ export function SpQuestionnaireUI({
                       product: p,
                       fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
                       prixValue: getProduitPrixValue(p),
+                      quantityValue: '1',
                       prixEditing: false,
                     });
                   } else {
@@ -962,6 +1030,9 @@ export function SpQuestionnaireUI({
                     if (r.question_id === '__prix_placeholder__') {
                       return { ...r, question_id: 'prix_' + currentExpanded.instanceId };
                     }
+                    if (r.question_id === '__quantite_placeholder__') {
+                      return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
+                    }
                     return r;
                   });
                   recordAnswer(currentExpanded.instanceId, selectedNames, nextExtras);
@@ -987,6 +1058,9 @@ export function SpQuestionnaireUI({
                     }
                     if (r.question_id === '__prix_placeholder__') {
                       return { ...r, question_id: 'prix_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__quantite_placeholder__') {
+                      return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
                     }
                     return r;
                   });
@@ -1071,13 +1145,25 @@ export function SpQuestionnaireUI({
             <div className="mt-1 p-3 bg-white border border-blue-300 rounded-lg space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium text-gray-800">{pendingCatalogueSelection.product.nom}</span>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  Qté {getQuantityValue(pendingCatalogueSelection.quantityValue)}
+                </span>
                 {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product) && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product)}
+                    Unitaire: {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product)}
                   </span>
                 )}
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {formatProduitFasValue(pendingCatalogueSelection.fasValue)}
+                  Total: {formatProduitTotalValue(
+                    pendingCatalogueSelection.prixValue,
+                    pendingCatalogueSelection.product,
+                    pendingCatalogueSelection.quantityValue,
+                  ) ?? '0,00 €'}
+                </span>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {shouldMultiplyFas(pendingCatalogueSelection.product)
+                    ? formatProduitFasTotalValue(pendingCatalogueSelection.fasValue, pendingCatalogueSelection.quantityValue)
+                    : formatProduitFasValue(pendingCatalogueSelection.fasValue)}
                 </span>
                 <button
                   type="button"
@@ -1088,6 +1174,17 @@ export function SpQuestionnaireUI({
                 >
                   {pendingCatalogueSelection.prixEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
                 </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 shrink-0">Quantité :</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={pendingCatalogueSelection.quantityValue}
+                  onChange={(e) => setPendingCatalogueSelection((prev) => prev ? { ...prev, quantityValue: e.target.value } : null)}
+                  className="h-7 w-20 text-sm border border-gray-300 rounded px-2"
+                />
               </div>
               {pendingCatalogueSelection.prixEditing && (
                 <div className="space-y-2">
@@ -1116,9 +1213,25 @@ export function SpQuestionnaireUI({
               <Button size="sm" onClick={() => {
                 const fasVal = pendingCatalogueSelection.fasValue.trim();
                 const prixVal = pendingCatalogueSelection.prixValue.trim();
+                const quantiteVal = String(getQuantityValue(pendingCatalogueSelection.quantityValue));
+                const quantite = getQuantityValue(pendingCatalogueSelection.quantityValue);
                 const extras: SpQuestionReponse[] = [];
-                if (fasVal) extras.push({ question_id: 'fas_' + pendingCatalogueSelection.instanceId, valeur: fasVal });
-                if (prixVal) extras.push({ question_id: 'prix_' + pendingCatalogueSelection.instanceId, valeur: prixVal });
+                if (fasVal) extras.push({
+                  question_id: 'fas_' + pendingCatalogueSelection.instanceId,
+                  valeur: String(
+                    shouldMultiplyFas(pendingCatalogueSelection.product)
+                      ? (Number(fasVal) || 0) * quantite
+                      : (Number(fasVal) || 0)
+                  ),
+                });
+                if (prixVal) extras.push({
+                  question_id: 'prix_' + pendingCatalogueSelection.instanceId,
+                  valeur: String((Number(prixVal) || 0) * quantite),
+                });
+                extras.push({
+                  question_id: 'quantite_' + pendingCatalogueSelection.instanceId,
+                  valeur: quantiteVal,
+                });
                 recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, extras.length > 0 ? extras : undefined);
                 setPendingCatalogueSelection(null);
               }}>

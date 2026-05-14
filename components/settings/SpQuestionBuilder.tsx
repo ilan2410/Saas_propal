@@ -29,6 +29,7 @@ interface Props {
   onSaved: (q: SpQuestion) => void;
   onCancel: () => void;
   initial?: Partial<SpQuestion>;
+  onTitleChange?: (title: string) => void;
   /** All other questions in the template (for condition/consequence references) */
   otherQuestions?: SpQuestion[];
 }
@@ -308,7 +309,7 @@ function FiltreCatalogueUI({
           Produits spécifiques <span className="text-gray-400">(remplace les filtres ci-dessus si sélectionnés)</span>
         </p>
         {allProduits.length > 0 ? (
-          <>
+          <div>
             <input
               type="text"
               value={search}
@@ -354,7 +355,7 @@ function FiltreCatalogueUI({
                 Réinitialiser la sélection ({filtre.produits_ids!.length} produit{filtre.produits_ids!.length > 1 ? 's' : ''})
               </button>
             )}
-          </>
+          </div>
         ) : (
           <p className="text-xs text-gray-400">Chargement du catalogue...</p>
         )}
@@ -364,7 +365,7 @@ function FiltreCatalogueUI({
 }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
-export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, otherQuestions = [] }: Props) {
+export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTitleChange, otherQuestions = [] }: Props) {
   const [activeBlock, setActiveBlock] = useState<Block>(1);
   const [source, setSource] = useState<SpQuestionSource>(initial?.source ?? 'aucune');
   const [affichage, setAffichage] = useState<SpQuestionAffichage>(initial?.affichage ?? 'texte_court');
@@ -613,6 +614,10 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, othe
       .catch(() => setSaSchemaLoaded(true))
       .finally(() => setSaSchemaLoading(false));
   }, [boucle.source_sa_array, templateId, saSchemaLoaded, saSchemaLoading]);
+
+  useEffect(() => {
+    onTitleChange?.(libelle.trim());
+  }, [libelle, onTitleChange]);
 
   const availableAffichages = AFFICHAGE_BY_SOURCE[source] ?? AFFICHAGE_BY_SOURCE.aucune;
 

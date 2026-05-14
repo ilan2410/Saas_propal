@@ -257,6 +257,7 @@ export interface CatalogueProduit {
   description?: string;
   fournisseur?: string;
   type_frequence: 'mensuel' | 'unique';
+  mode_fas?: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel?: number;
   prix_vente?: number;
   prix_installation?: number;

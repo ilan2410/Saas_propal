@@ -131,6 +131,7 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
       description: product.description,
       fournisseur: product.fournisseur,
       type_frequence: product.type_frequence,
+      mode_fas: product.mode_fas ?? 'fixe_par_selection',
       prix_mensuel: product.prix_mensuel,
       prix_vente: product.prix_vente,
       prix_installation: product.prix_installation,

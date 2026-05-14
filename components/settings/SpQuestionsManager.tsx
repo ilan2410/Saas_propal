@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, GripVertical, Download, Upload, Package, FileText, PenLine, Layers, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
@@ -152,52 +152,20 @@ function getConditionSummary(q: SpQuestion, allQuestions: SpQuestion[]): string 
   return `si ${parentLabel} ${opLabel}${extra}`;
 }
 
-function buildTreeOrder(questions: SpQuestion[]): TreeItem[] {
+function buildTreeOrder(questions: SpQuestion[], niveauOverrides: Record<string, 0 | 1> = {}): TreeItem[] {
   const idSet = new Set(questions.map((q) => q.id));
-  const childrenOf = new Map<string, SpQuestion[]>();
-  const roots: SpQuestion[] = [];
-
-  for (const q of questions) {
-    const firstDepId = (q.groupes_conditions ?? [])
+  return questions.map((q, _, arr) => {
+    const hasQuestionCondition = (q.groupes_conditions ?? [])
       .flatMap((g) => g.conditions)
-      .find((c) => c.source === 'reponse_question' && c.question_id && idSet.has(c.question_id))
-      ?.question_id;
-
-    if (firstDepId) {
-      if (!childrenOf.has(firstDepId)) childrenOf.set(firstDepId, []);
-      childrenOf.get(firstDepId)!.push(q);
-    } else {
-      roots.push(q);
-    }
-  }
-
-  const result: TreeItem[] = [];
-  const addedIds = new Set<string>();
-
-  function addBranch(q: SpQuestion, depth: number, isLast: boolean) {
-    if (addedIds.has(q.id)) return;
-    addedIds.add(q.id);
-
-    result.push({
+      .some((c) => c.source === 'reponse_question' && c.question_id && idSet.has(c.question_id));
+    const depth: 0 | 1 = niveauOverrides[q.id] ?? (hasQuestionCondition ? 1 : 0);
+    return {
       q,
       depth,
-      conditionSummary: depth > 0 ? getConditionSummary(q, questions) : '',
-      isLastSibling: isLast,
-    });
-
-    const kids = childrenOf.get(q.id) ?? [];
-    kids.forEach((child, i) => addBranch(child, depth + 1, i === kids.length - 1));
-  }
-
-  roots.forEach((r, i) => addBranch(r, 0, i === roots.length - 1));
-
-  for (const q of questions) {
-    if (!addedIds.has(q.id)) {
-      result.push({ q, depth: 0, conditionSummary: '', isLastSibling: true });
-    }
-  }
-
-  return result;
+      conditionSummary: depth > 0 ? getConditionSummary(q, arr) : '',
+      isLastSibling: true,
+    };
+  });
 }
 
 function generateUniqueVarKey(base: string, existing: Set<string>): string {
@@ -345,19 +313,8 @@ interface RenderGroup {
   items: Array<{ treeItem: TreeItem; idx: number }>;
 }
 
-function getVisibleItemIndices(treeItems: TreeItem[], collapsedParents: Set<string>): boolean[] {
-  const visible: boolean[] = new Array(treeItems.length).fill(false);
-  for (let i = 0; i < treeItems.length; i++) {
-    const { depth } = treeItems[i];
-    if (depth === 0) { visible[i] = true; continue; }
-    for (let j = i - 1; j >= 0; j--) {
-      if (treeItems[j].depth === depth - 1) {
-        visible[i] = visible[j] && !collapsedParents.has(treeItems[j].q.id);
-        break;
-      }
-    }
-  }
-  return visible;
+function getVisibleItemIndices(treeItems: TreeItem[], _collapsedParents: Set<string>): boolean[] {
+  return new Array(treeItems.length).fill(true);
 }
 
 function groupTreeItemsForRender(items: Array<{ treeItem: TreeItem; idx: number }>): RenderGroup[] {
@@ -428,9 +385,6 @@ function QuestionCard({
   onSimulateFrom,
   isParent = false,
   showDragHandle = false,
-  hasChildren = false,
-  isCollapsed = false,
-  onToggleCollapse,
 }: {
   q: SpQuestion;
   questionNumber: number;
@@ -442,9 +396,6 @@ function QuestionCard({
   onSimulateFrom: () => void;
   isParent?: boolean;
   showDragHandle?: boolean;
-  hasChildren?: boolean;
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
 }) {
   const condText = getReadableConditions(q, allQuestions);
   const consText = getReadableConsequences(q, allQuestions);
@@ -460,24 +411,9 @@ function QuestionCard({
           </div>
         )}
 
-        {hasChildren ? (
-          <Tooltip text={isCollapsed ? 'Déplier les sous-questions' : 'Replier les sous-questions'}>
-            <button
-              onClick={onToggleCollapse}
-              className="mt-0.5 shrink-0 inline-flex items-center gap-0.5 font-mono text-xs font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 min-w-[2rem] hover:bg-slate-200 transition-colors"
-            >
-              {isCollapsed
-                ? <ChevronRight className="w-3 h-3 shrink-0" />
-                : <ChevronDown className="w-3 h-3 shrink-0" />
-              }
-              Q{questionNumber}
-            </button>
-          </Tooltip>
-        ) : (
-          <span className="mt-0.5 shrink-0 inline-flex items-center justify-center font-mono text-xs font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 min-w-[2rem]">
-            Q{questionNumber}
-          </span>
-        )}
+        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center font-mono text-xs font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 min-w-[2rem]">
+          Q{questionNumber}
+        </span>
 
         <Tooltip text={q.actif
           ? "Question active — elle s'affiche lors de la génération SP. Cliquez pour désactiver."
@@ -491,10 +427,7 @@ function QuestionCard({
           </button>
         </Tooltip>
 
-        <div
-          className={`flex-1 min-w-0 ${hasChildren ? 'cursor-pointer' : ''}`}
-          onClick={hasChildren ? onToggleCollapse : undefined}
-        >
+        <div className="flex-1 min-w-0">
           <p className={`text-sm font-medium leading-snug ${q.actif ? 'text-gray-900' : 'text-gray-400'}`}>
             {q.libelle}
           </p>
@@ -600,16 +533,31 @@ export function SpQuestionsManager({ templates }: Props) {
   const [expanded, setExpanded] = useState<string | null>(wordTemplates[0]?.id ?? null);
   const [questionsByTemplate, setQuestionsByTemplate] = useState<Record<string, SpQuestion[]>>({});
   const [buildingForTemplate, setBuildingForTemplate] = useState<string | null>(null);
+  const [builderQuestionTitle, setBuilderQuestionTitle] = useState('');
   const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
   const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
-  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
+  const [niveauOverrides, setNiveauOverrides] = useState<Record<string, 0 | 1>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('sp-question-niveaux') ?? '{}'); } catch { return {}; }
+  });
   const [draggingInfo, setDraggingInfo] = useState<{
-    qId: string; depth: number; parentId: string | null; templateId: string;
+    qId: string; templateId: string;
   } | null>(null);
   const [dragOverInfo, setDragOverInfo] = useState<{
     templateId: string; qId: string; position: 'before' | 'after';
   } | null>(null);
+  const [dragHint, setDragHint] = useState<'indent' | 'outdent' | null>(null);
+  const dragStartX = useRef(0);
+  const pendingDragId = useRef<string | null>(null);
+
+  const changeNiveau = (qId: string, niveau: 0 | 1) => {
+    setNiveauOverrides((prev) => {
+      const next = { ...prev, [qId]: niveau };
+      try { localStorage.setItem('sp-question-niveaux', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     for (const t of wordTemplates) {
@@ -866,21 +814,18 @@ export function SpQuestionsManager({ templates }: Props) {
         const isExpanded = expanded === t.id;
         const activeCount = questions.filter((q) => q.actif).length;
         const conditionalCount = questions.filter((q) => (q.groupes_conditions?.length ?? 0) > 0).length;
-        const treeItems = buildTreeOrder(questions);
-        const questionsWithChildren = getQuestionsWithChildren(questions);
-        const visibleFlags = getVisibleItemIndices(treeItems, collapsedParents);
-        const visibleItemsWithIdx = treeItems.map((treeItem, i) => ({ treeItem, idx: i })).filter((_, i) => visibleFlags[i]);
+        const treeItems = buildTreeOrder(questions, niveauOverrides);
+        const visibleItemsWithIdx = treeItems.map((treeItem, i) => ({ treeItem, idx: i }));
         const renderGroups = groupTreeItemsForRender(visibleItemsWithIdx);
 
-        const renderItem = (q: SpQuestion, depth: number, idx: number) => {
-          const parentId = getParentId(treeItems, idx);
+        const LEVEL_THRESHOLD = 40;
+
+        const renderItem = (q: SpQuestion, depth: number, _idx: number) => {
           const isDragging = draggingInfo?.qId === q.id;
           const isCompatibleTarget =
             draggingInfo !== null &&
             draggingInfo.qId !== q.id &&
-            draggingInfo.templateId === t.id &&
-            draggingInfo.depth === depth &&
-            draggingInfo.parentId === parentId;
+            draggingInfo.templateId === t.id;
           const dropPos =
             dragOverInfo?.templateId === t.id && dragOverInfo?.qId === q.id
               ? dragOverInfo.position
@@ -892,7 +837,16 @@ export function SpQuestionsManager({ templates }: Props) {
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move';
-                setDraggingInfo({ qId: q.id, depth, parentId, templateId: t.id });
+                dragStartX.current = e.clientX;
+                pendingDragId.current = q.id;
+                setDraggingInfo({ qId: q.id, templateId: t.id });
+              }}
+              onDrag={(e) => {
+                if (e.clientX === 0) return;
+                const dx = e.clientX - dragStartX.current;
+                if (dx > LEVEL_THRESHOLD) setDragHint('indent');
+                else if (dx < -LEVEL_THRESHOLD) setDragHint('outdent');
+                else setDragHint(null);
               }}
               onDragOver={(e) => {
                 if (!isCompatibleTarget) return;
@@ -909,30 +863,42 @@ export function SpQuestionsManager({ templates }: Props) {
               onDrop={(e) => {
                 e.preventDefault();
                 if (!draggingInfo || !isCompatibleTarget || !dragOverInfo) return;
-                handleReorder(treeItems, draggingInfo.qId, q.id, dragOverInfo.position, t.id);
+                const dx = e.clientX - dragStartX.current;
+                if (Math.abs(dx) <= LEVEL_THRESHOLD) {
+                  handleReorder(treeItems, draggingInfo.qId, q.id, dragOverInfo.position, t.id);
+                }
+                setDragOverInfo(null);
+              }}
+              onDragEnd={(e) => {
+                const dx = e.clientX - dragStartX.current;
+                if (Math.abs(dx) > LEVEL_THRESHOLD && pendingDragId.current) {
+                  changeNiveau(pendingDragId.current, dx > 0 ? 1 : 0);
+                }
+                pendingDragId.current = null;
+                setDragHint(null);
                 setDraggingInfo(null);
                 setDragOverInfo(null);
               }}
-              onDragEnd={() => { setDraggingInfo(null); setDragOverInfo(null); }}
               className={`relative transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
               style={{
                 borderTop: dropPos === 'before' ? '2px solid #6366f1' : '2px solid transparent',
                 borderBottom: dropPos === 'after' ? '2px solid #6366f1' : '2px solid transparent',
               }}
             >
+              {isDragging && dragHint && (
+                <div className="absolute -top-6 left-8 z-10 flex items-center gap-1 bg-indigo-600 text-white text-xs px-2 py-0.5 rounded-full pointer-events-none">
+                  {dragHint === 'indent'
+                    ? <><span>→</span><span>Sous-question</span></>
+                    : <><span>←</span><span>Question principale</span></>
+                  }
+                </div>
+              )}
               <div style={{ marginLeft: depth * 24 + 'px' }}>
                 <QuestionCard
                   q={q}
                   questionNumber={q.ordre}
                   allQuestions={questions}
                   isParent={depth === 0}
-                  hasChildren={questionsWithChildren.has(q.id)}
-                  isCollapsed={collapsedParents.has(q.id)}
-                  onToggleCollapse={() => setCollapsedParents((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(q.id)) next.delete(q.id); else next.add(q.id);
-                    return next;
-                  })}
                   onToggle={() => toggleActive(t.id, q)}
                   onEdit={() => setEditingQuestion({ templateId: t.id, question: q })}
                   onDelete={() => deleteQuestion(t.id, q.id)}
@@ -1006,7 +972,10 @@ export function SpQuestionsManager({ templates }: Props) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setBuildingForTemplate(t.id)}
+                      onClick={() => {
+                        setBuilderQuestionTitle('');
+                        setBuildingForTemplate(t.id);
+                      }}
                       className="flex-1"
                     >
                       <Plus className="w-4 h-4 mr-2" />
@@ -1110,25 +1079,38 @@ export function SpQuestionsManager({ templates }: Props) {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold">Nouvelle question SP</h2>
-                <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse guide l'IA et peut alimenter une variable dans votre template Word." />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold">Nouvelle question SP</h2>
+                  <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse guide l'IA et peut alimenter une variable dans votre template Word." />
+                </div>
+                <p className="mt-1 text-sm text-gray-600">
+                  {builderQuestionTitle || 'Titre de la question a definir'}
+                </p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setBuildingForTemplate(null)} className="h-7 w-7 p-0">
+              <Button size="sm" variant="ghost" onClick={() => {
+                setBuilderQuestionTitle('');
+                setBuildingForTemplate(null);
+              }} className="h-7 w-7 p-0">
                 <X className="w-4 h-4" />
               </Button>
             </div>
             <SpQuestionBuilder
               templateId={buildingForTemplate}
               otherQuestions={questionsByTemplate[buildingForTemplate] ?? []}
+              onTitleChange={setBuilderQuestionTitle}
               onSaved={(q) => {
                 setQuestionsByTemplate((prev) => ({
                   ...prev,
                   [buildingForTemplate]: [...(prev[buildingForTemplate] ?? []), q],
                 }));
+                setBuilderQuestionTitle('');
                 setBuildingForTemplate(null);
               }}
-              onCancel={() => setBuildingForTemplate(null)}
+              onCancel={() => {
+                setBuilderQuestionTitle('');
+                setBuildingForTemplate(null);
+              }}
             />
           </div>
         </div>
@@ -1220,8 +1202,16 @@ export function SpQuestionsManager({ templates }: Props) {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">Modifier la question</h2>
-              <Button size="sm" variant="ghost" onClick={() => setEditingQuestion(null)} className="h-7 w-7 p-0">
+              <div>
+                <h2 className="text-lg font-bold">Modifier la question</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  {builderQuestionTitle || editingQuestion.question.libelle}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => {
+                setBuilderQuestionTitle('');
+                setEditingQuestion(null);
+              }} className="h-7 w-7 p-0">
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -1229,6 +1219,7 @@ export function SpQuestionsManager({ templates }: Props) {
               templateId={editingQuestion.templateId}
               initial={editingQuestion.question}
               otherQuestions={(questionsByTemplate[editingQuestion.templateId] ?? []).filter((q) => q?.id !== editingQuestion.question.id)}
+              onTitleChange={setBuilderQuestionTitle}
               onSaved={(q) => {
                 setQuestionsByTemplate((prev) => ({
                   ...prev,
@@ -1236,9 +1227,13 @@ export function SpQuestionsManager({ templates }: Props) {
                     existing.id === q.id ? q : existing
                   ),
                 }));
+                setBuilderQuestionTitle('');
                 setEditingQuestion(null);
               }}
-              onCancel={() => setEditingQuestion(null)}
+              onCancel={() => {
+                setBuilderQuestionTitle('');
+                setEditingQuestion(null);
+              }}
             />
           </div>
         </div>

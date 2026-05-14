@@ -12,6 +12,7 @@ type FormState = {
   description: string;
   fournisseur: string;
   type_frequence: 'mensuel' | 'unique';
+  mode_fas: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel: string;
   prix_vente: string;
   prix_installation: string;
@@ -45,6 +46,7 @@ export function CatalogueProduitForm({
       description: initialProduit?.description || '',
       fournisseur: initialProduit?.fournisseur || '',
       type_frequence,
+      mode_fas: initialProduit?.mode_fas || 'fixe_par_selection',
       prix_mensuel:
         initialProduit?.prix_mensuel !== undefined && initialProduit?.prix_mensuel !== null
           ? String(initialProduit.prix_mensuel)
@@ -67,6 +69,7 @@ export function CatalogueProduitForm({
   }, [initialProduit]);
 
   const [form, setForm] = useState<FormState>(initialState);
+  const hasInstallationFee = form.prix_installation.trim() !== '' && Number.isFinite(Number(form.prix_installation));
 
   const categorieOptions: Array<{ value: CatalogueCategorie; label: string }> = [
     { value: 'mobile', label: 'Mobile' },
@@ -148,6 +151,7 @@ export function CatalogueProduitForm({
         description: form.description.trim() || null,
         fournisseur: form.fournisseur.trim() || null,
         type_frequence: form.type_frequence,
+        mode_fas: form.mode_fas,
         prix_mensuel: form.type_frequence === 'mensuel' ? Number(form.prix_mensuel) : null,
         prix_vente: form.type_frequence === 'unique' ? Number(form.prix_vente) : null,
         prix_installation: form.prix_installation ? Number(form.prix_installation) : null,
@@ -394,6 +398,44 @@ export function CatalogueProduitForm({
           />
         </div>
       </div>
+
+      {hasInstallationFee && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Application du FAS
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setForm((p) => ({ ...p, mode_fas: 'fixe_par_selection' }))}
+              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                form.mode_fas === 'fixe_par_selection'
+                  ? 'border-blue-500 bg-blue-50 text-blue-900'
+                  : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+              }`}
+            >
+              <div className="text-sm font-medium">FAS appliqué une seule fois</div>
+              <div className="mt-1 text-xs text-gray-500">
+                Le FAS reste fixe, même si la quantité augmente.
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((p) => ({ ...p, mode_fas: 'multiplie_par_quantite' }))}
+              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                form.mode_fas === 'multiplie_par_quantite'
+                  ? 'border-blue-500 bg-blue-50 text-blue-900'
+                  : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+              }`}
+            >
+              <div className="text-sm font-medium">FAS multiplié par quantité</div>
+              <div className="mt-1 text-xs text-gray-500">
+                Le FAS est recalculé pour chaque unité sélectionnée.
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-200">
         <div className="flex items-center gap-3">
