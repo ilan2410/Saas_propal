@@ -100,6 +100,31 @@ function findArrayPathsInJson(obj: unknown, prefix = '', depth = 0): Record<stri
   return result;
 }
 
+function findScalarPathsInJson(obj: unknown, prefix = '', depth = 0): string[] {
+  if (depth > 4 || obj == null || typeof obj !== 'object') return [];
+  const result: string[] = [];
+  if (Array.isArray(obj)) {
+    const first = obj[0];
+    if (first != null && typeof first === 'object' && !Array.isArray(first)) {
+      for (const [key, value] of Object.entries(first as Record<string, unknown>)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (value == null || typeof value !== 'object') result.push(path);
+      }
+    }
+    return result;
+  }
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value == null || typeof value !== 'object') result.push(path);
+    else result.push(...findScalarPathsInJson(value, path, depth + 1));
+  }
+  return result;
+}
+
+function buildDefaultScalarSaPaths(schema: Record<string, string[]>): string[] {
+  return Object.entries(schema).flatMap(([arrayPath, fields]) => fields.map((field) => `${arrayPath}.${field}`));
+}
+
 function getSaRealFieldValues(saData: Record<string, unknown>, path: string, field: string): string[] {
   const parts = path.split('.');
   let cur: unknown = saData;
@@ -586,14 +611,18 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
     initial?.boucle ?? { label_prefix: '' },
   );
 
-  // SA schema state (lazy-loaded when Tableau SA mode is activated)
+  // SA schema state
   const [saSchema, setSaSchema] = useState<Record<string, string[]>>(SA_DEFAULT_SCHEMA);
+  const [saScalarPaths, setSaScalarPaths] = useState<string[]>(() => buildDefaultScalarSaPaths(SA_DEFAULT_SCHEMA));
   const [saRealData, setSaRealData] = useState<Record<string, unknown> | null>(null);
   const [saSchemaLoading, setSaSchemaLoading] = useState(false);
   const [saSchemaLoaded, setSaSchemaLoaded] = useState(false);
+  const [saCountPath, setSaCountPath] = useState('');
+  const [saCountFilterField, setSaCountFilterField] = useState('');
+  const [saCountFilterValue, setSaCountFilterValue] = useState('');
 
   useEffect(() => {
-    if (boucle.source_sa_array === undefined || saSchemaLoaded || saSchemaLoading) return;
+    if (saSchemaLoaded || saSchemaLoading) return;
     setSaSchemaLoading(true);
     Promise.all([
       fetch(`/api/templates/${templateId}`).then((r) => r.json()),
@@ -603,9 +632,11 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         const promptText: string = tplData?.template?.prompt_template ?? '';
         const parsed = parseJsonFromPrompt(promptText);
         const fromPrompt = parsed ? findArrayPathsInJson(parsed) : {};
-        setSaSchema(Object.keys(fromPrompt).length > 0
+        const nextSchema = Object.keys(fromPrompt).length > 0
           ? { ...SA_DEFAULT_SCHEMA, ...fromPrompt }
-          : SA_DEFAULT_SCHEMA);
+          : SA_DEFAULT_SCHEMA;
+        setSaSchema(nextSchema);
+        setSaScalarPaths(parsed ? findScalarPathsInJson(parsed) : buildDefaultScalarSaPaths(nextSchema));
         if (latestData?.extracted_data) {
           setSaRealData(latestData.extracted_data as Record<string, unknown>);
         }
@@ -613,7 +644,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
       })
       .catch(() => setSaSchemaLoaded(true))
       .finally(() => setSaSchemaLoading(false));
-  }, [boucle.source_sa_array, templateId, saSchemaLoaded, saSchemaLoading]);
+  }, [templateId, saSchemaLoaded, saSchemaLoading]);
 
   useEffect(() => {
     onTitleChange?.(libelle.trim());
@@ -675,6 +706,22 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
 
   const removeConsequence = (index: number) => {
     setConsequences((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const insertSaVariable = (target: 'libelle' | 'description', token: string) => {
+    if (target === 'libelle') {
+      setLibelle((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}${token}`);
+    } else {
+      setDescription((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}${token}`);
+    }
+  };
+
+  const insertSaCountVariable = (target: 'libelle' | 'description') => {
+    if (!saCountPath) return;
+    const token = saCountFilterField && saCountFilterValue.trim()
+      ? `{{count:${saCountPath}|${saCountFilterField}=${saCountFilterValue.trim()}}}`
+      : `{{count:${saCountPath}}}`;
+    insertSaVariable(target, token);
   };
 
   const blockComplete: Record<Block, boolean> = {
@@ -926,6 +973,118 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
+          </div>
+
+          <div className="border border-green-200 rounded-lg p-3 bg-green-50/50 space-y-3">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-green-800">Insérer une donnée SA dans le texte</p>
+              {saSchemaLoading && <Loader2 className="w-3 h-3 animate-spin text-green-600" />}
+              <InfoIcon tooltip="Ajoute automatiquement une variable dans le libellé ou la description. Elle sera remplacée dans le chat par la donnée extraite de la Situation Actuelle." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Afficher une valeur SA</label>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) insertSaVariable('description', `{{sa:${e.target.value}}}`);
+                  }}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                >
+                  <option value="">Ajouter dans la description…</option>
+                  {saScalarPaths.map((path) => (
+                    <option key={path} value={path}>{path}</option>
+                  ))}
+                </select>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) insertSaVariable('libelle', `{{sa:${e.target.value}}}`);
+                  }}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                >
+                  <option value="">Ajouter dans le libellé…</option>
+                  {saScalarPaths.map((path) => (
+                    <option key={path} value={path}>{path}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">Afficher un nombre d&apos;éléments</label>
+                <select
+                  value={saCountPath}
+                  onChange={(e) => {
+                    setSaCountPath(e.target.value);
+                    setSaCountFilterField('');
+                    setSaCountFilterValue('');
+                  }}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                >
+                  <option value="">1. Choisir un tableau SA…</option>
+                  {Object.keys(saSchema).map((path) => (
+                    <option key={path} value={path}>{path}</option>
+                  ))}
+                </select>
+                <select
+                  value={saCountFilterField}
+                  disabled={!saCountPath}
+                  onChange={(e) => {
+                    setSaCountFilterField(e.target.value);
+                    setSaCountFilterValue('');
+                  }}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono disabled:opacity-40"
+                >
+                  <option value="">2. Filtre optionnel : choisir un champ…</option>
+                  {(saSchema[saCountPath] ?? []).map((field) => (
+                    <option key={field} value={field}>{field}</option>
+                  ))}
+                </select>
+                {saCountFilterField && (
+                  (() => {
+                    const values = saRealData
+                      ? getSaRealFieldValues(saRealData, saCountPath, saCountFilterField)
+                      : [];
+                    return values.length > 0 ? (
+                      <select
+                        value={saCountFilterValue}
+                        onChange={(e) => setSaCountFilterValue(e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                      >
+                        <option value="">3. Choisir une valeur…</option>
+                        {values.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={saCountFilterValue}
+                        onChange={(e) => setSaCountFilterValue(e.target.value)}
+                        placeholder="3. Valeur du filtre… ex: mobile"
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                      />
+                    );
+                  })()
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
+                    onClick={() => insertSaCountVariable('description')}
+                    className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                  >
+                    Ajouter description
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
+                    onClick={() => insertSaCountVariable('libelle')}
+                    className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                  >
+                    Ajouter libellé
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Obligatoire */}

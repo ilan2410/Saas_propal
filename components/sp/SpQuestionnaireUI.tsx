@@ -32,6 +32,29 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
+function formatSaTemplateValue(value: unknown): string {
+  if (value == null) return 'Non renseigné';
+  if (Array.isArray(value)) return String(value.length);
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function resolveSaTemplateText(text: string, donneesExtraites: Record<string, unknown>): string {
+  return text.replace(/\{\{(sa|count):([^}|]+)(?:\|([^}=]+)=([^}]+))?\}\}/g, (_match, type, path, filterField, filterValue) => {
+    const cleanPath = String(path).trim();
+    if (type === 'sa') return formatSaTemplateValue(getNestedValue(donneesExtraites, cleanPath));
+
+    const value = getNestedValue(donneesExtraites, cleanPath);
+    if (!Array.isArray(value)) return '0';
+    const items = value.filter(
+      (item): item is Record<string, unknown> => item != null && typeof item === 'object' && !Array.isArray(item),
+    );
+    if (!filterField || !filterValue) return String(items.length);
+    const expected = String(filterValue).trim().toLowerCase();
+    return String(items.filter((item) => String(item[String(filterField).trim()] ?? '').trim().toLowerCase() === expected).length);
+  });
+}
+
 function getLoopItemsFromSa(
   donneesExtraites: Record<string, unknown>,
   sourceSaArray?: string,
@@ -151,6 +174,7 @@ function CatalogueMultipleChoiceInput({
   display?: 'buttons' | 'select';
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     products.forEach((p) => { init[p.nom] = p.prix_installation != null ? p.prix_installation.toString() : '0'; });
@@ -169,36 +193,63 @@ function CatalogueMultipleChoiceInput({
   const [editingPrixFor, setEditingPrixFor] = useState<string | null>(null);
 
   const toggle = (nom: string) =>
-    setSelected((prev) => { const s = new Set(prev); s.has(nom) ? s.delete(nom) : s.add(nom); return s; });
+    setSelected((prev) => {
+      const s = new Set(prev);
+      if (s.has(nom)) s.delete(nom);
+      else s.add(nom);
+      return s;
+    });
 
   const selectedProducts = products.filter((p) => selected.has(p.nom));
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredProducts = normalizedSearch
+    ? products.filter((p) => [
+      p.nom,
+      p.fournisseur,
+      p.categorie,
+      p.description,
+      ...(p.tags ?? []),
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalizedSearch)))
+    : products;
 
   return (
     <div className="space-y-3">
       {display === 'select' ? (
-        <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
-          {products.map((p) => {
-            const prix = formatPrixProduit(p);
-            const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
-            const isSelected = selected.has(p.nom);
-            return (
-              <button
-                key={p.nom}
-                type="button"
-                onClick={() => toggle(p.nom)}
-                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                  isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
-                }`}
-              >
-                <div className="font-medium">{p.nom}</div>
-                {(prix || fas) && (
-                  <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
-                    {[prix, fas].filter(Boolean).join(' · ')}
-                  </div>
-                )}
-              </button>
-            );
-          })}
+        <div className="space-y-2">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher un produit..."
+            className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
+          />
+          <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
+            {filteredProducts.map((p) => {
+              const prix = formatPrixProduit(p);
+              const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+              const isSelected = selected.has(p.nom);
+              return (
+                <button
+                  key={p.nom}
+                  type="button"
+                  onClick={() => toggle(p.nom)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                    isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
+                  }`}
+                >
+                  <div className="font-medium">{p.nom}</div>
+                  {(prix || fas) && (
+                    <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {[prix, fas].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+            {filteredProducts.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-400">Aucun produit trouvé</div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -461,6 +512,7 @@ export function SpQuestionnaireUI({
     quantityValue: string;
     prixEditing: boolean;
   } | null>(null);
+  const [catalogueSearch, setCatalogueSearch] = useState('');
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
@@ -553,7 +605,7 @@ export function SpQuestionnaireUI({
             result.push({
               question: lq,
               instanceId: `${lq.id}__iter_${iter}`,
-              displayLabel: `[${iterLabel}] ${lq.libelle}`,
+              displayLabel: resolveSaTemplateText(`[${iterLabel}] ${lq.libelle}`, donneesExtraites),
               iterationIndex: iter,
               iterationLabel: iterLabel,
             });
@@ -563,7 +615,7 @@ export function SpQuestionnaireUI({
         result.push({
           question: q,
           instanceId: q.id,
-          displayLabel: q.libelle,
+          displayLabel: resolveSaTemplateText(q.libelle, donneesExtraites),
           iterationIndex: -1,
         });
       }
@@ -819,6 +871,18 @@ export function SpQuestionnaireUI({
     return filtered;
   })();
 
+  const isCatalogueQuestion = currentQuestion?.source === 'catalogue' || currentQuestion?.source === 'catalogue_et_sa';
+  const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
+  const filteredCatalogueOptions = normalizedCatalogueSearch
+    ? currentCatalogueOptions.filter((p) => [
+      p.nom,
+      p.fournisseur,
+      p.categorie,
+      p.description,
+      ...(p.tags ?? []),
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalizedCatalogueSearch)))
+    : currentCatalogueOptions;
+
   const allObligatoryAnswered = expandedQuestions
     .filter((eq) => eq.question.obligatoire && isQuestionVisible(eq))
     .every((eq) => reponses.some((r) => r.question_id === eq.instanceId));
@@ -895,7 +959,7 @@ export function SpQuestionnaireUI({
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
           <p className="text-sm font-medium text-blue-900">{currentExpanded.displayLabel}</p>
           {currentQuestion.description && (
-            <p className="text-xs text-blue-600">{currentQuestion.description}</p>
+            <p className="text-xs text-blue-600">{resolveSaTemplateText(currentQuestion.description, donneesExtraites)}</p>
           )}
           {currentExpanded.iterationLabel && (
             <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
@@ -951,7 +1015,7 @@ export function SpQuestionnaireUI({
                 <div className="flex flex-wrap gap-2">
                   {(currentQuestion.options_manuelles?.length
                     ? currentQuestion.options_manuelles
-                    : fournisseurs
+                    : isCatalogueQuestion ? [] : fournisseurs
                   ).map((opt) => (
                     <Button key={opt} size="sm" variant="outline" className="bg-white"
                       onClick={() => recordAnswer(currentExpanded.instanceId, opt)}>
@@ -983,7 +1047,16 @@ export function SpQuestionnaireUI({
           )}
 
           {currentQuestion.affichage === 'liste_deroulante' && (
-            <div className="flex gap-2">
+            <div className="space-y-2">
+              {currentCatalogueOptions.length > 0 && (
+                <input
+                  type="search"
+                  value={catalogueSearch}
+                  onChange={(e) => setCatalogueSearch(e.target.value)}
+                  placeholder="Rechercher un produit..."
+                  className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
+                />
+              )}
               <select
                 value={pendingCatalogueSelection?.instanceId === currentExpanded.instanceId && currentCatalogueOptions.length > 0
                   ? pendingCatalogueSelection.product.nom : ''}
@@ -1006,12 +1079,12 @@ export function SpQuestionnaireUI({
                 className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white">
                 <option value="">Sélectionnez...</option>
                 {currentCatalogueOptions.length > 0
-                  ? currentCatalogueOptions.map((p) => {
+                  ? filteredCatalogueOptions.map((p) => {
                     const prix = formatPrixProduit(p);
                     const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
                     return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
                   })
-                  : (currentQuestion.options_manuelles ?? fournisseurs).map((opt) => (
+                  : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
               </select>
@@ -1040,7 +1113,7 @@ export function SpQuestionnaireUI({
               />
             ) : (
               <MultipleChoiceInput
-                options={currentQuestion.options_manuelles ?? fournisseurs}
+                options={currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)}
                 onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
               />
             )
@@ -1069,7 +1142,7 @@ export function SpQuestionnaireUI({
               />
             ) : (
               <MultipleSelectInput
-                options={currentQuestion.options_manuelles ?? fournisseurs}
+                options={currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)}
                 onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
               />
             )
