@@ -157,7 +157,12 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
         </div>
         {saResumeText && (
           <button
-            onClick={() => setShowSaResume((v) => !v)}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowSaResume((v) => !v);
+            }}
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0 mt-1"
           >
             <Database className="w-3.5 h-3.5" />
@@ -166,19 +171,29 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
         )}
       </div>
 
-      {showSaResume && saResumeText && (
-        <div className="border border-green-200 rounded-lg bg-green-50/50 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-green-800">Résumé SA</p>
-            <button onClick={() => setShowSaResume(false)} className="text-green-400 hover:text-green-600">
-              <X className="w-3.5 h-3.5" />
-            </button>
+      <div>
+        {showSaResume && saResumeText && (
+          <div className="border border-green-200 rounded-lg bg-green-50/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-green-800">Résumé SA</p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowSaResume(false);
+                }}
+                className="text-green-400 hover:text-green-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <pre className="text-xs text-green-900 overflow-auto max-h-64 whitespace-pre-wrap leading-relaxed">
+              {saResumeText}
+            </pre>
           </div>
-          <pre className="text-xs text-green-900 overflow-auto max-h-64 whitespace-pre-wrap leading-relaxed">
-            {saResumeText}
-          </pre>
-        </div>
-      )}
+        )}
+      </div>
 
       {generateError && (
         <div className="border border-red-200 rounded-lg bg-red-50 p-3">
@@ -193,6 +208,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
         </div>
       ) : (
         <SpQuestionnaireUI
+          key="sp-questionnaire"
           questions={questions}
           donneesExtraites={propositionData.donnees_extraites ?? {}}
           catalogue={catalogue}

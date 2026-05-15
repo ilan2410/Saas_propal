@@ -272,6 +272,13 @@ export function filterCatalogueByFiltre(
 ): CatalogueProduit[] {
   let result = [...catalogue];
 
+  if (filtre.produits_ids && filtre.produits_ids.length > 0) {
+    const productRefs = filtre.produits_ids.map((id) => id.trim().toLowerCase());
+    return result.filter((p) =>
+      productRefs.includes(p.id.toLowerCase()) || productRefs.includes(p.nom.toLowerCase())
+    );
+  }
+
   if (filtre.categories && filtre.categories.length > 0) {
     result = result.filter((p) => filtre.categories!.includes(p.categorie));
   }
@@ -285,10 +292,6 @@ export function filterCatalogueByFiltre(
 
   if (filtre.type_facturation && filtre.type_facturation !== 'tous') {
     result = result.filter((p) => p.type_frequence === filtre.type_facturation);
-  }
-
-  if (filtre.produits_ids && filtre.produits_ids.length > 0) {
-    result = result.filter((p) => filtre.produits_ids!.includes(p.id));
   }
 
   return result;
