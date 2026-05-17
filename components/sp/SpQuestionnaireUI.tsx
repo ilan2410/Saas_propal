@@ -804,6 +804,32 @@ export function SpQuestionnaireUI({
     setPendingCatalogueSelection(null);
   };
 
+  const skipCurrentQuestion = () => {
+    if (!currentExpanded || !currentQuestion || currentQuestion.obligatoire) return;
+
+    setHistory((prev) => [...prev, {
+      reponses: [...reponses],
+      messages: [...messages],
+      hiddenByConsequence: new Set(hiddenByConsequence),
+      shownByConsequence: new Set(shownByConsequence),
+      dynamicFilters: new Map(dynamicFilters),
+      currentIdx,
+    }]);
+
+    setMessages((prev) => [...prev, { from: 'user', text: 'Passer' }]);
+    setInputValue('');
+    setCatalogueSearch('');
+    setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
+    setPendingCatalogueSelection(null);
+
+    const nextIdx = findNextVisibleIndex(currentIdx, reponses, hiddenByConsequence, shownByConsequence);
+    if (nextIdx < expandedQuestions.length) {
+      showQuestion(nextIdx);
+    } else {
+      setCurrentIdx(expandedQuestions.length);
+    }
+  };
+
   const recordAnswer = (instanceId: string, valeur: SpQuestionReponse['valeur'], extraReponses?: SpQuestionReponse[]) => {
     // Save snapshot before changing state so "back" can restore this exact moment
     setHistory((prev) => [...prev, {
@@ -1309,6 +1335,14 @@ export function SpQuestionnaireUI({
                 setPendingCatalogueSelection(null);
               }}>
                 Valider
+              </Button>
+            </div>
+          )}
+
+          {!currentQuestion.obligatoire && (
+            <div className="flex justify-end pt-1">
+              <Button size="sm" variant="ghost" onClick={skipCurrentQuestion}>
+                Passer
               </Button>
             </div>
           )}
