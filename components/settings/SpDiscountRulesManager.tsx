@@ -30,14 +30,37 @@ function emptyRule(): SpRegleRemise {
   };
 }
 
-function formatPrice(value?: number | null): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return `${value.toFixed(2).replace('.', ',')} €/mois`;
+function calculateDiscountedPrice(product: CatalogueProduit): number | null {
+  if (!product.prix_mensuel || !product.remise_valeur) return null;
+  if (product.remise_type === 'fixe') {
+    return product.prix_mensuel - product.remise_valeur;
+  }
+  if (product.remise_type === 'pourcentage') {
+    return product.prix_mensuel * (1 - product.remise_valeur / 100);
+  }
+  return null;
+}
+
+function formatDiscount(product: CatalogueProduit): string {
+  const discounted = calculateDiscountedPrice(product);
+  if (!discounted) return '—';
+  return `${discounted.toFixed(2).replace('.', ',')} €/mois`;
+}
+
+function formatDiscountLabel(product: CatalogueProduit): string {
+  if (!product.remise_valeur) return '';
+  if (product.remise_type === 'fixe') {
+    return `-${product.remise_valeur.toFixed(2).replace('.', ',')} €/mois`;
+  }
+  if (product.remise_type === 'pourcentage') {
+    return `-${product.remise_valeur}%`;
+  }
+  return '';
 }
 
 export function SpDiscountRulesManager({ rules, products, questions, onChange }: Props) {
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(rules[0]?.id ?? null);
-  const monthlyDiscountProducts = products.filter((p) => p.actif && p.type_frequence === 'mensuel' && p.prix_mensuel_remise != null);
+  const monthlyDiscountProducts = products.filter((p) => p.actif && p.type_frequence === 'mensuel' && p.remise_valeur != null);
 
   const updateRule = (id: string, patch: Partial<SpRegleRemise>) => {
     onChange(rules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
@@ -131,7 +154,7 @@ export function SpDiscountRulesManager({ rules, products, questions, onChange }:
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Conditions d’application</p>
+                  <p className="text-xs font-medium text-gray-700">Conditions d&apos;application</p>
                   <SpConditionEditor
                     groupes={rule.groupes_conditions ?? []}
                     logiqueRacine={rule.logique_declencheur ?? 'ET'}
@@ -145,7 +168,7 @@ export function SpDiscountRulesManager({ rules, products, questions, onChange }:
 
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-gray-700">Produits concernés</p>
-                  <p className="text-xs text-gray-500">Si aucun produit n’est coché, la règle cible tous les produits mensuels avec un tarif remisé.</p>
+                  <p className="text-xs text-gray-500">Si aucun produit n&apos;est coché, la règle cible tous les produits mensuels avec une remise.</p>
                   <div className="max-h-56 overflow-y-auto rounded-md border border-gray-200 divide-y divide-gray-100">
                     {monthlyDiscountProducts.map((product) => {
                       const selected = rule.produits_ids?.includes(product.id) ?? false;
@@ -159,14 +182,15 @@ export function SpDiscountRulesManager({ rules, products, questions, onChange }:
                           <span className="flex-1 min-w-0">
                             <span className="block font-medium text-gray-800 truncate">{product.nom}</span>
                             <span className="block text-xs text-gray-500">
-                              {formatPrice(product.prix_mensuel)} → {formatPrice(product.prix_mensuel_remise)}
+                              {product.prix_mensuel?.toFixed(2).replace('.', ',')} €/mois → {formatDiscount(product)}
+                              <span className="ml-2 text-green-600 font-medium">{formatDiscountLabel(product)}</span>
                             </span>
                           </span>
                         </label>
                       );
                     })}
                     {monthlyDiscountProducts.length === 0 && (
-                      <div className="px-3 py-4 text-sm text-gray-400">Aucun produit mensuel avec tarif remisé.</div>
+                      <div className="px-3 py-4 text-sm text-gray-400">Aucun produit mensuel avec remise.</div>
                     )}
                   </div>
                 </div>

@@ -39,7 +39,7 @@ export function getEligibleDiscountProducts(params: {
   return products.filter((product) => {
     if (!product.actif) return false;
     if (product.type_frequence !== 'mensuel') return false;
-    if (product.prix_mensuel_remise == null || !Number.isFinite(product.prix_mensuel_remise)) return false;
+    if (product.remise_valeur == null || !Number.isFinite(product.remise_valeur)) return false;
     if (!selectedNames.has(product.nom.trim().toLowerCase())) return false;
 
     return activeRules.some((rule) => {

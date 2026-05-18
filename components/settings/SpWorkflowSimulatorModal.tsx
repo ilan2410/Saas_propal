@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 
 interface Props {
@@ -18,6 +18,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [donneesExtraites, setDonneesExtraites] = useState<Record<string, unknown>>({});
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
@@ -35,7 +36,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       fetch(`/api/propositions/latest-extracted-data?template_id=${templateId}`).then((r) => r.json()),
       fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
       fetch('/api/catalogue').then((r) => r.json()),
-    ]).then(([latestData, fData, cData]) => {
+      fetch('/api/settings/preferences').then((r) => r.json()),
+    ]).then(([latestData, fData, cData, prefsData]) => {
       if (!latestData.extracted_data) {
         setNoProposition(true);
       } else {
@@ -43,6 +45,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       }
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
+      setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [templateId]);
@@ -144,6 +147,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               donneesExtraites={donneesExtraites}
               catalogue={catalogue}
               fournisseurs={fournisseurs}
+              discountRules={discountRules}
               onComplete={(reponses) => setCompletedReponses(reponses)}
               isSimulation={true}
               startFromQuestionId={startFromQuestionId}

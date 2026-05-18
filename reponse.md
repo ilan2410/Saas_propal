@@ -1,234 +1,145 @@
-Voici des automatisations à mettre en place lors de certains choix d’abonnement et matériel.
+SOLUTION PROPOSER
+Question 1 : Souhaitez-vous faire une proposition Packagée (Tarif global) ou non Packagé (tarif opérateur et location séparé) ?
+Question 2 : Quel est la durée de votre contrat ? 36 / 48 / 63 mois
 
-Sa t’aidera pour le développement
-
- 
-
-    MONOSITE ou MULTISITE
-        Nombre de Site et les nommer
-    PACKAGE ou NON PACKAGE
-        Si multisite Site 1, Site 2, etc…
-    DUREE DU CONTRAT
-        Si multisite Site 1, Site 2, etc…
-
- 
-
- 
 
 OPERATEUR
+•	Votre prospect est éligible à la Fibre FTTH ? (Ajouter le prix des FAS 260 € prix installation routeur 450 €)
+o	Oui
+o	Non
+	Souhaitez-vous proposer de la Fibre dédié ?
+	Oui - voir avec Jordan puis ajouter prix abonnement/mois + Fas ajouter en champs libre 
+	Non
+•	Quel type d’internet souhaitez-vous proposer ? (Seulement si pas de Fibre)
+o	ADSL
+o	VDSL
+o	Data Only (proposer en choix matériel Routeur 4G ou 5G)
+o	Satellite STARLINK – Associer au Tarif STALINK
+•	Souhaitez-vous ajouter une option TV ? Associer à Box TV – 100 €
+•	Prévoir une Box TV ? Box TV – 100 €
+        → Box TV souscrite par le client : apparaît dans la SP mais pas dans le BDC opérateur
 
- 
+•	Souhaitez-vous ajouter un Backup 4G
+•	Votre prospect souhaite-t-il un standard téléphonique ? (Ajouter le prix des FAS 190 € prix installation 590 € attention prix variable selon nombre de postes) Si non on passe au fax
+•	Combien de licence souhaitez-vous ? Détection des numéros de téléphone (**comme ligne mobile)
+o	Pour chaque licence :
+o	Licence centrex ou softphone
+o	Si licence centrex proposer option sofpthone
+•	Votre prospect a-t-il besoin d’une ligne fax ?
+o	Fax analogique + numéro ou
+o	Fax par mail + numéro
+•	Souhaitez-vous ajouter une licence pour un équipement complémentaire ? Champs libre avec recherche d’abonnement INTERNET/VOIX 
+•	Votre prospect souhaite combien de ligne mobile (**détection en amont biensurs)
+o	Si numéro apparent définir sur chaque ligne l’abonnement à choisir + option 5g + réseau Orange ou Bouygues Telecom par ligne 
+o	Si numero non apparent demande ligne 1, ligne 2, etc…. + l’abonnement à choisir + option 5g + réseau Orange ou Bouygues Telecom  par ligne
+•	Votre prospect a-t-il besoin d’un forfait data (tablette ou routeur 4G/5G) ?
+•	Souhaitez-vous ajouter un abonnement complémentaire ? Champs libre avec recherche d’abonnement MOBILE 
 
-    Fibre FTTH
-        Question en plus Simple PTO ou Double PTO (si double PTO FAS en plus selon la fibre)
-        Suite de la Question : Si double PTO proposer
-            PTO 1 : FIBRE FTTH ou FIBRE DEDIEE (inclus tous les frais qui vont avec)
-            PTO 2 : FIBRE FTTH ou FIBRE DEDIEE (inclus tous les frais qui vont avec sauf routeur)
-        FAS 260 € (si double PTO adapter selon la FIBRE)
-        Routeur TPLINK ER706W (en cas de Double PTO 1 routeur Suffit)
-        Branchement routeur 
-    Fibre Dédié
-        Abonnement et Fas selon prix mentionné en champs libre
-        Routeur TPLINK ER706W
-        Branchement routeur et pré visite
-    Data Only
-        Routeur 4G ou Routeur 5G au choix (si 5G ajouter option 5G à 2 €)
-        Branchement routeur + pré visite
-    Satellite STARLINK – souscrit par le client (apparait dans la solution proposée mais pas dans le BDC opérateur)
-        Ensemble des frais d’installation Starlink  - les définir)
-    Question en plus – si je choisi 1 PTO ou 1 connexion internet : Souhaite une connexion internet supplémentaire ?
-        Si oui, recommencer le question (sans choix du Double PTO)
-    Box TV – Prévoir Box TV - souscrit par le client (apparait dans la solution proposée mais pas dans le BDC opérateur)
-    Backup 4G – Si double PTO ou 2 connexions Internet ne pas proposer cette question
-    Standard Téléphonique (si multisite et besoin d’un standard téléphonique sur chaque site à ajouter)
-        FAS 190 €
-    Licence centrex
-    Option Softphone
-    Licence Softphone
-    Question en plus  - Ligne analogique
-    Ligne fax
-        Analogique
-        Fax par mail
-    Forfait mobile (pour chaque ligne)
-        Abonnement
-        Option 5G
-        Réseau Orange ou Bouygues Telecom
-    Forfait Data Only (tablette ou routeur 4G/5G) 
-        Abonnement
-        Option 5G
-        Réseau Orange ou Bouygues Telecom
-    Abonnement complémentaire DATA/VOIX/MOBILE (reste des abonnements non sélectionné)
-    Remise opérateur à proposer si durée de 63 mois
+Souhaitez-vous établir des remises opérateur ? (63 mois uniquement)
 
- 
 
-    SI MULTILITE PASSER AU SITE 2 ET MEME QUESTIONNAIRE
 
- 
+MATERIEL 
 
- 
+•	Votre prospect a-t-il besoin d’un routeur ? (qté + ****type de routeur) 
+o	Adapter le bon routeur et installation
+•	Votre prospect a-t-il besoin d’un switch ? 1 poste pas de switch (qté + Nbr de port
+o	8 ports - 2 à 6 postes 
+o	12 ports - 7 à 10 postes 
+o	24 ports – 10 à 20 postes 
+•	Votre prospect a besoin de borne wifi ? (qté + Omada AX1800)
+•	Votre prospect à besoin de poste filaire ? (qté + référence) demander le choix des postes et adapter le prix
+•	Votre prospect a besoin d’extension ? (qté + reference)
+•	Votre prospect à besoin de casque sans fil ? (qté + reference)
+•	Votre prospect à besoin de poste sans fil DECT (qté + reference) demander le choix des postes et adapter le prix
+•	Votre prospect à besoin de borne DECT ? 
+o	Borne maitre (qté + reference)
+o	Borne relai (qté + reference)
+•	Votre prospect a besoin d’une pieuvre de conférence ? (qté + reference)
+•	Souhaitez-vous ajouter du matériel supplémentaire
 
-MATERIEL (réorganisation des questions)
+•	Souhaites-tu faire un geste commercial pour ton client (Smartphone, Android, Tablette, etc…) ? Voir catalogue SMARTPHONE et ANDROID et un dernier Champs libre mettre le montant HT du cadeau.
+Si oui : 
+1.	Mentionner dans la proposition commerciale BON DE COMMANDE MATERIEL sous les indemnités de résiliation
+a.	(référence du smartphone/Android) inclus pour toute souscription du contrat avant le (dernier jour du mois).
+b.	Geste commercial d’une valeur de (XXX € HT) pour toute souscription du contrat avant le (dernier jour du mois).
 
- 
 
-    Le routeur ne doit pas être proposé car déjà prévu avec le choix de l’internet
-    Poste filaire + choix des ref
-        Casque sans fil
-        Extension
-    Poste sans fil (DECT) + choix des ref
-        Prévoir une borne Yealink W70B jusqu’à 10 postes DECT (doubler si + de 10)
-        Borne DECT
-            Borne maitre Yealink W80DM
-            Borne relai Yealink W80B
-                Avec le nombre de poste Filaire et DECT choisir automatiquement le bon tarif des frais installation + le bon switch
-    Borne Wifi
-    Pieuvre de conférence
-    Matériel complémentaire (reste du matériel non sélectionné)
-
- 
-
-    SI MULTILITE PASSER AU SITE 2 ET MEME QUESTIONNAIRE
-
- 
-
-    Geste commercial (smartphone/android ou Valeur du cadeau)
-
- 
-
-        Si oui : Mentionner dans la proposition commerciale BON DE COMMANDE MATERIEL sous les indemnités de résiliation
-            (référence du smartphone/Android) inclus pour toute souscription du contrat avant le (dernier jour du mois).
-            Geste commercial d’une valeur de (XXX € HT) pour toute souscription du contrat avant le (dernier jour du mois).
-
- 
 
 INSTALLATION
+FIBRE FTTH = Branchement routeur + pré visite = 390 € HT
+STANDARD TELEPHONIQUE = Installation sur site (attention tarif différent selon nombre de poste) voir catalogue
+Jusqu’à 10 postes : 590 € HT
+11-20 Postes 790 € HT
+21 et + - 1200 € HT
+Souhaitez-vous ajouter des interventions complémentaires ? 
+•	Si oui proposer :
+o	Pre visite (voir catalogue)
+o	****Branchement routeur (attention ce qui signifie qu’un second routeur doit être vendu)
+	Routeur FIBRE TP LINK ER706W
+	Routeur 4G MR 100
+	Routeur 5G AX1800
+o	Installation (attention doit prévoir du matériel complémentaire).
 
- 
 
-A ce stade tous les frais sont déjà calculés
 
- 
+FAIRE UN RECAP GLOBAL 
+Total situation actuelle
 
- 
+Solution proposée 
+Détail + Remise Mois Offert (uniquement Proposition PACKAGE - voir ci-dessous calcul Fois 12 ou 18 mois selon durée)
+Détail + Total matériel + geste commercial (smartphone)
+Détail + Total FAS
+Détail + Total Installation 
+Total Indemnités de résiliation
 
-RECAPITULATIF
+TOTAL COMPLET
 
- 
-
-    Total situation actuelle
-
-+
-
-    Solution proposée Abonnement RECURRENT
-    Détail + Remise Mois Offert (uniquement Proposition PACKAGE - voir ci-dessous calcul Fois 12 ou 18 mois selon durée) PONCTUEL
-    Détail + Total matériel + geste commercial (smartphone) PONCTUEL
-    Détail + Total FAS PONCTUEL
-    Détail + Total Installation PONCTUEL
-    Total Indemnités de résiliation PONCTUEL
-
- 
-
-TOTAL COMPLET (récurrent et ponctuel)
-
- 
-
- 
-
-UNIQUEMENT DANS PROPOSITION PACKAGE - Le montant total opérateur devra être multiplié par (**selon durée du contrat) et intégré dans le Bon de commande opérateur dans la mention « Remboursement de (remise) € à titre de participation au contrat. »
-
-63 mois = Montant Abonnement Solution Proposée * 18
-
-48 mois = Montant Abonnement Solution Proposée * 18
-
-36 mois = Montant Abonnement Solution Proposée * 12
-
- 
+UNIQUEMENT DANS PROPOSITION PACKAGE - Le montant total opérateur devra être multiplié par (**selon durée du contrat) et intégré dans le Bon de commande opérateur dans la mention « 	Remboursement de (remise) € à titre de participation au contrat. »
+63 mois = 18
+48 mois = 18
+36 mois = 12
 
 Dans la proposition commerciale la durée Bon de commande matérielle :
-
 63 mois = 21 Trimestres
-
 48 mois = 16 Trimestres
-
 36 mois = 12 Trimestres
 
- 
-
 Durée Bon de commande opérateur et internet = bon de commande matériel (EN TRIMESTRE)
-
 Facturation reste mensuelle
 
- 
 
- 
 
 Calcule du loyer avant extraction (proposition de loyer selon la marge)
 
- 
-
 Exemple de calcul de loyer
-
 Situation (fictive) sur 63 mois :
 
- 
+Total opérateur après remise = 100 € HT
+Remise mois offert : 100 * 18 mois =1800 € ht (uniquement proposition PACKAGE)
+Indemnité de résiliation = 3 250 € ht
+Total Matériel + smartphone = 2 500 € ht
+Total FAS = 750 € ht
+Total installation 1 000 € ht
 
-Total opérateur après remise = 100 € HT RECURRENT
+TOTAL = 1800 + 3250 + 2500 + 750 + 1000 =9 300
+Loyer mensuel hors marge se calcul de cette manière = (9300*0.063(taux du loyer)) /3 = 195.3€ arrondi supérieur donc pour trouver mon loyer avec marge je dois ajouter à 9300 € ma marge
 
-Remise mois offert : 100 * 18 mois =1800 € ht (uniquement proposition PACKAGE) PONCTUEL
-
-Indemnité de résiliation = 3 250 € ht PONCTUEL
-
-Total Matériel + smartphone = 2 500 € ht PONCTUEL
-
-Total FAS = 750 € ht PONCTUEL
-
-Total installation 1 000 € ht PONCTUEL
-
- 
-
-Total Récurrent : 100 € HT/mois
-
-Total Ponctuel : 1800+3250+2500+750+1000 = 9300
-
- 
-
-Loyer mensuel hors marge se calcul de cette manière = (TOTAL PONCTUEL*0.063(taux du loyer)) /3 = 195.3€ arrondi supérieur donc pour trouver mon loyer avec marge je dois ajouter à TOTAL PONCTUEL € ma marge
-
- 
-
-2 manières de faire
-
- 
+2 manière de faire 
 
 SUGGESTION DE MARGE
-
 1 000 = 216.3 arrondis au supérieur
-
 2000 = 237.3 arrondis au supérieur
-
 3000 = 258.3 arrondis au supérieur
-
 Ou
-
- 
 
 Un champ libre ou je mets ma marge et il me donne l’estimation du loyer Package ou non (ça c’est le mieux)
 
- 
-
 Taux loyer selon durée
-
-63 mois = 0.063
-
+63 mois = 0.063 
 48 mois = 0.081
-
 36 mois =0.1060
 
- 
-
- 
 
 Exporter SITUATION ACTUELLE et SOLUTION PROPOSE sous forme de tableau (excel)
-
 ETABLIR LA PROPOSITION WORD si besoin de modifier

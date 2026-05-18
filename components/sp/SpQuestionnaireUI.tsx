@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise } from '@/types';
@@ -516,6 +516,8 @@ export function SpQuestionnaireUI({
     prixEditing: boolean;
   } | null>(null);
   const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [editingDiscountFor, setEditingDiscountFor] = useState<string | null>(null);
+  const [discountPrixOverrides, setDiscountPrixOverrides] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
@@ -794,6 +796,14 @@ export function SpQuestionnaireUI({
     if (history.length === 0) return;
     const snapshot = history[history.length - 1];
     if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
+    
+    // Nettoyer les réponses auxiliaires prix_* si on revient sur une question de type remise_produits
+    const eq = expandedQuestions[currentIdx];
+    if (eq && eq.question.affichage === 'remise_produits') {
+      const nextReponses = reponses.filter((r) => !r.question_id.startsWith('prix_' + eq.instanceId));
+      setReponses(nextReponses);
+    }
+    
     setHistory((prev) => prev.slice(0, -1));
     setReponses(snapshot.reponses);
     setMessages(snapshot.messages);
@@ -1019,27 +1029,83 @@ export function SpQuestionnaireUI({
             <div className="space-y-3">
               {currentDiscountProducts.length > 0 ? (
                 <div className="space-y-2">
-                  {currentDiscountProducts.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 rounded-lg border border-green-200 bg-white px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{p.nom}</p>
-                        <p className="text-xs text-gray-500">
-                          {formatPrixProduit(p)} → {p.prix_mensuel_remise?.toFixed(2).replace('.', ',')} €/mois
-                          {p.libelle_remise ? ` · ${p.libelle_remise}` : ''}
-                        </p>
+                  {currentDiscountProducts.map((p) => {
+                    const computedPrixRemise = (() => {
+                      if (!p.prix_mensuel || !p.remise_valeur) return null;
+                      if (p.remise_type === 'fixe') return p.prix_mensuel - p.remise_valeur;
+                      if (p.remise_type === 'pourcentage') return p.prix_mensuel * (1 - p.remise_valeur / 100);
+                      return null;
+                    })();
+                    const overrideValue = discountPrixOverrides[p.id];
+                    const effectivePrix = overrideValue !== undefined && overrideValue !== ''
+                      ? Number(overrideValue.replace(',', '.'))
+                      : computedPrixRemise;
+                    const remiseLabel = (() => {
+                      if (!p.remise_valeur) return '';
+                      if (p.remise_type === 'fixe') return `-${p.remise_valeur.toFixed(2).replace('.', ',')} €/mois`;
+                      if (p.remise_type === 'pourcentage') return `-${p.remise_valeur}%`;
+                      return '';
+                    })();
+                    const isEditing = editingDiscountFor === p.id;
+                    return (
+                      <div key={p.id} className="flex flex-col gap-2 rounded-lg border border-green-200 bg-white px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{p.nom}</p>
+                            <p className="text-xs text-gray-500">
+                              {formatPrixProduit(p)} → {effectivePrix != null && Number.isFinite(effectivePrix) ? `${effectivePrix.toFixed(2).replace('.', ',')} €/mois` : '—'}
+                            </p>
+                          </div>
+                          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                            {remiseLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDiscountFor((current) => current === p.id ? null : p.id);
+                              if (overrideValue === undefined && computedPrixRemise != null) {
+                                setDiscountPrixOverrides((prev) => ({ ...prev, [p.id]: String(computedPrixRemise) }));
+                              }
+                            }}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                            aria-label={`Modifier le prix remisé de ${p.nom}`}
+                            title={`Modifier le prix remisé de ${p.nom}`}
+                          >
+                            {isEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        {isEditing && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-500 shrink-0">Prix remisé (€ / mois)</label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={overrideValue ?? (computedPrixRemise != null ? String(computedPrixRemise) : '')}
+                              onChange={(e) => setDiscountPrixOverrides((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                              className="h-7 w-24 text-sm border border-gray-300 rounded px-2"
+                            />
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">
-                        -{(((p.prix_mensuel ?? 0) - (p.prix_mensuel_remise ?? 0))).toFixed(2).replace('.', ',')} €/mois
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div className="flex gap-2">
                     <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => {
                       const priceMap: Record<string, string> = {};
                       currentDiscountProducts.forEach((p) => {
-                        if (p.prix_mensuel_remise != null) {
-                          priceMap[p.nom] = String(p.prix_mensuel_remise);
-                          priceMap[p.id] = String(p.prix_mensuel_remise);
+                        const computedPrixRemise = (() => {
+                          if (!p.prix_mensuel || !p.remise_valeur) return null;
+                          if (p.remise_type === 'fixe') return p.prix_mensuel - p.remise_valeur;
+                          if (p.remise_type === 'pourcentage') return p.prix_mensuel * (1 - p.remise_valeur / 100);
+                          return null;
+                        })();
+                        const overrideValue = discountPrixOverrides[p.id];
+                        const effectivePrix = overrideValue !== undefined && overrideValue !== ''
+                          ? Number(overrideValue.replace(',', '.'))
+                          : computedPrixRemise;
+                        if (effectivePrix != null && Number.isFinite(effectivePrix)) {
+                          priceMap[p.nom] = String(effectivePrix);
+                          priceMap[p.id] = String(effectivePrix);
                         }
                       });
                       recordAnswer(currentExpanded.instanceId, true, [{
@@ -1420,15 +1486,52 @@ export function SpQuestionnaireUI({
             <div className="space-y-2">
               <p className="text-sm text-green-700">Résumé de la simulation :</p>
               <ul className="text-sm text-gray-700 space-y-1 max-h-40 overflow-y-auto">
-                {reponses.map((r) => {
-                  const q = expandedQuestions.find((eq) => eq.instanceId === r.question_id);
-                  return (
-                    <li key={r.question_id} className="flex gap-2">
-                      <span className="text-gray-500 shrink-0">{q?.displayLabel ?? r.question_id} :</span>
-                      <span className="font-medium">{formatReponseText(r.valeur)}</span>
-                    </li>
-                  );
-                })}
+                {reponses
+                  .filter((r) => !r.question_id.startsWith('prix_') && !r.question_id.startsWith('fas_') && !r.question_id.startsWith('quantite_'))
+                  .map((r) => {
+                    const q = expandedQuestions.find((eq) => eq.instanceId === r.question_id);
+                    const isRemiseQuestion = q?.question.affichage === 'remise_produits';
+                    let valueDisplay: ReactNode = formatReponseText(r.valeur);
+
+                    if (isRemiseQuestion && r.valeur === true) {
+                      const prixReponse = reponses.find((rep) => rep.question_id === `prix_${r.question_id}`);
+                      if (prixReponse && typeof prixReponse.valeur === 'string') {
+                        try {
+                          const priceMap = JSON.parse(prixReponse.valeur) as Record<string, string>;
+                          const items: Array<{ nom: string; prix: string }> = [];
+                          const seen = new Set<string>();
+                          Object.entries(priceMap).forEach(([key, value]) => {
+                            const product = catalogue.find((p) => p.id === key || p.nom === key);
+                            const nom = product?.nom ?? key;
+                            if (seen.has(nom)) return;
+                            seen.add(nom);
+                            items.push({ nom, prix: value });
+                          });
+                          if (items.length > 0) {
+                            valueDisplay = (
+                              <span className="font-medium">
+                                {items.map((item, idx) => (
+                                  <span key={item.nom}>
+                                    {idx > 0 && ', '}
+                                    {item.nom} ({Number(item.prix).toFixed(2).replace('.', ',')} €/mois)
+                                  </span>
+                                ))}
+                              </span>
+                            );
+                          }
+                        } catch {
+                          // ignore JSON parse errors
+                        }
+                      }
+                    }
+
+                    return (
+                      <li key={r.question_id} className="flex gap-2">
+                        <span className="text-gray-500 shrink-0">{q?.displayLabel ?? r.question_id} :</span>
+                        {typeof valueDisplay === 'string' ? <span className="font-medium">{valueDisplay}</span> : valueDisplay}
+                      </li>
+                    );
+                  })}
               </ul>
             </div>
           ) : (

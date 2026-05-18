@@ -260,8 +260,8 @@ export interface CatalogueProduit {
   type_frequence: 'mensuel' | 'unique';
   mode_fas?: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel?: number;
-  prix_mensuel_remise?: number;
-  libelle_remise?: string;
+  remise_type?: 'fixe' | 'pourcentage';
+  remise_valeur?: number;
   prix_vente?: number;
   prix_installation?: number;
   engagement_mois?: number;

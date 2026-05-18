@@ -14,8 +14,8 @@ type FormState = {
   type_frequence: 'mensuel' | 'unique';
   mode_fas: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel: string;
-  prix_mensuel_remise: string;
-  libelle_remise: string;
+  remise_type: 'fixe' | 'pourcentage' | '';
+  remise_valeur: string;
   prix_vente: string;
   prix_installation: string;
   engagement_mois: string;
@@ -53,11 +53,11 @@ export function CatalogueProduitForm({
         initialProduit?.prix_mensuel !== undefined && initialProduit?.prix_mensuel !== null
           ? String(initialProduit.prix_mensuel)
           : '',
-      prix_mensuel_remise:
-        initialProduit?.prix_mensuel_remise !== undefined && initialProduit?.prix_mensuel_remise !== null
-          ? String(initialProduit.prix_mensuel_remise)
+      remise_type: (initialProduit?.remise_type as 'fixe' | 'pourcentage' | '') || '',
+      remise_valeur:
+        initialProduit?.remise_valeur !== undefined && initialProduit?.remise_valeur !== null
+          ? String(initialProduit.remise_valeur)
           : '',
-      libelle_remise: initialProduit?.libelle_remise || '',
       prix_vente:
         initialProduit?.prix_vente !== undefined && initialProduit?.prix_vente !== null
           ? String(initialProduit.prix_vente)
@@ -160,14 +160,8 @@ export function CatalogueProduitForm({
         type_frequence: form.type_frequence,
         mode_fas: form.mode_fas,
         prix_mensuel: form.type_frequence === 'mensuel' ? Number(form.prix_mensuel) : null,
-        prix_mensuel_remise:
-          form.type_frequence === 'mensuel' && form.prix_mensuel_remise.trim()
-            ? Number(form.prix_mensuel_remise)
-            : null,
-        libelle_remise:
-          form.type_frequence === 'mensuel' && form.libelle_remise.trim()
-            ? form.libelle_remise.trim()
-            : null,
+        remise_type: form.type_frequence === 'mensuel' && form.remise_type ? form.remise_type : null,
+        remise_valeur: form.type_frequence === 'mensuel' && form.remise_valeur.trim() ? Number(form.remise_valeur) : null,
         prix_vente: form.type_frequence === 'unique' ? Number(form.prix_vente) : null,
         prix_installation: form.prix_installation ? Number(form.prix_installation) : null,
         engagement_mois:
@@ -197,8 +191,8 @@ export function CatalogueProduitForm({
         alert('Le prix de vente est requis et doit être valide');
         return;
       }
-      if (payload.prix_mensuel_remise !== null && !Number.isFinite(payload.prix_mensuel_remise)) {
-        alert('Le tarif mensuel remisé doit être valide');
+      if (payload.remise_valeur !== null && !Number.isFinite(payload.remise_valeur)) {
+        alert('La valeur de remise doit être valide');
         return;
       }
 
@@ -389,22 +383,40 @@ export function CatalogueProduitForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tarif remisé (€ / mois)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type de remise</label>
+              <div className="flex gap-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="remise_type"
+                    value="fixe"
+                    checked={form.remise_type === 'fixe'}
+                    onChange={(e) => setForm((p) => ({ ...p, remise_type: e.target.value as 'fixe' | 'pourcentage' }))}
+                  />
+                  <span className="text-sm text-gray-700">Montant fixe</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="remise_type"
+                    value="pourcentage"
+                    checked={form.remise_type === 'pourcentage'}
+                    onChange={(e) => setForm((p) => ({ ...p, remise_type: e.target.value as 'fixe' | 'pourcentage' }))}
+                  />
+                  <span className="text-sm text-gray-700">Pourcentage</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Valeur de remise {form.remise_type === 'pourcentage' ? '(%)' : '(€ / mois)'}
+              </label>
               <input
-                value={form.prix_mensuel_remise}
-                onChange={(e) => setForm((p) => ({ ...p, prix_mensuel_remise: e.target.value }))}
+                value={form.remise_valeur}
+                onChange={(e) => setForm((p) => ({ ...p, remise_valeur: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 inputMode="decimal"
-                placeholder="Ex: 39.99"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Libellé de remise</label>
-              <input
-                value={form.libelle_remise}
-                onChange={(e) => setForm((p) => ({ ...p, libelle_remise: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                placeholder="Ex: Remise engagement 63 mois"
+                placeholder={form.remise_type === 'pourcentage' ? 'Ex: 20' : 'Ex: 10'}
               />
             </div>
           </>

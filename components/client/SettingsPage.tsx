@@ -388,7 +388,7 @@ export default function SettingsPage({
     };
     loadProducts();
     return () => { cancelled = true; };
-  }, [activeTab, templates]);
+  }, [activeTab]);
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
