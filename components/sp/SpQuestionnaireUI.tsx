@@ -3,13 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
+import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 
 export interface SpQuestionnaireUIProps {
   questions: SpQuestion[];
   donneesExtraites: Record<string, unknown>;
   catalogue: CatalogueProduit[];
+  discountRules?: SpRegleRemise[];
   fournisseurs: string[];
   onComplete: (reponses: SpQuestionReponse[]) => void;
   initialReponses?: SpQuestionReponse[];
@@ -488,6 +490,7 @@ export function SpQuestionnaireUI({
   questions,
   donneesExtraites,
   catalogue,
+  discountRules = [],
   fournisseurs,
   onComplete,
   initialReponses,
@@ -898,6 +901,14 @@ export function SpQuestionnaireUI({
   })();
 
   const isCatalogueQuestion = currentQuestion?.source === 'catalogue' || currentQuestion?.source === 'catalogue_et_sa';
+  const currentDiscountProducts = currentQuestion?.affichage === 'remise_produits'
+    ? getEligibleDiscountProducts({
+      rules: discountRules,
+      products: catalogue,
+      reponses,
+      donneesExtraites,
+    })
+    : [];
   const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
   const filteredCatalogueOptions = normalizedCatalogueSearch
     ? currentCatalogueOptions.filter((p) => [
@@ -1001,6 +1012,56 @@ export function SpQuestionnaireUI({
                   {opt}
                 </Button>
               ))}
+            </div>
+          )}
+
+          {currentQuestion.affichage === 'remise_produits' && (
+            <div className="space-y-3">
+              {currentDiscountProducts.length > 0 ? (
+                <div className="space-y-2">
+                  {currentDiscountProducts.map((p) => (
+                    <div key={p.id} className="flex items-center gap-3 rounded-lg border border-green-200 bg-white px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{p.nom}</p>
+                        <p className="text-xs text-gray-500">
+                          {formatPrixProduit(p)} → {p.prix_mensuel_remise?.toFixed(2).replace('.', ',')} €/mois
+                          {p.libelle_remise ? ` · ${p.libelle_remise}` : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                        -{(((p.prix_mensuel ?? 0) - (p.prix_mensuel_remise ?? 0))).toFixed(2).replace('.', ',')} €/mois
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => {
+                      const priceMap: Record<string, string> = {};
+                      currentDiscountProducts.forEach((p) => {
+                        if (p.prix_mensuel_remise != null) {
+                          priceMap[p.nom] = String(p.prix_mensuel_remise);
+                          priceMap[p.id] = String(p.prix_mensuel_remise);
+                        }
+                      });
+                      recordAnswer(currentExpanded.instanceId, true, [{
+                        question_id: 'prix_' + currentExpanded.instanceId,
+                        valeur: JSON.stringify(priceMap),
+                      }]);
+                    }}>
+                      Appliquer les remises
+                    </Button>
+                    <Button size="sm" variant="outline" className="bg-white" onClick={() => recordAnswer(currentExpanded.instanceId, false)}>
+                      Ne pas appliquer
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-500">Aucun produit sélectionné n’est éligible à une remise.</p>
+                  <Button size="sm" variant="outline" className="bg-white" onClick={() => recordAnswer(currentExpanded.instanceId, false)}>
+                    Continuer
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

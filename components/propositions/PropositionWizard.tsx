@@ -85,7 +85,7 @@ function ReEditWarningDialog({ siteNom, tarifCloneSite, onConfirm, onCancel }: R
           <h2 className="text-base font-bold text-gray-900">Modifier ce site consomme des crédits</h2>
         </div>
         <p className="text-sm text-gray-600">
-          Cette action va re-générer la proposition pour <span className="font-semibold">"{siteNom}"</span>.
+          Cette action va re-générer la proposition pour <span className="font-semibold">&quot;{siteNom}&quot;</span>.
         </p>
         <p className="text-sm font-medium text-amber-700">Coût : {tarifCloneSite.toFixed(2)} crédit(s)</p>
         <div className="flex gap-3 justify-end">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpConfigLoyer, SpTauxDuree } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpConfigLoyer, SpTauxDuree, SpRegleRemise, CatalogueProduit, SpQuestion } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
@@ -27,9 +27,11 @@ import {
   FileDown,
   Bot,
   Calculator,
-  Plus
+  Plus,
+  Percent
 } from 'lucide-react';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
+import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -52,8 +54,8 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-loyer';
-const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-loyer'];
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-loyer' | 'sp-remises';
+const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-loyer', 'sp-remises'];
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -318,6 +320,10 @@ export default function SettingsPage({
   };
   const [loyerConfig, setLoyerConfig] = useState<SpConfigLoyer>(initialLoyerConfig);
   const [isLoyerSaving, setIsLoyerSaving] = useState(false);
+  const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>(organization.preferences?.sp_regles_remise ?? []);
+  const [discountProducts, setDiscountProducts] = useState<CatalogueProduit[]>([]);
+  const [discountQuestions, setDiscountQuestions] = useState<SpQuestion[]>([]);
+  const [isDiscountSaving, setIsDiscountSaving] = useState(false);
 
   // Appearance State
   const [appearance, setAppearance] = useState<{
@@ -359,6 +365,30 @@ export default function SettingsPage({
     document.documentElement.dataset.theme = appearance.theme;
     document.documentElement.dataset.density = appearance.densite;
   }, [appearance.theme, appearance.densite]);
+
+  useEffect(() => {
+    if (activeTab !== 'sp-remises') return;
+    let cancelled = false;
+    const loadProducts = async () => {
+      try {
+        const res = await fetch('/api/catalogue');
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && Array.isArray(data?.produits)) setDiscountProducts(data.produits as CatalogueProduit[]);
+        const questionResults = await Promise.all(
+          templates.map((template) =>
+            fetch(`/api/templates/${template.id}/sp-questions`).then((r) => r.json()).catch(() => ({ questions: [] }))
+          )
+        );
+        if (!cancelled) {
+          setDiscountQuestions(questionResults.flatMap((result) => result.questions ?? []) as SpQuestion[]);
+        }
+      } catch {
+        if (!cancelled) setDiscountProducts([]);
+      }
+    };
+    loadProducts();
+    return () => { cancelled = true; };
+  }, [activeTab, templates]);
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
@@ -881,6 +911,25 @@ export default function SettingsPage({
     }
   };
 
+  const handleSaveDiscountRules = async () => {
+    if (isDiscountSaving) return;
+    setIsDiscountSaving(true);
+    try {
+      const res = await fetch('/api/settings/update-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sp_regles_remise: discountRules }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      toast.success('Règles de remise enregistrées');
+      router.refresh();
+    } catch {
+      toast.error('Erreur lors de la sauvegarde des remises');
+    } finally {
+      setIsDiscountSaving(false);
+    }
+  };
+
   const updateTauxDuree = (index: number, field: keyof SpTauxDuree, value: number) => {
     setLoyerConfig((prev) => ({
       ...prev,
@@ -987,6 +1036,7 @@ export default function SettingsPage({
           <option value="apparence">Apparence</option>
           <option value="sp-questions">Questions SP</option>
           <option value="sp-loyer">Calcul Loyer SP</option>
+          <option value="sp-remises">Remises SP</option>
         </select>
       </div>
 
@@ -1000,6 +1050,7 @@ export default function SettingsPage({
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
         <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
         <TabButton id="sp-loyer" label="Calcul Loyer" icon={Calculator} />
+        <TabButton id="sp-remises" label="Remises" icon={Percent} />
       </div>
 
       {/* Content Area */}
@@ -2243,6 +2294,30 @@ export default function SettingsPage({
             <div className="flex gap-2 pt-4">
               <Button onClick={handleSaveLoyerConfig} disabled={isLoyerSaving}>
                 {isLoyerSaving ? 'Sauvegarde...' : 'Enregistrer la configuration'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'sp-remises' && (
+          <div className="p-6 space-y-6">
+            <div className="border-b border-gray-100 pb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Remises conditionnelles SP</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Configurez les règles qui rendent disponibles les tarifs remisés du catalogue pendant le questionnaire SP.
+              </p>
+            </div>
+
+            <SpDiscountRulesManager
+              rules={discountRules}
+              products={discountProducts}
+              questions={discountQuestions}
+              onChange={setDiscountRules}
+            />
+
+            <div className="flex gap-2 pt-4 border-t border-gray-100">
+              <Button onClick={handleSaveDiscountRules} disabled={isDiscountSaving}>
+                {isDiscountSaving ? 'Sauvegarde...' : 'Enregistrer les règles'}
               </Button>
             </div>
           </div>

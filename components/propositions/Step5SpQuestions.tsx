@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, Database, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 
 interface Props {
@@ -21,6 +21,7 @@ interface Props {
 export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev, siteLabel, onMultisiteComplete }: Props) {
   const [questions, setQuestions] = useState<SpQuestion[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
+  const [preferences, setPreferences] = useState<OrganizationPreferences>({});
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
@@ -35,13 +36,15 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()),
       fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
       fetch('/api/catalogue').then((r) => r.json()),
-    ]).then(([qData, fData, cData]) => {
+      fetch('/api/settings/preferences').then((r) => r.json()),
+    ]).then(([qData, fData, cData, pData]) => {
       const qs: SpQuestion[] = ((qData.questions ?? []) as SpQuestion[])
         .filter((q) => q.actif)
         .sort((a, b) => a.ordre - b.ordre);
       setQuestions(qs);
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
+      setPreferences(pData.preferences ?? {});
       setLoadingQuestions(false);
     }).catch(() => setLoadingQuestions(false));
   }, [templateId]);
@@ -212,6 +215,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
           questions={questions}
           donneesExtraites={propositionData.donnees_extraites ?? {}}
           catalogue={catalogue}
+          discountRules={preferences.sp_regles_remise ?? []}
           fournisseurs={fournisseurs}
           initialReponses={propositionData.sp_reponses}
           onComplete={handleComplete}

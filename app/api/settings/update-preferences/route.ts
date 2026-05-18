@@ -54,6 +54,9 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_config_loyer !== undefined
         ? { sp_config_loyer: newPreferences.sp_config_loyer }
         : {}),
+      ...(newPreferences.sp_regles_remise !== undefined
+        ? { sp_regles_remise: newPreferences.sp_regles_remise }
+        : {}),
     };
 
     const supabaseAdmin = createServiceClient();

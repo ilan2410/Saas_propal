@@ -71,6 +71,7 @@ export interface OrganizationPreferences {
   };
   sp_customization?: SpCustomization;
   sp_config_loyer?: SpConfigLoyer;
+  sp_regles_remise?: SpRegleRemise[];
 }
 
 export type SpOutputFormat = 'pdf' | 'word';
@@ -259,6 +260,8 @@ export interface CatalogueProduit {
   type_frequence: 'mensuel' | 'unique';
   mode_fas?: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel?: number;
+  prix_mensuel_remise?: number;
+  libelle_remise?: string;
   prix_vente?: number;
   prix_installation?: number;
   engagement_mois?: number;
@@ -327,6 +330,7 @@ export type SpQuestionAffichage =
   | 'texte_long'
   | 'nombre'
   | 'date'
+  | 'remise_produits'
   | 'choix_liste_manuelle'
   | 'adresse_complete';
 
@@ -361,6 +365,17 @@ export interface SpGroupeConditions {
   id: string;
   conditions: SpCondition[];
   logique_groupe?: SpConditionLogique;
+}
+
+export interface SpRegleRemise {
+  id: string;
+  nom: string;
+  actif: boolean;
+  groupes_conditions: SpGroupeConditions[];
+  logique_declencheur?: SpConditionLogique;
+  produits_ids?: string[];
+  categories?: string[];
+  fournisseurs?: string[];
 }
 
 export interface SpFiltresCatalogue {
@@ -465,7 +480,7 @@ export interface SpLigneMobile {
   _economie_raw: number;
 }
 
-interface SpLigneBase extends Omit<SpLigneMobile, 'sp_type_ligne'> {}
+type SpLigneBase = Omit<SpLigneMobile, 'sp_type_ligne'>;
 
 export interface SpLigneFixe extends SpLigneBase {
   sp_type_ligne: 'Fixe';

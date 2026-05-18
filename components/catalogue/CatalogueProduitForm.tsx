@@ -14,6 +14,8 @@ type FormState = {
   type_frequence: 'mensuel' | 'unique';
   mode_fas: 'fixe_par_selection' | 'multiplie_par_quantite';
   prix_mensuel: string;
+  prix_mensuel_remise: string;
+  libelle_remise: string;
   prix_vente: string;
   prix_installation: string;
   engagement_mois: string;
@@ -51,6 +53,11 @@ export function CatalogueProduitForm({
         initialProduit?.prix_mensuel !== undefined && initialProduit?.prix_mensuel !== null
           ? String(initialProduit.prix_mensuel)
           : '',
+      prix_mensuel_remise:
+        initialProduit?.prix_mensuel_remise !== undefined && initialProduit?.prix_mensuel_remise !== null
+          ? String(initialProduit.prix_mensuel_remise)
+          : '',
+      libelle_remise: initialProduit?.libelle_remise || '',
       prix_vente:
         initialProduit?.prix_vente !== undefined && initialProduit?.prix_vente !== null
           ? String(initialProduit.prix_vente)
@@ -153,6 +160,14 @@ export function CatalogueProduitForm({
         type_frequence: form.type_frequence,
         mode_fas: form.mode_fas,
         prix_mensuel: form.type_frequence === 'mensuel' ? Number(form.prix_mensuel) : null,
+        prix_mensuel_remise:
+          form.type_frequence === 'mensuel' && form.prix_mensuel_remise.trim()
+            ? Number(form.prix_mensuel_remise)
+            : null,
+        libelle_remise:
+          form.type_frequence === 'mensuel' && form.libelle_remise.trim()
+            ? form.libelle_remise.trim()
+            : null,
         prix_vente: form.type_frequence === 'unique' ? Number(form.prix_vente) : null,
         prix_installation: form.prix_installation ? Number(form.prix_installation) : null,
         engagement_mois:
@@ -180,6 +195,10 @@ export function CatalogueProduitForm({
         (payload.prix_vente === null || !Number.isFinite(payload.prix_vente))
       ) {
         alert('Le prix de vente est requis et doit être valide');
+        return;
+      }
+      if (payload.prix_mensuel_remise !== null && !Number.isFinite(payload.prix_mensuel_remise)) {
+        alert('Le tarif mensuel remisé doit être valide');
         return;
       }
 
@@ -367,6 +386,25 @@ export function CatalogueProduitForm({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 inputMode="numeric"
                 placeholder="Ex: 12"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tarif remisé (€ / mois)</label>
+              <input
+                value={form.prix_mensuel_remise}
+                onChange={(e) => setForm((p) => ({ ...p, prix_mensuel_remise: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                inputMode="decimal"
+                placeholder="Ex: 39.99"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Libellé de remise</label>
+              <input
+                value={form.libelle_remise}
+                onChange={(e) => setForm((p) => ({ ...p, libelle_remise: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                placeholder="Ex: Remise engagement 63 mois"
               />
             </div>
           </>

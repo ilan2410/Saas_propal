@@ -183,6 +183,7 @@ const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   texte_long: "Zone de texte multi-lignes. Pour les commentaires ou descriptions longues.",
   nombre: "Champ numérique. L'utilisateur saisit un nombre (ex: nombre de postes, budget mensuel).",
   date: "Sélecteur de date. Pour une date de fin d'engagement, date de démarrage…",
+  remise_produits: "Affiche les produits déjà sélectionnés qui sont éligibles à une remise conditionnelle.",
   choix_liste_manuelle: "L'utilisateur choisit dans une liste que vous définissez vous-même (ex: 'Oui / Non / En cours').",
   adresse_complete: "Formulaire d'adresse structuré avec rue, complément, code postal, ville, pays.",
 };
@@ -205,6 +206,7 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'texte_long', label: 'Texte long' },
     { value: 'nombre', label: 'Nombre' },
     { value: 'date', label: 'Date' },
+    { value: 'remise_produits', label: 'Remises produits' },
     { value: 'choix_liste_manuelle', label: 'Choix dans une liste' },
     { value: 'adresse_complete', label: 'Adresse complète' },
   ],
