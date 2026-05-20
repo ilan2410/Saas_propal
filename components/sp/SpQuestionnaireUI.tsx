@@ -41,10 +41,43 @@ function formatSaTemplateValue(value: unknown): string {
   return String(value);
 }
 
-function resolveSaTemplateText(text: string, donneesExtraites: Record<string, unknown>): string {
-  return text.replace(/\{\{(sa|count):([^}|]+)(?:\|([^}=]+)=([^}]+))?\}\}/g, (_match, type, path, filterField, filterValue) => {
+function countTemplateValue(value: unknown): string {
+  if (Array.isArray(value)) return String(value.length);
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  if (typeof value === 'string') return value.trim() ? '1' : '0';
+  if (value == null) return '0';
+  return '1';
+}
+
+function getSpTemplateValue(
+  reponses: SpQuestionReponse[],
+  questionId: string,
+  iterationIndex = -1,
+): SpQuestionReponse['valeur'] | undefined {
+  const cleanId = questionId.trim();
+  const candidateIds = iterationIndex >= 0
+    ? [`${cleanId}__iter_${iterationIndex}`, cleanId]
+    : [cleanId];
+
+  return reponses.find((reponse) => candidateIds.includes(reponse.question_id))?.valeur;
+}
+
+function resolveTemplateText(
+  text: string,
+  donneesExtraites: Record<string, unknown>,
+  reponses: SpQuestionReponse[],
+  iterationIndex = -1,
+): string {
+  return text.replace(/\{\{(sa|count|sp|sp_count):([^}|]+)(?:\|([^}]+))?\}\}/g, (_match, type, path, rawOptions) => {
     const cleanPath = String(path).trim();
     if (type === 'sa') return formatSaTemplateValue(getNestedValue(donneesExtraites, cleanPath));
+    if (type === 'sp') return formatReponseText(getSpTemplateValue(reponses, cleanPath, iterationIndex) ?? 'Non renseigné');
+    if (type === 'sp_count') return countTemplateValue(getSpTemplateValue(reponses, cleanPath, iterationIndex));
+
+    const optionText = typeof rawOptions === 'string' ? rawOptions.trim() : '';
+    const filterMatch = optionText.match(/^([^=]+)=(.+)$/);
+    const filterField = filterMatch?.[1]?.trim();
+    const filterValue = filterMatch?.[2]?.trim();
 
     const value = getNestedValue(donneesExtraites, cleanPath);
     if (!Array.isArray(value)) return '0';
@@ -610,7 +643,7 @@ export function SpQuestionnaireUI({
             result.push({
               question: lq,
               instanceId: `${lq.id}__iter_${iter}`,
-              displayLabel: resolveSaTemplateText(`[${iterLabel}] ${lq.libelle}`, donneesExtraites),
+              displayLabel: resolveTemplateText(`[${iterLabel}] ${lq.libelle}`, donneesExtraites, reponses, iter),
               iterationIndex: iter,
               iterationLabel: iterLabel,
             });
@@ -620,7 +653,7 @@ export function SpQuestionnaireUI({
         result.push({
           question: q,
           instanceId: q.id,
-          displayLabel: resolveSaTemplateText(q.libelle, donneesExtraites),
+          displayLabel: resolveTemplateText(q.libelle, donneesExtraites, reponses),
           iterationIndex: -1,
         });
       }
@@ -716,7 +749,7 @@ export function SpQuestionnaireUI({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenByConsequence, shownByConsequence, currentIdx]);
 
-  const showQuestion = (idx: number) => {
+  const showQuestion = (idx: number, activeReponses = reponses) => {
     if (idx >= expandedQuestions.length) return;
     const eq = expandedQuestions[idx];
 
@@ -731,7 +764,10 @@ export function SpQuestionnaireUI({
       showTimerRef.current = null;
       setIsTyping(false);
       setCurrentIdx(idx);
-      setMessages((prev) => [...prev, { from: 'bot', text: eq.displayLabel }]);
+      setMessages((prev) => [...prev, {
+        from: 'bot',
+        text: resolveTemplateText(eq.displayLabel, donneesExtraites, activeReponses, eq.iterationIndex),
+      }]);
     }, 500);
   };
 
@@ -884,13 +920,13 @@ export function SpQuestionnaireUI({
       const jumpIdx = expandedQuestions.findIndex(
         (e) => e.question.id === jumpTo || e.instanceId === jumpTo,
       );
-      if (jumpIdx >= 0) { showQuestion(jumpIdx); return; }
+      if (jumpIdx >= 0) { showQuestion(jumpIdx, nextReps); return; }
     }
 
     // Use freshly computed sets so consequence-hidden questions are correctly skipped
     const nextIdx = findNextVisibleIndex(currentIdx, nextReps, newHidden, newShown);
     if (nextIdx < expandedQuestions.length) {
-      showQuestion(nextIdx);
+      showQuestion(nextIdx, nextReps);
     } else {
       setCurrentIdx(expandedQuestions.length);
     }
@@ -1004,9 +1040,13 @@ export function SpQuestionnaireUI({
       {/* Current question input */}
       {currentQuestion && currentExpanded && !isTyping && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-blue-900">{currentExpanded.displayLabel}</p>
+          <p className="text-sm font-medium text-blue-900">
+            {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+          </p>
           {currentQuestion.description && (
-            <p className="text-xs text-blue-600">{resolveSaTemplateText(currentQuestion.description, donneesExtraites)}</p>
+            <p className="text-xs text-blue-600">
+              {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+            </p>
           )}
           {currentExpanded.iterationLabel && (
             <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
@@ -1527,7 +1567,9 @@ export function SpQuestionnaireUI({
 
                     return (
                       <li key={r.question_id} className="flex gap-2">
-                        <span className="text-gray-500 shrink-0">{q?.displayLabel ?? r.question_id} :</span>
+                        <span className="text-gray-500 shrink-0">
+                          {q ? resolveTemplateText(q.displayLabel, donneesExtraites, reponses, q.iterationIndex) : r.question_id} :
+                        </span>
                         {typeof valueDisplay === 'string' ? <span className="font-medium">{valueDisplay}</span> : valueDisplay}
                       </li>
                     );

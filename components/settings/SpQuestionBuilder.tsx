@@ -35,6 +35,7 @@ interface Props {
 }
 
 type Block = 1 | 2 | 3 | 4 | 5;
+type TextInsertSource = 'sa' | 'sp';
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -581,6 +582,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
     knownVariableKeys.add(variableKey);
   }
 
+  const previousQuestionsForText = orderedQuestions.filter((question) => {
+    if (currentQuestionOrdre == null || question.ordre == null) return true;
+    return question.ordre < currentQuestionOrdre;
+  });
+  const previousCatalogueQuestionsForCount = previousQuestionsForText.filter((question) =>
+    question.source === 'catalogue' || question.source === 'catalogue_et_sa',
+  );
+
   // Options manuelles (pour choix_liste_manuelle)
   const [optionsManuelles, setOptionsManuelles] = useState<string[]>(initial?.options_manuelles ?? []);
   const [newOption, setNewOption] = useState('');
@@ -622,6 +631,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const [saCountPath, setSaCountPath] = useState('');
   const [saCountFilterField, setSaCountFilterField] = useState('');
   const [saCountFilterValue, setSaCountFilterValue] = useState('');
+  const [textInsertSource, setTextInsertSource] = useState<TextInsertSource>('sa');
 
   useEffect(() => {
     if (saSchemaLoaded || saSchemaLoading) return;
@@ -723,6 +733,20 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
     const token = saCountFilterField && saCountFilterValue.trim()
       ? `{{count:${saCountPath}|${saCountFilterField}=${saCountFilterValue.trim()}}}`
       : `{{count:${saCountPath}}}`;
+    insertSaVariable(target, token);
+  };
+
+  const insertSpVariable = (
+    target: 'libelle' | 'description',
+    questionId: string,
+    mode: 'value' | 'count',
+  ) => {
+    if (!questionId) return;
+    const questionLabel = previousQuestionsForText.find((question) => question.id === questionId)?.libelle?.trim();
+    const readableSuffix = questionLabel ? `|${questionLabel}` : '';
+    const token = mode === 'count'
+      ? `{{sp_count:${questionId}${readableSuffix}}}`
+      : `{{sp:${questionId}${readableSuffix}}}`;
     insertSaVariable(target, token);
   };
 
@@ -979,114 +1003,184 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
 
           <div className="border border-green-200 rounded-lg p-3 bg-green-50/50 space-y-3">
             <div className="flex items-center gap-2">
-              <p className="text-xs font-semibold text-green-800">Insérer une donnée SA dans le texte</p>
+              <p className="text-xs font-semibold text-green-800">Insérer une donnée dans le texte</p>
               {saSchemaLoading && <Loader2 className="w-3 h-3 animate-spin text-green-600" />}
-              <InfoIcon tooltip="Ajoute automatiquement une variable dans le libellé ou la description. Elle sera remplacée dans le chat par la donnée extraite de la Situation Actuelle." />
+              <InfoIcon tooltip="Ajoute automatiquement une variable dans le libellé ou la description. Choisissez une donnée SA ou une réponse SP précédente." />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-600">Afficher une valeur SA</label>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) insertSaVariable('description', `{{sa:${e.target.value}}}`);
-                  }}
-                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+            <div className="flex gap-2">
+              {([
+                { value: 'sa', label: 'Données SA' },
+                { value: 'sp', label: 'Réponses SP' },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setTextInsertSource(option.value)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    textInsertSource === option.value
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'
+                  }`}
                 >
-                  <option value="">Ajouter dans la description…</option>
-                  {saScalarPaths.map((path) => (
-                    <option key={path} value={path}>{path}</option>
-                  ))}
-                </select>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) insertSaVariable('libelle', `{{sa:${e.target.value}}}`);
-                  }}
-                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
-                >
-                  <option value="">Ajouter dans le libellé…</option>
-                  {saScalarPaths.map((path) => (
-                    <option key={path} value={path}>{path}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">Afficher un nombre d&apos;éléments</label>
-                <select
-                  value={saCountPath}
-                  onChange={(e) => {
-                    setSaCountPath(e.target.value);
-                    setSaCountFilterField('');
-                    setSaCountFilterValue('');
-                  }}
-                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
-                >
-                  <option value="">1. Choisir un tableau SA…</option>
-                  {Object.keys(saSchema).map((path) => (
-                    <option key={path} value={path}>{path}</option>
-                  ))}
-                </select>
-                <select
-                  value={saCountFilterField}
-                  disabled={!saCountPath}
-                  onChange={(e) => {
-                    setSaCountFilterField(e.target.value);
-                    setSaCountFilterValue('');
-                  }}
-                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono disabled:opacity-40"
-                >
-                  <option value="">2. Filtre optionnel : choisir un champ…</option>
-                  {(saSchema[saCountPath] ?? []).map((field) => (
-                    <option key={field} value={field}>{field}</option>
-                  ))}
-                </select>
-                {saCountFilterField && (
-                  (() => {
-                    const values = saRealData
-                      ? getSaRealFieldValues(saRealData, saCountPath, saCountFilterField)
-                      : [];
-                    return values.length > 0 ? (
-                      <select
-                        value={saCountFilterValue}
-                        onChange={(e) => setSaCountFilterValue(e.target.value)}
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
-                      >
-                        <option value="">3. Choisir une valeur…</option>
-                        {values.map((value) => (
-                          <option key={value} value={value}>{value}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={saCountFilterValue}
-                        onChange={(e) => setSaCountFilterValue(e.target.value)}
-                        placeholder="3. Valeur du filtre… ex: mobile"
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
-                      />
-                    );
-                  })()
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
-                    onClick={() => insertSaCountVariable('description')}
-                    className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {textInsertSource === 'sa' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Afficher une valeur SA</label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) insertSaVariable('description', `{{sa:${e.target.value}}}`);
+                    }}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
                   >
-                    Ajouter description
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
-                    onClick={() => insertSaCountVariable('libelle')}
-                    className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                    <option value="">Ajouter dans la description…</option>
+                    {saScalarPaths.map((path) => (
+                      <option key={path} value={path}>{path}</option>
+                    ))}
+                  </select>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) insertSaVariable('libelle', `{{sa:${e.target.value}}}`);
+                    }}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
                   >
-                    Ajouter libellé
-                  </button>
+                    <option value="">Ajouter dans le libellé…</option>
+                    {saScalarPaths.map((path) => (
+                      <option key={path} value={path}>{path}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-600">Afficher un nombre d&apos;éléments</label>
+                  <select
+                    value={saCountPath}
+                    onChange={(e) => {
+                      setSaCountPath(e.target.value);
+                      setSaCountFilterField('');
+                      setSaCountFilterValue('');
+                    }}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono"
+                  >
+                    <option value="">1. Choisir un tableau SA…</option>
+                    {Object.keys(saSchema).map((path) => (
+                      <option key={path} value={path}>{path}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={saCountFilterField}
+                    disabled={!saCountPath}
+                    onChange={(e) => {
+                      setSaCountFilterField(e.target.value);
+                      setSaCountFilterValue('');
+                    }}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white font-mono disabled:opacity-40"
+                  >
+                    <option value="">2. Filtre optionnel : choisir un champ…</option>
+                    {(saSchema[saCountPath] ?? []).map((field) => (
+                      <option key={field} value={field}>{field}</option>
+                    ))}
+                  </select>
+                  {saCountFilterField && (
+                    (() => {
+                      const values = saRealData
+                        ? getSaRealFieldValues(saRealData, saCountPath, saCountFilterField)
+                        : [];
+                      return values.length > 0 ? (
+                        <select
+                          value={saCountFilterValue}
+                          onChange={(e) => setSaCountFilterValue(e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                        >
+                          <option value="">3. Choisir une valeur…</option>
+                          {values.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={saCountFilterValue}
+                          onChange={(e) => setSaCountFilterValue(e.target.value)}
+                          placeholder="3. Valeur du filtre… ex: mobile"
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                        />
+                      );
+                    })()
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
+                      onClick={() => insertSaCountVariable('description')}
+                      className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                    >
+                      Ajouter description
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!saCountPath || (!!saCountFilterField && !saCountFilterValue.trim())}
+                      onClick={() => insertSaCountVariable('libelle')}
+                      className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700 disabled:opacity-40"
+                    >
+                      Ajouter libellé
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Afficher une réponse SP</label>
+                  <select
+                    value=""
+                    onChange={(e) => insertSpVariable('description', e.target.value, 'value')}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    <option value="">Ajouter dans la description…</option>
+                    {previousQuestionsForText.map((question) => (
+                      <option key={question.id} value={question.id}>{question.libelle}</option>
+                    ))}
+                  </select>
+                  <select
+                    value=""
+                    onChange={(e) => insertSpVariable('libelle', e.target.value, 'value')}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    <option value="">Ajouter dans le libellé…</option>
+                    {previousQuestionsForText.map((question) => (
+                      <option key={question.id} value={question.id}>{question.libelle}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Afficher un nombre / comptage SP</label>
+                  <select
+                    value=""
+                    onChange={(e) => insertSpVariable('description', e.target.value, 'count')}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    <option value="">Ajouter dans la description…</option>
+                    {previousCatalogueQuestionsForCount.map((question) => (
+                      <option key={question.id} value={question.id}>{question.libelle}</option>
+                    ))}
+                  </select>
+                  <select
+                    value=""
+                    onChange={(e) => insertSpVariable('libelle', e.target.value, 'count')}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                  >
+                    <option value="">Ajouter dans le libellé…</option>
+                    {previousCatalogueQuestionsForCount.map((question) => (
+                      <option key={question.id} value={question.id}>{question.libelle}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Obligatoire */}
