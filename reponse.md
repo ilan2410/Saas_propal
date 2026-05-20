@@ -1,145 +1,345 @@
-SOLUTION PROPOSER
-Question 1 : Souhaitez-vous faire une proposition Packagée (Tarif global) ou non Packagé (tarif opérateur et location séparé) ?
-Question 2 : Quel est la durée de votre contrat ? 36 / 48 / 63 mois
+# Plan d'implémentation — Features SP Télécom v2
 
+Refonte complète du système SP télécom pour couvrir : prix par tranche de quantité, destinations produit, config loyer conditionnelle par template, type d'affichage "marge", nouvelles variables Word riches, catégorie cadeau, et export comparatif SA/SP autonome.
 
-OPERATEUR
-•	Votre prospect est éligible à la Fibre FTTH ? (Ajouter le prix des FAS 260 € prix installation routeur 450 €)
-o	Oui
-o	Non
-	Souhaitez-vous proposer de la Fibre dédié ?
-	Oui - voir avec Jordan puis ajouter prix abonnement/mois + Fas ajouter en champs libre 
-	Non
-•	Quel type d’internet souhaitez-vous proposer ? (Seulement si pas de Fibre)
-o	ADSL
-o	VDSL
-o	Data Only (proposer en choix matériel Routeur 4G ou 5G)
-o	Satellite STARLINK – Associer au Tarif STALINK
-•	Souhaitez-vous ajouter une option TV ? Associer à Box TV – 100 €
-•	Prévoir une Box TV ? Box TV – 100 €
-        → Box TV souscrite par le client : apparaît dans la SP mais pas dans le BDC opérateur
+---
 
-•	Souhaitez-vous ajouter un Backup 4G
-•	Votre prospect souhaite-t-il un standard téléphonique ? (Ajouter le prix des FAS 190 € prix installation 590 € attention prix variable selon nombre de postes) Si non on passe au fax
-•	Combien de licence souhaitez-vous ? Détection des numéros de téléphone (**comme ligne mobile)
-o	Pour chaque licence :
-o	Licence centrex ou softphone
-o	Si licence centrex proposer option sofpthone
-•	Votre prospect a-t-il besoin d’une ligne fax ?
-o	Fax analogique + numéro ou
-o	Fax par mail + numéro
-•	Souhaitez-vous ajouter une licence pour un équipement complémentaire ? Champs libre avec recherche d’abonnement INTERNET/VOIX 
-•	Votre prospect souhaite combien de ligne mobile (**détection en amont biensurs)
-o	Si numéro apparent définir sur chaque ligne l’abonnement à choisir + option 5g + réseau Orange ou Bouygues Telecom par ligne 
-o	Si numero non apparent demande ligne 1, ligne 2, etc…. + l’abonnement à choisir + option 5g + réseau Orange ou Bouygues Telecom  par ligne
-•	Votre prospect a-t-il besoin d’un forfait data (tablette ou routeur 4G/5G) ?
-•	Souhaitez-vous ajouter un abonnement complémentaire ? Champs libre avec recherche d’abonnement MOBILE 
+## Décisions validées
 
-Souhaitez-vous établir des remises opérateur ? (63 mois uniquement)
+| Sujet | Choix |
+|---|---|
+| Prix par tranche | Bouton "Ajouter une règle de prix" dans fiche produit, application auto selon quantité SP |
+| Destinations produit | 3 cases : Proposition / BDC Opérateur / BDC Matériel |
+| Config loyer | **Par template** (comme questions SP), barèmes ordonnés, premier qui matche |
+| Marge | Affichage "marge" sur question `source=aucune` → champ libre + recalcul live du loyer |
+| Package / Non-Package | 2 templates séparés (pas de question dédiée) |
+| Catégorie cadeau | Slug `cadeau`, label "Cadeau" |
+| Catégorie installation | Slug `installation`, label "Installation" |
+| Indemnités résiliation | Champ libre + suggestion auto = `loyer_actuel × mois_restants` (SA) |
+| Mentions auto (phrases) | ❌ pas nécessaire — phrases déjà dans les templates Word, seules les variables de montants/dates sont injectées |
+| Images matériel dans Word | Embarquées via `docxtemplater-image-module-free` (téléchargement URL → buffer) |
+| Récap "complet" | Champs unifiés : Catégorie / Désignation / Référence / Qté / PU HT / Total HT / Fréquence / FAS / Commentaire |
+| Export comparatif SA/SP | Bouton fin de wizard + accessible depuis fiche proposition |
 
+---
 
+## Lot 1 — Catalogue : prix par tranche, destinations, catégories cadeau + installation
 
-MATERIEL 
+### 1.1 Migration SQL
+`supabase/migrations/2026-05-20_catalogue_tranches_destinations_cadeau.sql` :
 
-•	Votre prospect a-t-il besoin d’un routeur ? (qté + ****type de routeur) 
-o	Adapter le bon routeur et installation
-•	Votre prospect a-t-il besoin d’un switch ? 1 poste pas de switch (qté + Nbr de port
-o	8 ports - 2 à 6 postes 
-o	12 ports - 7 à 10 postes 
-o	24 ports – 10 à 20 postes 
-•	Votre prospect a besoin de borne wifi ? (qté + Omada AX1800)
-•	Votre prospect à besoin de poste filaire ? (qté + référence) demander le choix des postes et adapter le prix
-•	Votre prospect a besoin d’extension ? (qté + reference)
-•	Votre prospect à besoin de casque sans fil ? (qté + reference)
-•	Votre prospect à besoin de poste sans fil DECT (qté + reference) demander le choix des postes et adapter le prix
-•	Votre prospect à besoin de borne DECT ? 
-o	Borne maitre (qté + reference)
-o	Borne relai (qté + reference)
-•	Votre prospect a besoin d’une pieuvre de conférence ? (qté + reference)
-•	Souhaitez-vous ajouter du matériel supplémentaire
+```sql
+ALTER TABLE catalogue_produits
+  ADD COLUMN prix_par_tranche JSONB DEFAULT NULL,
+  ADD COLUMN destinations JSONB DEFAULT '{"proposition":true,"bdc_operateur":true,"bdc_materiel":true}';
 
-•	Souhaites-tu faire un geste commercial pour ton client (Smartphone, Android, Tablette, etc…) ? Voir catalogue SMARTPHONE et ANDROID et un dernier Champs libre mettre le montant HT du cadeau.
-Si oui : 
-1.	Mentionner dans la proposition commerciale BON DE COMMANDE MATERIEL sous les indemnités de résiliation
-a.	(référence du smartphone/Android) inclus pour toute souscription du contrat avant le (dernier jour du mois).
-b.	Geste commercial d’une valeur de (XXX € HT) pour toute souscription du contrat avant le (dernier jour du mois).
+-- Pas de migration pour la catégorie : le champ est libre (text) côté DB.
+-- L'enum CatalogueCategorie côté TS est étendu.
+```
 
+Format `prix_par_tranche` (array, vide = pas de tranches) :
+```ts
+[
+  { id: string; qte_min: number; qte_max: number | null; prix_vente?: number; prix_mensuel?: number; prix_installation?: number },
+  ...
+]
+```
 
+### 1.2 Types
+`types/index.ts` :
+- `CatalogueCategorie` : ajouter `'cadeau'` et `'installation'`
+- Nouveau `CatalogueProduitTranche`
+- Nouveau `ProduitDestinations`
+- Étendre `CatalogueProduit` avec `prix_par_tranche?` et `destinations?`
 
-INSTALLATION
-FIBRE FTTH = Branchement routeur + pré visite = 390 € HT
-STANDARD TELEPHONIQUE = Installation sur site (attention tarif différent selon nombre de poste) voir catalogue
-Jusqu’à 10 postes : 590 € HT
-11-20 Postes 790 € HT
-21 et + - 1200 € HT
-Souhaitez-vous ajouter des interventions complémentaires ? 
-•	Si oui proposer :
-o	Pre visite (voir catalogue)
-o	****Branchement routeur (attention ce qui signifie qu’un second routeur doit être vendu)
-	Routeur FIBRE TP LINK ER706W
-	Routeur 4G MR 100
-	Routeur 5G AX1800
-o	Installation (attention doit prévoir du matériel complémentaire).
+### 1.3 UI fiche produit (`components/catalogue/CatalogueProduitForm.tsx`)
+- Ajouter **'Cadeau'** et **'Installation'** dans `categorieOptions`.
+- Nouvelle section **"Destinations dans les documents"** : 3 cases à cocher (Proposition / BDC Opérateur / BDC Matériel), toutes cochées par défaut.
+- Nouvelle section **"Tarifs par quantité"** :
+  - Toggle "Activer les tarifs par tranche"
+  - Bouton **"+ Ajouter une règle"** qui ajoute une ligne (qte_min, qte_max, prix_vente, prix_mensuel, prix_installation)
+  - Possibilité de supprimer / réordonner les tranches
+  - Validation : pas de chevauchement, `qte_max=null` autorisé seulement sur la dernière (= ∞)
 
+### 1.4 Helper de résolution prix
+Nouveau `lib/catalogue/resolvePrix.ts` :
+```ts
+export function resolvePrixPourQuantite(
+  produit: CatalogueProduit,
+  quantite: number,
+): { prix_vente: number | null; prix_mensuel: number | null; prix_installation: number | null }
+```
+- Si `prix_par_tranche` non vide → retourne la première tranche dont `qte_min ≤ quantite ≤ (qte_max ?? ∞)`.
+- Fallback sur `prix_vente`/`prix_mensuel`/`prix_installation` historiques.
 
+### 1.5 Intégration questionnaire SP
+`components/sp/SpQuestionnaireUI.tsx` :
+- Dans `pendingCatalogueSelection`, lorsque l'utilisateur modifie `quantityValue`, appeler `resolvePrixPourQuantite(product, qte)` et **mettre à jour `prixValue` et `fasValue` en live** (sauf si l'utilisateur a explicitement modifié manuellement → garder son override).
+- Indicateur visuel discret « Prix appliqué selon tranche (qté X-Y) » quand une tranche est active.
 
-FAIRE UN RECAP GLOBAL 
-Total situation actuelle
+---
 
-Solution proposée 
-Détail + Remise Mois Offert (uniquement Proposition PACKAGE - voir ci-dessous calcul Fois 12 ou 18 mois selon durée)
-Détail + Total matériel + geste commercial (smartphone)
-Détail + Total FAS
-Détail + Total Installation 
-Total Indemnités de résiliation
+## Lot 2 — Config Loyer par template + barèmes conditionnels
 
-TOTAL COMPLET
+### 2.1 Déplacement du stockage
+- **Avant** : `OrganizationPreferences.sp_config_loyer`
+- **Après** : `proposition_templates.file_config.sp_config_loyer` (par template, comme `spVariablesCustom`)
+- Migration : script `lib/migrations/migrate-loyer-config.ts` qui copie `org.preferences.sp_config_loyer` vers chaque template existant (one-shot, idempotent).
 
-UNIQUEMENT DANS PROPOSITION PACKAGE - Le montant total opérateur devra être multiplié par (**selon durée du contrat) et intégré dans le Bon de commande opérateur dans la mention « 	Remboursement de (remise) € à titre de participation au contrat. »
-63 mois = 18
-48 mois = 18
-36 mois = 12
+### 2.2 Refonte du type `SpConfigLoyer`
+```ts
+interface SpBareme {
+  id: string;
+  nom: string;                          // libellé visible (ex: "63 mois standard")
+  ordre: number;                        // ordre d'évaluation
+  groupes_conditions?: SpGroupeConditions[];  // mêmes structures que SpRegleRemise
+  logique_declencheur?: SpConditionLogique;
+  taux_durees: SpTauxDuree[];           // {duree_mois, taux_loyer, mois_offerts, trimestres}
+}
 
-Dans la proposition commerciale la durée Bon de commande matérielle :
-63 mois = 21 Trimestres
-48 mois = 16 Trimestres
-36 mois = 12 Trimestres
+interface SpConfigLoyer {
+  baremes: SpBareme[];   // évalués dans l'ordre, premier qui matche
+}
+```
+- **Suppression** de `marge_suggestion_active`, `marge_pourcentage_defaut`.
+- **Suppression** de la fonction `suggererMarge()` dans `lib/sp/calculLoyer.ts`.
 
-Durée Bon de commande opérateur et internet = bon de commande matériel (EN TRIMESTRE)
-Facturation reste mensuelle
+### 2.3 Onglet Settings "Calculer Loyer" refondu
+`components/client/SettingsPage.tsx` onglet `sp-loyer` :
+- En-tête : **sélecteur de template** (comme l'onglet questions SP)
+- Pour chaque template, liste de barèmes avec :
+  - Drag-drop pour réordonner
+  - Bouton **"+ Nouveau barème"**
+- Chaque carte barème (dépliable) :
+  - Nom
+  - Sous-section **Conditions** : réutilise `SpConditionEditor` (groupes + ET/OU), conditions sur `reponse_question`, `sa`, `catalogue`
+  - Sous-section **Taux par durée** : table existante (duree_mois, taux_loyer, mois_offerts, trimestres)
+- Suppression complète du bloc "Suggestion de marge".
 
+### 2.4 Helper évaluateur de barème
+Nouveau `lib/sp/evaluateBareme.ts` :
+```ts
+export function findApplicableBareme(
+  baremes: SpBareme[],
+  reponses: SpQuestionReponse[],
+  donneesExtraites: Record<string, unknown>,
+  catalogue?: CatalogueProduit[],
+): SpBareme | null
+```
+- Itère sur `baremes` triés par `ordre`, retourne le **premier** dont les groupes_conditions s'évaluent à `true` (réutilise `evaluateQuestionVisibility` / `evaluateGroup`).
+- Un barème sans condition matche toujours (fallback).
 
+### 2.5 Adaptation `calculerLoyer`
+- Signature inchangée mais accepte un `SpBareme` (au lieu de `SpConfigLoyer` global) :
+```ts
+calculerLoyer(bareme: SpBareme, totalPonctuel: number, dureeMois: number, marge: number)
+```
+- Les call-sites (`generer-suggestions/route.ts`, `Step5EditSp`) résolvent d'abord le barème via `findApplicableBareme` puis appellent `calculerLoyer`.
 
-Calcule du loyer avant extraction (proposition de loyer selon la marge)
+---
 
-Exemple de calcul de loyer
-Situation (fictive) sur 63 mois :
+## Lot 3 — Type d'affichage "marge" (question SP)
 
-Total opérateur après remise = 100 € HT
-Remise mois offert : 100 * 18 mois =1800 € ht (uniquement proposition PACKAGE)
-Indemnité de résiliation = 3 250 € ht
-Total Matériel + smartphone = 2 500 € ht
-Total FAS = 750 € ht
-Total installation 1 000 € ht
+### 3.1 Type
+`types/index.ts` : étendre `SpQuestionAffichage` avec `'marge'`.
 
-TOTAL = 1800 + 3250 + 2500 + 750 + 1000 =9 300
-Loyer mensuel hors marge se calcul de cette manière = (9300*0.063(taux du loyer)) /3 = 195.3€ arrondi supérieur donc pour trouver mon loyer avec marge je dois ajouter à 9300 € ma marge
+### 3.2 Builder de question SP
+`components/settings/SpQuestionBuilder.tsx` :
+- Ajouter `{ value: 'marge', label: 'Marge (calcul loyer)' }` dans `AFFICHAGE_BY_SOURCE.aucune`.
+- Tooltip : « Champ libre où l'utilisateur saisit sa marge en €. Le loyer mensuel/trimestriel est calculé en live selon le barème applicable du template. »
 
-2 manière de faire 
+### 3.3 UI questionnaire
+`components/sp/SpQuestionnaireUI.tsx` :
+- Nouveau bloc de rendu pour `currentQuestion.affichage === 'marge'` :
+  - Input numérique « Marge (€) »
+  - Sous l'input, panneau live : **Loyer mensuel HT / Loyer trimestriel HT / Durée / Trimestres / Mois offerts** (recalculé à chaque frappe via `findApplicableBareme` + `calculerLoyer`)
+  - Si aucun barème ne matche → message "Aucun barème applicable, configurez-en un dans Paramètres → Calculer Loyer"
+  - Le bouton "Valider" appelle `recordAnswer(instanceId, margeStr, [{ question_id: 'loyer_mensuel_<id>', valeur: '…' }, { question_id: 'loyer_trimestriel_<id>', valeur: '…' }, …])`
+- Pour fonctionner, `SpQuestionnaireUI` reçoit en props la `SpConfigLoyer` du template courant.
 
-SUGGESTION DE MARGE
-1 000 = 216.3 arrondis au supérieur
-2000 = 237.3 arrondis au supérieur
-3000 = 258.3 arrondis au supérieur
-Ou
+### 3.4 Récupération de la durée
+- La durée du contrat doit être disponible dans les réponses (variable `sp_duree_mois`, déjà géré).
+- Si pas encore renseignée → marge bloquée avec message « Répondez d'abord à la question "Durée du contrat" ».
 
-Un champ libre ou je mets ma marge et il me donne l’estimation du loyer Package ou non (ça c’est le mieux)
+### 3.5 Pipeline `generer-suggestions`
+- Lire la marge depuis les réponses (question d'affichage `marge`)
+- Utiliser cette marge dans `calculerLoyer()`
+- Ne plus appeler `suggererMarge()` (supprimé).
 
-Taux loyer selon durée
-63 mois = 0.063 
-48 mois = 0.081
-36 mois =0.1060
+---
 
+## Lot 4 — Variables Word : synthèse et nouvelles variables
 
-Exporter SITUATION ACTUELLE et SOLUTION PROPOSE sous forme de tableau (excel)
-ETABLIR LA PROPOSITION WORD si besoin de modifier
+### 4.1 Tableau récapitulatif des variables
+
+| Variable | Status | Action |
+|---|---|---|
+| `sp_economie_mensuelle`, `sp_economie_annuelle`, `sp_total_actuel`, `sp_total_propose`, `sp_ameliorations`, `sp_fournisseur_propose`, `sp_nb_lignes`, `sp_est_economie` | ✅ existant | Garder |
+| `sp_adresse_facturation*`, `sp_adresse_livraison*`, `sp_livraison_identique` | ✅ existant | Garder |
+| `sp_fas_total` | ✅ existant | Garder |
+| `sp_lignes_mobiles`, `sp_lignes_fixes`, `sp_internet`, `sp_materiel` (tableaux) | ✅ existant | Garder |
+| `sp_recap_total_operateur_apres_remise` | proposé | **Supprimer** (remplacé par `sp_total_bdc_operateur`) |
+| `sp_recap_remise_mois_offert` | proposé | **Renommer** → `sp_remise_mois_offert` |
+| `sp_recap_total_materiel_geste` | proposé | **Supprimer** (remplacé par `sp_total_bdc_materiel`) |
+| `sp_recap_total_fas`, `sp_recap_total_installation`, `sp_recap_total_indemnites`, `sp_recap_total_complet` | proposé | **Garder** (renommés sans `_recap`) |
+| `sp_bdc_operateur_table`, `sp_bdc_materiel_table`, `sp_proposition_table` | proposé | **Garder** (renommés en `sp_bdc_*`, `sp_situation_proposee_complet`) |
+| `sp_geste_commercial_mention`, `sp_remboursement_mention` | proposé | **Supprimer** (phrases déjà rédigées dans les templates Word) |
+| `sp_date_limite_souscription` | proposé | **Garder** (montant/date injectés dans les phrases existantes) |
+
+### 4.2 Nouvelles variables — Tableaux dynamiques
+
+**`sp_situation_proposee_complet`** (TOUT : lignes + matériel + cadeaux + options)
+```
+{{#sp_situation_proposee_complet}}
+{{sp_categorie}}  {{sp_designation}}  {{sp_reference}}  {{sp_quantite}}  
+{{sp_prix_unitaire_ht}}  {{sp_prix_total_ht}}  {{sp_frequence}}  
+{{sp_fas}}  {{sp_commentaire}}
+{{/sp_situation_proposee_complet}}
+```
+
+**`sp_materiel_detail`** (catégorie `equipement` uniquement, enrichi)
+```
+{{#sp_materiel_detail}}
+{{sp_mat_fournisseur}}  {{sp_mat_nom}}  {{sp_mat_description}}  
+{{sp_mat_quantite}}  {{sp_mat_prix_unitaire_ht}}  {{sp_mat_prix_total_ht}}  
+{{sp_mat_fas}}  {{%sp_mat_image}}
+{{/sp_materiel_detail}}
+```
++ variable simple `sp_total_materiel_ht`.
+
+**`sp_situation_proposee_forfaits`** (lignes mobiles + fixes + internet)
+```
+{{#sp_situation_proposee_forfaits}}
+{{sp_forfait_numero}}  {{sp_forfait_type}}  {{sp_forfait_nom}}  
+{{sp_forfait_fournisseur}}  {{sp_forfait_options}}  {{sp_forfait_prix_mensuel_ht}}
+{{/sp_situation_proposee_forfaits}}
+```
++ variable simple `sp_total_forfaits_mensuel_ht`.
+
+**`sp_bdc_operateur_table`** (forfaits fixe + mobile uniquement, filtré par `destinations.bdc_operateur=true`)
+```
+{{#sp_bdc_operateur_table}}
+{{sp_op_numero}}  {{sp_op_forfait}}  {{sp_op_fournisseur}}  {{sp_op_prix_mensuel_ht}}
+{{/sp_bdc_operateur_table}}
+```
++ variable simple `sp_total_bdc_operateur_ht`.
+
+**`sp_bdc_internet_table`** (forfaits internet uniquement)
+```
+{{#sp_bdc_internet_table}}
+{{sp_int_designation}}  {{sp_int_fournisseur}}  {{sp_int_debit}}  {{sp_int_prix_mensuel_ht}}
+{{/sp_bdc_internet_table}}
+```
++ variable simple `sp_total_bdc_internet_ht`.
+
+**`sp_bdc_materiel_table`** (matériel filtré par `destinations.bdc_materiel=true`)
+```
+{{#sp_bdc_materiel_table}}
+{{sp_mat_nom}}  {{sp_mat_reference}}  {{sp_mat_quantite}}  
+{{sp_mat_prix_unitaire_ht}}  {{sp_mat_prix_total_ht}}
+{{/sp_bdc_materiel_table}}
+```
++ variable simple `sp_total_bdc_materiel_ht`.
+
+**`sp_cadeaux_table`** (catégorie `cadeau` uniquement)
+```
+{{#sp_cadeaux_table}}
+{{sp_cadeau_nom}}  {{sp_cadeau_description}}  {{sp_cadeau_reference}}  
+{{sp_cadeau_quantite}}  {{sp_cadeau_prix_unitaire_ht}}  {{sp_cadeau_prix_total_ht}}
+{{/sp_cadeaux_table}}
+```
++ variable simple `sp_total_cadeaux_ht`.
+
+### 4.3 Nouvelles variables simples
+
+| Variable | Calcul |
+|---|---|
+| `sp_date_limite_souscription` | Dernier jour du mois courant, format français (ex. « 31 mai 2026 »). Calcul `endOfMonth(new Date())` avec `date-fns-tz` Europe/Paris. |
+| `sp_duree_trimestres` | Conversion `ceil(duree_mois / 3)` à partir de la réponse SP `sp_duree_mois`. |
+| `sp_remise_mois_offert` | Calcul existant `calculerRemiseMoisOffert()`. |
+| `sp_total_fas` | Somme des FAS de tous les produits sélectionnés. |
+| `sp_total_installation` | Somme des produits catégorie `installation` du catalogue sélectionnés. |
+| `sp_total_indemnites` | Champ libre saisi via question SP `affichage=nombre`, **avec suggestion auto** = `loyer_actuel_sa × mois_restants_sa` (calculée depuis `donnees_extraites.contrat_actuel`). |
+| `sp_total_complet` | Somme : total opérateur après remise + remise mois offert + IDR + matériel + cadeau + FAS + installation. |
+
+### 4.4 Implémentation
+- `app/api/templates/[id]/sp-variables/route.ts` : étendre `SP_STANDARD_VARIABLES` avec les nouvelles clés (les tableaux dynamiques sont listés séparément avec leurs sous-champs).
+- `app/api/propositions/generer-suggestions/route.ts` → `buildSpCompletes()` :
+  - Construire les 6 tableaux filtrés selon `destinations` et `categorie`.
+  - Calculer les totaux dérivés.
+- **Images dans Word** : intégrer `docxtemplater-image-module-free` dans `lib/generators/word.ts` :
+  - Module configuré avec `getImage(tagValue)` qui télécharge l'URL en buffer et `getSize()` (taille standard ex. 80×80 px).
+  - La variable `{{%sp_mat_image_url}}` (préfixe `%` = image) sera remplacée par l'image embarquée dans le tableau matériel.
+- **Suggestion auto pour indemnités** : helper `lib/sp/suggererIndemnites.ts` qui lit `donnees_extraites.contrat_actuel.loyer_mensuel` et `mois_restants` (ou date_fin) et retourne le montant suggéré. Affiché dans l'UI de la question SP `nombre` comme placeholder/hint cliquable.
+- Mise à jour de la doc visible dans le builder de template (panneau "Variables SP disponibles") avec descriptions et exemples.
+
+---
+
+## Lot 5 — Export comparatif SA / SP (nouveau)
+
+### 5.1 Stratégie
+- Composants 100 % indépendants du système de templates Word.
+- 2 boutons : "Exporter Excel" / "Exporter Word".
+- Génère un fichier autonome contenant 2 tableaux (Situation Actuelle / Situation Proposée) avec max de détails.
+
+### 5.2 Endpoint
+`app/api/propositions/[id]/export-comparatif-sa-sp/route.ts` :
+- Body : `{ format: 'excel' | 'word' }`
+- Récupère `proposition.donnees_extraites` (SA) + `proposition.suggestions_editees ?? suggestions_generees` (SP).
+- Appelle le générateur correspondant, retourne le buffer.
+
+### 5.3 Générateur Excel
+`lib/excel/comparatif-sa-sp-generator.ts` (lib `exceljs`) :
+- Feuille 1 « Situation Actuelle » : colonnes Catégorie / Désignation / Fournisseur / Numéro / Qté / Prix mensuel HT / Prix annuel HT / Engagement.
+- Feuille 2 « Situation Proposée » : mêmes colonnes + section ponctuelle (Matériel, FAS, Installation, Cadeau, IDR).
+- Feuille 3 « Synthèse » : totaux SA, SP, économie mensuelle/annuelle, loyer mensuel/trimestriel, remise mois offert.
+
+### 5.4 Générateur Word
+`lib/word/comparatif-sa-sp-generator.ts` :
+- HTML→`.doc` (même approche que `comparatif-generator.ts` existant).
+- 3 sections claires : Situation Actuelle (tableau), Situation Proposée (tableau), Synthèse (cartes totaux + loyer).
+
+### 5.5 UI bouton fin de wizard
+`components/propositions/Step5Generate.tsx` :
+- Ajouter après la génération réussie, en plus du téléchargement du fichier template, 2 boutons "Comparatif Excel" / "Comparatif Word".
+
+### 5.6 UI bouton fiche proposition
+`app/(client)/propositions/[id]/page.tsx` :
+- Ajouter dans la sidebar d'actions un bloc "Comparatif SA/SP" avec les 2 boutons.
+
+---
+
+## Ordre d'exécution recommandé
+
+1. **Lot 1** — Catalogue (fondation, sans casser l'existant).
+2. **Lot 2** — Config loyer par template (migration prudente, fallback DEFAULT_CONFIG_LOYER).
+3. **Lot 3** — Affichage "marge" (dépend de Lot 2 pour les barèmes).
+4. **Lot 4** — Variables Word (dépend de Lot 1 pour destinations & cadeau).
+5. **Lot 5** — Export SA/SP (indépendant, peut être fait en parallèle de 4).
+
+---
+
+## Risques & points d'attention
+
+- **Migration des barèmes loyer** : conserver l'ancien `sp_config_loyer` lu en fallback pendant 1-2 semaines pour ne pas casser les templates non migrés.
+- **Tranches de prix** : valider visuellement les chevauchements dans le formulaire (sinon comportement imprévisible).
+- **Type d'affichage "marge"** : exige que la durée SP soit déjà renseignée → forcer cette question en amont ou bloquer le rendu avec un message clair.
+- **Catégories `cadeau` et `installation`** : champ texte côté DB, donc l'ajout des slugs est immédiat. Vérifier les filtres existants (Settings discount rules, builder SP) pour qu'ils incluent les nouvelles catégories.
+- **Images Word** : `docxtemplater-image-module-free` requiert un fetch HTTP côté serveur pour chaque image. Prévoir un cache mémoire pour ne pas retélécharger 10× la même URL. Fallback gracieux si l'image est introuvable (placeholder transparent 1×1 px).
+- **Suggestion indemnités** : la donnée `contrat_actuel.loyer_mensuel` n'est pas toujours extraite. Si absente, l'input reste libre sans suggestion (pas d'erreur).
+- **Destinations par défaut** : `{proposition:true, bdc_operateur:true, bdc_materiel:true}` pour tous les produits existants → aucun impact.
+- **Variables tableaux** : docxtemplater utilise `{{#nom}}…{{/nom}}` ; bien tester que la nouvelle structure de tableau unifié est sérialisable.
+- **Tests** : `resolvePrixPourQuantite`, `findApplicableBareme`, `calculerLoyer` avec barème conditionnel, génération mentions auto, exports Excel/Word.
+
+---
+
+## Estimation effort
+
+| Lot | Effort |
+|---|---|
+| 1 — Catalogue tranches + destinations + cadeau | 1.5 j |
+| 2 — Config loyer par template + barèmes conditionnels | 1.5 j |
+| 3 — Affichage "marge" | 1 j |
+| 4 — Variables Word (6 tableaux + 9 simples + mentions auto) | 1.5 j |
+| 5 — Export comparatif SA/SP (Excel + Word + 2 UI) | 1.5 j |
+| **Total** | **~7 j** |
