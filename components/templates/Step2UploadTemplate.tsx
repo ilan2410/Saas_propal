@@ -63,6 +63,15 @@ function getArrayOfRecords(obj: Record<string, unknown>, key: string): Record<st
   return v.filter(isRecord);
 }
 
+function inferFileTypeFromName(fileName?: string | null): 'excel' | 'word' | 'pdf' | undefined {
+  if (!fileName) return undefined;
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'xlsx' || extension === 'xls') return 'excel';
+  if (extension === 'docx') return 'word';
+  if (extension === 'pdf') return 'pdf';
+  return undefined;
+}
+
 const SP_SIMPLE_VARS = [
   { key: 'sp_economie_mensuelle', label: 'Économie mensuelle (ex: "45,00 €")' },
   { key: 'sp_economie_annuelle', label: 'Économie annuelle' },
@@ -82,6 +91,27 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_adresse_livraison_ville', label: 'Ville livraison' },
   { key: 'sp_livraison_identique', label: '"Oui" ou "Non"' },
   { key: 'sp_fas_total', label: 'Total FAS (Frais d\'installation/mise en service)' },
+  { key: 'sp_total_recurrent', label: 'Total récurrent HT' },
+  { key: 'sp_total_ponctuel', label: 'Total ponctuel HT' },
+  { key: 'sp_total_indemnites', label: 'Total des indemnités HT' },
+  { key: 'sp_remise_mois_offert', label: 'Remise mois offert HT' },
+  { key: 'sp_total_installation', label: 'Total installation HT' },
+  { key: 'sp_total_materiel_achat', label: 'Total matériel achat HT' },
+  { key: 'sp_loyer_mensuel', label: 'Loyer mensuel HT' },
+  { key: 'sp_loyer_trimestriel', label: 'Loyer trimestriel HT' },
+  { key: 'sp_marge', label: 'Marge HT' },
+  { key: 'sp_duree_mois', label: 'Durée en mois' },
+  { key: 'sp_trimestres', label: 'Nombre de trimestres' },
+  { key: 'sp_mois_offerts', label: 'Nombre de mois offerts' },
+  { key: 'sp_date_limite_souscription', label: 'Date limite de souscription' },
+  { key: 'sp_duree_trimestres', label: 'Durée en trimestres' },
+  { key: 'sp_total_forfaits_mensuel_ht', label: 'Total forfaits mensuel HT' },
+  { key: 'sp_total_materiel_ht', label: 'Total matériel HT' },
+  { key: 'sp_total_bdc_operateur_ht', label: 'Total BDC opérateur HT' },
+  { key: 'sp_total_bdc_internet_ht', label: 'Total BDC internet HT' },
+  { key: 'sp_total_bdc_materiel_ht', label: 'Total BDC matériel HT' },
+  { key: 'sp_total_cadeaux_ht', label: 'Total cadeaux HT' },
+  { key: 'sp_total_complet', label: 'Total complet HT' },
 ];
 
 const SP_TABLE_BLOCKS = [
@@ -97,13 +127,34 @@ const SP_TABLE_BLOCKS = [
   },
   {
     arrayId: 'sp_internet',
-    label: 'Tableau Internet',
+    label: 'Tableau internet proposé',
     fullBlock: `{{#sp_internet}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_internet}}`,
   },
   {
-    arrayId: 'sp_materiel',
-    label: 'Tableau matériel',
-    fullBlock: `{{#sp_materiel}}\n{{sp_materiel_nom}}  {{sp_materiel_ref}}  {{sp_materiel_prix_mensuel}}  {{sp_materiel_duree_engagement}}  {{sp_materiel_commentaire}}\n{{/sp_materiel}}`,
+    arrayId: 'sp_materiel_detail',
+    label: 'Tableau matériel proposé',
+    fullBlock: `{{#sp_materiel_detail}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_commentaire}}  {{%sp_matd_image_url}}\n{{/sp_materiel_detail}}`,
+    hint: 'Pour afficher la photo produit dans Word, utilisez un tag image avec le préfixe % : {{%sp_matd_image_url}}',
+  },
+  {
+    arrayId: 'sp_bdc_operateur_table',
+    label: 'Tableau BDC opérateur',
+    fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
+  },
+  {
+    arrayId: 'sp_bdc_internet_table',
+    label: 'Tableau internet BDC',
+    fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,
+  },
+  {
+    arrayId: 'sp_bdc_materiel_table',
+    label: 'Tableau matériel BDC',
+    fullBlock: `{{#sp_bdc_materiel_table}}\n{{sp_bdc_mat_nom}}  {{sp_bdc_mat_ref}}  {{sp_bdc_mat_fournisseur}}  {{sp_bdc_mat_prix_ht}}  {{sp_bdc_mat_frequence}}\n{{/sp_bdc_materiel_table}}`,
+  },
+  {
+    arrayId: 'sp_cadeaux_table',
+    label: 'Tableau cadeaux',
+    fullBlock: `{{#sp_cadeaux_table}}\n{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_valeur_ht}}\n{{/sp_cadeaux_table}}`,
   },
 ];
 
@@ -371,6 +422,11 @@ export function Step2UploadTemplate({
     !!templateData.file_name &&
     !isReplacingFile &&
     !file;
+  const selectedFileType = inferFileTypeFromName(file?.name || fileName);
+  const effectiveFileType =
+    templateData.file_type ||
+    selectedFileType ||
+    inferFileTypeFromName(templateData.file_name);
   
   const champsActifs = Array.isArray(templateData.champs_actifs) ? templateData.champs_actifs : [];
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
@@ -391,10 +447,14 @@ export function Step2UploadTemplate({
     return 'upload';
   };
   const [step, setStep] = useState<Step>(getInitialStep());
+  const hasWordPreviewSource =
+    step === 'preview-word' &&
+    effectiveFileType === 'word' &&
+    (!!file || !!templateData.file_url);
 
   // Render docx-preview when a Word file is ready
   useEffect(() => {
-    if (step !== 'preview-word' || !file) return;
+    if (!hasWordPreviewSource) return;
 
     let cancelled = false;
     setIsRenderingDocx(true);
@@ -403,7 +463,14 @@ export function Step2UploadTemplate({
     (async () => {
       try {
         const { renderAsync } = await import('docx-preview');
-        const arrayBuffer = await file.arrayBuffer();
+        const arrayBuffer = file
+          ? await file.arrayBuffer()
+          : await fetch(templateData.file_url as string).then(async (response) => {
+              if (!response.ok) {
+                throw new Error("Impossible de charger le document Word existant.");
+              }
+              return response.arrayBuffer();
+            });
         if (cancelled || !docxPreviewRef.current) return;
         docxPreviewRef.current.innerHTML = '';
         await renderAsync(arrayBuffer, docxPreviewRef.current, undefined, {
@@ -419,7 +486,7 @@ export function Step2UploadTemplate({
     })();
 
     return () => { cancelled = true; };
-  }, [file, step]);
+  }, [file, step, hasWordPreviewSource, templateData.file_url]);
 
   // Aide contextuelle - étapes
   const helpSteps = [
@@ -1932,7 +1999,7 @@ export function Step2UploadTemplate({
           )}
 
           {/* Section Variables SP - Word uniquement */}
-          {templateData?.file_type === 'word' && (
+          {effectiveFileType === 'word' && (
             <div className="mt-6 border-t border-gray-200 pt-6">
               <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 Variables Situation Proposée (SP)
@@ -1983,6 +2050,11 @@ export function Step2UploadTemplate({
                       >Copier le bloc complet</button>
                     </div>
                     <pre className="text-xs text-gray-600 bg-gray-50 rounded p-2 overflow-x-auto">{block.fullBlock}</pre>
+                    {'hint' in block && block.hint && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                        {block.hint}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2004,7 +2076,7 @@ export function Step2UploadTemplate({
               <span className="text-2xl">👁️</span>
               Aperçu de votre document
             </h4>
-            {file ? (
+            {hasWordPreviewSource ? (
               <div className="border-2 border-gray-200 rounded-lg overflow-auto shadow-sm bg-white" style={{ minHeight: 420, maxHeight: 600 }}>
                 {isRenderingDocx && (
                   <div className="flex items-center justify-center py-12">

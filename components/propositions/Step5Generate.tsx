@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { Button } from '@/components/ui/button';
 
@@ -114,12 +114,32 @@ export function Step5Generate({
             <p className="text-gray-600 mb-6">
               Cliquez sur le bouton ci-dessous pour générer votre proposition
             </p>
-            <button
-              onClick={startGeneration}
-              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Générer la proposition
-            </button>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button
+                onClick={startGeneration}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Générer la proposition
+              </button>
+              {propositionData.suggestions_sp_completes && propositionData.proposition_id && (
+                <>
+                  <a
+                    href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=excel`}
+                    className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Comparatif SA/SP (Excel)
+                  </a>
+                  <a
+                    href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=word`}
+                    className="inline-flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Comparatif SA/SP (Word)
+                  </a>
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -140,7 +160,7 @@ export function Step5Generate({
               Proposition générée avec succès !
             </h3>
             <p className="text-gray-600 mb-6">Votre fichier est prêt à être téléchargé</p>
-            <div className="flex gap-3 justify-center">
+            <div className="flex flex-wrap gap-3 justify-center">
               <a
                 href={fileUrl}
                 target="_blank"
@@ -148,8 +168,26 @@ export function Step5Generate({
                 className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
                 <Download className="w-5 h-5" />
-                Télécharger
+                Télécharger la proposition
               </a>
+              {propositionData.suggestions_sp_completes && propositionData.proposition_id && (
+                <>
+                  <a
+                    href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=excel`}
+                    className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Comparatif SA/SP (Excel)
+                  </a>
+                  <a
+                    href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=word`}
+                    className="inline-flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Comparatif SA/SP (Word)
+                  </a>
+                </>
+              )}
               <button
                 onClick={onComplete}
                 className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"

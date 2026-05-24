@@ -3,6 +3,19 @@ import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import { createClient } from '@/lib/supabase/server';
 import { WordConfig } from '@/types';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ImageModule = require('docxtemplater-image-module') as new (opts: {
+  centered?: boolean;
+  fileType?: string;
+  getImage: (tagValue: string) => Promise<Buffer> | Buffer;
+  getSize: (img: Buffer, tagValue: string) => [number, number];
+}) => object;
+
+// 1×1 transparent PNG — placeholder when no image URL is provided
+const PLACEHOLDER_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 /**
  * Remplit un template Word en le dupliquant et en le modifiant
@@ -32,10 +45,30 @@ export async function fillWordTemplate(
     // 2. Charger le template avec PizZip
     const zip = new PizZip(Buffer.from(templateBuffer));
 
-    // 3. Initialiser Docxtemplater
+    // 3. Initialiser Docxtemplater avec module image
+    const imageCache = new Map<string, Buffer>();
+    const imageModule = new ImageModule({
+      centered: false,
+      fileType: 'docx',
+      getImage: async (tagValue: string) => {
+        if (!tagValue || !/^https?:\/\//.test(tagValue)) return PLACEHOLDER_PNG;
+        if (imageCache.has(tagValue)) return imageCache.get(tagValue)!;
+        try {
+          const imgRes = await fetch(tagValue);
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          imageCache.set(tagValue, buf);
+          return buf;
+        } catch {
+          return PLACEHOLDER_PNG;
+        }
+      },
+      getSize: (_img: Buffer, _tagValue: string) => [150, 100] as [number, number],
+    });
+
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      modules: [imageModule],
       delimiters: {
         start: '{{',
         end: '}}',

@@ -252,7 +252,7 @@ export function SpCustomVariablesEditor({ templateId, fileConfig, onSaved }: Pro
     if (!templateId) return;
     fetch(`/api/templates/${templateId}/sp-variables`)
       .then((r) => r.json())
-      .then((data: { standard: string[]; custom: SpVariableCustom[] }) => {
+      .then((data: { custom: SpVariableCustom[] }) => {
         setVars(data.custom ?? []);
       })
       .catch(() => {});

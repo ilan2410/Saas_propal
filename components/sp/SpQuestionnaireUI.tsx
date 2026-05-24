@@ -3,9 +3,14 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise } from '@/types';
+import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
+import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
+import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
+import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
+import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 
 export interface SpQuestionnaireUIProps {
   questions: SpQuestion[];
@@ -16,8 +21,12 @@ export interface SpQuestionnaireUIProps {
   onComplete: (reponses: SpQuestionReponse[]) => void;
   initialReponses?: SpQuestionReponse[];
   isSimulation?: boolean;
+  simulationPropositionId?: string;
+  simulationExportStatus?: 'idle' | 'preparing' | 'ready' | 'error';
+  simulationExportError?: string;
   siteLabel?: string;
   startFromQuestionId?: string;
+  spConfigLoyer?: SpConfigLoyer;
 }
 
 type MessageBubble =
@@ -528,8 +537,12 @@ export function SpQuestionnaireUI({
   onComplete,
   initialReponses,
   isSimulation = false,
+  simulationPropositionId,
+  simulationExportStatus = 'idle',
+  simulationExportError,
   siteLabel,
   startFromQuestionId,
+  spConfigLoyer,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -537,6 +550,8 @@ export function SpQuestionnaireUI({
   const [isTyping, setIsTyping] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [adresseEdit, setAdresseEdit] = useState<SpAdresse>({ adresse: '', code_postal: '', ville: '' });
+  // Marge : durée éditable directement dans la question (défaut 63 mois si aucune question durée n'a répondu)
+  const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(63);
   const [hiddenByConsequence, setHiddenByConsequence] = useState<Set<string>>(new Set());
   const [shownByConsequence, setShownByConsequence] = useState<Set<string>>(new Set());
   const [dynamicFilters, setDynamicFilters] = useState<Map<string, SpFiltresCatalogue>>(new Map());
@@ -554,6 +569,7 @@ export function SpQuestionnaireUI({
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
+  const hasReportedCompletion = useRef(false);
   // Track pending show timer to cancel it on re-init (prevents StrictMode duplicate messages)
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -576,6 +592,7 @@ export function SpQuestionnaireUI({
     setDynamicFilters(new Map());
     setPendingCatalogueSelection(null);
     setHistory([]);
+    hasReportedCompletion.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions]);
 
@@ -971,6 +988,12 @@ export function SpQuestionnaireUI({
     .every((eq) => reponses.some((r) => r.question_id === eq.instanceId));
 
   const isDone = allObligatoryAnswered && !currentQuestion && !isTyping;
+
+  useEffect(() => {
+    if (!isSimulation || !isDone || hasReportedCompletion.current) return;
+    hasReportedCompletion.current = true;
+    onComplete(reponses);
+  }, [isSimulation, isDone, onComplete, reponses]);
 
   return (
     <div className="space-y-4">
@@ -1375,6 +1398,100 @@ export function SpQuestionnaireUI({
             </div>
           )}
 
+          {currentQuestion.affichage === 'marge' && (() => {
+            // Cherche la durée depuis une réponse existante (question avec conséquence sp_duree_mois)
+            const dureeQuestion = questions.find((q) =>
+              q.consequences?.some(
+                (c) => c.type === 'renseigner_variable' && c.variable_cible === 'sp_duree_mois'
+              )
+            );
+            const dureeRep = dureeQuestion
+              ? reponses.find((r) => r.question_id === dureeQuestion.id)
+              : undefined;
+            const dureeFromReponse = dureeRep ? Number(dureeRep.valeur) || 0 : 0;
+            // Utilise la réponse si dispo, sinon l'override local (défaut 63)
+            const dureeMois = dureeFromReponse || margeDureeMoisOverride;
+
+            const margeNum = Number(inputValue) || 0;
+            const baremes = (spConfigLoyer ?? DEFAULT_CONFIG_LOYER).baremes;
+            const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue);
+            const loyer = calculerLoyer(bareme, 0, dureeMois, margeNum);
+
+            return (
+              <div className="space-y-3">
+                {/* Champ Marge */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Ex : 500"
+                    className="h-8 w-32 text-sm border border-gray-300 rounded px-2"
+                  />
+                  <span className="text-sm text-gray-500">€ de marge</span>
+                </div>
+
+                {/* Durée éditable si pas renseignée par une question */}
+                {!dureeFromReponse && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500">Durée du contrat :</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={margeDureeMoisOverride}
+                      onChange={(e) => setMargeDureeMoisOverride(Number(e.target.value) || 63)}
+                      className="h-7 w-20 text-sm border border-gray-300 rounded px-2"
+                    />
+                    <span className="text-xs text-gray-500">mois</span>
+                  </div>
+                )}
+
+                {loyer ? (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Loyer mensuel HT</span>
+                      <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Loyer trimestriel HT</span>
+                      <span className="font-semibold text-blue-800">{loyer.loyer_trimestriel.toFixed(2)} €</span>
+                    </div>
+                    <div className="flex gap-4 text-xs text-gray-500 pt-1 border-t border-blue-100">
+                      <span>Durée : {loyer.duree_mois} mois</span>
+                      <span>Trimestres : {loyer.trimestres}</span>
+                      <span>Mois offerts : {loyer.mois_offerts}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600">
+                    Aucun barème applicable pour {dureeMois} mois. Configurez-en un dans Paramètres → Calculer Loyer.
+                  </p>
+                )}
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const margeVal = inputValue || '0';
+                    const extras: SpQuestionReponse[] = [
+                      { question_id: 'sp_marge_calculee', valeur: margeVal },
+                    ];
+                    if (loyer) {
+                      extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
+                      extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
+                    }
+                    recordAnswer(currentExpanded.instanceId, margeVal, extras);
+                    setInputValue('');
+                  }}
+                >
+                  Valider
+                </Button>
+              </div>
+            );
+          })()}
+
           {(currentQuestion.affichage === 'adresse_complete' || currentQuestion.affichage === 'edition_sa') && (
             <div className="space-y-2">
               <input placeholder="Adresse (rue, numéro)" value={adresseEdit.adresse}
@@ -1448,10 +1565,35 @@ export function SpQuestionnaireUI({
                   min="1"
                   step="1"
                   value={pendingCatalogueSelection.quantityValue}
-                  onChange={(e) => setPendingCatalogueSelection((prev) => prev ? { ...prev, quantityValue: e.target.value } : null)}
+                  onChange={(e) => {
+                    const newQty = e.target.value;
+                    setPendingCatalogueSelection((prev) => {
+                      if (!prev) return null;
+                      if (!prev.prixEditing) {
+                        const resolved = resolvePrixPourQuantite(prev.product, Number(newQty) || 1);
+                        const prixValue = prev.product.type_frequence === 'mensuel'
+                          ? (resolved.prix_mensuel?.toString() ?? '')
+                          : (resolved.prix_vente?.toString() ?? '');
+                        const fasValue = resolved.prix_installation?.toString() ?? '0';
+                        return { ...prev, quantityValue: newQty, prixValue, fasValue };
+                      }
+                      return { ...prev, quantityValue: newQty };
+                    });
+                  }}
                   className="h-7 w-20 text-sm border border-gray-300 rounded px-2"
                 />
               </div>
+              {(() => {
+                const resolved = resolvePrixPourQuantite(
+                  pendingCatalogueSelection.product,
+                  Number(pendingCatalogueSelection.quantityValue) || 1,
+                );
+                return resolved.tranche_active && !pendingCatalogueSelection.prixEditing ? (
+                  <p className="text-xs text-blue-600">
+                    Prix appliqué selon tranche ({resolved.tranche_label})
+                  </p>
+                ) : null;
+              })()}
               {pendingCatalogueSelection.prixEditing && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -1575,6 +1717,22 @@ export function SpQuestionnaireUI({
                     );
                   })}
               </ul>
+              {simulationExportStatus === 'preparing' && (
+                <p className="text-sm text-amber-700">
+                  Préparation des données d&apos;export SA / SP...
+                </p>
+              )}
+              {simulationExportStatus === 'error' && simulationExportError && (
+                <p className="text-sm text-red-600">
+                  {simulationExportError}
+                </p>
+              )}
+              {simulationExportStatus === 'ready' && simulationPropositionId && (
+                <div className="pt-2">
+                  <p className="text-sm text-green-700 mb-2">Exports SA / SP :</p>
+                  <ExportSaSpButtons propositionId={simulationPropositionId} />
+                </div>
+              )}
             </div>
           ) : (
             <Button onClick={() => onComplete(reponses)} className="bg-green-600 hover:bg-green-700">
@@ -1584,6 +1742,15 @@ export function SpQuestionnaireUI({
           )}
         </div>
       )}
+
+      {/* Real-time cart summary (subscriptions, equipment, installations, FAS, loyer) */}
+      <SpRealTimeCart
+        reponses={reponses}
+        questions={questions}
+        catalogue={catalogue}
+        donneesExtraites={donneesExtraites}
+        spConfigLoyer={spConfigLoyer}
+      />
     </div>
   );
 }

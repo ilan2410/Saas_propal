@@ -3,8 +3,8 @@
 import { createClient } from '@/lib/supabase/client';
 import { useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, X, ImageIcon, Trash2 } from 'lucide-react';
-import type { CatalogueCategorie, CatalogueProduit } from '@/types';
+import { Upload, X, ImageIcon, Trash2, Plus } from 'lucide-react';
+import type { CatalogueCategorie, CatalogueProduit, CatalogueProduitTranche, ProduitDestinations } from '@/types';
 
 type FormState = {
   categorie: CatalogueCategorie;
@@ -21,6 +21,9 @@ type FormState = {
   engagement_mois: string;
   image_url: string;
   actif: boolean;
+  destinations: ProduitDestinations;
+  tranches_actives: boolean;
+  tranches: CatalogueProduitTranche[];
 };
 
 export function CatalogueProduitForm({
@@ -41,6 +44,7 @@ export function CatalogueProduitForm({
   const initialState: FormState = useMemo(() => {
     const categorie = (initialProduit?.categorie || 'mobile') as CatalogueCategorie;
     const type_frequence = initialProduit?.type_frequence || 'mensuel';
+    const tranches = initialProduit?.prix_par_tranche ?? [];
 
     return {
       categorie,
@@ -72,6 +76,9 @@ export function CatalogueProduitForm({
           : '',
       image_url: initialProduit?.image_url || '',
       actif: initialProduit?.actif ?? true,
+      destinations: initialProduit?.destinations ?? { proposition: true, bdc_operateur: true, bdc_materiel: true },
+      tranches_actives: tranches.length > 0,
+      tranches,
     };
   }, [initialProduit]);
 
@@ -84,8 +91,33 @@ export function CatalogueProduitForm({
     { value: 'fixe', label: 'Fixe' },
     { value: 'cloud', label: 'Cloud' },
     { value: 'equipement', label: 'Équipement' },
+    { value: 'cadeau', label: 'Cadeau' },
+    { value: 'installation', label: 'Installation' },
     { value: 'autre', label: 'Autre' },
   ];
+
+  const addTranche = () => {
+    const last = form.tranches[form.tranches.length - 1];
+    const qte_min = last ? (last.qte_max !== null ? last.qte_max + 1 : last.qte_min + 1) : 1;
+    setForm((p) => ({
+      ...p,
+      tranches: [
+        ...p.tranches,
+        { id: crypto.randomUUID(), qte_min, qte_max: null, prix_vente: undefined, prix_mensuel: undefined, prix_installation: undefined },
+      ],
+    }));
+  };
+
+  const updateTranche = (idx: number, patch: Partial<CatalogueProduitTranche>) => {
+    setForm((p) => ({
+      ...p,
+      tranches: p.tranches.map((t, i) => (i === idx ? { ...t, ...patch } : t)),
+    }));
+  };
+
+  const removeTranche = (idx: number) => {
+    setForm((p) => ({ ...p, tranches: p.tranches.filter((_, i) => i !== idx) }));
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,6 +184,21 @@ export function CatalogueProduitForm({
     setIsSaving(true);
 
     try {
+      // Validate tranches: no overlapping ranges
+      if (form.tranches_actives && form.tranches.length > 0) {
+        for (let i = 0; i < form.tranches.length - 1; i++) {
+          const curr = form.tranches[i];
+          if (curr.qte_max === null) {
+            alert('Seule la dernière tranche peut avoir une quantité max illimitée (∞)');
+            return;
+          }
+          if (curr.qte_max < curr.qte_min) {
+            alert(`Tranche ${i + 1} : la quantité max doit être supérieure à la quantité min`);
+            return;
+          }
+        }
+      }
+
       const payload = {
         categorie: form.categorie,
         nom: form.nom.trim(),
@@ -170,7 +217,9 @@ export function CatalogueProduitForm({
             : null,
         image_url: form.image_url || null,
         actif: form.actif,
-        is_global: isAdmin, // Indiquer qu'il s'agit d'un produit global si l'utilisateur est admin
+        destinations: form.destinations,
+        prix_par_tranche: form.tranches_actives && form.tranches.length > 0 ? form.tranches : null,
+        is_global: isAdmin,
       };
 
       if (!payload.nom) {
@@ -255,7 +304,7 @@ export function CatalogueProduitForm({
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Photo du produit</label>
         <div className="flex items-center gap-4">
-          <div 
+          <div
             className="w-24 h-24 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden cursor-pointer hover:bg-gray-50 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -328,6 +377,30 @@ export function CatalogueProduitForm({
           <label htmlFor="actif" className="text-sm text-gray-700">
             Produit actif
           </label>
+        </div>
+      </div>
+
+      {/* Destinations dans les documents */}
+      <div className="rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">Destinations dans les documents</h3>
+        <div className="flex flex-wrap gap-6">
+          {([
+            { key: 'proposition', label: 'Proposition commerciale' },
+            { key: 'bdc_operateur', label: 'BDC Opérateur' },
+            { key: 'bdc_materiel', label: 'BDC Matériel' },
+          ] as const).map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.destinations[key]}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, destinations: { ...p.destinations, [key]: e.target.checked } }))
+                }
+                className="h-4 w-4"
+              />
+              <span className="text-sm text-gray-700">{label}</span>
+            </label>
+          ))}
         </div>
       </div>
 
@@ -486,6 +559,127 @@ export function CatalogueProduitForm({
           </div>
         </div>
       )}
+
+      {/* Tarifs par quantité */}
+      <div className="rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-700">Tarifs par quantité (tranches)</h3>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.tranches_actives}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  tranches_actives: e.target.checked,
+                  tranches: e.target.checked && p.tranches.length === 0
+                    ? [{ id: crypto.randomUUID(), qte_min: 1, qte_max: null }]
+                    : p.tranches,
+                }))
+              }
+              className="h-4 w-4"
+            />
+            <span className="text-sm text-gray-600">Activer les tarifs par tranche</span>
+          </label>
+        </div>
+
+        {form.tranches_actives && (
+          <div className="space-y-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                    <th className="pb-2 pr-3 font-medium">Qté min</th>
+                    <th className="pb-2 pr-3 font-medium">Qté max (vide = ∞)</th>
+                    {form.type_frequence === 'mensuel' && <th className="pb-2 pr-3 font-medium">Prix mensuel (€)</th>}
+                    {form.type_frequence === 'unique' && <th className="pb-2 pr-3 font-medium">Prix vente (€)</th>}
+                    <th className="pb-2 pr-3 font-medium">FAS (€)</th>
+                    <th className="pb-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody className="space-y-2">
+                  {form.tranches.map((t, idx) => (
+                    <tr key={t.id} className="border-b border-gray-100">
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={t.qte_min}
+                          onChange={(e) => updateTranche(idx, { qte_min: Number(e.target.value) })}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min={t.qte_min}
+                          step="1"
+                          value={t.qte_max ?? ''}
+                          placeholder="∞"
+                          onChange={(e) =>
+                            updateTranche(idx, { qte_max: e.target.value === '' ? null : Number(e.target.value) })
+                          }
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={form.type_frequence === 'mensuel' ? (t.prix_mensuel ?? '') : (t.prix_vente ?? '')}
+                          placeholder="Par défaut"
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? undefined : Number(e.target.value);
+                            updateTranche(idx, form.type_frequence === 'mensuel' ? { prix_mensuel: val } : { prix_vente: val });
+                          }}
+                          className="w-28 px-2 py-1 border border-gray-300 rounded text-sm"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={t.prix_installation ?? ''}
+                          placeholder="Par défaut"
+                          onChange={(e) =>
+                            updateTranche(idx, { prix_installation: e.target.value === '' ? undefined : Number(e.target.value) })
+                          }
+                          className="w-28 px-2 py-1 border border-gray-300 rounded text-sm"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeTranche(idx)}
+                          className="p-1 text-red-500 hover:bg-red-50 rounded"
+                          title="Supprimer la tranche"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              onClick={addTranche}
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter une règle de prix
+            </button>
+            <p className="text-xs text-gray-500">
+              Les tranches sont évaluées dans l&apos;ordre. La première dont la quantité correspond est appliquée.
+              Seule la dernière tranche peut avoir une quantité max illimitée (∞).
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-200">
         <div className="flex items-center gap-3">

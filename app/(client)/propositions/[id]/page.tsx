@@ -23,6 +23,7 @@ import { GenerateButton } from '@/components/propositions/GenerateButton';
 import { ActionMenu } from '@/components/propositions/ActionMenu';
 import { CopyButton } from '@/components/propositions/CopyButton';
 import { ExportButton } from '@/components/propositions/ExportButton';
+import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -311,6 +312,11 @@ export default async function PropositionDetailPage({
                   <Download className="w-5 h-5" />
                   Télécharger
                 </a>
+              )}
+
+              {/* Comparatif SA/SP si données SP disponibles */}
+              {proposition.suggestions_sp_completes && (
+                <ExportSaSpButtons propositionId={proposition.id} />
               )}
 
               {/* Menu actions */}

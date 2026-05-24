@@ -99,6 +99,42 @@ function arrayLength(value: unknown): number {
   return 0;
 }
 
+function getSelectedCatalogueProducts(
+  reponses: SpQuestionReponse[],
+  catalogue: CatalogueProduit[],
+): CatalogueProduit[] {
+  const productById = new Map(catalogue.map((product) => [product.id.trim().toLowerCase(), product]));
+  const productByName = new Map(catalogue.map((product) => [product.nom.trim().toLowerCase(), product]));
+  const selected = new Map<string, CatalogueProduit>();
+
+  const registerValue = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return;
+    const product = productById.get(normalized) ?? productByName.get(normalized);
+    if (product) selected.set(product.id, product);
+  };
+
+  for (const reponse of reponses) {
+    if (
+      reponse.question_id.startsWith('prix_') ||
+      reponse.question_id.startsWith('fas_') ||
+      reponse.question_id.startsWith('quantite_')
+    ) {
+      continue;
+    }
+
+    if (Array.isArray(reponse.valeur)) {
+      reponse.valeur.forEach(registerValue);
+      continue;
+    }
+
+    registerValue(reponse.valeur);
+  }
+
+  return Array.from(selected.values());
+}
+
 // ── Single condition evaluator ───────────────────────────────────────
 
 function resolveConditionValue(
@@ -136,9 +172,11 @@ function evaluateSingleCondition(
   donneesExtraites: Record<string, unknown>,
   catalogue?: CatalogueProduit[],
 ): boolean {
-  // Special case: catalogue source → check if filtered catalogue has results
+  // Catalogue conditions are evaluated against the products actually selected
+  // in SP answers, not against raw catalogue availability.
   if (condition.source === 'catalogue' && catalogue && condition.filtre_catalogue) {
-    const filtered = filterCatalogueByFiltre(catalogue, condition.filtre_catalogue);
+    const selectedProducts = getSelectedCatalogueProducts(reponses, catalogue);
+    const filtered = filterCatalogueByFiltre(selectedProducts, condition.filtre_catalogue);
     const count = filtered.length;
     const target = toNumber(condition.valeur) ?? 0;
     switch (condition.operateur) {

@@ -74,6 +74,8 @@ export function BulkEditModal({
     { value: 'fixe', label: 'Fixe' },
     { value: 'cloud', label: 'Cloud' },
     { value: 'equipement', label: 'Équipement' },
+    { value: 'cadeau', label: 'Cadeau' },
+    { value: 'installation', label: 'Installation' },
     { value: 'autre', label: 'Autre' },
   ];
 

@@ -21,8 +21,12 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
+  const [propositionId, setPropositionId] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState(0);
   const [completedReponses, setCompletedReponses] = useState<SpQuestionReponse[] | null>(null);
+  const [exportReadyPropositionId, setExportReadyPropositionId] = useState<string | null>(null);
+  const [isPreparingExport, setIsPreparingExport] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [showSaInspector, setShowSaInspector] = useState(false);
 
   const activeQuestions = useMemo(
@@ -42,6 +46,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
         setNoProposition(true);
       } else {
         setDonneesExtraites(latestData.extracted_data as Record<string, unknown>);
+        setPropositionId((latestData.proposition_id as string | null) ?? null);
       }
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
@@ -53,6 +58,83 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const handleReset = () => {
     setSessionKey((k) => k + 1);
     setCompletedReponses(null);
+    setExportReadyPropositionId(null);
+    setIsPreparingExport(false);
+    setExportError('');
+  };
+
+  const handleSimulationComplete = async (reponses: SpQuestionReponse[]) => {
+    setCompletedReponses(reponses);
+    setExportReadyPropositionId(null);
+    setExportError('');
+
+    if (!propositionId) {
+      setExportError('Impossible de preparer l\'export: aucune proposition de reference n\'est disponible.');
+      return;
+    }
+
+    setIsPreparingExport(true);
+    try {
+      const fournisseurRep = reponses.find((r) =>
+        activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'boutons_choix_unique' && q.source === 'catalogue')
+      );
+      const adresseRep = reponses.find((r) =>
+        activeQuestions.find((q) => q.id === r.question_id && (q.affichage === 'adresse_complete' || q.affichage === 'edition_sa'))
+      );
+      const materielRep = reponses.find((r) =>
+        activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'oui_non')
+      );
+
+      const fasTotal = reponses
+        .filter((r) => r.question_id.startsWith('fas_'))
+        .reduce((sum, r) => {
+          const val = r.valeur;
+          if (typeof val === 'string') {
+            try {
+              const parsed = JSON.parse(val);
+              if (typeof parsed === 'object' && parsed !== null) {
+                return sum + (Object.values(parsed) as string[]).reduce((s, v) => s + (parseFloat(String(v)) || 0), 0);
+              }
+            } catch {
+              return sum + (parseFloat(val) || 0);
+            }
+            return sum + (parseFloat(val) || 0);
+          }
+          return sum;
+        }, 0);
+
+      const body = {
+        situation_actuelle: donneesExtraites,
+        catalogue,
+        proposition_id: propositionId,
+        force_regenerate: true,
+        sp_questions_reponses: reponses,
+        sp_fas_total: fasTotal,
+        preferences: {
+          fournisseur_prefere: fournisseurRep ? String(fournisseurRep.valeur) : undefined,
+          proposer_materiel: materielRep ? (materielRep.valeur === true || materielRep.valeur === 'Oui') : false,
+          adresse_facturation: adresseRep?.valeur,
+          livraison_identique: true,
+        },
+      };
+
+      const res = await fetch('/api/propositions/generer-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Erreur lors de la preparation de l\'export');
+      }
+
+      setExportReadyPropositionId(propositionId);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Erreur lors de la preparation de l\'export');
+    } finally {
+      setIsPreparingExport(false);
+    }
   };
 
   return (
@@ -148,8 +230,11 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               catalogue={catalogue}
               fournisseurs={fournisseurs}
               discountRules={discountRules}
-              onComplete={(reponses) => setCompletedReponses(reponses)}
+              onComplete={(reponses) => { void handleSimulationComplete(reponses); }}
               isSimulation={true}
+              simulationPropositionId={exportReadyPropositionId ?? undefined}
+              simulationExportStatus={isPreparingExport ? 'preparing' : exportError ? 'error' : exportReadyPropositionId ? 'ready' : 'idle'}
+              simulationExportError={exportError || undefined}
               startFromQuestionId={startFromQuestionId}
             />
           )}

@@ -9,6 +9,7 @@ import type {
   SpConditionOperateur,
   SpConditionLogique,
   SpQuestion,
+  CatalogueProduit,
 } from '@/types';
 
 interface Props {
@@ -17,6 +18,8 @@ interface Props {
   onChange: (groupes: SpGroupeConditions[], logique: SpConditionLogique) => void;
   /** All other questions in the same template (for "reponse_question" source) */
   otherQuestions: SpQuestion[];
+  /** Catalogue products (for "catalogue" source) */
+  catalogueProduits?: CatalogueProduit[];
 }
 
 const OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
@@ -35,8 +38,13 @@ const OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
 
 const SOURCES: { value: SpCondition['source']; label: string }[] = [
   { value: 'reponse_question', label: 'Réponse à une question' },
-  { value: 'sa', label: 'Donnée SA extraite' },
   { value: 'catalogue', label: 'Catalogue produits' },
+];
+
+// Operators shown when source is 'catalogue' (checks if a product is selected in SP)
+const CATALOGUE_OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
+  { value: 'non_vide', label: 'Est sélectionné dans les réponses SP' },
+  { value: 'vide', label: 'N\'est pas sélectionné dans les réponses SP' },
 ];
 
 const NEEDS_VALUE: SpConditionOperateur[] = [
@@ -91,7 +99,7 @@ function getQuestionSelectableValues(question?: SpQuestion): string[] {
   return [];
 }
 
-export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions }: Props) {
+export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions, catalogueProduits }: Props) {
   const [localGroupes, setLocalGroupes] = useState<SpGroupeConditions[]>(
     groupes.length > 0 ? groupes : [],
   );
@@ -249,19 +257,45 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 </select>
               )}
 
-              {/* Variable SA (for sa) */}
-              {cond.source === 'sa' && (
+              {/* Produit catalogue (for catalogue) */}
+              {cond.source === 'catalogue' && catalogueProduits && catalogueProduits.length > 0 ? (
+                <select
+                  value={cond.valeur != null ? String(cond.valeur) : ''}
+                  onChange={(e) => {
+                    const nom = e.target.value;
+                    updateCondition(groupe.id, cond.id, {
+                      valeur: nom,
+                      // Build filtre_catalogue so the evaluator can match the selected product
+                      filtre_catalogue: nom ? { produits_ids: [nom] } : undefined,
+                      // Default to "selected" when switching catalogue product
+                      operateur: ['non_vide', 'vide'].includes(cond.operateur) ? cond.operateur : 'non_vide',
+                    });
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded bg-white max-w-56 truncate"
+                >
+                  <option value="">-- Produit --</option>
+                  {catalogueProduits.map((p) => (
+                    <option key={p.id} value={p.nom}>
+                      {p.nom}{p.fournisseur ? ` (${p.fournisseur})` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : cond.source === 'catalogue' ? (
                 <input
-                  value={cond.variable_sa ?? ''}
-                  onChange={(e) =>
-                    updateCondition(groupe.id, cond.id, { variable_sa: e.target.value })
-                  }
-                  placeholder="ex: nombre_lignes_mobiles"
-                  className="px-2 py-1 border border-gray-300 rounded bg-white w-48 font-mono"
+                  value={cond.valeur != null ? String(cond.valeur) : ''}
+                  onChange={(e) => {
+                    const nom = e.target.value;
+                    updateCondition(groupe.id, cond.id, {
+                      valeur: nom,
+                      filtre_catalogue: nom ? { produits_ids: [nom] } : undefined,
+                    });
+                  }}
+                  placeholder="Nom du produit"
+                  className="px-2 py-1 border border-gray-300 rounded bg-white w-40"
                 />
-              )}
+              ) : null}
 
-              {/* Operator */}
+              {/* Operator — limited set for catalogue source */}
               <select
                 value={cond.operateur}
                 onChange={(e) =>
@@ -269,13 +303,13 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 }
                 className="px-2 py-1 border border-gray-300 rounded bg-white"
               >
-                {OPERATEURS.map((o) => (
+                {(cond.source === 'catalogue' ? CATALOGUE_OPERATEURS : OPERATEURS).map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
 
-              {/* Value */}
-              {NEEDS_VALUE.includes(cond.operateur) && (
+              {/* Value — hidden for catalogue source because the product filter drives the condition */}
+              {NEEDS_VALUE.includes(cond.operateur) && cond.source !== 'catalogue' && (
                 useSelectForValue ? (
                   <select
                     value={cond.valeur != null ? String(cond.valeur) : ''}

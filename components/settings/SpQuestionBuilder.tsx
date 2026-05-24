@@ -187,6 +187,7 @@ const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   remise_produits: "Affiche les produits déjà sélectionnés qui sont éligibles à une remise conditionnelle.",
   choix_liste_manuelle: "L'utilisateur choisit dans une liste que vous définissez vous-même (ex: 'Oui / Non / En cours').",
   adresse_complete: "Formulaire d'adresse structuré avec rue, complément, code postal, ville, pays.",
+  marge: "Champ libre où l'utilisateur saisit sa marge en €. Le loyer mensuel/trimestriel est calculé en live selon le barème applicable du template.",
 };
 
 const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAffichage; label: string }>> = {
@@ -210,6 +211,7 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'remise_produits', label: 'Remises produits' },
     { value: 'choix_liste_manuelle', label: 'Choix dans une liste' },
     { value: 'adresse_complete', label: 'Adresse complète' },
+    { value: 'marge', label: 'Marge (calcul loyer)' },
   ],
   catalogue_et_sa: [
     { value: 'boutons_choix_unique', label: 'Boutons — choix unique' },
@@ -244,6 +246,8 @@ const CATALOGUE_CATEGORIES: { value: string; label: string }[] = [
   { value: 'fixe', label: 'Fixe' },
   { value: 'cloud', label: 'Cloud' },
   { value: 'equipement', label: 'Équipement' },
+  { value: 'cadeau', label: 'Cadeau' },
+  { value: 'installation', label: 'Installation' },
   { value: 'autre', label: 'Autre' },
 ];
 

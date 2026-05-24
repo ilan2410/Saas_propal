@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateClaudeApiKey } from '@/lib/ai/claude';
 import Anthropic from '@anthropic-ai/sdk';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpConfigLoyer } from '@/types';
-import { calculerLoyer, suggererMarge, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne } from '@/types';
+import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
+import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -549,7 +550,7 @@ function buildSpCompletes(
   livraisonIdentique: boolean,
   wordCfg: WordConfig,
   catalogueProduits?: CatalogueProduit[],
-  spConfigLoyer?: SpConfigLoyer,
+  loyerBaremes?: SpBareme[],
   priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
 ): SuggestionsSpCompletes {
@@ -595,9 +596,14 @@ function buildSpCompletes(
 
   // ── Loyer calculation ──
   const dureeMois = typeof raw.sp_duree_mois === 'number' ? raw.sp_duree_mois : 0;
-  const marge = suggererMarge(spConfigLoyer, totalPonctuel);
-  const loyer = dureeMois > 0 ? calculerLoyer(spConfigLoyer, totalPonctuel, dureeMois, marge) : null;
-  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(spConfigLoyer, totalRecurrent, dureeMois) : 0;
+  const reponses = Array.isArray(raw.sp_questions_reponses)
+    ? (raw.sp_questions_reponses as SpQuestionReponse[])
+    : [];
+  const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
+  const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+  const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
+  const loyer = dureeMois > 0 ? calculerLoyer(bareme, totalPonctuel, dureeMois, marge) : null;
+  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
 
   const result: SuggestionsSpCompletes = {
     ...baseResult,
@@ -651,6 +657,163 @@ function buildSpCompletes(
       result[fusion.id] = items;
     }
   }
+
+  // ── Lot 4: Tables filtrées ─────────────────────────────────────────────
+
+  // Helper: convert a ligne (mobile/fixe/internet) to SpSituationProposeeLigne
+  const toSituationLigne = (l: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
+    sp_sp_type: l.sp_type_ligne,
+    sp_sp_nom: l.sp_nom_ligne,
+    sp_sp_produit: l.sp_produit,
+    sp_sp_fournisseur: l.sp_produit_fournisseur,
+    sp_sp_prix_actuel: l.sp_prix_actuel,
+    sp_sp_prix_propose: l.sp_prix_propose,
+    sp_sp_economie: l.sp_economie,
+    sp_sp_analyse: l.sp_analyse,
+    _prix_raw: l._prix_propose_raw,
+  });
+
+  const toSituationMateriel = (m: SpMateriel): SpSituationProposeeLigne => ({
+    sp_sp_type: 'Materiel',
+    sp_sp_nom: m.sp_materiel_nom,
+    sp_sp_produit: m.sp_materiel_nom,
+    sp_sp_fournisseur: m.sp_materiel_fournisseur,
+    sp_sp_prix_actuel: undefined,
+    sp_sp_prix_propose: m.sp_materiel_prix_mensuel,
+    sp_sp_economie: undefined,
+    sp_sp_analyse: m.sp_materiel_commentaire,
+    _prix_raw: m._prix_mensuel_raw,
+  });
+
+  // sp_situation_proposee_forfaits: mobiles + fixes + internet
+  result.sp_situation_proposee_forfaits = toutes.map(toSituationLigne);
+
+  // sp_situation_proposee_complet: tout (forfaits + matériel)
+  result.sp_situation_proposee_complet = [
+    ...toutes.map(toSituationLigne),
+    ...sp_materiel.map(toSituationMateriel),
+  ];
+
+  // sp_materiel_detail: matériel enrichi avec infos catalogue
+  result.sp_materiel_detail = sp_materiel.map((m): SpMaterielDetail => {
+    const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+    const freq = cat?.type_frequence ?? 'mensuel';
+    const imageUrl = typeof cat?.image_url === 'string' ? cat.image_url : undefined;
+    return {
+      sp_matd_nom: m.sp_materiel_nom,
+      sp_matd_ref: m.sp_materiel_ref,
+      sp_matd_fournisseur: m.sp_materiel_fournisseur,
+      sp_matd_quantite: '1',
+      sp_matd_prix_ht: m.sp_materiel_prix_mensuel,
+      sp_matd_commentaire: m.sp_materiel_commentaire,
+      sp_matd_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
+      sp_matd_image_url: imageUrl,
+      sp_mat_image_url: imageUrl,
+      _prix_raw: m._prix_mensuel_raw,
+    };
+  });
+
+  // sp_bdc_operateur_table: forfaits (mobile/fixe) filtrés par destinations.bdc_operateur
+  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = [...sp_lignes_mobiles, ...sp_lignes_fixes]
+    .filter((l) => {
+      if (!l.sp_produit_id) return true; // pas de ref catalogue → inclure par défaut
+      const cat = catalogueMap.get(l.sp_produit_id);
+      return cat?.destinations?.bdc_operateur !== false;
+    })
+    .map((l): SpBdcOperateurLigne => ({
+      sp_bdc_op_type: l.sp_type_ligne,
+      sp_bdc_op_nom: l.sp_nom_ligne,
+      sp_bdc_op_produit: l.sp_produit,
+      sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
+      sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_op_prix_actuel: l.sp_prix_actuel,
+      sp_bdc_op_economie: l.sp_economie,
+      _prix_mensuel_raw: l._prix_propose_raw,
+    }));
+
+  // sp_bdc_internet_table: internet filtré par destinations.bdc_operateur
+  const sp_bdc_internet_table: SpBdcInternetLigne[] = sp_internet
+    .filter((l) => {
+      if (!l.sp_produit_id) return true;
+      const cat = catalogueMap.get(l.sp_produit_id);
+      return cat?.destinations?.bdc_operateur !== false;
+    })
+    .map((l): SpBdcInternetLigne => ({
+      sp_bdc_int_nom: l.sp_nom_ligne,
+      sp_bdc_int_produit: l.sp_produit,
+      sp_bdc_int_fournisseur: l.sp_produit_fournisseur,
+      sp_bdc_int_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_int_prix_actuel: l.sp_prix_actuel,
+      _prix_mensuel_raw: l._prix_propose_raw,
+    }));
+
+  // sp_bdc_materiel_table: matériel filtré par destinations.bdc_materiel
+  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = sp_materiel
+    .filter((m) => {
+      if (!m.sp_materiel_produit_id) return true;
+      const cat = catalogueMap.get(m.sp_materiel_produit_id);
+      return cat?.destinations?.bdc_materiel !== false;
+    })
+    .map((m): SpBdcMaterielLigne => {
+      const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+      const freq = cat?.type_frequence ?? 'mensuel';
+      return {
+        sp_bdc_mat_nom: m.sp_materiel_nom,
+        sp_bdc_mat_ref: m.sp_materiel_ref,
+        sp_bdc_mat_fournisseur: m.sp_materiel_fournisseur,
+        sp_bdc_mat_prix_ht: m.sp_materiel_prix_mensuel,
+        sp_bdc_mat_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
+        _prix_raw: m._prix_mensuel_raw,
+      };
+    });
+
+  // sp_cadeaux_table: produits avec categorie === 'cadeau' (ajoutés via sp_materiel)
+  const sp_cadeaux_table: SpCadeauLigne[] = sp_materiel
+    .filter((m) => {
+      if (!m.sp_materiel_produit_id) return false;
+      const cat = catalogueMap.get(m.sp_materiel_produit_id);
+      return cat?.categorie === 'cadeau';
+    })
+    .map((m): SpCadeauLigne => ({
+      sp_cadeau_nom: m.sp_materiel_nom,
+      sp_cadeau_ref: m.sp_materiel_ref,
+      sp_cadeau_valeur_ht: m.sp_materiel_prix_mensuel,
+      _valeur_raw: m._prix_mensuel_raw,
+    }));
+
+  result.sp_bdc_operateur_table = sp_bdc_operateur_table;
+  result.sp_bdc_internet_table = sp_bdc_internet_table;
+  result.sp_bdc_materiel_table = sp_bdc_materiel_table;
+  result.sp_cadeaux_table = sp_cadeaux_table;
+
+  // ── Lot 4: Variables simples ────────────────────────────────────────────
+
+  // sp_date_limite_souscription: cherche dans les réponses SP
+  const dateLimiteRep = reponses.find((r) => r.question_id === 'sp_date_limite_souscription');
+  if (dateLimiteRep && dateLimiteRep.valeur) {
+    result.sp_date_limite_souscription = String(dateLimiteRep.valeur);
+  }
+
+  // sp_duree_trimestres: même valeur que sp_trimestres mais formatée en chaîne
+  if (loyer) {
+    result.sp_duree_trimestres = String(loyer.trimestres);
+  }
+
+  // Totaux des tables filtrées
+  const totalForfaits = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
+  const totalMaterielHt = sp_materiel.reduce((s, m) => s + m._prix_mensuel_raw, 0);
+  const totalBdcOp = sp_bdc_operateur_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
+  const totalBdcInt = sp_bdc_internet_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
+  const totalBdcMat = sp_bdc_materiel_table.reduce((s, l) => s + l._prix_raw, 0);
+  const totalCadeaux = sp_cadeaux_table.reduce((s, l) => s + l._valeur_raw, 0);
+
+  result.sp_total_forfaits_mensuel_ht = formatEuro(totalForfaits);
+  result.sp_total_materiel_ht = formatEuro(totalMaterielHt);
+  result.sp_total_bdc_operateur_ht = formatEuro(totalBdcOp);
+  result.sp_total_bdc_internet_ht = formatEuro(totalBdcInt);
+  result.sp_total_bdc_materiel_ht = formatEuro(totalBdcMat);
+  result.sp_total_cadeaux_ht = formatEuro(totalCadeaux);
+  result.sp_total_complet = formatEuro(totalForfaits + totalMaterielHt);
 
   return result;
 }
@@ -769,7 +932,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
 
     const message = await anthropic.messages.create({
       model,
-      max_tokens: 64000,
+      max_tokens: 16384,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -806,15 +969,39 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
           }
         }
       }
-      // Load org preferences for loyer config
-      let spConfigLoyer: SpConfigLoyer | undefined;
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('preferences')
-        .eq('id', user.id)
-        .single();
-      if (isPlainObject(orgData?.preferences) && isPlainObject((orgData.preferences as UnknownRecord).sp_config_loyer)) {
-        spConfigLoyer = (orgData.preferences as UnknownRecord).sp_config_loyer as unknown as SpConfigLoyer;
+      // Load loyer baremes: template file_config first, org preferences as fallback
+      let loyerBaremes: SpBareme[] | undefined;
+
+      // 1. Template file_config (new format)
+      const tmplCfg = wordCfg as WordConfig & { sp_config_loyer?: { baremes?: SpBareme[] } };
+      if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer!.baremes!.length > 0) {
+        loyerBaremes = tmplCfg.sp_config_loyer!.baremes;
+      }
+
+      // 2. Org preferences fallback (supports new {baremes:[]} and legacy {taux_durees:[]})
+      if (!loyerBaremes) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('preferences')
+          .eq('id', user.id)
+          .single();
+        const orgCfg = isPlainObject(orgData?.preferences)
+          ? (orgData.preferences as UnknownRecord).sp_config_loyer
+          : undefined;
+        if (isPlainObject(orgCfg)) {
+          const cfg = orgCfg as UnknownRecord;
+          if (Array.isArray(cfg.baremes) && (cfg.baremes as unknown[]).length > 0) {
+            loyerBaremes = cfg.baremes as SpBareme[];
+          } else if (Array.isArray(cfg.taux_durees)) {
+            // Convert legacy format to single fallback barème
+            loyerBaremes = [{
+              id: 'migrated',
+              nom: 'Barème migré',
+              ordre: 0,
+              taux_durees: cfg.taux_durees as SpTauxDuree[],
+            }];
+          }
+        }
       }
 
       suggestionsSpCompletes = buildSpCompletes(
@@ -825,7 +1012,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         livraison_identique,
         wordCfg,
         catalogue as CatalogueProduit[],
-        spConfigLoyer,
+        loyerBaremes,
         priceOverrides,
         typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
       );
@@ -848,7 +1035,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
     }
 
     return NextResponse.json(suggestionsSpCompletes ?? normalized);
-  } catch {
+  } catch (error) {
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
 }

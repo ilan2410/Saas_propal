@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, Database, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 
 interface Props {
@@ -23,6 +23,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [preferences, setPreferences] = useState<OrganizationPreferences>({});
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -37,7 +38,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
       fetch('/api/catalogue').then((r) => r.json()),
       fetch('/api/settings/preferences').then((r) => r.json()),
-    ]).then(([qData, fData, cData, pData]) => {
+      fetch(`/api/templates/${templateId}`).then((r) => r.json()),
+    ]).then(([qData, fData, cData, pData, tData]) => {
       const qs: SpQuestion[] = ((qData.questions ?? []) as SpQuestion[])
         .filter((q) => q.actif)
         .sort((a, b) => a.ordre - b.ordre);
@@ -45,6 +47,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
       setPreferences(pData.preferences ?? {});
+      const fileCfg = tData.template?.file_config as WordConfig | undefined;
+      if (fileCfg?.sp_config_loyer?.baremes) setSpConfigLoyer(fileCfg.sp_config_loyer);
       setLoadingQuestions(false);
     }).catch(() => setLoadingQuestions(false));
   }, [templateId]);
@@ -220,6 +224,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
           initialReponses={propositionData.sp_reponses}
           onComplete={handleComplete}
           siteLabel={siteLabel}
+          spConfigLoyer={spConfigLoyer}
         />
       )}
 

@@ -5,7 +5,7 @@ export type FileType = 'excel' | 'word' | 'pdf';
 export type TemplateStatus = 'brouillon' | 'teste' | 'actif';
 export type PropositionStatus = 'processing' | 'ready' | 'exported' | 'error';
 export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
-export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre';
+export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre' | 'cadeau' | 'installation';
 export type CatalogueSecteur = 'telephonie' | 'bureautique';
 
 // Organization (Client de la plateforme)
@@ -141,6 +141,7 @@ export interface WordConfig {
   spVariablesActives?: string[];
   spTableauxFusionnes?: SpTableauFusionne[];
   spVariablesCustom?: SpVariableCustom[];
+  sp_config_loyer?: SpConfigLoyer;
 }
 
 export interface PDFConfig {
@@ -249,6 +250,21 @@ export interface StripeTransaction {
   created_at: string;
 }
 
+export interface CatalogueProduitTranche {
+  id: string;
+  qte_min: number;
+  qte_max: number | null;
+  prix_vente?: number;
+  prix_mensuel?: number;
+  prix_installation?: number;
+}
+
+export interface ProduitDestinations {
+  proposition: boolean;
+  bdc_operateur: boolean;
+  bdc_materiel: boolean;
+}
+
 export interface CatalogueProduit {
   id: string;
   organization_id: string | null;
@@ -270,6 +286,8 @@ export interface CatalogueProduit {
   tags: string[];
   est_produit_base: boolean;
   actif: boolean;
+  prix_par_tranche?: CatalogueProduitTranche[];
+  destinations?: ProduitDestinations;
   created_at: string;
   updated_at: string;
 }
@@ -332,7 +350,8 @@ export type SpQuestionAffichage =
   | 'date'
   | 'remise_produits'
   | 'choix_liste_manuelle'
-  | 'adresse_complete';
+  | 'adresse_complete'
+  | 'marge';
 
 export type SpConditionOperateur =
   | 'egal'
@@ -502,6 +521,69 @@ export interface SpMateriel {
   _prix_mensuel_raw: number;
 }
 
+// ── Lot 4: Tables filtrées ────────────────────────────────────────
+
+export interface SpSituationProposeeLigne {
+  sp_sp_type: string;
+  sp_sp_nom: string;
+  sp_sp_produit?: string;
+  sp_sp_fournisseur?: string;
+  sp_sp_prix_actuel?: string;
+  sp_sp_prix_propose: string;
+  sp_sp_economie?: string;
+  sp_sp_analyse?: string;
+  _prix_raw: number;
+}
+
+export interface SpMaterielDetail {
+  sp_matd_nom: string;
+  sp_matd_ref?: string;
+  sp_matd_fournisseur?: string;
+  sp_matd_quantite: string;
+  sp_matd_prix_ht: string;
+  sp_matd_commentaire: string;
+  sp_matd_frequence: string;
+  sp_matd_image_url?: string;
+  sp_mat_image_url?: string;
+  _prix_raw: number;
+}
+
+export interface SpBdcOperateurLigne {
+  sp_bdc_op_type: string;
+  sp_bdc_op_nom: string;
+  sp_bdc_op_produit?: string;
+  sp_bdc_op_fournisseur?: string;
+  sp_bdc_op_prix_mensuel_ht: string;
+  sp_bdc_op_prix_actuel?: string;
+  sp_bdc_op_economie?: string;
+  _prix_mensuel_raw: number;
+}
+
+export interface SpBdcInternetLigne {
+  sp_bdc_int_nom: string;
+  sp_bdc_int_produit?: string;
+  sp_bdc_int_fournisseur?: string;
+  sp_bdc_int_prix_mensuel_ht: string;
+  sp_bdc_int_prix_actuel?: string;
+  _prix_mensuel_raw: number;
+}
+
+export interface SpBdcMaterielLigne {
+  sp_bdc_mat_nom: string;
+  sp_bdc_mat_ref?: string;
+  sp_bdc_mat_fournisseur?: string;
+  sp_bdc_mat_prix_ht: string;
+  sp_bdc_mat_frequence: string;
+  _prix_raw: number;
+}
+
+export interface SpCadeauLigne {
+  sp_cadeau_nom: string;
+  sp_cadeau_ref?: string;
+  sp_cadeau_valeur_ht: string;
+  _valeur_raw: number;
+}
+
 export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_fournisseur_propose?: string;
   sp_adresse_facturation?: SpAdresse;
@@ -544,6 +626,26 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_trimestres?: number;
   sp_mois_offerts?: number;
 
+  // ── Lot 4: Tables filtrées ─────────────────────────────────────
+  sp_situation_proposee_complet?: SpSituationProposeeLigne[];
+  sp_situation_proposee_forfaits?: SpSituationProposeeLigne[];
+  sp_materiel_detail?: SpMaterielDetail[];
+  sp_bdc_operateur_table?: SpBdcOperateurLigne[];
+  sp_bdc_internet_table?: SpBdcInternetLigne[];
+  sp_bdc_materiel_table?: SpBdcMaterielLigne[];
+  sp_cadeaux_table?: SpCadeauLigne[];
+
+  // ── Lot 4: Variables simples ────────────────────────────────────
+  sp_date_limite_souscription?: string;
+  sp_duree_trimestres?: string;
+  sp_total_forfaits_mensuel_ht?: string;
+  sp_total_materiel_ht?: string;
+  sp_total_bdc_operateur_ht?: string;
+  sp_total_bdc_internet_ht?: string;
+  sp_total_bdc_materiel_ht?: string;
+  sp_total_cadeaux_ht?: string;
+  sp_total_complet?: string;
+
   [key: string]: unknown;
 }
 
@@ -556,10 +658,17 @@ export interface SpTauxDuree {
   trimestres: number;
 }
 
-export interface SpConfigLoyer {
+export interface SpBareme {
+  id: string;
+  nom: string;
+  ordre: number;
+  groupes_conditions?: SpGroupeConditions[];
+  logique_declencheur?: SpConditionLogique;
   taux_durees: SpTauxDuree[];
-  marge_suggestion_active: boolean;
-  marge_pourcentage_defaut?: number;
+}
+
+export interface SpConfigLoyer {
+  baremes: SpBareme[];
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

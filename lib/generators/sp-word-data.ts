@@ -36,6 +36,13 @@ export function buildSpWordData(
     sp_lignes_fixes: sp.sp_lignes_fixes ?? [],
     sp_internet: sp.sp_internet ?? [],
     sp_materiel: sp.sp_materiel ?? [],
+    sp_situation_proposee_complet: sp.sp_situation_proposee_complet ?? [],
+    sp_situation_proposee_forfaits: sp.sp_situation_proposee_forfaits ?? [],
+    sp_materiel_detail: sp.sp_materiel_detail ?? [],
+    sp_bdc_operateur_table: sp.sp_bdc_operateur_table ?? [],
+    sp_bdc_internet_table: sp.sp_bdc_internet_table ?? [],
+    sp_bdc_materiel_table: sp.sp_bdc_materiel_table ?? [],
+    sp_cadeaux_table: sp.sp_cadeaux_table ?? [],
 
     sp_fixes_mobiles: sp.sp_fixes_mobiles ?? [],
     sp_fixes_mobiles_internet: sp.sp_fixes_mobiles_internet ?? [],

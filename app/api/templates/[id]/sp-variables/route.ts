@@ -5,12 +5,29 @@ import type { WordConfig, SpVariableCustom, SpQuestion } from '@/types';
 interface RouteParams { params: Promise<{ id: string }> }
 
 const SP_STANDARD_VARIABLES = [
+  // Économies & totaux principaux
   'sp_economie_mensuelle', 'sp_economie_annuelle', 'sp_total_actuel', 'sp_total_propose',
   'sp_ameliorations', 'sp_fournisseur_propose', 'sp_nb_lignes', 'sp_est_economie',
+  // Adresses
   'sp_adresse_facturation', 'sp_adresse_facturation_rue', 'sp_adresse_facturation_cp',
   'sp_adresse_facturation_ville', 'sp_adresse_livraison', 'sp_adresse_livraison_rue',
   'sp_adresse_livraison_cp', 'sp_adresse_livraison_ville', 'sp_livraison_identique',
-  'sp_fas_total',
+  // Récurrent / Ponctuel
+  'sp_fas_total', 'sp_total_recurrent', 'sp_total_ponctuel', 'sp_total_indemnites',
+  'sp_remise_mois_offert', 'sp_total_installation', 'sp_total_materiel_achat',
+  // Loyer / Marge
+  'sp_loyer_mensuel', 'sp_loyer_trimestriel', 'sp_marge',
+  'sp_duree_mois', 'sp_trimestres', 'sp_mois_offerts',
+  // Tables filtrées (Lot 4)
+  'sp_situation_proposee_complet', 'sp_situation_proposee_forfaits',
+  'sp_materiel_detail',
+  'sp_bdc_operateur_table', 'sp_bdc_internet_table', 'sp_bdc_materiel_table',
+  'sp_cadeaux_table',
+  // Variables simples (Lot 4)
+  'sp_date_limite_souscription', 'sp_duree_trimestres',
+  'sp_total_forfaits_mensuel_ht', 'sp_total_materiel_ht',
+  'sp_total_bdc_operateur_ht', 'sp_total_bdc_internet_ht',
+  'sp_total_bdc_materiel_ht', 'sp_total_cadeaux_ht', 'sp_total_complet',
 ];
 
 export async function GET(_req: NextRequest, { params }: RouteParams) {

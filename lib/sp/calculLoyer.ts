@@ -1,4 +1,4 @@
-import type { SpConfigLoyer, SpTauxDuree } from '@/types';
+import type { SpBareme, SpConfigLoyer, SpTauxDuree } from '@/types';
 
 // ── Default config ───────────────────────────────────────────────────
 
@@ -8,10 +8,15 @@ export const DEFAULT_TAUX_DUREES: SpTauxDuree[] = [
   { duree_mois: 63, taux_loyer: 0.063, mois_offerts: 18, trimestres: 21 },
 ];
 
-export const DEFAULT_CONFIG_LOYER: SpConfigLoyer = {
+export const DEFAULT_BAREME: SpBareme = {
+  id: 'default',
+  nom: 'Barème par défaut',
+  ordre: 0,
   taux_durees: DEFAULT_TAUX_DUREES,
-  marge_suggestion_active: true,
-  marge_pourcentage_defaut: 10,
+};
+
+export const DEFAULT_CONFIG_LOYER: SpConfigLoyer = {
+  baremes: [DEFAULT_BAREME],
 };
 
 // ── Types résultat ───────────────────────────────────────────────────
@@ -36,13 +41,13 @@ export interface ResultatLoyer {
  * Formule : loyer_mensuel = ceil((totalPonctuel + marge) × taux / 3)
  */
 export function calculerLoyer(
-  config: SpConfigLoyer | undefined | null,
+  bareme: SpBareme | undefined | null,
   totalPonctuel: number,
   dureeMois: number,
   marge?: number,
 ): ResultatLoyer | null {
-  const cfg = config ?? DEFAULT_CONFIG_LOYER;
-  const entry = cfg.taux_durees.find((t) => t.duree_mois === dureeMois);
+  const taux_durees = bareme?.taux_durees ?? DEFAULT_BAREME.taux_durees;
+  const entry = taux_durees.find((t) => t.duree_mois === dureeMois);
   if (!entry) return null;
 
   const margeEffective = marge ?? 0;
@@ -61,21 +66,6 @@ export function calculerLoyer(
   };
 }
 
-// ── Suggestion de marge ──────────────────────────────────────────────
-
-/**
- * Calcule une marge suggérée basée sur un pourcentage du total ponctuel.
- */
-export function suggererMarge(
-  config: SpConfigLoyer | undefined | null,
-  totalPonctuel: number,
-): number {
-  const cfg = config ?? DEFAULT_CONFIG_LOYER;
-  if (!cfg.marge_suggestion_active) return 0;
-  const pct = cfg.marge_pourcentage_defaut ?? 10;
-  return Math.round(totalPonctuel * pct / 100);
-}
-
 // ── Calcul remise mois offert (package) ──────────────────────────────
 
 /**
@@ -83,12 +73,12 @@ export function suggererMarge(
  * remise = total_recurrent_mensuel × mois_offerts
  */
 export function calculerRemiseMoisOffert(
-  config: SpConfigLoyer | undefined | null,
+  bareme: SpBareme | undefined | null,
   totalRecurrentMensuel: number,
   dureeMois: number,
 ): number {
-  const cfg = config ?? DEFAULT_CONFIG_LOYER;
-  const entry = cfg.taux_durees.find((t) => t.duree_mois === dureeMois);
+  const taux_durees = bareme?.taux_durees ?? DEFAULT_BAREME.taux_durees;
+  const entry = taux_durees.find((t) => t.duree_mois === dureeMois);
   if (!entry) return 0;
   return totalRecurrentMensuel * entry.mois_offerts;
 }

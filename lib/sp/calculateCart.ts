@@ -1,0 +1,275 @@
+import type {
+  CatalogueProduit,
+  CatalogueCategorie,
+  SpQuestion,
+  SpQuestionReponse,
+  SpConfigLoyer,
+} from '@/types';
+import { calculerLoyer, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
+import { findApplicableBareme } from './evaluateBareme';
+
+// ── Types ────────────────────────────────────────────────────────────
+
+export interface CartLine {
+  produitNom: string;
+  produitId?: string;
+  categorie: CatalogueCategorie;
+  type_frequence: 'mensuel' | 'unique';
+  quantite: number;
+  /** Total price already multiplied by quantity (mensuel = €/mois, unique = € HT). */
+  prixTotal: number;
+  fasTotal: number;
+  instanceId: string;
+}
+
+export interface SpCartSummary {
+  abonnements: {
+    fixe: number;
+    mobile: number;
+    internet: number;
+    totalMensuel: number;
+  };
+  materiel: number;
+  installations: number;
+  fas: number;
+  autresMensuels: number;
+  autresPonctuels: number;
+  totalPonctuel: number;
+  loyer: ResultatLoyer | null;
+  lines: CartLine[];
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function findProduct(catalogue: CatalogueProduit[], key: string): CatalogueProduit | undefined {
+  if (!key) return undefined;
+  return catalogue.find((p) => p.id === key) ?? catalogue.find((p) => p.nom === key);
+}
+
+function parseJsonRecord(value: SpQuestionReponse['valeur']): Record<string, string> | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
+}
+
+function getQuantite(reponses: SpQuestionReponse[], instanceId: string, produitNom: string): number {
+  const rep = reponses.find((r) => r.question_id === `quantite_${instanceId}`);
+  if (!rep) return 1;
+  const asMap = parseJsonRecord(rep.valeur);
+  if (asMap) {
+    const q = Number(asMap[produitNom]);
+    return Number.isFinite(q) && q > 0 ? q : 1;
+  }
+  const q = Number(rep.valeur);
+  return Number.isFinite(q) && q > 0 ? q : 1;
+}
+
+function getFas(reponses: SpQuestionReponse[], instanceId: string, produitNom: string): number {
+  const rep = reponses.find((r) => r.question_id === `fas_${instanceId}`);
+  if (!rep) return 0;
+  const asMap = parseJsonRecord(rep.valeur);
+  if (asMap) {
+    const v = Number(asMap[produitNom]);
+    return Number.isFinite(v) ? v : 0;
+  }
+  const v = Number(rep.valeur);
+  return Number.isFinite(v) ? v : 0;
+}
+
+function getPrixOverride(
+  reponses: SpQuestionReponse[],
+  instanceId: string,
+  produitNom: string,
+  produitId?: string,
+): number | undefined {
+  const rep = reponses.find((r) => r.question_id === `prix_${instanceId}`);
+  if (!rep) return undefined;
+  const asMap = parseJsonRecord(rep.valeur);
+  if (asMap) {
+    const candidates = [produitId, produitNom].filter((k): k is string => !!k);
+    for (const k of candidates) {
+      if (k in asMap) {
+        const v = Number(asMap[k]);
+        if (Number.isFinite(v)) return v;
+      }
+    }
+    return undefined;
+  }
+  const v = Number(rep.valeur);
+  return Number.isFinite(v) ? v : undefined;
+}
+
+function defaultPrixUnitaire(p: CatalogueProduit): number {
+  if (p.type_frequence === 'mensuel') return p.prix_mensuel ?? 0;
+  return p.prix_vente ?? 0;
+}
+
+// ── Core ─────────────────────────────────────────────────────────────
+
+/**
+ * Build the real-time SP cart summary from current responses.
+ * - Aggregates monthly subscriptions (fixe / mobile / internet)
+ * - Aggregates one-shot costs (matériel / installations / FAS)
+ * - Computes loyer using configured barème (or default)
+ */
+export function calculateCartSummary(
+  reponses: SpQuestionReponse[],
+  questions: SpQuestion[],
+  catalogue: CatalogueProduit[],
+  donneesExtraites: Record<string, unknown> = {},
+  spConfigLoyer?: SpConfigLoyer,
+): SpCartSummary {
+  const lines: CartLine[] = [];
+
+  // Index questions by id for quick lookup
+  const questionById = new Map<string, SpQuestion>();
+  for (const q of questions) questionById.set(q.id, q);
+
+  // 1. Collect catalogue selections (non-remise questions)
+  for (const rep of reponses) {
+    if (rep.question_id.startsWith('fas_')) continue;
+    if (rep.question_id.startsWith('prix_')) continue;
+    if (rep.question_id.startsWith('quantite_')) continue;
+    if (rep.question_id.startsWith('__skip__')) continue;
+
+    const baseQId = rep.question_id.replace(/__iter_\d+$/, '');
+    const question = questionById.get(baseQId);
+    if (!question) continue;
+    if (question.source !== 'catalogue' && question.source !== 'catalogue_et_sa') continue;
+    if (question.affichage === 'remise_produits') continue;
+
+    const selectedNames: string[] = Array.isArray(rep.valeur)
+      ? rep.valeur.map((v) => String(v))
+      : typeof rep.valeur === 'string'
+        ? [rep.valeur]
+        : [];
+
+    for (const nom of selectedNames) {
+      const produit = findProduct(catalogue, nom);
+      if (!produit) continue;
+
+      const quantite = getQuantite(reponses, rep.question_id, nom);
+      const prixOverride = getPrixOverride(reponses, rep.question_id, nom, produit.id);
+      // Stored price overrides are TOTAL (already × qty). If no override, compute from default.
+      const prixTotal = prixOverride != null
+        ? prixOverride
+        : defaultPrixUnitaire(produit) * quantite;
+      const fasTotal = getFas(reponses, rep.question_id, nom);
+
+      lines.push({
+        produitNom: produit.nom,
+        produitId: produit.id,
+        categorie: produit.categorie,
+        type_frequence: produit.type_frequence,
+        quantite,
+        prixTotal,
+        fasTotal,
+        instanceId: rep.question_id,
+      });
+    }
+  }
+
+  // 2. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
+  for (const rep of reponses) {
+    if (rep.question_id.startsWith('fas_')) continue;
+    if (rep.question_id.startsWith('quantite_')) continue;
+    if (!rep.question_id.startsWith('prix_')) continue;
+
+    // Match a remise_produits parent question
+    const parentId = rep.question_id.replace(/^prix_/, '');
+    const parentBaseId = parentId.replace(/__iter_\d+$/, '');
+    const parentQ = questionById.get(parentBaseId);
+    if (!parentQ || parentQ.affichage !== 'remise_produits') continue;
+
+    const priceMap = parseJsonRecord(rep.valeur);
+    if (!priceMap) continue;
+
+    for (const [key, value] of Object.entries(priceMap)) {
+      const unitPrix = Number(value);
+      if (!Number.isFinite(unitPrix)) continue;
+      const target = findProduct(catalogue, key);
+      if (!target) continue;
+
+      // Override every existing mensual line for this product
+      for (const line of lines) {
+        if (line.type_frequence !== 'mensuel') continue;
+        if (line.produitId === target.id || line.produitNom === target.nom) {
+          line.prixTotal = unitPrix * line.quantite;
+        }
+      }
+    }
+  }
+
+  // 3. Aggregate by category
+  const abos = { fixe: 0, mobile: 0, internet: 0, totalMensuel: 0 };
+  let materiel = 0;
+  let installations = 0;
+  let fas = 0;
+  let autresMensuels = 0;
+  let autresPonctuels = 0;
+
+  for (const line of lines) {
+    fas += line.fasTotal;
+    if (line.type_frequence === 'mensuel') {
+      switch (line.categorie) {
+        case 'fixe':
+          abos.fixe += line.prixTotal;
+          break;
+        case 'mobile':
+          abos.mobile += line.prixTotal;
+          break;
+        case 'internet':
+          abos.internet += line.prixTotal;
+          break;
+        default:
+          autresMensuels += line.prixTotal;
+      }
+    } else {
+      switch (line.categorie) {
+        case 'equipement':
+          materiel += line.prixTotal;
+          break;
+        case 'installation':
+          installations += line.prixTotal;
+          break;
+        default:
+          autresPonctuels += line.prixTotal;
+      }
+    }
+  }
+  abos.totalMensuel = abos.fixe + abos.mobile + abos.internet + autresMensuels;
+
+  const totalPonctuel = materiel + installations + fas + autresPonctuels;
+
+  // 4. Loyer
+  const baremes = (spConfigLoyer ?? DEFAULT_CONFIG_LOYER).baremes ?? [];
+  const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue)
+    ?? baremes[0]
+    ?? null;
+  // Default duration: 63 months (matches existing UI default)
+  const dureeMois = 63;
+  const loyer = bareme ? calculerLoyer(bareme, totalPonctuel, dureeMois) : null;
+
+  return {
+    abonnements: abos,
+    materiel,
+    installations,
+    fas,
+    autresMensuels,
+    autresPonctuels,
+    totalPonctuel,
+    loyer,
+    lines,
+  };
+}

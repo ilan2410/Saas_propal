@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Plus, Trash2, Loader2, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
 import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel } from '@/types';
@@ -401,6 +401,29 @@ export function Step5EditSp({ propositionData, updatePropositionData, onNext, on
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Export comparatif SA/SP */}
+      {propositionData.proposition_id && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Export comparatif SA / SP</h3>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=excel`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Comparatif SA/SP (Excel)
+            </a>
+            <a
+              href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=word`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Comparatif SA/SP (Word)
+            </a>
           </div>
         </div>
       )}
