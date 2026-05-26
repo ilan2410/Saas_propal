@@ -11,6 +11,7 @@ import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 
 export interface SpQuestionnaireUIProps {
@@ -1655,7 +1656,19 @@ export function SpQuestionnaireUI({
             const margeNum = Number(inputValue) || 0;
             const baremes = (spConfigLoyer ?? DEFAULT_CONFIG_LOYER).baremes;
             const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue);
-            const loyer = calculerLoyer(bareme, 0, dureeMois, margeNum);
+            // Calcule la base loyer en excluant la marge déjà enregistrée (on utilise la saisie courante)
+            const reponsesSansMarge = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
+            const baseSummary = calculateCartSummary(
+              reponsesSansMarge,
+              questions,
+              catalogue,
+              donneesExtraites,
+              spConfigLoyer,
+            );
+            const baseAvantMarge =
+              baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites;
+            const baseLoyer = baseAvantMarge + margeNum;
+            const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
 
             return (
               <div className="space-y-3">
@@ -1689,10 +1702,48 @@ export function SpQuestionnaireUI({
                   </div>
                 )}
 
+                {/* Détail base loyer */}
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1 text-xs">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                    Base du calcul
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Total ponctuel (matériel + FAS + installations + cadeaux)</span>
+                    <span className="tabular-nums">{baseSummary.totalPonctuel.toFixed(2)} €</span>
+                  </div>
+                  {baseSummary.remiseMoisOffert > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">
+                        Remise mois offert ({baseSummary.loyer?.mois_offerts ?? 0} × {baseSummary.abonnements.totalMensuel.toFixed(2)} €)
+                      </span>
+                      <span className="tabular-nums">{baseSummary.remiseMoisOffert.toFixed(2)} €</span>
+                    </div>
+                  )}
+                  {baseSummary.indemnites > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Indemnités de résiliation</span>
+                      <span className="tabular-nums">{baseSummary.indemnites.toFixed(2)} €</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Marge saisie</span>
+                    <span className="tabular-nums">{margeNum.toFixed(2)} €</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-200 font-semibold text-gray-900">
+                    <span>Base loyer</span>
+                    <span className="tabular-nums">{baseLoyer.toFixed(2)} €</span>
+                  </div>
+                </div>
+
                 {loyer ? (
                   <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 space-y-1">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Loyer mensuel HT</span>
+                      <span className="text-gray-600">
+                        Loyer mensuel HT
+                        <span className="block text-[10px] text-gray-400">
+                          ({baseLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
+                        </span>
+                      </span>
                       <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">

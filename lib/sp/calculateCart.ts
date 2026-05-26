@@ -5,8 +5,9 @@ import type {
   SpQuestionReponse,
   SpConfigLoyer,
 } from '@/types';
-import { calculerLoyer, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
+import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
 import { findApplicableBareme } from './evaluateBareme';
+import { collectQuestionVariableValues } from './questionVariables';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -36,6 +37,11 @@ export interface SpCartSummary {
   autresMensuels: number;
   autresPonctuels: number;
   totalPonctuel: number;
+  remiseMoisOffert: number;
+  indemnites: number;
+  marge: number;
+  baseLoyer: number;
+  dureeMois: number;
   loyer: ResultatLoyer | null;
   lines: CartLine[];
 }
@@ -281,7 +287,18 @@ export function calculateCartSummary(
       if (Number.isFinite(v) && v > 0) dureeMois = v;
     }
   }
-  const loyer = bareme ? calculerLoyer(bareme, totalPonctuel, dureeMois) : null;
+  // 5. Composantes additionnelles : remise mois offert, indemnités, marge
+  const remiseMoisOffert = bareme
+    ? calculerRemiseMoisOffert(bareme, abos.totalMensuel, dureeMois)
+    : 0;
+
+  const indemnites = resolveIndemnites(reponses, questions, donneesExtraites);
+
+  const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+  const marge = margeRep ? Number(margeRep.valeur) || 0 : 0;
+
+  const baseLoyer = totalPonctuel + remiseMoisOffert + indemnites + marge;
+  const loyer = bareme ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
 
   return {
     abonnements: abos,
@@ -292,7 +309,81 @@ export function calculateCartSummary(
     autresMensuels,
     autresPonctuels,
     totalPonctuel,
+    remiseMoisOffert,
+    indemnites,
+    marge,
+    baseLoyer,
+    dureeMois,
     loyer,
     lines,
   };
+}
+
+// ── Résolution indemnités ─────────────────────────────────────────────
+
+function parseNumeric(raw: unknown): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const match = String(value ?? '').match(/-?\d+(?:[.,]\d+)?/);
+  const v = match ? Number(match[0].replace(',', '.')) : NaN;
+  return Number.isFinite(v) ? v : 0;
+}
+
+function resolveIndemnites(
+  reponses: SpQuestionReponse[],
+  questions: SpQuestion[],
+  donneesExtraites: Record<string, unknown>,
+): number {
+  // 1. Réponse SP directement sur question_id === 'sp_total_indemnites'
+  const directRep = reponses.find((r) => r.question_id === 'sp_total_indemnites');
+  if (directRep) {
+    const v = parseNumeric(directRep.valeur);
+    if (v > 0) return v;
+  }
+  // 2. Question SP avec conséquence `renseigner_variable` ciblant `sp_total_indemnites`
+  const variables = collectQuestionVariableValues(questions, reponses);
+  if (variables.sp_total_indemnites != null) {
+    const v = parseNumeric(variables.sp_total_indemnites);
+    if (v > 0) return v;
+  }
+  // 3. Question SP de type `nombre` avec `suggestion_source = 'indemnite_resiliation'`
+  //    (fallback si la conséquence renseigner_variable n'a pas été configurée)
+  const indemQuestion = questions.find(
+    (q) =>
+      q.affichage === 'nombre' &&
+      q.nombre_config?.suggestion_source === 'indemnite_resiliation',
+  );
+  if (indemQuestion) {
+    const indemQRep = reponses.find(
+      (r) =>
+        r.question_id === indemQuestion.id ||
+        r.question_id.startsWith(`${indemQuestion.id}__iter_`),
+    );
+    if (indemQRep) {
+      const v = parseNumeric(indemQRep.valeur);
+      if (v > 0) return v;
+    }
+  }
+  // 2. donneesExtraites.sp_total_indemnites (string ou number)
+  const direct = (donneesExtraites as Record<string, unknown>)?.sp_total_indemnites;
+  if (direct != null) {
+    const match = String(direct).match(/-?\d+(?:[.,]\d+)?/);
+    const v = match ? Number(match[0].replace(',', '.')) : NaN;
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  // 3. donneesExtraites.situation_actuelle?.indemnites?.total ou montants imbriqués
+  const sa = (donneesExtraites as Record<string, unknown>)?.situation_actuelle;
+  if (sa && typeof sa === 'object') {
+    const indem = (sa as Record<string, unknown>).indemnites;
+    if (indem && typeof indem === 'object') {
+      const total = (indem as Record<string, unknown>).total
+        ?? (indem as Record<string, unknown>).montant
+        ?? (indem as Record<string, unknown>).montant_retenu;
+      if (total != null) {
+        const match = String(total).match(/-?\d+(?:[.,]\d+)?/);
+        const v = match ? Number(match[0].replace(',', '.')) : NaN;
+        if (Number.isFinite(v) && v > 0) return v;
+      }
+    }
+  }
+  return 0;
 }

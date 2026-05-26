@@ -642,8 +642,21 @@ function buildSpCompletes(
   const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
-  const loyer = dureeMois > 0 ? calculerLoyer(bareme, totalPonctuel, dureeMois, marge) : null;
   const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
+  // Indemnités : prioriser réponse SP, sinon raw.sp_total_indemnites
+  let indemnitesNum = 0;
+  const indemRep = reponses.find((r) => r.question_id === 'sp_total_indemnites');
+  if (indemRep) {
+    const rawIndem = Array.isArray(indemRep.valeur) ? indemRep.valeur[0] : indemRep.valeur;
+    const m = String(rawIndem ?? '').match(/-?\d+(?:[.,]\d+)?/);
+    indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
+  }
+  if (!indemnitesNum && raw.sp_total_indemnites != null) {
+    const m = String(raw.sp_total_indemnites).match(/-?\d+(?:[.,]\d+)?/);
+    indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
+  }
+  const baseLoyer = totalPonctuel + remiseMoisOffert + indemnitesNum + marge;
+  const loyer = dureeMois > 0 ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
 
   const result: SuggestionsSpCompletes = {
     ...baseResult,

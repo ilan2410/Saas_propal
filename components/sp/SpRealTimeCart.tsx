@@ -366,9 +366,33 @@ export function SpRealTimeCart({
               {/* Loyer */}
               {summary.loyer && (
                 <section className="space-y-1 rounded-lg bg-blue-50 border border-blue-100 px-2 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
-                    Loyer ({summary.loyer.duree_mois} mois)
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => toggleCat('loyer_detail')}
+                    className="w-full flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-blue-600 hover:opacity-80"
+                  >
+                    <span className="flex items-center gap-1">
+                      {expandedCats.has('loyer_detail') ? (
+                        <ChevronDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3" />
+                      )}
+                      Loyer ({summary.loyer.duree_mois} mois)
+                    </span>
+                  </button>
+                  {expandedCats.has('loyer_detail') && (
+                    <div className="space-y-0.5 pt-1 border-t border-blue-100">
+                      <Line label="Total ponctuel" value={summary.totalPonctuel} muted />
+                      {summary.remiseMoisOffert > 0 && (
+                        <Line label="Remise mois offert" value={summary.remiseMoisOffert} muted />
+                      )}
+                      {summary.indemnites > 0 && (
+                        <Line label="Indemnités" value={summary.indemnites} muted />
+                      )}
+                      {summary.marge > 0 && <Line label="Marge" value={summary.marge} muted />}
+                      <Line label="Base loyer" value={summary.baseLoyer} bold />
+                    </div>
+                  )}
                   <Line label="Mensuel" value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
                   <Line
                     label="Trimestriel"
