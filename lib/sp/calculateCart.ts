@@ -30,6 +30,7 @@ export interface SpCartSummary {
     totalMensuel: number;
   };
   materiel: number;
+  cadeaux: number;
   installations: number;
   fas: number;
   autresMensuels: number;
@@ -214,6 +215,7 @@ export function calculateCartSummary(
   // 3. Aggregate by category
   const abos = { fixe: 0, mobile: 0, internet: 0, totalMensuel: 0 };
   let materiel = 0;
+  let cadeaux = 0;
   let installations = 0;
   let fas = 0;
   let autresMensuels = 0;
@@ -240,6 +242,9 @@ export function calculateCartSummary(
         case 'equipement':
           materiel += line.prixTotal;
           break;
+        case 'cadeau':
+          cadeaux += line.prixTotal;
+          break;
         case 'installation':
           installations += line.prixTotal;
           break;
@@ -250,20 +255,38 @@ export function calculateCartSummary(
   }
   abos.totalMensuel = abos.fixe + abos.mobile + abos.internet + autresMensuels;
 
-  const totalPonctuel = materiel + installations + fas + autresPonctuels;
+  const totalPonctuel = materiel + cadeaux + installations + fas + autresPonctuels;
 
   // 4. Loyer
-  const baremes = (spConfigLoyer ?? DEFAULT_CONFIG_LOYER).baremes ?? [];
+  const config = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
+  const baremes = config.baremes ?? [];
   const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue)
     ?? baremes[0]
     ?? null;
-  // Default duration: 63 months (matches existing UI default)
-  const dureeMois = 63;
+
+  // Résolution de la durée :
+  //   1. Si la config lie la durée à une question SP → on lit la réponse correspondante.
+  //   2. Sinon (ou si pas de réponse valide) → fallback sur duree_mois_par_defaut (par défaut 63).
+  let dureeMois = config.duree_mois_par_defaut ?? 63;
+  if (config.duree_depends_question && config.duree_question_id) {
+    const targetId = config.duree_question_id;
+    const dureeRep = reponses.find(
+      (r) => r.question_id === targetId || r.question_id.startsWith(`${targetId}__iter_`),
+    );
+    if (dureeRep) {
+      const raw = Array.isArray(dureeRep.valeur) ? dureeRep.valeur[0] : dureeRep.valeur;
+      // Extrait le 1er nombre de la valeur (ex : "48 mois" → 48, 48 → 48)
+      const match = String(raw ?? '').match(/-?\d+(?:[.,]\d+)?/);
+      const v = match ? Number(match[0].replace(',', '.')) : NaN;
+      if (Number.isFinite(v) && v > 0) dureeMois = v;
+    }
+  }
   const loyer = bareme ? calculerLoyer(bareme, totalPonctuel, dureeMois) : null;
 
   return {
     abonnements: abos,
     materiel,
+    cadeaux,
     installations,
     fas,
     autresMensuels,

@@ -33,6 +33,7 @@ import {
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 import { SpLoyerManager } from '@/components/settings/SpLoyerManager';
+import { SpResiliationManager } from '@/components/settings/SpResiliationManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -55,8 +56,9 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-loyer' | 'sp-remises';
-const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-loyer', 'sp-remises'];
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises';
+const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
+type CalculsSubTabId = 'loyer' | 'resiliation';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -219,6 +221,7 @@ export default function SettingsPage({
   const [isLoading, setIsLoading] = useState(false);
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(currentTab);
+  const [calculsSubTab, setCalculsSubTab] = useState<CalculsSubTabId>('loyer');
 
   // Profile State
   const [profileData, setProfileData] = useState({
@@ -985,7 +988,7 @@ export default function SettingsPage({
           <option value="donnees">Données</option>
           <option value="apparence">Apparence</option>
           <option value="sp-questions">Questions SP</option>
-          <option value="sp-loyer">Calcul Loyer SP</option>
+          <option value="sp-calculs">Calculs SP</option>
           <option value="sp-remises">Remises SP</option>
         </select>
       </div>
@@ -999,7 +1002,7 @@ export default function SettingsPage({
         <TabButton id="donnees" label="Données" icon={Database} />
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
         <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
-        <TabButton id="sp-loyer" label="Calcul Loyer" icon={Calculator} />
+        <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />
         <TabButton id="sp-remises" label="Remises" icon={Percent} />
       </div>
 
@@ -2131,16 +2134,62 @@ export default function SettingsPage({
           </div>
         )}
 
-        {/* SECTION 9: CONFIG LOYER */}
-        {activeTab === 'sp-loyer' && (
+        {/* SECTION 9: CONFIG CALCULS */}
+        {activeTab === 'sp-calculs' && (
           <div className="p-6 space-y-6">
             <div className="border-b border-gray-100 pb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Barèmes de calcul de loyer</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Calculs SP</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Définissez un ou plusieurs barèmes de taux par durée, avec des conditions de déclenchement optionnelles. Le premier barème dont les conditions correspondent est appliqué.
+                Centralisez les règles utilisées pour les calculs affichés pendant le questionnaire SP.
               </p>
             </div>
-            <SpLoyerManager templates={templates} />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setCalculsSubTab('loyer')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  calculsSubTab === 'loyer'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Calcul loyer
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalculsSubTab('resiliation')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  calculsSubTab === 'resiliation'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Calcul indemnité de résiliation
+              </button>
+            </div>
+
+            {calculsSubTab === 'loyer' ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Barèmes de calcul de loyer</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Définissez un ou plusieurs barèmes de taux par durée, avec des conditions de déclenchement optionnelles. Le premier barème dont les conditions correspondent est appliqué.
+                  </p>
+                </div>
+                <SpLoyerManager templates={templates} />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Calcul indemnité de résiliation</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Choisissez les éléments pris en compte dans l&apos;estimation affichée depuis la SA. La question vendeur reste créée manuellement dans le builder SP.
+                  </p>
+                </div>
+                <SpResiliationManager templates={templates} />
+              </div>
+            )}
           </div>
         )}
 

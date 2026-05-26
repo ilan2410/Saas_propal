@@ -71,6 +71,7 @@ export interface OrganizationPreferences {
   };
   sp_customization?: SpCustomization;
   sp_config_loyer?: SpConfigLoyer;
+  sp_config_resiliation?: SpConfigResiliation;
   sp_regles_remise?: SpRegleRemise[];
 }
 
@@ -142,6 +143,7 @@ export interface WordConfig {
   spTableauxFusionnes?: SpTableauFusionne[];
   spVariablesCustom?: SpVariableCustom[];
   sp_config_loyer?: SpConfigLoyer;
+  sp_config_resiliation?: SpConfigResiliation;
 }
 
 export interface PDFConfig {
@@ -422,6 +424,14 @@ export interface SpConsequence {
   valeur_declencheur?: string;
 }
 
+export type SpQuestionSuggestionSource = 'indemnite_resiliation';
+
+export interface SpQuestionNombreConfig {
+  suggestion_source?: SpQuestionSuggestionSource;
+  afficher_estimation?: boolean;
+  afficher_detail_calcul?: boolean;
+}
+
 export interface SpQuestionBoucle {
   /** ID de la question dont la réponse donne le nombre d'itérations */
   source_nombre_question_id?: string;
@@ -460,6 +470,7 @@ export interface SpQuestion {
   obligatoire: boolean;
   valeur_defaut?: string;
   edition_type?: 'adresse_complete' | 'texte' | 'nombre' | 'date';
+  nombre_config?: SpQuestionNombreConfig;
   consequences: SpConsequence[];
   priorite_ia: 'normale' | 'haute';
   /** Identifiant du groupe de boucle (toutes les questions avec le même id forment un bloc répété) */
@@ -669,6 +680,28 @@ export interface SpBareme {
 
 export interface SpConfigLoyer {
   baremes: SpBareme[];
+  /** Durée du contrat en mois utilisée par défaut pour le calcul du loyer (fallback). */
+  duree_mois_par_defaut?: number;
+  /** Si vrai, la durée est lue depuis la réponse à la question SP `duree_question_id`. */
+  duree_depends_question?: boolean;
+  /** ID de la question SP dont la réponse fournit la durée du contrat (en mois). */
+  duree_question_id?: string;
+}
+
+export interface SpConfigResiliationElements {
+  lignes_mensuelles?: boolean;
+  abonnements_mensuels?: boolean;
+  locations_mensuelles?: boolean;
+  frais_resiliation_fixes?: boolean;
+  penalites?: boolean;
+  frais_materiel?: boolean;
+  services_annexes?: boolean;
+}
+
+export interface SpConfigResiliation {
+  utiliser_montant_source_si_disponible?: boolean;
+  preavis_mois_defaut?: number;
+  elements_pris_en_compte?: SpConfigResiliationElements;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

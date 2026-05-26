@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import type { SpConfigResiliation, WordConfig } from '@/types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -117,7 +119,11 @@ function dedupeIdenticalSourceCalculatedSummary(summary: unknown): unknown {
   return output.join('\n');
 }
 
-function enrichSituationActuelle(data: unknown): Record<string, unknown> {
+function enrichSituationActuelle(
+  data: unknown,
+  resiliationConfig?: SpConfigResiliation,
+  referenceDateInput?: Date | string | null,
+): Record<string, unknown> {
   const root = isRecord(data) ? { ...data } : {};
   if (typeof root.resume === 'string') {
     root.resume = dedupeIdenticalSourceCalculatedSummary(root.resume);
@@ -160,11 +166,42 @@ function enrichSituationActuelle(data: unknown): Record<string, unknown> {
   }
   situation.totaux = totaux;
 
+  root.situation_actuelle = situation;
+  const estimationResiliation = estimateResiliationFromSA(root, resiliationConfig, referenceDateInput);
   const indemnites = isRecord(situation.indemnites) ? { ...situation.indemnites } : {};
-  const montantIndemnites = normalizeMoney(indemnites.montant_calcule) ?? normalizeMoney(indemnites.montant_source);
+  const montantIndemnites =
+    estimationResiliation.montant_retenu
+    ?? estimationResiliation.montant_source
+    ?? estimationResiliation.montant_estime;
+
+  if (estimationResiliation.montant_source !== null) indemnites.montant_source = estimationResiliation.montant_source;
+  if (estimationResiliation.montant_estime !== null) indemnites.montant_estime = estimationResiliation.montant_estime;
+  if (estimationResiliation.montant_retenu !== null) indemnites.montant_calcule = estimationResiliation.montant_retenu;
+  if (estimationResiliation.mois_restants !== null) indemnites.mois_restants_source = estimationResiliation.mois_restants;
+  if (estimationResiliation.base_mensuelle !== null) indemnites.base_mensuelle_source = estimationResiliation.base_mensuelle;
+  indemnites.preavis_mois_source = estimationResiliation.preavis_mois;
+  indemnites.frais_resiliation_fixes = estimationResiliation.frais_resiliation_fixes;
+  indemnites.penalites = estimationResiliation.penalites;
+  indemnites.frais_materiel = estimationResiliation.frais_materiel;
+  indemnites.services_annexes = estimationResiliation.services_annexes;
+  indemnites.mensualites_restantes = estimationResiliation.mensualites_restantes;
+  indemnites.source_retenue = estimationResiliation.source_retenue;
+  indemnites.source_retenue_label = estimationResiliation.source_retenue_label;
+  indemnites.fiabilite = estimationResiliation.fiabilite;
+  indemnites.explication_fiabilite = estimationResiliation.explication_fiabilite;
+  indemnites.calcul_possible = estimationResiliation.calcul_possible;
+  indemnites.date_reference_calculee = estimationResiliation.date_reference;
+  indemnites.details_calcul = estimationResiliation.details;
+  indemnites.motifs_manquants = estimationResiliation.motifs_manquants;
+  indemnites.methode_calcul = estimationResiliation.methode_calcul;
+  indemnites.calcul_resume = estimationResiliation.calcul_resume;
+  indemnites.composants = estimationResiliation.composants;
+  indemnites.hypotheses = estimationResiliation.hypotheses;
+  indemnites.preuves = estimationResiliation.preuves;
+  indemnites.groupes_calcul = estimationResiliation.groupes_calcul;
+  situation.indemnites = indemnites;
+
   if (montantIndemnites !== null) {
-    indemnites.montant_calcule = normalizeMoney(indemnites.montant_calcule) ?? montantIndemnites;
-    situation.indemnites = indemnites;
     situation.ligne_bon_commande_materiel = {
       ...(isRecord(situation.ligne_bon_commande_materiel) ? situation.ligne_bon_commande_materiel : {}),
       libelle: `Remboursement de ${montantIndemnites.toFixed(2)} € au titre du solde définitif de vos contrats téléphoniques.`,
@@ -332,13 +369,13 @@ STRUCTURE JSON ATTENDUE:
     "operateurs": [{"nom": "Nom opérateur", "type": "operateur_telecom"}],
     "leasers": [{"nom": "Nom leaser", "type": "organisme_financement"}],
     "sites": [{"nom": "Site principal", "adresse": "Adresse complète", "code_postal": "75001", "ville": "Paris"}],
-    "abonnements": [{"libelle": "Abonnement", "operateur": "Nom opérateur", "site": "Site concerné", "quantite": "1", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "periode_facturation": "mensuelle|trimestrielle|annuelle|autre"}],
-    "locations": [{"libelle": "Location matériel", "leaser": "Nom leaser", "site": "Site concerné", "materiel": "Description", "quantite": "1", "loyer_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "loyer_net_mensuel": "XX.XX"}],
-    "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
+    "abonnements": [{"libelle": "Abonnement", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "operateur": "Nom opérateur", "site": "Site concerné", "quantite": "1", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "periode_facturation": "mensuelle|trimestrielle|annuelle|autre"}],
+    "locations": [{"libelle": "Location matériel", "reference_contrat": "CTR-LOC-001", "libelle_contrat": "Contrat location matériel", "engagement_ref": "ENG-LOC-001", "leaser": "Nom leaser", "site": "Site concerné", "materiel": "Description", "quantite": "1", "loyer_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "loyer_net_mensuel": "XX.XX"}],
+    "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "libelle": "Ligne ou service", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
     "periodes_facturation": [{"date_debut": "JJ/MM/AAAA", "date_fin": "JJ/MM/AAAA", "periodicite": "mensuelle|trimestrielle|annuelle|autre"}],
-    "engagements": [{"libelle": "Contrat/ligne/service", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA", "preavis_mois": 3}],
+    "engagements": [{"reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "libelle": "Contrat/ligne/service", "operateur": "Nom opérateur", "site": "Site concerné", "elements_rattaches": ["06XXXXXXXX", "Accès fibre siège"], "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA", "preavis_mois": 3}],
     "totaux": {"total_abonnements_source": "XX.XX", "total_abonnements_calcule": "XX.XX", "total_locations_source": "XX.XX", "total_locations_calcule": "XX.XX", "total_solution_actuelle_source": "XX.XX", "total_solution_actuelle_calcule": "XX.XX", "devise": "EUR", "precision": "HT|TTC|non_precise"},
-    "indemnites": {"montant_source": "XX.XX", "montant_calcule": "XX.XX", "methode_calcul": "..."},
+    "indemnites": {"montant_source": "XX.XX", "montant_calcule": "XX.XX", "montant_estime": "XX.XX", "mois_restants_source": "X", "preavis_mois_source": "X", "base_mensuelle_source": "XX.XX", "mensualites_restantes": "XX.XX", "frais_resiliation_fixes": "XX.XX", "penalites": "XX.XX", "frais_materiel": "XX.XX", "services_annexes": "XX.XX", "source_retenue": "source|estimation|aucune", "fiabilite": "forte|moyenne|faible|insuffisante", "details_calcul": ["..."], "motifs_manquants": ["..."], "methode_calcul": "..."},
     "ligne_bon_commande_materiel": {"libelle": "Remboursement de XX.XX € au titre du solde définitif de vos contrats téléphoniques.", "montant": "XX.XX"}
   }
 }
@@ -359,9 +396,13 @@ RÈGLES:
 - Si "situation_actuelle" est demandée, conserve les montants lus dans les champs *_source et ajoute les montants calculés dans les champs *_calcule.
 - Si "situation_actuelle" est demandée, sépare toujours tarif/loyer brut, remise et tarif/loyer net lorsque l'information existe.
 - Si "situation_actuelle" est demandée, détecte les sites multiples et rattache les lignes, abonnements et locations à leur site si possible.
+- Si "situation_actuelle" est demandée, extrais explicitement les références de contrat et d'engagement quand elles existent: reference_contrat, libelle_contrat, engagement_ref.
+- Si "situation_actuelle" est demandée, rattache chaque ligne, abonnement ou location à son engagement/contrat en répétant la même reference_contrat, le même libelle_contrat et le même engagement_ref sur les éléments concernés.
+- Si "situation_actuelle" est demandée, dans engagements, indique les services rattachés dans elements_rattaches quand l'information est identifiable.
 - Si "situation_actuelle" est demandée, pour chaque date de fin d'engagement, conserve la date trouvée dans date_fin_engagement_source et calcule date_limite_resiliation_calculee en retirant 3 mois.
 - Si "situation_actuelle" est demandée, calcule total_abonnements_calcule, total_locations_calcule et total_solution_actuelle_calcule sans écraser les totaux source.
-- Si "situation_actuelle" est demandée, extrait ou estime les indemnités dans indemnites.montant_source et indemnites.montant_calcule, puis prépare ligne_bon_commande_materiel.
+- Si "situation_actuelle" est demandée, extrait si possible le détail des indemnités: mois_restants_source, preavis_mois_source, base_mensuelle_source, frais_resiliation_fixes, penalites, frais_materiel, services_annexes.
+- Si "situation_actuelle" est demandée, extrait ou estime les indemnités dans indemnites.montant_source, indemnites.montant_estime et indemnites.montant_calcule, puis prépare ligne_bon_commande_materiel.
 
 DOCUMENT(S):
 {documents}
@@ -510,7 +551,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       return next;
     };
 
-    const enrichedExtractedData = enrichSituationActuelle(extractedData);
+    const templateWordConfig = (template.file_config ?? {}) as WordConfig;
+    const orgPreferences = (organization.preferences ?? {}) as { sp_config_resiliation?: SpConfigResiliation };
+    const resiliationConfig =
+      templateWordConfig.sp_config_resiliation
+      ?? orgPreferences.sp_config_resiliation;
+
+    const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, proposition.created_at);
     const extractedDataFinal =
       organization.secteur === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)

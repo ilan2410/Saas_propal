@@ -170,6 +170,78 @@ export function SpLoyerManager({ templates }: Props) {
         </select>
       </div>
 
+      {/* Durée du contrat (loyer) */}
+      <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
+        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+          Durée du contrat (loyer)
+        </h4>
+
+        <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={loyerConfig.duree_depends_question ?? false}
+            onChange={(e) =>
+              setLoyerConfig((prev) => ({
+                ...prev,
+                duree_depends_question: e.target.checked,
+              }))
+            }
+            className="mt-0.5"
+          />
+          <span>
+            La durée du loyer dépend d&apos;une question SP
+            <span className="block text-xs text-gray-500 font-normal">
+              Si coché, la valeur de la réponse à la question sélectionnée sera utilisée comme durée (en mois). Sinon, la durée par défaut s&apos;applique.
+            </span>
+          </span>
+        </label>
+
+        {loyerConfig.duree_depends_question && (
+          <div className="flex items-center gap-2 ml-6">
+            <label className="text-xs text-gray-600 shrink-0">Question :</label>
+            <select
+              value={loyerConfig.duree_question_id ?? ''}
+              onChange={(e) =>
+                setLoyerConfig((prev) => ({
+                  ...prev,
+                  duree_question_id: e.target.value || undefined,
+                }))
+              }
+              className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+            >
+              <option value="">— Sélectionner une question —</option>
+              {spQuestions.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.libelle || q.id}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600 shrink-0">
+            Durée par défaut (mois) :
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={loyerConfig.duree_mois_par_defaut ?? 63}
+            onChange={(e) =>
+              setLoyerConfig((prev) => ({
+                ...prev,
+                duree_mois_par_defaut: Number(e.target.value) || 63,
+              }))
+            }
+            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+          />
+          <span className="text-xs text-gray-500">
+            (utilisée en fallback si pas de question / pas de réponse)
+          </span>
+        </div>
+      </div>
+
       {/* Liste des barèmes */}
       <div className="space-y-3">
         {loyerConfig.baremes

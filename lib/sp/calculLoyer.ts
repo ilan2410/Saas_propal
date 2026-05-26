@@ -17,6 +17,7 @@ export const DEFAULT_BAREME: SpBareme = {
 
 export const DEFAULT_CONFIG_LOYER: SpConfigLoyer = {
   baremes: [DEFAULT_BAREME],
+  duree_mois_par_defaut: 63,
 };
 
 // ── Types résultat ───────────────────────────────────────────────────

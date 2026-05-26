@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 
 interface Props {
@@ -19,6 +19,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
+  const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
+  const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
   const [propositionId, setPropositionId] = useState<string | null>(null);
@@ -41,7 +43,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
       fetch('/api/catalogue').then((r) => r.json()),
       fetch('/api/settings/preferences').then((r) => r.json()),
-    ]).then(([latestData, fData, cData, prefsData]) => {
+      fetch(`/api/templates/${templateId}`).then((r) => r.json()),
+    ]).then(([latestData, fData, cData, prefsData, templateData]) => {
       if (!latestData.extracted_data) {
         setNoProposition(true);
       } else {
@@ -51,6 +54,9 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
       setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
+      const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
+      setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
+      setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [templateId]);
@@ -236,6 +242,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               simulationExportStatus={isPreparingExport ? 'preparing' : exportError ? 'error' : exportReadyPropositionId ? 'ready' : 'idle'}
               simulationExportError={exportError || undefined}
               startFromQuestionId={startFromQuestionId}
+              spConfigLoyer={spConfigLoyer}
+              spConfigResiliation={spConfigResiliation}
             />
           )}
         </div>

@@ -75,6 +75,8 @@ const PATCH_LABELS: Record<string, string> = {
   boucle: 'Boucle',
 };
 
+const SHOW_SP_AI_ASSIST_PANEL = false;
+
 export function SpAiAssistPanel({ currentQuestion, otherQuestions, spVariables = [], onApply, onVariableSuggestion }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<AssistMessage[]>([]);
@@ -167,6 +169,8 @@ export function SpAiAssistPanel({ currentQuestion, otherQuestions, spVariables =
         return `${label} → ${val}`;
       })
       .join(' · ');
+
+  if (!SHOW_SP_AI_ASSIST_PANEL) return null;
 
   return (
     <div className="border-t border-gray-100 mt-4">

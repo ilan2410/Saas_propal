@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateClaudeApiKey } from '@/lib/ai/claude';
 import Anthropic from '@anthropic-ai/sdk';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
+import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
+import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -495,6 +497,20 @@ function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
 }
 
+function normalizeResiliationAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value !== 'string') return null;
+  const cleaned = value
+    .replace(/\s/g, '')
+    .replace(/€/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^\d.-]/g, '');
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 type SpLigneBaseRaw = Omit<SpLigneMobile, 'sp_type_ligne'>;
 
 function buildSpLigne(raw: UnknownRecord, priceOverrides: Map<string, number>): SpLigneBaseRaw {
@@ -553,6 +569,7 @@ function buildSpCompletes(
   loyerBaremes?: SpBareme[],
   priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
+  loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -595,10 +612,33 @@ function buildSpCompletes(
   const totalPonctuel = totalMaterielPonctuel;
 
   // ── Loyer calculation ──
-  const dureeMois = typeof raw.sp_duree_mois === 'number' ? raw.sp_duree_mois : 0;
   const reponses = Array.isArray(raw.sp_questions_reponses)
     ? (raw.sp_questions_reponses as SpQuestionReponse[])
     : [];
+
+  // Résolution de la durée :
+  //   1. Config "duree_depends_question" → réponse à la question SP désignée.
+  //   2. Sinon : ancien mécanisme `raw.sp_duree_mois` (consequence renseigner_variable).
+  //   3. Fallback : duree_mois_par_defaut configurée sur le template.
+  let dureeMois = 0;
+  if (loyerDureeConfig?.depends_question && loyerDureeConfig.question_id) {
+    const targetId = loyerDureeConfig.question_id;
+    const dureeRep = reponses.find(
+      (r) => r.question_id === targetId || r.question_id.startsWith(`${targetId}__iter_`),
+    );
+    if (dureeRep) {
+      const raw = Array.isArray(dureeRep.valeur) ? dureeRep.valeur[0] : dureeRep.valeur;
+      const match = String(raw ?? '').match(/-?\d+(?:[.,]\d+)?/);
+      const v = match ? Number(match[0].replace(',', '.')) : NaN;
+      if (Number.isFinite(v) && v > 0) dureeMois = v;
+    }
+  }
+  if (!dureeMois) {
+    dureeMois = toNumber(raw.sp_duree_mois) ?? 0;
+  }
+  if (!dureeMois && loyerDureeConfig?.defaut && loyerDureeConfig.defaut > 0) {
+    dureeMois = loyerDureeConfig.defaut;
+  }
   const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
@@ -952,30 +992,65 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
       Array.isArray(rawResult.sp_internet)
     ) {
       let wordCfg: WordConfig = { formatVariables: '', fieldMappings: {} };
+      let templateQuestions: SpQuestion[] = [];
+      let resiliationConfig: SpConfigResiliation | undefined;
+      let propositionCreatedAt: string | undefined;
       if (typeof proposition_id === 'string' && proposition_id.length > 0) {
         const { data: prop } = await supabase
           .from('propositions')
-          .select('template_id')
+          .select('template_id, created_at')
           .eq('id', proposition_id)
           .single();
+        propositionCreatedAt = typeof prop?.created_at === 'string' ? prop.created_at : undefined;
         if (prop?.template_id) {
-          const { data: tmpl } = await supabase
-            .from('proposition_templates')
-            .select('file_config')
-            .eq('id', prop.template_id)
-            .single();
+          const [{ data: tmpl }, { data: org }] = await Promise.all([
+            supabase
+              .from('proposition_templates')
+              .select('file_config')
+              .eq('id', prop.template_id)
+              .single(),
+            supabase
+              .from('organizations')
+              .select('preferences, sp_questions')
+              .eq('id', user.id)
+              .single(),
+          ]);
           if (isPlainObject(tmpl?.file_config)) {
             wordCfg = tmpl.file_config as unknown as WordConfig;
           }
+          if (Array.isArray(org?.sp_questions)) {
+            templateQuestions = (org.sp_questions as SpQuestion[])
+              .filter((question) => question.template_id === prop.template_id);
+          }
+          const orgPreferences = isPlainObject(org?.preferences)
+            ? (org.preferences as UnknownRecord)
+            : undefined;
+          resiliationConfig = wordCfg.sp_config_resiliation
+            ?? (orgPreferences?.sp_config_resiliation as SpConfigResiliation | undefined);
         }
       }
       // Load loyer baremes: template file_config first, org preferences as fallback
       let loyerBaremes: SpBareme[] | undefined;
+      let loyerDureeConfig: { depends_question?: boolean; question_id?: string; defaut?: number } | undefined;
 
       // 1. Template file_config (new format)
-      const tmplCfg = wordCfg as WordConfig & { sp_config_loyer?: { baremes?: SpBareme[] } };
+      const tmplCfg = wordCfg as WordConfig & {
+        sp_config_loyer?: {
+          baremes?: SpBareme[];
+          duree_mois_par_defaut?: number;
+          duree_depends_question?: boolean;
+          duree_question_id?: string;
+        };
+      };
       if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer!.baremes!.length > 0) {
         loyerBaremes = tmplCfg.sp_config_loyer!.baremes;
+      }
+      if (tmplCfg.sp_config_loyer) {
+        loyerDureeConfig = {
+          depends_question: tmplCfg.sp_config_loyer.duree_depends_question,
+          question_id: tmplCfg.sp_config_loyer.duree_question_id,
+          defaut: tmplCfg.sp_config_loyer.duree_mois_par_defaut,
+        };
       }
 
       // 2. Org preferences fallback (supports new {baremes:[]} and legacy {taux_durees:[]})
@@ -1004,8 +1079,28 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         }
       }
 
+      const questionVariableValues = templateQuestions.length > 0
+        ? collectQuestionVariableValues(templateQuestions, spReponses)
+        : {};
+      const resiliationEstimation = estimateResiliationFromSA(
+        isPlainObject(situation_actuelle) && isPlainObject(situation_actuelle.situation_actuelle)
+          ? situation_actuelle
+          : { situation_actuelle },
+        resiliationConfig,
+        propositionCreatedAt,
+      );
+      const montantIndemnites =
+        normalizeResiliationAmount(questionVariableValues.sp_total_indemnites)
+        ?? resiliationEstimation.montant_source
+        ?? resiliationEstimation.montant_estime;
+      const buildRaw = {
+        ...rawResult,
+        ...questionVariableValues,
+        sp_questions_reponses: spReponses,
+      };
+
       suggestionsSpCompletes = buildSpCompletes(
-        rawResult,
+        buildRaw,
         normalized,
         adresse_facturation,
         adresse_livraison,
@@ -1015,7 +1110,12 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         loyerBaremes,
         priceOverrides,
         typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
+        loyerDureeConfig,
       );
+
+      if (montantIndemnites !== null) {
+        suggestionsSpCompletes.sp_total_indemnites = formatEuro(montantIndemnites);
+      }
     }
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
@@ -1035,7 +1135,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
     }
 
     return NextResponse.json(suggestionsSpCompletes ?? normalized);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
 }

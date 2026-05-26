@@ -13,6 +13,7 @@ import type {
   SpConditionLogique,
   SpConsequence,
   SpQuestionBoucle,
+  SpQuestionNombreConfig,
   SpVariableCustom,
   SpFiltresCatalogue,
   CatalogueProduit,
@@ -62,24 +63,30 @@ function InfoIcon({ tooltip }: { tooltip: string }) {
 
 const SA_DEFAULT_SCHEMA: Record<string, string[]> = {
   'situation_actuelle.lignes': [
-    'numero_ligne', 'type', 'forfait', 'operateur', 'site',
+    'numero_ligne', 'type', 'libelle', 'reference_contrat', 'libelle_contrat', 'engagement_ref', 'forfait', 'operateur', 'site',
     'tarif_brut_mensuel', 'tarif_net_mensuel', 'remise_mensuelle',
     'date_fin_engagement_source', 'date_limite_resiliation_calculee',
   ],
   'situation_actuelle.abonnements': [
-    'libelle', 'operateur', 'site', 'quantite',
+    'libelle', 'reference_contrat', 'libelle_contrat', 'engagement_ref', 'operateur', 'site', 'quantite',
     'tarif_brut_mensuel', 'tarif_net_mensuel', 'remise_mensuelle',
   ],
   'situation_actuelle.locations': [
-    'libelle', 'leaser', 'site', 'materiel', 'quantite',
+    'libelle', 'reference_contrat', 'libelle_contrat', 'engagement_ref', 'leaser', 'site', 'materiel', 'quantite',
     'loyer_brut_mensuel', 'loyer_net_mensuel', 'remise_mensuelle',
   ],
   'situation_actuelle.engagements': [
-    'libelle', 'date_fin_engagement_source', 'date_limite_resiliation_calculee', 'preavis_mois',
+    'reference_contrat', 'libelle_contrat', 'engagement_ref', 'libelle', 'operateur', 'site', 'elements_rattaches', 'date_fin_engagement_source', 'date_limite_resiliation_calculee', 'preavis_mois',
   ],
   'situation_actuelle.sites': ['nom', 'adresse', 'code_postal', 'ville'],
   'situation_actuelle.operateurs': ['nom', 'type'],
   'situation_actuelle.documents': ['type_document', 'numero_document', 'date_document'],
+  'situation_actuelle.indemnites': [
+    'montant_source', 'montant_calcule', 'montant_estime', 'mois_restants_source',
+    'preavis_mois_source', 'base_mensuelle_source', 'mensualites_restantes',
+    'frais_resiliation_fixes', 'penalites', 'frais_materiel', 'services_annexes',
+    'source_retenue', 'fiabilite', 'methode_calcul',
+  ],
 };
 
 function parseJsonFromPrompt(promptText: string): Record<string, unknown> | null {
@@ -405,6 +412,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const [description, setDescription] = useState(initial?.description ?? '');
   const [obligatoire, setObligatoire] = useState(initial?.obligatoire ?? true);
   const [prioriteIa, setPrioriteIa] = useState<'normale' | 'haute'>(initial?.priorite_ia ?? 'normale');
+  const [nombreConfig, setNombreConfig] = useState<SpQuestionNombreConfig>(initial?.nombre_config ?? {});
   const [isSaving, setIsSaving] = useState(false);
 
   // Variables SP disponibles
@@ -685,6 +693,9 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           : undefined,
         obligatoire,
         priorite_ia: prioriteIa,
+        nombre_config: affichage === 'nombre' && nombreConfig.suggestion_source
+          ? nombreConfig
+          : undefined,
         actif: true,
         consequences: consequences.length > 0 ? consequences : [],
         groupes_conditions: groupesConditions.length > 0 ? groupesConditions : undefined,
@@ -1188,6 +1199,56 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           </div>
 
           {/* Obligatoire */}
+          {affichage === 'nombre' && (
+            <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/50 space-y-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Suggestion affichée sur le champ nombre</label>
+                <InfoIcon tooltip="Permet d’afficher une estimation issue de la SA dans une question de type nombre, sans créer automatiquement la question." />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">Source de suggestion</label>
+                <select
+                  value={nombreConfig.suggestion_source ?? ''}
+                  onChange={(e) => setNombreConfig((prev) => ({
+                    ...prev,
+                    suggestion_source: e.target.value
+                      ? e.target.value as SpQuestionNombreConfig['suggestion_source']
+                      : undefined,
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                >
+                  <option value="">Aucune suggestion</option>
+                  <option value="indemnite_resiliation">Indemnité de résiliation</option>
+                </select>
+              </div>
+
+              {nombreConfig.suggestion_source === 'indemnite_resiliation' && (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={nombreConfig.afficher_estimation ?? true}
+                      onChange={(e) => setNombreConfig((prev) => ({ ...prev, afficher_estimation: e.target.checked }))}
+                    />
+                    Afficher le montant estimé issu de la SA
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={nombreConfig.afficher_detail_calcul ?? false}
+                      onChange={(e) => setNombreConfig((prev) => ({ ...prev, afficher_detail_calcul: e.target.checked }))}
+                    />
+                    Afficher le détail de calcul et les informations manquantes
+                  </label>
+                  <p className="text-xs text-gray-500">
+                    La saisie vendeur reste prioritaire et pourra alimenter `sp_total_indemnites` via une conséquence `renseigner_variable`.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1736,6 +1797,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           logique_declencheur: logiqueDeclencheur,
           obligatoire,
           priorite_ia: prioriteIa,
+          nombre_config: nombreConfig,
           consequences,
           groupe_boucle_id: groupeBoucleId,
           boucle: boucleEnabled ? boucle : undefined,

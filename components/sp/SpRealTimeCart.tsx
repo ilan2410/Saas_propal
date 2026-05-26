@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ShoppingCart, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShoppingCart, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import type {
   CatalogueProduit,
   SpConfigLoyer,
   SpQuestion,
   SpQuestionReponse,
 } from '@/types';
-import { calculateCartSummary } from '@/lib/sp/calculateCart';
+import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 import { formatEuro } from '@/lib/sp/calculLoyer';
 
 interface SpRealTimeCartProps {
@@ -47,6 +47,120 @@ function Line({
   );
 }
 
+function DetailRow({
+  line,
+  suffix,
+  mode = 'price',
+}: {
+  line: CartLine;
+  suffix?: string;
+  mode?: 'price' | 'fas';
+}) {
+  const qty = line.quantite > 0 ? line.quantite : 1;
+  const prixUnitaire = line.prixTotal / qty;
+  const headerAmount = mode === 'fas' ? line.fasTotal : line.prixTotal;
+  const headerSuffix = mode === 'fas' ? undefined : suffix;
+  return (
+    <div className="flex flex-col gap-0.5 py-0.5 border-l-2 border-gray-100 pl-2">
+      <div className="flex items-start justify-between gap-2 text-[11px] text-gray-700">
+        <span className="truncate" title={line.produitNom}>
+          {line.produitNom}
+        </span>
+        <span className="tabular-nums shrink-0 text-gray-600">
+          {formatEuro(headerAmount)}
+          {headerSuffix && <span className="ml-0.5 text-[9px] text-gray-400">{headerSuffix}</span>}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
+        <span className="tabular-nums">
+          {formatEuro(prixUnitaire)}
+          {suffix && <span className="ml-0.5">{suffix}</span>}
+          <span className="mx-1">×</span>
+          {qty}
+        </span>
+        {mode !== 'fas' && line.fasTotal > 0 && (
+          <span className="tabular-nums">
+            FAS&nbsp;{formatEuro(line.fasTotal)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface CategoryAccordionProps {
+  label: string;
+  total: number;
+  suffix?: string;
+  bold?: boolean;
+  muted?: boolean;
+  detailSuffix?: string;
+  detailMode?: 'price' | 'fas';
+  lines: CartLine[];
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+function CategoryAccordion({
+  label,
+  total,
+  suffix,
+  bold,
+  muted,
+  detailSuffix,
+  detailMode = 'price',
+  lines,
+  expanded,
+  onToggle,
+}: CategoryAccordionProps) {
+  const hasDetails = lines.length > 0;
+  if (!hasDetails) {
+    return <Line label={label} value={total} suffix={suffix} bold={bold} muted={muted} />;
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between text-xs hover:bg-gray-50 -mx-1 px-1 py-0.5 rounded"
+      >
+        <span
+          className={`flex items-center gap-1 ${
+            bold ? 'font-semibold text-gray-900' : muted ? 'text-gray-500' : 'text-gray-700'
+          }`}
+        >
+          {expanded ? (
+            <ChevronDown className="h-3 w-3 text-gray-400" />
+          ) : (
+            <ChevronRight className="h-3 w-3 text-gray-400" />
+          )}
+          {label}
+        </span>
+        <span
+          className={`tabular-nums ${
+            bold ? 'font-semibold text-gray-900' : muted ? 'text-gray-500' : 'text-gray-700'
+          }`}
+        >
+          {formatEuro(total)}
+          {suffix && <span className="ml-0.5 text-[10px] text-gray-400">{suffix}</span>}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-1 ml-3 space-y-1">
+          {lines.map((l) => (
+            <DetailRow
+              key={l.instanceId + l.produitNom}
+              line={l}
+              suffix={detailSuffix ?? suffix}
+              mode={detailMode}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SpRealTimeCart({
   reponses,
   questions,
@@ -56,10 +170,48 @@ export function SpRealTimeCart({
 }: SpRealTimeCartProps) {
   const [collapsed, setCollapsed] = useState(false);
 
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  const toggleCat = (key: string) =>
+    setExpandedCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   const summary = useMemo(
     () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer),
     [reponses, questions, catalogue, donneesExtraites, spConfigLoyer],
   );
+
+  const grouped = useMemo(() => {
+    const acc = {
+      fixe: [] as CartLine[],
+      mobile: [] as CartLine[],
+      internet: [] as CartLine[],
+      autresMensuels: [] as CartLine[],
+      equipement: [] as CartLine[],
+      cadeau: [] as CartLine[],
+      installation: [] as CartLine[],
+      autresPonctuels: [] as CartLine[],
+      fas: [] as CartLine[],
+    };
+    for (const l of summary.lines) {
+      if (l.fasTotal > 0) acc.fas.push(l);
+      if (l.type_frequence === 'mensuel') {
+        if (l.categorie === 'fixe') acc.fixe.push(l);
+        else if (l.categorie === 'mobile') acc.mobile.push(l);
+        else if (l.categorie === 'internet') acc.internet.push(l);
+        else acc.autresMensuels.push(l);
+      } else {
+        if (l.categorie === 'equipement') acc.equipement.push(l);
+        else if (l.categorie === 'cadeau') acc.cadeau.push(l);
+        else if (l.categorie === 'installation') acc.installation.push(l);
+        else acc.autresPonctuels.push(l);
+      }
+    }
+    return acc;
+  }, [summary.lines]);
 
   const hasAnyLine = summary.lines.length > 0;
   const grandTotalMensuel = summary.abonnements.totalMensuel;
@@ -77,7 +229,7 @@ export function SpRealTimeCart({
       >
         <span className="flex items-center gap-2 text-sm font-semibold">
           <ShoppingCart className="h-4 w-4" />
-          Panier
+          Situation Proposée
         </span>
         <span className="flex items-center gap-2">
           <span className="text-xs tabular-nums opacity-90">
@@ -103,11 +255,40 @@ export function SpRealTimeCart({
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                   Abonnements
                 </p>
-                <Line label="Fixe" value={summary.abonnements.fixe} suffix="/mois" />
-                <Line label="Mobile" value={summary.abonnements.mobile} suffix="/mois" />
-                <Line label="Internet" value={summary.abonnements.internet} suffix="/mois" />
+                <CategoryAccordion
+                  label="Fixe"
+                  total={summary.abonnements.fixe}
+                  suffix="/mois"
+                  lines={grouped.fixe}
+                  expanded={expandedCats.has('fixe')}
+                  onToggle={() => toggleCat('fixe')}
+                />
+                <CategoryAccordion
+                  label="Mobile"
+                  total={summary.abonnements.mobile}
+                  suffix="/mois"
+                  lines={grouped.mobile}
+                  expanded={expandedCats.has('mobile')}
+                  onToggle={() => toggleCat('mobile')}
+                />
+                <CategoryAccordion
+                  label="Internet"
+                  total={summary.abonnements.internet}
+                  suffix="/mois"
+                  lines={grouped.internet}
+                  expanded={expandedCats.has('internet')}
+                  onToggle={() => toggleCat('internet')}
+                />
                 {summary.autresMensuels > 0 && (
-                  <Line label="Autres" value={summary.autresMensuels} suffix="/mois" muted />
+                  <CategoryAccordion
+                    label="Autres"
+                    total={summary.autresMensuels}
+                    suffix="/mois"
+                    muted
+                    lines={grouped.autresMensuels}
+                    expanded={expandedCats.has('autres_m')}
+                    onToggle={() => toggleCat('autres_m')}
+                  />
                 )}
                 <div className="pt-1 border-t border-gray-100">
                   <Line
@@ -121,6 +302,7 @@ export function SpRealTimeCart({
 
               {/* Ponctuels */}
               {(summary.materiel > 0 ||
+                summary.cadeaux > 0 ||
                 summary.installations > 0 ||
                 summary.fas > 0 ||
                 summary.autresPonctuels > 0) && (
@@ -128,13 +310,52 @@ export function SpRealTimeCart({
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                     Ponctuel
                   </p>
-                  {summary.materiel > 0 && <Line label="Matériel" value={summary.materiel} />}
-                  {summary.installations > 0 && (
-                    <Line label="Installations" value={summary.installations} />
+                  {summary.materiel > 0 && (
+                    <CategoryAccordion
+                      label="Matériel"
+                      total={summary.materiel}
+                      lines={grouped.equipement}
+                      expanded={expandedCats.has('equipement')}
+                      onToggle={() => toggleCat('equipement')}
+                    />
                   )}
-                  {summary.fas > 0 && <Line label="FAS" value={summary.fas} />}
+                  {summary.cadeaux > 0 && (
+                    <CategoryAccordion
+                      label="Cadeaux"
+                      total={summary.cadeaux}
+                      lines={grouped.cadeau}
+                      expanded={expandedCats.has('cadeau')}
+                      onToggle={() => toggleCat('cadeau')}
+                    />
+                  )}
+                  {summary.installations > 0 && (
+                    <CategoryAccordion
+                      label="Installations"
+                      total={summary.installations}
+                      lines={grouped.installation}
+                      expanded={expandedCats.has('installation')}
+                      onToggle={() => toggleCat('installation')}
+                    />
+                  )}
+                  {summary.fas > 0 && (
+                    <CategoryAccordion
+                      label="FAS"
+                      total={summary.fas}
+                      lines={grouped.fas}
+                      detailMode="fas"
+                      expanded={expandedCats.has('fas')}
+                      onToggle={() => toggleCat('fas')}
+                    />
+                  )}
                   {summary.autresPonctuels > 0 && (
-                    <Line label="Autres" value={summary.autresPonctuels} muted />
+                    <CategoryAccordion
+                      label="Autres"
+                      total={summary.autresPonctuels}
+                      muted
+                      lines={grouped.autresPonctuels}
+                      expanded={expandedCats.has('autres_p')}
+                      onToggle={() => toggleCat('autres_p')}
+                    />
                   )}
                   <div className="pt-1 border-t border-gray-100">
                     <Line label="Total ponctuel" value={summary.totalPonctuel} bold />

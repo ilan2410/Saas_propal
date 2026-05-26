@@ -97,6 +97,9 @@ const SITUATION_ACTUELLE_STRUCTURE = {
   abonnements: [
     {
       libelle: 'Abonnement',
+      reference_contrat: 'CTR-001',
+      libelle_contrat: 'Contrat flotte mobile principal',
+      engagement_ref: 'ENG-001',
       operateur: 'Nom opérateur',
       site: 'Site concerné',
       quantite: '1',
@@ -109,6 +112,9 @@ const SITUATION_ACTUELLE_STRUCTURE = {
   locations: [
     {
       libelle: 'Location matériel',
+      reference_contrat: 'CTR-LOC-001',
+      libelle_contrat: 'Contrat location matériel',
+      engagement_ref: 'ENG-LOC-001',
       leaser: 'Nom leaser',
       site: 'Site concerné',
       materiel: 'Description',
@@ -123,6 +129,9 @@ const SITUATION_ACTUELLE_STRUCTURE = {
       numero_ligne: '0XXXXXXXXX',
       type: 'fixe|mobile|internet|materiel',
       libelle: 'Ligne ou matériel',
+      reference_contrat: 'CTR-001',
+      libelle_contrat: 'Contrat flotte mobile principal',
+      engagement_ref: 'ENG-001',
       forfait: 'Nom forfait',
       operateur: 'Nom opérateur',
       leaser: 'Nom leaser si type=materiel',
@@ -145,7 +154,13 @@ const SITUATION_ACTUELLE_STRUCTURE = {
   ],
   engagements: [
     {
+      reference_contrat: 'CTR-001',
+      libelle_contrat: 'Contrat flotte mobile principal',
+      engagement_ref: 'ENG-001',
       libelle: 'Contrat/ligne/service',
+      operateur: 'Nom opérateur',
+      site: 'Site concerné',
+      elements_rattaches: ['06XXXXXXXX', 'Accès fibre siège'],
       date_fin_engagement_source: 'JJ/MM/AAAA',
       date_limite_resiliation_calculee: 'JJ/MM/AAAA',
       preavis_mois: 3,
@@ -164,6 +179,19 @@ const SITUATION_ACTUELLE_STRUCTURE = {
   indemnites: {
     montant_source: 'XX.XX',
     montant_calcule: 'XX.XX',
+    montant_estime: 'XX.XX',
+    mois_restants_source: 'X',
+    preavis_mois_source: 'X',
+    base_mensuelle_source: 'XX.XX',
+    mensualites_restantes: 'XX.XX',
+    frais_resiliation_fixes: 'XX.XX',
+    penalites: 'XX.XX',
+    frais_materiel: 'XX.XX',
+    services_annexes: 'XX.XX',
+    source_retenue: 'source|estimation|aucune',
+    fiabilite: 'forte|moyenne|faible|insuffisante',
+    details_calcul: ['...'],
+    motifs_manquants: ['...'],
     methode_calcul: '...',
   },
   ligne_bon_commande_materiel: {

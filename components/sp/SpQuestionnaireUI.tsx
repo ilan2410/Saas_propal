@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 
 export interface SpQuestionnaireUIProps {
   questions: SpQuestion[];
@@ -27,6 +28,7 @@ export interface SpQuestionnaireUIProps {
   siteLabel?: string;
   startFromQuestionId?: string;
   spConfigLoyer?: SpConfigLoyer;
+  spConfigResiliation?: SpConfigResiliation;
 }
 
 type MessageBubble =
@@ -127,6 +129,24 @@ function formatReponseText(valeur: SpQuestionReponse['valeur']): string {
     return [a.adresse, a.complement, `${a.code_postal} ${a.ville}`].filter(Boolean).join(', ');
   }
   return String(valeur);
+}
+
+function formatResiliationMoney(value: number | null | undefined): string {
+  if (value == null) return 'Non trouvé';
+  return `${value.toFixed(2)} EUR`;
+}
+
+function getResiliationFiabiliteClasses(fiabilite: string): string {
+  switch (fiabilite) {
+    case 'forte':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'moyenne':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'faible':
+      return 'bg-orange-50 text-orange-700 border-orange-200';
+    default:
+      return 'bg-gray-50 text-gray-600 border-gray-200';
+  }
 }
 
 function remapReponsesForIteration(
@@ -543,6 +563,7 @@ export function SpQuestionnaireUI({
   siteLabel,
   startFromQuestionId,
   spConfigLoyer,
+  spConfigResiliation,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -550,8 +571,10 @@ export function SpQuestionnaireUI({
   const [isTyping, setIsTyping] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [adresseEdit, setAdresseEdit] = useState<SpAdresse>({ adresse: '', code_postal: '', ville: '' });
-  // Marge : durée éditable directement dans la question (défaut 63 mois si aucune question durée n'a répondu)
-  const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(63);
+  // Marge : durée éditable directement dans la question (défaut = config template, sinon 63 mois)
+  const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(
+    spConfigLoyer?.duree_mois_par_defaut ?? 63,
+  );
   const [hiddenByConsequence, setHiddenByConsequence] = useState<Set<string>>(new Set());
   const [shownByConsequence, setShownByConsequence] = useState<Set<string>>(new Set());
   const [dynamicFilters, setDynamicFilters] = useState<Map<string, SpFiltresCatalogue>>(new Map());
@@ -707,7 +730,6 @@ export function SpQuestionnaireUI({
     if (shown.has(eq.question.id) || shown.has(eq.instanceId)) return true;
 
     return visibleByConditions;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue]);
 
   const isQuestionVisible = (eq: ExpandedQuestion): boolean => isQuestionVisibleWith(eq, reponses);
@@ -952,6 +974,22 @@ export function SpQuestionnaireUI({
   const currentExpanded = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
   const currentQuestionVisible = currentExpanded !== null && isQuestionVisible(currentExpanded);
   const currentQuestion = currentQuestionVisible ? currentExpanded.question : null;
+  const resiliationEstimation = useMemo(() => {
+    if (
+      !currentQuestion ||
+      currentQuestion.affichage !== 'nombre' ||
+      currentQuestion.nombre_config?.suggestion_source !== 'indemnite_resiliation'
+    ) {
+      return null;
+    }
+
+    return estimateResiliationFromSA(
+      donneesExtraites?.situation_actuelle
+        ? donneesExtraites
+        : { situation_actuelle: donneesExtraites },
+      spConfigResiliation,
+    );
+  }, [currentQuestion, donneesExtraites, spConfigResiliation]);
 
   const currentCatalogueOptions: CatalogueProduit[] = (() => {
     if (!currentQuestion || (currentQuestion.source !== 'catalogue' && currentQuestion.source !== 'catalogue_et_sa')) return [];
@@ -1375,16 +1413,201 @@ export function SpQuestionnaireUI({
           )}
 
           {(currentQuestion.affichage === 'texte_court' || currentQuestion.affichage === 'nombre') && (
-            <div className="flex gap-2">
-              <input value={inputValue} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
-                placeholder="Votre réponse..." type={currentQuestion.affichage === 'nombre' ? 'number' : 'text'}
-                className="h-8 text-sm border border-gray-300 rounded px-2 flex-1"
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === 'Enter' && inputValue.trim()) { recordAnswer(currentExpanded.instanceId, inputValue.trim()); setInputValue(''); }
-                }} />
-              <Button size="sm" onClick={() => { if (inputValue.trim()) { recordAnswer(currentExpanded.instanceId, inputValue.trim()); setInputValue(''); } }}>
-                Valider
-              </Button>
+            <div className="space-y-3">
+              {currentQuestion.affichage === 'nombre' && resiliationEstimation && (
+                <div className="space-y-2">
+                  {currentQuestion.nombre_config?.afficher_estimation !== false && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-amber-800">Estimation indemnité de résiliation</p>
+                          <p className="text-lg font-semibold text-amber-950">
+                            {resiliationEstimation.montant_retenu !== null
+                              ? formatResiliationMoney(resiliationEstimation.montant_retenu)
+                              : 'Aucune estimation disponible'}
+                          </p>
+                          <p className="text-xs text-amber-700">{resiliationEstimation.calcul_resume}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full border ${getResiliationFiabiliteClasses(resiliationEstimation.fiabilite)}`}>
+                          Fiabilité {resiliationEstimation.fiabilite}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <div className="rounded-md bg-white/80 border border-amber-100 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Source retenue</p>
+                          <p className="text-sm text-gray-800 mt-1">{resiliationEstimation.source_retenue_label}</p>
+                        </div>
+                        <div className="rounded-md bg-white/80 border border-amber-100 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Date de référence</p>
+                          <p className="text-sm text-gray-800 mt-1">{resiliationEstimation.date_reference}</p>
+                        </div>
+                        <div className="rounded-md bg-white/80 border border-amber-100 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Préavis retenu</p>
+                          <p className="text-sm text-gray-800 mt-1">{resiliationEstimation.preavis_mois} mois</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 text-xs text-amber-800">
+                        <p>{resiliationEstimation.explication_fiabilite}</p>
+                        {resiliationEstimation.composants
+                          .filter((component) => component.id !== 'total' && component.inclus && component.disponible)
+                          .slice(0, 3)
+                          .map((component) => (
+                            <p key={component.id}>
+                              {component.label}: {component.formule ?? formatResiliationMoney(component.montant)}
+                              {component.formule && component.montant !== null ? ` = ${formatResiliationMoney(component.montant)}` : ''}
+                            </p>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentQuestion.nombre_config?.afficher_detail_calcul && (
+                    <details className="rounded-lg border border-gray-200 bg-white p-3 group">
+                      <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">Détail premium du calcul</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Décomposition, hypothèses, preuves SA et groupes d&apos;engagement
+                          </p>
+                        </div>
+                        <span className="text-xs text-blue-600 group-open:hidden">Afficher</span>
+                        <span className="text-xs text-blue-600 hidden group-open:inline">Masquer</span>
+                      </summary>
+
+                      <div className="mt-4 space-y-4">
+                        <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                          <p className="text-xs font-semibold text-gray-700">Décomposition du montant</p>
+                          <div className="mt-2 space-y-2">
+                            {resiliationEstimation.composants
+                              .filter((component) => component.inclus)
+                              .map((component) => (
+                                <div key={component.id} className="flex items-start justify-between gap-3 text-xs">
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-gray-800">{component.label}</p>
+                                    {component.formule && (
+                                      <p className="text-gray-500 mt-0.5">{component.formule}</p>
+                                    )}
+                                    {!component.disponible && component.id !== 'total' && (
+                                      <p className="text-gray-400 mt-0.5">Non trouvé dans la SA</p>
+                                    )}
+                                  </div>
+                                  <span className="shrink-0 font-medium text-gray-800">
+                                    {formatResiliationMoney(component.montant)}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {resiliationEstimation.hypotheses.length > 0 && (
+                          <div className="rounded-lg border border-gray-100 bg-white p-3">
+                            <p className="text-xs font-semibold text-gray-700">Hypothèses retenues</p>
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              {resiliationEstimation.hypotheses.map((hypothese) => (
+                                <div key={`${hypothese.label}-${hypothese.valeur}`} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                                  <p className="text-[11px] uppercase tracking-wide text-gray-500">{hypothese.label}</p>
+                                  <p className="text-xs text-gray-800 mt-1">{hypothese.valeur}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {resiliationEstimation.groupes_calcul.length > 0 && (
+                          <div className="rounded-lg border border-gray-100 bg-white p-3">
+                            <p className="text-xs font-semibold text-gray-700">Groupes de calcul</p>
+                            <div className="mt-2 space-y-3">
+                              {resiliationEstimation.groupes_calcul.map((groupe) => (
+                                <div key={groupe.id} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-gray-800">{groupe.libelle}</p>
+                                      <p className="text-xs text-gray-500 mt-1">{groupe.methode}</p>
+                                    </div>
+                                    {groupe.sous_total !== null && (
+                                      <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">
+                                        {formatResiliationMoney(groupe.sous_total)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+                                    {groupe.mois_restants !== null && (
+                                      <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
+                                        {groupe.mois_restants} mois restants
+                                      </span>
+                                    )}
+                                    {groupe.base_mensuelle !== null && (
+                                      <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
+                                        Base {formatResiliationMoney(groupe.base_mensuelle)} / mois
+                                      </span>
+                                    )}
+                                  </div>
+                                  {groupe.preuves.length > 0 && (
+                                    <div className="mt-3 space-y-2">
+                                      {groupe.preuves.map((preuve) => (
+                                        <div key={preuve.id} className="rounded-md border border-white bg-white px-3 py-2">
+                                          <p className="text-xs font-medium text-gray-800">{preuve.label}</p>
+                                          <p className="text-xs text-gray-700 mt-1">{preuve.valeur}</p>
+                                          {preuve.contexte && (
+                                            <p className="text-[11px] text-gray-500 mt-1">{preuve.contexte}</p>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {resiliationEstimation.preuves.length > 0 && (
+                          <div className="rounded-lg border border-gray-100 bg-white p-3">
+                            <p className="text-xs font-semibold text-gray-700">Preuves trouvées dans la SA</p>
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              {resiliationEstimation.preuves.map((preuve) => (
+                                <div key={preuve.id} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                                  <p className="text-xs font-medium text-gray-800">{preuve.label}</p>
+                                  <p className="text-xs text-gray-700 mt-1">{preuve.valeur}</p>
+                                  {preuve.contexte && (
+                                    <p className="text-[11px] text-gray-500 mt-1">{preuve.contexte}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {resiliationEstimation.motifs_manquants.length > 0 && (
+                          <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                            <p className="text-xs font-semibold text-red-700">Informations manquantes</p>
+                            <ul className="text-xs text-red-700 mt-2 space-y-1">
+                              {resiliationEstimation.motifs_manquants.map((detail) => (
+                                <li key={detail}>- {detail}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input value={inputValue} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
+                  placeholder={currentQuestion.affichage === 'nombre' && resiliationEstimation?.montant_retenu != null ? String(resiliationEstimation.montant_retenu) : 'Votre réponse...'}
+                  type={currentQuestion.affichage === 'nombre' ? 'number' : 'text'}
+                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1"
+                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === 'Enter' && inputValue.trim()) { recordAnswer(currentExpanded.instanceId, inputValue.trim()); setInputValue(''); }
+                  }} />
+                <Button size="sm" onClick={() => { if (inputValue.trim()) { recordAnswer(currentExpanded.instanceId, inputValue.trim()); setInputValue(''); } }}>
+                  Valider
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1399,17 +1622,34 @@ export function SpQuestionnaireUI({
           )}
 
           {currentQuestion.affichage === 'marge' && (() => {
-            // Cherche la durée depuis une réponse existante (question avec conséquence sp_duree_mois)
-            const dureeQuestion = questions.find((q) =>
-              q.consequences?.some(
-                (c) => c.type === 'renseigner_variable' && c.variable_cible === 'sp_duree_mois'
-              )
-            );
-            const dureeRep = dureeQuestion
-              ? reponses.find((r) => r.question_id === dureeQuestion.id)
+            // 1. Priorité : config template "duree_depends_question" → lit la réponse à la question SP choisie.
+            // 2. Fallback compat : ancienne détection via conséquence renseigner_variable=sp_duree_mois.
+            // 3. Sinon : override local (initialisé sur duree_mois_par_defaut du template).
+            let dureeQuestionId: string | undefined;
+            if (spConfigLoyer?.duree_depends_question && spConfigLoyer.duree_question_id) {
+              dureeQuestionId = spConfigLoyer.duree_question_id;
+            } else {
+              const dureeQuestion = questions.find((q) =>
+                q.consequences?.some(
+                  (c) => c.type === 'renseigner_variable' && c.variable_cible === 'sp_duree_mois'
+                )
+              );
+              dureeQuestionId = dureeQuestion?.id;
+            }
+            const dureeRep = dureeQuestionId
+              ? reponses.find(
+                  (r) =>
+                    r.question_id === dureeQuestionId ||
+                    r.question_id.startsWith(`${dureeQuestionId}__iter_`),
+                )
               : undefined;
-            const dureeFromReponse = dureeRep ? Number(dureeRep.valeur) || 0 : 0;
-            // Utilise la réponse si dispo, sinon l'override local (défaut 63)
+            let dureeFromReponse = 0;
+            if (dureeRep) {
+              const raw = Array.isArray(dureeRep.valeur) ? dureeRep.valeur[0] : dureeRep.valeur;
+              const match = String(raw ?? '').match(/-?\d+(?:[.,]\d+)?/);
+              const parsed = match ? Number(match[0].replace(',', '.')) : NaN;
+              if (Number.isFinite(parsed) && parsed > 0) dureeFromReponse = parsed;
+            }
             const dureeMois = dureeFromReponse || margeDureeMoisOverride;
 
             const margeNum = Number(inputValue) || 0;

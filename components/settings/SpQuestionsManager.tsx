@@ -10,6 +10,7 @@ import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
 
 interface Template { id: string; nom: string; file_type: string; }
 type SpAiWorkflowMode = 'create' | 'modify' | 'append';
+const SHOW_SP_AI_APPEND_EDIT = false;
 
 interface Props {
   templates: Template[];
@@ -1018,41 +1019,47 @@ export function SpQuestionsManager({ templates }: Props) {
                     </Button>
                   </Tooltip>
                   {questions.length === 0 ? (
-                    <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'create' })}
-                        className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Générer IA
-                      </Button>
-                    </Tooltip>
-                  ) : (
-                    <>
-                      <Tooltip text="Ajoute de nouvelles questions avec l'IA sans modifier le workflow existant.">
+                    SHOW_SP_AI_APPEND_EDIT && (
+                      <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'append' })}
+                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'create' })}
                           className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
                         >
                           <Sparkles className="w-4 h-4 mr-2" />
-                          Ajouter IA
+                          Générer IA
                         </Button>
                       </Tooltip>
-                      <Tooltip text="Modifie le workflow complet avec l'IA. Cette action remplacera le workflow après validation.">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'modify' })}
-                          className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Modifier IA
-                        </Button>
-                      </Tooltip>
+                    )
+                  ) : (
+                    <>
+                      {SHOW_SP_AI_APPEND_EDIT && (
+                        <>
+                          <Tooltip text="Ajoute de nouvelles questions avec l'IA sans modifier le workflow existant.">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'append' })}
+                              className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
+                            >
+                              <Sparkles className="w-4 h-4 mr-2" />
+                              Ajouter IA
+                            </Button>
+                          </Tooltip>
+                          <Tooltip text="Modifie le workflow complet avec l'IA. Cette action remplacera le workflow après validation.">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'modify' })}
+                              className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300"
+                            >
+                              <Sparkles className="w-4 h-4 mr-2" />
+                              Modifier IA
+                            </Button>
+                          </Tooltip>
+                        </>
+                      )}
                     </>
                   )}
                   <Tooltip text="Simule le formulaire de questions pour tester les conditions et la logique du workflow.">

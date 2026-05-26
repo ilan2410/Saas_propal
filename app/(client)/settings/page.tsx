@@ -44,7 +44,7 @@ export default async function Settings() {
 
   const { data: templates } = await supabase
     .from('proposition_templates')
-    .select('id, nom, file_type, statut')
+    .select('id, nom, file_type, statut, file_config')
     .eq('organization_id', user.id)
     .order('created_at', { ascending: false });
 
