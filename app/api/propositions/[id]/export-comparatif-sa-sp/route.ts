@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SuggestionsSpCompletes, OrganizationPreferences, SpCustomization } from '@/types';
+import type {
+  CatalogueProduit,
+  OrganizationPreferences,
+  SpConfigLoyer,
+  SpCustomization,
+  SpQuestion,
+  SpQuestionReponse,
+} from '@/types';
 import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-generator';
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
+import { calculateCartSummary } from '@/lib/sp/calculateCart';
+import { buildExportSaSpData } from '@/lib/sp/buildExportSaSpData';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -18,9 +27,18 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // 1. Récupérer la proposition (avec sp_reponses, extracted_data, filled_data)
   const { data: proposition, error } = await supabase
     .from('propositions')
-    .select(`*, organizations(nom, preferences, logo_url, pdf_header_logo_url)`)
+    .select(`
+      template_id,
+      nom_client,
+      extracted_data,
+      filled_data,
+      sp_reponses,
+      organization_id,
+      organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
+    `)
     .eq('id', id)
     .eq('organization_id', user.id)
     .single();
@@ -29,15 +47,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
   }
 
-  const sp = proposition.suggestions_sp_completes as SuggestionsSpCompletes | null;
-  if (!sp || !sp.sp_total_propose) {
-    return NextResponse.json(
-      { error: 'Aucune donnée SP disponible. Complétez d\'abord le questionnaire SP.' },
-      { status: 400 },
-    );
-  }
-
-  const orgRaw = proposition.organizations;
+  const orgRaw = (proposition as unknown as { organizations: unknown }).organizations;
   const org = isRecord(orgRaw)
     ? orgRaw
     : Array.isArray(orgRaw) && orgRaw.length > 0
@@ -58,15 +68,80 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         ? org.logo_url
         : undefined;
 
-  const clientName = proposition.nom_client || 'Client';
+  const clientName = (proposition as unknown as { nom_client?: string }).nom_client || 'Client';
   const safeClient = clientName.replace(/[^a-zA-Z0-9-_]/g, '_');
+
+  // 2. Construire donneesExtraites (filled_data prioritaire sur extracted_data)
+  const extracted = isRecord((proposition as Record<string, unknown>).extracted_data)
+    ? ((proposition as Record<string, unknown>).extracted_data as Record<string, unknown>)
+    : {};
+  const filled = isRecord((proposition as Record<string, unknown>).filled_data)
+    ? ((proposition as Record<string, unknown>).filled_data as Record<string, unknown>)
+    : {};
+  const donneesExtraites: Record<string, unknown> = { ...extracted, ...filled };
+
+  // 3. Récupérer les questions SP de l'organisation, filtrées par template
+  const allQuestions = Array.isArray(org?.sp_questions) ? (org!.sp_questions as SpQuestion[]) : [];
+  const templateId = (proposition as Record<string, unknown>).template_id;
+  const questions: SpQuestion[] = templateId
+    ? allQuestions.filter((q) => q.template_id === templateId)
+    : allQuestions;
+
+  // 4. Récupérer le catalogue (org + globaux)
+  const { data: catalogueRows } = await supabase
+    .from('catalogues_produits')
+    .select('*')
+    .eq('actif', true)
+    .or(`organization_id.eq.${user.id},organization_id.is.null`);
+  const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows)
+    ? (catalogueRows as CatalogueProduit[])
+    : [];
+
+  // 5. Réponses SP (peuvent être absentes pour d'anciennes propositions)
+  const reponses: SpQuestionReponse[] = Array.isArray((proposition as Record<string, unknown>).sp_reponses)
+    ? ((proposition as Record<string, unknown>).sp_reponses as SpQuestionReponse[])
+    : [];
+
+  // 6. Récupérer la config loyer (depuis preferences ou template file_config)
+  let spConfigLoyer: SpConfigLoyer | undefined;
+  if (isRecord(prefs.sp_config_loyer)) {
+    spConfigLoyer = prefs.sp_config_loyer as unknown as SpConfigLoyer;
+  }
+  if (!spConfigLoyer && typeof templateId === 'string') {
+    const { data: tmpl } = await supabase
+      .from('proposition_templates')
+      .select('file_config')
+      .eq('id', templateId)
+      .single();
+    const fileCfg = isRecord(tmpl?.file_config) ? (tmpl.file_config as Record<string, unknown>) : {};
+    if (isRecord(fileCfg.sp_config_loyer)) {
+      spConfigLoyer = fileCfg.sp_config_loyer as unknown as SpConfigLoyer;
+    }
+  }
+
+  // 7. Calculer le panier SP en temps réel
+  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer);
+
+  // 8. Construire les données d'export
+  const exportData = buildExportSaSpData({
+    cart,
+    questions,
+    reponses,
+    catalogue,
+    donneesExtraites,
+    companyName,
+    primaryColor,
+    logoUrl,
+  });
+
+  // Si le client a renseigné nom_client mais pas raison_sociale extraite → fallback
+  if (!exportData.clientRaisonSociale && clientName !== 'Client') {
+    exportData.clientRaisonSociale = clientName;
+  }
 
   try {
     if (format === 'word') {
-      const buf = await generateComparatifSaSpWord({
-        sp, clientName, companyName, primaryColor, logoUrl,
-        footerText: `Généré par ${companyName} pour ${clientName}`,
-      });
+      const buf = await generateComparatifSaSpWord(exportData);
       return new NextResponse(buf as unknown as BodyInit, {
         status: 200,
         headers: {
@@ -77,8 +152,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // Default: Excel
-    const buf = await generateComparatifSaSpExcel({ sp, clientName, companyName, primaryColor });
+    const buf = await generateComparatifSaSpExcel(exportData);
     return new NextResponse(buf as unknown as BodyInit, {
       status: 200,
       headers: {

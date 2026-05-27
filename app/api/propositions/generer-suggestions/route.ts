@@ -1136,6 +1136,9 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
       if (suggestionsSpCompletes) {
         updatePayload.suggestions_sp_completes = suggestionsSpCompletes;
       }
+      if (spReponses.length > 0) {
+        updatePayload.sp_reponses = spReponses;
+      }
       const { error: updateError } = await supabase
         .from('propositions')
         .update(updatePayload)

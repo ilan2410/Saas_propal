@@ -723,3 +723,71 @@ export interface SpVariableCustom {
     type: 'string' | 'number' | 'date';
   }>;
 }
+
+// ── Export SA/SP récap (nouvelle structure) ─────────────────────────
+
+export interface SaExportLine {
+  operateur: string;
+  dateFinEngagement: string;
+  quantite: number;
+  offre: string;
+  numero: string;
+  prixHt: number;
+  indemnites: number;
+}
+
+export interface SpExportLine {
+  operateur: string;
+  quantite: number;
+  offre: string;
+  numero: string;
+  prixUnitaire: number;
+  prixTotal: number;
+}
+
+export type RecapExportType = 'materiel' | 'installation' | 'cadeau' | 'fas' | 'marge';
+
+export interface RecapExportLine {
+  type: RecapExportType;
+  libelle: string;
+  puht: number | null;
+  quantite: number | null;
+  ptht: number;
+}
+
+export interface ExportSaSpInput {
+  // En-tête client
+  clientRaisonSociale?: string;
+  clientAdresse?: string;
+  clientCp?: string;
+  clientVille?: string;
+  clientTel?: string;
+  clientEmail?: string;
+  clientNom?: string;
+  clientPrenom?: string;
+  dateProposition: string;
+
+  // Branding
+  companyName: string;
+  primaryColor: string;
+  logoUrl?: string;
+
+  // Tableau Situation Actuelle
+  saLines: SaExportLine[];
+  saTotalPrixHt: number;
+  saTotalIndemnites: number;
+
+  // Tableau Solution Proposée
+  spLines: SpExportLine[];
+  spTotalPrix: number;
+
+  // Récapitulatif du dossier
+  recapLines: RecapExportLine[];
+  recapTotal: number;
+
+  // Remise Commerciale
+  remiseMoisOffert: number;
+  remiseSoldeContrat: number;
+  remiseTotalPonctuel: number;
+  remiseTotal: number;
+}

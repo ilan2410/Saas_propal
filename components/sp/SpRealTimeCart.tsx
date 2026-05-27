@@ -214,11 +214,11 @@ export function SpRealTimeCart({
   }, [summary.lines]);
 
   const hasAnyLine = summary.lines.length > 0;
-  const grandTotalMensuel = summary.abonnements.totalMensuel;
+  const grandTotalMensuel = summary.loyer?.loyer_mensuel ?? summary.abonnements.totalMensuel;
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-xl"
+      className="w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-xl"
       role="complementary"
       aria-label="Panier temps réel"
     >

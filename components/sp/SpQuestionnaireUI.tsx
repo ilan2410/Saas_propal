@@ -5,6 +5,7 @@ import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
+import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
@@ -2034,14 +2035,37 @@ export function SpQuestionnaireUI({
         </div>
       )}
 
-      {/* Real-time cart summary (subscriptions, equipment, installations, FAS, loyer) */}
-      <SpRealTimeCart
-        reponses={reponses}
-        questions={questions}
-        catalogue={catalogue}
-        donneesExtraites={donneesExtraites}
-        spConfigLoyer={spConfigLoyer}
-      />
+      {/* Real-time carts : Situation Actuelle (au-dessus) + Situation Proposée (en-dessous) */}
+      {(() => {
+        const spSummary = calculateCartSummary(
+          reponses,
+          questions,
+          catalogue,
+          donneesExtraites,
+          spConfigLoyer,
+        );
+        // Pour la comparaison, on aligne sur le loyer mensuel SP (qui inclut
+        // matériel, FAS, cadeaux, indemnités, marge). Fallback : total abonnements.
+        const spReference =
+          spSummary.loyer?.loyer_mensuel && spSummary.loyer.loyer_mensuel > 0
+            ? spSummary.loyer.loyer_mensuel
+            : spSummary.abonnements.totalMensuel;
+        return (
+          <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-3 items-end">
+            <SaRealTimeCart
+              donneesExtraites={donneesExtraites}
+              spTotalMensuel={spReference}
+            />
+            <SpRealTimeCart
+              reponses={reponses}
+              questions={questions}
+              catalogue={catalogue}
+              donneesExtraites={donneesExtraites}
+              spConfigLoyer={spConfigLoyer}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }
