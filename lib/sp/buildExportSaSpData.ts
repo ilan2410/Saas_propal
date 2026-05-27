@@ -394,6 +394,11 @@ function resolveCartLineNumero(
 
 // ── 4. Tableau Solution Proposée ────────────────────────────────────
 
+function getOriginalPrixUnitaire(p: CatalogueProduit): number {
+  if (p.type_frequence === 'mensuel') return p.prix_mensuel ?? 0;
+  return p.prix_vente ?? 0;
+}
+
 export function buildSolutionProposeeLines(
   cart: SpCartSummary,
   catalogue: CatalogueProduit[],
@@ -409,25 +414,48 @@ export function buildSolutionProposeeLines(
 
   const loopLabels = buildLoopLabelsByGroup(questions, reponses, donneesExtraites);
 
-  const lines: SpExportLine[] = cart.lines
-    .filter((l) => l.type_frequence === 'mensuel')
-    .map((l) => {
-      const produit = (l.produitId && catalogueMap.get(l.produitId))
-        || catalogueMap.get(l.produitNom);
-      const operateur = produit?.fournisseur ?? '';
-      const quantite = Math.max(1, l.quantite || 1);
-      const prixUnitaire = l.prixTotal / quantite;
-      const numeroBoucle = resolveCartLineNumero(l, questions, loopLabels);
+  const lines: SpExportLine[] = [];
+  let totalRemise = 0;
 
-      return {
-        operateur,
-        quantite,
-        offre: l.produitNom,
-        numero: numeroBoucle || l.produitNom,
-        prixUnitaire,
-        prixTotal: l.prixTotal,
-      };
+  for (const l of cart.lines) {
+    if (l.type_frequence !== 'mensuel') continue;
+
+    const produit = (l.produitId && catalogueMap.get(l.produitId))
+      || catalogueMap.get(l.produitNom);
+    const operateur = produit?.fournisseur ?? '';
+    const quantite = Math.max(1, l.quantite || 1);
+    const numeroBoucle = resolveCartLineNumero(l, questions, loopLabels);
+
+    const prixOriginalUnitaire = produit ? getOriginalPrixUnitaire(produit) : l.prixTotal / quantite;
+    const prixOriginalTotal = prixOriginalUnitaire * quantite;
+    const remiseLigne = prixOriginalTotal - l.prixTotal;
+
+    lines.push({
+      operateur,
+      quantite,
+      offre: l.produitNom,
+      numero: numeroBoucle || l.produitNom,
+      prixUnitaire: prixOriginalUnitaire,
+      prixTotal: prixOriginalTotal,
     });
+
+    if (remiseLigne > 0.005) {
+      totalRemise += remiseLigne;
+    }
+  }
+
+  // Ligne synthétique "Remise" si au moins un produit est remisé
+  if (totalRemise > 0.005) {
+    lines.push({
+      operateur: '',
+      quantite: 1,
+      offre: 'Remise opérateur',
+      numero: '',
+      prixUnitaire: 0,
+      prixTotal: -totalRemise,
+      isRemiseLine: true,
+    });
+  }
 
   const total = lines.reduce((s, l) => s + l.prixTotal, 0);
   return { lines, total };

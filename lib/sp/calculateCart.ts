@@ -4,6 +4,7 @@ import type {
   SpQuestion,
   SpQuestionReponse,
   SpConfigLoyer,
+  SpProduitLibre,
 } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
 import { findApplicableBareme } from './evaluateBareme';
@@ -122,6 +123,31 @@ function defaultPrixUnitaire(p: CatalogueProduit): number {
   return p.prix_vente ?? 0;
 }
 
+function parseLibreReponse(
+  reponses: SpQuestionReponse[],
+  instanceId: string,
+): SpProduitLibre | null {
+  const rep = reponses.find((r) => r.question_id === 'libre_' + instanceId);
+  if (!rep || typeof rep.valeur !== 'string') return null;
+  try {
+    const parsed = JSON.parse(rep.valeur);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.label === 'string' &&
+      typeof parsed.prix === 'number' &&
+      typeof parsed.categorie === 'string'
+    ) {
+      return parsed as SpProduitLibre;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+const FREE_ENTRY_MARKER = '__libre__';
+
 // ── Core ─────────────────────────────────────────────────────────────
 
 /**
@@ -163,6 +189,22 @@ export function calculateCartSummary(
         : [];
 
     for (const nom of selectedNames) {
+      if (nom === FREE_ENTRY_MARKER) {
+        const libre = parseLibreReponse(reponses, rep.question_id);
+        if (libre) {
+          lines.push({
+            produitNom: libre.label,
+            categorie: libre.categorie,
+            type_frequence: 'unique',
+            quantite: 1,
+            prixTotal: libre.prix,
+            fasTotal: 0,
+            instanceId: rep.question_id,
+          });
+        }
+        continue;
+      }
+
       const produit = findProduct(catalogue, nom);
       if (!produit) continue;
 

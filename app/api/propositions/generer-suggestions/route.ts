@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateClaudeApiKey } from '@/lib/ai/claude';
 import Anthropic from '@anthropic-ai/sdk';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
@@ -558,6 +558,47 @@ function buildSpMateriel(raw: UnknownRecord, priceOverrides: Map<string, number>
   };
 }
 
+const FREE_ENTRY_MARKER = '__libre__';
+
+function parseLibreFromRaw(raw: UnknownRecord): SpProduitLibre[] {
+  const reponses = Array.isArray(raw.sp_questions_reponses)
+    ? (raw.sp_questions_reponses as SpQuestionReponse[])
+    : [];
+  const out: SpProduitLibre[] = [];
+  for (const r of reponses) {
+    if (!r.question_id.startsWith('libre_')) continue;
+    if (typeof r.valeur !== 'string') continue;
+    try {
+      const parsed = JSON.parse(r.valeur) as unknown;
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as Record<string, unknown>).label === 'string' &&
+        typeof (parsed as Record<string, unknown>).prix === 'number' &&
+        typeof (parsed as Record<string, unknown>).categorie === 'string'
+      ) {
+        out.push(parsed as SpProduitLibre);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+function buildSpMaterielFromLibre(produit: SpProduitLibre): SpMateriel {
+  return {
+    sp_materiel_nom: produit.label,
+    sp_materiel_prix_mensuel: `${produit.prix.toFixed(2).replace('.', ',')} €`,
+    sp_materiel_duree_engagement: '',
+    sp_materiel_commentaire: 'Saisie libre',
+    sp_materiel_produit_id: FREE_ENTRY_MARKER,
+    sp_type_ligne: 'Materiel',
+    _prix_mensuel_raw: produit.prix,
+  };
+}
+
 function buildSpCompletes(
   raw: UnknownRecord,
   baseResult: SuggestionResult,
@@ -581,6 +622,14 @@ function buildSpCompletes(
   const sp_internet: SpInternet[] = rawInternet.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Internet' as const }));
   const sp_materiel: SpMateriel[] = rawMateriel.map((r) => buildSpMateriel(r, priceOverrides));
 
+  // ── Inject saisies libres ("Autre valeur") ────────────────────────────
+  const libreProduits = parseLibreFromRaw(raw);
+  const libreByNom = new Map<string, SpProduitLibre>();
+  for (const lp of libreProduits) {
+    libreByNom.set(lp.label, lp);
+    sp_materiel.push(buildSpMaterielFromLibre(lp));
+  }
+
   const toutes = [...sp_lignes_mobiles, ...sp_lignes_fixes, ...sp_internet];
   const economieTotale = toutes.reduce((s, l) => s + l._economie_raw, 0);
   const totalActuel = toutes.reduce((s, l) => s + l._prix_actuel_raw, 0);
@@ -599,8 +648,9 @@ function buildSpCompletes(
   let totalMaterielRecurrent = 0;
   let totalMaterielPonctuel = 0;
   for (const m of sp_materiel) {
-    const catalogueItem = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
-    const freq = catalogueItem?.type_frequence ?? 'mensuel';
+    const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
+    const catalogueItem = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+    const freq = isLibre ? 'unique' : (catalogueItem?.type_frequence ?? 'mensuel');
     if (freq === 'unique') {
       totalMaterielPonctuel += m._prix_mensuel_raw; // one-time cost
     } else {
@@ -749,9 +799,10 @@ function buildSpCompletes(
 
   // sp_materiel_detail: matériel enrichi avec infos catalogue
   result.sp_materiel_detail = sp_materiel.map((m): SpMaterielDetail => {
-    const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
-    const freq = cat?.type_frequence ?? 'mensuel';
-    const imageUrl = typeof cat?.image_url === 'string' ? cat.image_url : undefined;
+    const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
+    const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+    const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
+    const imageUrl = !isLibre && typeof cat?.image_url === 'string' ? cat.image_url : undefined;
     return {
       sp_matd_nom: m.sp_materiel_nom,
       sp_matd_ref: m.sp_materiel_ref,
@@ -804,12 +855,14 @@ function buildSpCompletes(
   const sp_bdc_materiel_table: SpBdcMaterielLigne[] = sp_materiel
     .filter((m) => {
       if (!m.sp_materiel_produit_id) return true;
+      if (m.sp_materiel_produit_id === FREE_ENTRY_MARKER) return true;
       const cat = catalogueMap.get(m.sp_materiel_produit_id);
       return cat?.destinations?.bdc_materiel !== false;
     })
     .map((m): SpBdcMaterielLigne => {
-      const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
-      const freq = cat?.type_frequence ?? 'mensuel';
+      const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
+      const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+      const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
       return {
         sp_bdc_mat_nom: m.sp_materiel_nom,
         sp_bdc_mat_ref: m.sp_materiel_ref,
@@ -823,6 +876,9 @@ function buildSpCompletes(
   // sp_cadeaux_table: produits avec categorie === 'cadeau' (ajoutés via sp_materiel)
   const sp_cadeaux_table: SpCadeauLigne[] = sp_materiel
     .filter((m) => {
+      if (m.sp_materiel_produit_id === FREE_ENTRY_MARKER) {
+        return libreByNom.get(m.sp_materiel_nom)?.categorie === 'cadeau';
+      }
       if (!m.sp_materiel_produit_id) return false;
       const cat = catalogueMap.get(m.sp_materiel_produit_id);
       return cat?.categorie === 'cadeau';

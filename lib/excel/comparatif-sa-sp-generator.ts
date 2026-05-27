@@ -189,11 +189,20 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
     row.getCell(2).alignment = { horizontal: 'center' };
     row.getCell(3).value = line.offre;
     row.getCell(4).value = line.numero;
-    row.getCell(5).value = eur(line.prixUnitaire);
+    row.getCell(5).value = line.isRemiseLine ? '' : eur(line.prixUnitaire);
     row.getCell(5).alignment = { horizontal: 'right' };
     row.getCell(6).value = eur(line.prixTotal);
     row.getCell(6).alignment = { horizontal: 'right' };
-    styleDataRow(row, idx % 2 === 1);
+
+    if (line.isRemiseLine) {
+      // Style spécial pour la ligne "Remise" : italique, texte gris, pas d'alternance
+      row.eachCell((cell) => {
+        cell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
+        cell.border = thinBorder();
+      });
+    } else {
+      styleDataRow(row, idx % 2 === 1);
+    }
     r++;
   });
 
@@ -206,7 +215,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   r += 2;
 
   // ── 4. ZONE BAS : RECAPITULATIF + REMISE COMMERCIALE ─────────────
-  // Récap occupe colonnes 1-5, Remise occupe colonnes 7-12
+  // Récap occupe colonnes 1-5, Remise (vertical) occupe colonnes 7-9
   const recapTitleRow = r;
   ws.mergeCells(recapTitleRow, 1, recapTitleRow, 5);
   ws.getCell(recapTitleRow, 1).value = 'RECAPITULATIF DU DOSSIER';
@@ -214,7 +223,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   ws.getCell(recapTitleRow, 1).alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getCell(recapTitleRow, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryArgb } };
 
-  ws.mergeCells(recapTitleRow, 7, recapTitleRow, 12);
+  ws.mergeCells(recapTitleRow, 7, recapTitleRow, 9);
   ws.getCell(recapTitleRow, 7).value = 'REMISE COMMERCIALE';
   ws.getCell(recapTitleRow, 7).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
   ws.getCell(recapTitleRow, 7).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -222,46 +231,45 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   ws.getRow(recapTitleRow).height = 24;
   r++;
 
-  // Headers
+  // Headers récap (cols 1-5)
   const headersRow = ws.getRow(r);
   ['Type', 'Désignation', 'PUHT', 'Qté', 'PTHT'].forEach(
     (h, i) => (headersRow.getCell(i + 1).value = h),
   );
-  // Header row Remise: 4 colonnes fusionnées sur 7..12
-  headersRow.getCell(7).value = 'Mois offerts';
-  headersRow.getCell(8).value = 'Solde contrat';
-  headersRow.getCell(9).value = 'Total mat+inst+FAS+cadeaux';
-  ws.mergeCells(r, 9, r, 10);
-  headersRow.getCell(11).value = 'TOTAL';
-  ws.mergeCells(r, 11, r, 12);
   styleHeaderRow(headersRow, primaryArgb);
   r++;
 
-  const remiseValuesRow = r;
-  // Remise values (one row only)
-  ws.getCell(remiseValuesRow, 7).value = eur(input.remiseMoisOffert);
-  ws.getCell(remiseValuesRow, 7).alignment = { horizontal: 'right' };
-  ws.getCell(remiseValuesRow, 8).value = eur(input.remiseSoldeContrat);
-  ws.getCell(remiseValuesRow, 8).alignment = { horizontal: 'right' };
-  ws.getCell(remiseValuesRow, 9).value = eur(input.remiseTotalPonctuel);
-  ws.getCell(remiseValuesRow, 9).alignment = { horizontal: 'right' };
-  ws.mergeCells(remiseValuesRow, 9, remiseValuesRow, 10);
-  ws.getCell(remiseValuesRow, 11).value = eur(input.remiseTotal);
-  ws.getCell(remiseValuesRow, 11).alignment = { horizontal: 'right' };
-  ws.mergeCells(remiseValuesRow, 11, remiseValuesRow, 12);
-  // style remise values row
-  for (let c = 7; c <= 12; c++) {
-    const cell = ws.getCell(remiseValuesRow, c);
-    cell.font = { size: 10, bold: c === 11 || c === 12 };
-    cell.fill = c === 11 || c === 12
-      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_BG } }
-      : { type: 'pattern', pattern: 'solid', fgColor: { argb: ALT_BG } };
-    cell.border = thinBorder();
-  }
-  ws.getRow(remiseValuesRow).height = 22;
+  // ── REMISE COMMERCIALE verticale : libellé (col 7-8 fusionnées) | valeur (col 9) ──
+  const remiseStartRow = recapTitleRow + 1;
+  const remiseRows: Array<{ label: string; value: number; isTotal?: boolean }> = [
+    { label: 'Mois offerts', value: input.remiseMoisOffert },
+    { label: 'Solde contrat', value: input.remiseSoldeContrat },
+    { label: 'Total mat+inst+FAS+cadeaux', value: input.remiseTotalPonctuel },
+    { label: 'TOTAL', value: input.remiseTotal, isTotal: true },
+  ];
+  remiseRows.forEach((rr, idx) => {
+    const rowIdx = remiseStartRow + idx;
+    ws.mergeCells(rowIdx, 7, rowIdx, 8);
+    ws.getCell(rowIdx, 7).value = rr.label;
+    ws.getCell(rowIdx, 7).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+    ws.getCell(rowIdx, 9).value = eur(rr.value);
+    ws.getCell(rowIdx, 9).alignment = { horizontal: 'right', vertical: 'middle' };
+    for (const c of [7, 8, 9]) {
+      const cell = ws.getCell(rowIdx, c);
+      cell.font = { size: 10, bold: !!rr.isTotal };
+      cell.border = thinBorder();
+      if (rr.isTotal) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_BG } };
+      } else if (idx % 2 === 1) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ALT_BG } };
+      }
+    }
+    ws.getRow(rowIdx).height = 20;
+  });
+  const remiseLastRow = remiseStartRow + remiseRows.length - 1;
 
-  // Recap lines (start at same row as remise values)
-  let recapR = remiseValuesRow;
+  // Recap lines (start at same row as remise values = recapTitleRow + 2)
+  let recapR = r;
   input.recapLines.forEach((line, idx) => {
     const row = ws.getRow(recapR);
     row.getCell(1).value = recapTypeLabel(line.type);
@@ -301,7 +309,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   recapR++;
 
   // Footer
-  const footerR = Math.max(recapR, remiseValuesRow + 1) + 2;
+  const footerR = Math.max(recapR, remiseLastRow + 1) + 2;
   ws.getCell(footerR, 1).value = `Document généré par ${input.companyName} — ${input.dateProposition}`;
   ws.getCell(footerR, 1).font = { italic: true, size: 9, color: { argb: 'FF888888' } };
   ws.mergeCells(footerR, 1, footerR, 12);

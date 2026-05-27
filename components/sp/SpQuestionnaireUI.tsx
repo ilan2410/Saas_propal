@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -125,7 +125,14 @@ function getLoopItemsFromSa(
 
 function formatReponseText(valeur: SpQuestionReponse['valeur']): string {
   if (typeof valeur === 'boolean') return valeur ? 'Oui' : 'Non';
-  if (Array.isArray(valeur)) return valeur.join(', ');
+  if (typeof valeur === 'string') {
+    if (valeur === FREE_ENTRY_MARKER) return FREE_ENTRY_LABEL;
+    return valeur;
+  }
+  if (Array.isArray(valeur)) {
+    const parts = valeur.map((v) => (v === FREE_ENTRY_MARKER ? FREE_ENTRY_LABEL : v));
+    return parts.join(', ');
+  }
   if (typeof valeur === 'object' && valeur !== null) {
     const a = valeur as SpAdresse;
     return [a.adresse, a.complement, `${a.code_postal} ${a.ville}`].filter(Boolean).join(', ');
@@ -230,16 +237,107 @@ function formatProduitFasTotalValue(value: string, quantity: string | number): s
   return `FAS ${total.toFixed(2).replace('.', ',')} €`;
 }
 
+// ── Saisie libre (option "Autre valeur") ──────────────────────────────────────
+const FREE_ENTRY_MARKER = '__libre__';
+const FREE_ENTRY_LABEL = 'Autre valeur';
+const FREE_ENTRY_CATEGORIES: { value: CatalogueCategorie; label: string }[] = [
+  { value: 'mobile', label: 'Mobile' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'fixe', label: 'Fixe' },
+  { value: 'cloud', label: 'Cloud' },
+  { value: 'equipement', label: 'Équipement' },
+  { value: 'cadeau', label: 'Cadeau' },
+  { value: 'installation', label: 'Installation' },
+];
+
+interface FreeEntryDraft {
+  label: string;
+  prix: string;
+  categorie: CatalogueCategorie;
+}
+
+function FreeEntryForm({
+  draft,
+  onChange,
+}: {
+  draft: FreeEntryDraft;
+  onChange: (next: FreeEntryDraft) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-600 shrink-0 w-24">Libellé :</label>
+        <input
+          type="text"
+          value={draft.label}
+          onChange={(e) => onChange({ ...draft, label: e.target.value })}
+          placeholder="Ex: Forfait sur-mesure"
+          className="h-7 flex-1 text-sm border border-gray-300 rounded px-2"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-600 shrink-0 w-24">Prix (€) :</label>
+        <input
+          type="number" min="0" step="0.01"
+          value={draft.prix}
+          onChange={(e) => onChange({ ...draft, prix: e.target.value })}
+          placeholder="0"
+          className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-600 shrink-0 w-24">Catégorie :</label>
+        <select
+          value={draft.categorie}
+          onChange={(e) => onChange({ ...draft, categorie: e.target.value as CatalogueCategorie })}
+          className="h-7 text-sm border border-gray-300 rounded px-2 bg-white"
+        >
+          {FREE_ENTRY_CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function isValidFreeEntry(draft: FreeEntryDraft | null): draft is FreeEntryDraft {
+  if (!draft) return false;
+  if (!draft.label.trim()) return false;
+  const prix = Number(draft.prix);
+  return Number.isFinite(prix) && prix >= 0;
+}
+
+function buildFreeEntryReponses(
+  instanceId: string,
+  draft: FreeEntryDraft,
+): SpQuestionReponse[] {
+  const produit: SpProduitLibre = {
+    label: draft.label.trim(),
+    prix: Number(draft.prix) || 0,
+    categorie: draft.categorie,
+  };
+  return [{ question_id: 'libre_' + instanceId, valeur: JSON.stringify(produit) }];
+}
+
 function CatalogueMultipleChoiceInput({
   products,
   onSubmit,
   display = 'buttons',
+  allowFreeEntry = false,
 }: {
   products: CatalogueProduit[];
   onSubmit: (selectedNames: string[], extraReponses?: SpQuestionReponse[]) => void;
   display?: 'buttons' | 'select';
+  allowFreeEntry?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
+  const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>({
+    label: '',
+    prix: '',
+    categorie: 'equipement',
+  });
   const [search, setSearch] = useState('');
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -341,7 +439,18 @@ function CatalogueMultipleChoiceInput({
         </div>
       )}
 
-      {selectedProducts.length > 0 && (
+      {allowFreeEntry && (
+        <label className="flex items-center gap-2 text-sm font-medium text-blue-800 cursor-pointer px-1">
+          <input
+            type="checkbox"
+            checked={freeEntryEnabled}
+            onChange={(e) => setFreeEntryEnabled(e.target.checked)}
+          />
+          {FREE_ENTRY_LABEL} (saisie libre)
+        </label>
+      )}
+
+      {(selectedProducts.length > 0 || (allowFreeEntry && freeEntryEnabled)) && (
         <div className="space-y-2 p-3 bg-white border border-gray-200 rounded-lg">
           {selectedProducts.map((p) => (
             <div key={p.nom} className="space-y-2 rounded-md border border-gray-100 px-2 py-2">
@@ -410,7 +519,16 @@ function CatalogueMultipleChoiceInput({
               )}
             </div>
           ))}
-          <Button size="sm" onClick={() => {
+          {allowFreeEntry && freeEntryEnabled && (
+            <div className="rounded-md border border-blue-200 bg-blue-50/40 px-3 py-2">
+              <p className="text-xs font-medium text-blue-800 mb-1">{FREE_ENTRY_LABEL}</p>
+              <FreeEntryForm draft={freeEntryDraft} onChange={setFreeEntryDraft} />
+            </div>
+          )}
+          <Button
+            size="sm"
+            disabled={selectedProducts.length === 0 && !(allowFreeEntry && freeEntryEnabled && isValidFreeEntry(freeEntryDraft))}
+            onClick={() => {
             const names = selectedProducts.map((p) => p.nom);
             const fasMap: Record<string, string> = {};
             const prixMap: Record<string, string> = {};
@@ -437,9 +555,17 @@ function CatalogueMultipleChoiceInput({
             if (Object.keys(quantiteMap).length > 0) {
               extraReponses.push({ question_id: '__quantite_placeholder__', valeur: JSON.stringify(quantiteMap) });
             }
+            if (allowFreeEntry && freeEntryEnabled && isValidFreeEntry(freeEntryDraft)) {
+              names.push(FREE_ENTRY_MARKER);
+              extraReponses.push({ question_id: '__libre_placeholder__', valeur: JSON.stringify({
+                label: freeEntryDraft.label.trim(),
+                prix: Number(freeEntryDraft.prix) || 0,
+                categorie: freeEntryDraft.categorie,
+              } satisfies SpProduitLibre) });
+            }
             onSubmit(names, extraReponses.length > 0 ? extraReponses : undefined);
           }}>
-            Valider ({selected.size} sélectionné{selected.size > 1 ? 's' : ''})
+            Valider ({selected.size + (allowFreeEntry && freeEntryEnabled && isValidFreeEntry(freeEntryDraft) ? 1 : 0)} sélectionné{(selected.size + (allowFreeEntry && freeEntryEnabled && isValidFreeEntry(freeEntryDraft) ? 1 : 0)) > 1 ? 's' : ''})
           </Button>
         </div>
       )}
@@ -588,6 +714,10 @@ export function SpQuestionnaireUI({
     quantityValue: string;
     prixEditing: boolean;
   } | null>(null);
+  const [pendingFreeEntry, setPendingFreeEntry] = useState<{
+    instanceId: string;
+    draft: FreeEntryDraft;
+  } | null>(null);
   const [catalogueSearch, setCatalogueSearch] = useState('');
   const [editingDiscountFor, setEditingDiscountFor] = useState<string | null>(null);
   const [discountPrixOverrides, setDiscountPrixOverrides] = useState<Record<string, string>>({});
@@ -616,6 +746,7 @@ export function SpQuestionnaireUI({
     setShownByConsequence(new Set());
     setDynamicFilters(new Map());
     setPendingCatalogueSelection(null);
+    setPendingFreeEntry(null);
     setHistory([]);
     hasReportedCompletion.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -892,6 +1023,7 @@ export function SpQuestionnaireUI({
     setInputValue('');
     setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
     setPendingCatalogueSelection(null);
+    setPendingFreeEntry(null);
   };
 
   const skipCurrentQuestion = () => {
@@ -911,6 +1043,7 @@ export function SpQuestionnaireUI({
     setCatalogueSearch('');
     setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
     setPendingCatalogueSelection(null);
+    setPendingFreeEntry(null);
 
     const nextIdx = findNextVisibleIndex(currentIdx, reponses, hiddenByConsequence, shownByConsequence);
     if (nextIdx < expandedQuestions.length) {
@@ -1281,23 +1414,20 @@ export function SpQuestionnaireUI({
                 </div>
               )}
               {currentQuestion.options_libres && (
-                <div className="flex gap-2 w-full mt-1">
-                  <input
-                    value={inputValue}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
-                    placeholder="Autre..."
-                    className="h-8 text-sm border border-gray-300 rounded px-2 flex-1"
-                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                      if (e.key === 'Enter' && inputValue.trim()) {
-                        recordAnswer(currentExpanded.instanceId, inputValue.trim());
-                        setInputValue('');
-                      }
-                    }}
-                  />
-                  <Button size="sm" onClick={() => {
-                    if (inputValue.trim()) { recordAnswer(currentExpanded.instanceId, inputValue.trim()); setInputValue(''); }
-                  }}>Valider</Button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingFreeEntry({
+                    instanceId: currentExpanded.instanceId,
+                    draft: { label: '', prix: '', categorie: 'equipement' },
+                  })}
+                  className={`text-left px-3 py-2 rounded-md border border-dashed transition-colors ${
+                    pendingFreeEntry?.instanceId === currentExpanded.instanceId
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-blue-700 border-blue-300 hover:border-blue-500'
+                  }`}
+                >
+                  <div className="text-sm font-medium">{FREE_ENTRY_LABEL}</div>
+                </button>
               )}
             </div>
           )}
@@ -1314,10 +1444,20 @@ export function SpQuestionnaireUI({
                 />
               )}
               <select
-                value={pendingCatalogueSelection?.instanceId === currentExpanded.instanceId && currentCatalogueOptions.length > 0
-                  ? pendingCatalogueSelection.product.nom : ''}
+                value={(() => {
+                  if (pendingCatalogueSelection?.instanceId === currentExpanded.instanceId) return pendingCatalogueSelection.product.nom;
+                  if (pendingFreeEntry?.instanceId === currentExpanded.instanceId) return FREE_ENTRY_MARKER;
+                  return '';
+                })()}
                 onChange={(e) => {
                   if (!e.target.value) return;
+                  if (e.target.value === FREE_ENTRY_MARKER) {
+                    setPendingFreeEntry({
+                      instanceId: currentExpanded.instanceId,
+                      draft: { label: '', prix: '', categorie: 'equipement' },
+                    });
+                    return;
+                  }
                   if (currentCatalogueOptions.length > 0) {
                     const p = currentCatalogueOptions.find((prod) => prod.nom === e.target.value);
                     if (p) setPendingCatalogueSelection({
@@ -1343,6 +1483,9 @@ export function SpQuestionnaireUI({
                   : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
+                {currentQuestion.options_libres && (
+                  <option value={FREE_ENTRY_MARKER}>{FREE_ENTRY_LABEL}</option>
+                )}
               </select>
             </div>
           )}
@@ -1351,6 +1494,7 @@ export function SpQuestionnaireUI({
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
+                allowFreeEntry={!!currentQuestion.options_libres}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -1361,6 +1505,9 @@ export function SpQuestionnaireUI({
                     }
                     if (r.question_id === '__quantite_placeholder__') {
                       return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__libre_placeholder__') {
+                      return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
                     }
                     return r;
                   });
@@ -1380,6 +1527,7 @@ export function SpQuestionnaireUI({
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
                 display="select"
+                allowFreeEntry={!!currentQuestion.options_libres}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -1390,6 +1538,9 @@ export function SpQuestionnaireUI({
                     }
                     if (r.question_id === '__quantite_placeholder__') {
                       return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__libre_placeholder__') {
+                      return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
                     }
                     return r;
                   });
@@ -1934,9 +2085,41 @@ export function SpQuestionnaireUI({
                 });
                 recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, extras.length > 0 ? extras : undefined);
                 setPendingCatalogueSelection(null);
+                setPendingFreeEntry(null);
               }}>
                 Valider
               </Button>
+            </div>
+          )}
+
+          {/* Zone de confirmation pour saisie libre ("Autre valeur") */}
+          {pendingFreeEntry?.instanceId === currentExpanded.instanceId && (
+            <div className="mt-1 p-3 bg-white border border-blue-300 rounded-lg space-y-3">
+              <p className="text-sm font-medium text-blue-900">{FREE_ENTRY_LABEL}</p>
+              <FreeEntryForm
+                draft={pendingFreeEntry.draft}
+                onChange={(next) => setPendingFreeEntry((prev) => prev ? { ...prev, draft: next } : null)}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={!isValidFreeEntry(pendingFreeEntry.draft)}
+                  onClick={() => {
+                    if (!isValidFreeEntry(pendingFreeEntry.draft)) return;
+                    recordAnswer(
+                      pendingFreeEntry.instanceId,
+                      FREE_ENTRY_MARKER,
+                      buildFreeEntryReponses(pendingFreeEntry.instanceId, pendingFreeEntry.draft),
+                    );
+                    setPendingFreeEntry(null);
+                  }}
+                >
+                  Valider
+                </Button>
+                <Button size="sm" variant="outline" className="bg-white" onClick={() => setPendingFreeEntry(null)}>
+                  Annuler
+                </Button>
+              </div>
             </div>
           )}
 

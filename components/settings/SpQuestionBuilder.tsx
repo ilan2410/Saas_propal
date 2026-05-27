@@ -983,7 +983,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
               <label htmlFor="options_libres" className="text-sm text-gray-700">
                 Autoriser une saisie libre en complément du catalogue
               </label>
-              <InfoIcon tooltip="Si activé, l'utilisateur peut taper une valeur qui ne figure pas dans le catalogue (ex: un produit hors-catalogue)." />
+              <InfoIcon tooltip="Si activé, l'utilisateur peut ajouter un produit hors-catalogue en saisissant son libellé, son prix (ponctuel) et sa catégorie. Il apparaît alors dans le panier temps réel et dans les exports SA/SP." />
             </div>
           )}
 

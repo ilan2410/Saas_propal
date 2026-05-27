@@ -130,14 +130,26 @@ export async function generateComparatifSaSpWord(input: ExportSaSpInput): Promis
       </tr>
       ${input.spLines
         .map(
-          (l, i) => `<tr>
-            ${dataCell(l.operateur, { alt: i % 2 === 1 })}
-            ${dataCell(l.quantite, { alt: i % 2 === 1, align: 'center' })}
-            ${dataCell(l.offre, { alt: i % 2 === 1 })}
-            ${dataCell(l.numero, { alt: i % 2 === 1 })}
-            ${dataCell(eur(l.prixUnitaire), { alt: i % 2 === 1, align: 'right' })}
-            ${dataCell(eur(l.prixTotal), { alt: i % 2 === 1, align: 'right' })}
-          </tr>`,
+          (l, i) => {
+            const isRemise = l.isRemiseLine;
+            const prixCell = isRemise
+              ? `<td style="border:1px solid ${borderColor};padding:5px 8px;font-size:10pt;text-align:right;font-style:italic;color:#666;">—</td>`
+              : dataCell(eur(l.prixUnitaire), { alt: i % 2 === 1, align: 'right' });
+            const prixTotalCell = isRemise
+              ? `<td style="border:1px solid ${borderColor};padding:5px 8px;font-size:10pt;text-align:right;font-style:italic;color:#666;">${esc(eur(l.prixTotal))}</td>`
+              : dataCell(eur(l.prixTotal), { alt: i % 2 === 1, align: 'right' });
+            const offreCell = isRemise
+              ? `<td style="border:1px solid ${borderColor};padding:5px 8px;font-size:10pt;font-style:italic;color:#666;">${esc(l.offre)}</td>`
+              : dataCell(l.offre, { alt: i % 2 === 1 });
+            return `<tr>
+              ${dataCell(l.operateur, { alt: i % 2 === 1 })}
+              ${dataCell(l.quantite, { alt: i % 2 === 1, align: 'center' })}
+              ${offreCell}
+              ${dataCell(l.numero, { alt: i % 2 === 1 })}
+              ${prixCell}
+              ${prixTotalCell}
+            </tr>`;
+          },
         )
         .join('')}
       <tr>

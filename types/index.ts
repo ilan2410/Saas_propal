@@ -484,6 +484,17 @@ export interface SpQuestionReponse {
   valeur: string | boolean | string[] | SpAdresse;
 }
 
+/**
+ * Saisie libre (option "Autre valeur") associée à une question SP catalogue
+ * lorsque `options_libres === true`. Toujours ponctuel.
+ * Stocké sous question_id = `libre_<instanceId>`, valeur = JSON stringifié.
+ */
+export interface SpProduitLibre {
+  label: string;
+  prix: number;
+  categorie: CatalogueCategorie;
+}
+
 export interface SpAdresse {
   adresse: string;
   complement?: string;
@@ -743,6 +754,8 @@ export interface SpExportLine {
   numero: string;
   prixUnitaire: number;
   prixTotal: number;
+  /** true si cette ligne est la ligne synthétique "Remise" (non un produit). */
+  isRemiseLine?: boolean;
 }
 
 export type RecapExportType = 'materiel' | 'installation' | 'cadeau' | 'fas' | 'marge';
