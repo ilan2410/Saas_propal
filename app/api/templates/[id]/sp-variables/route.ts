@@ -30,20 +30,63 @@ const SP_STANDARD_VARIABLES = [
   'sp_total_bdc_materiel_ht', 'sp_total_cadeaux_ht', 'sp_total_complet',
 ];
 
+function buildQuestionDerivedVariables(
+  questions: SpQuestion[],
+  existingCustom: SpVariableCustom[],
+): SpVariableCustom[] {
+  const existingKeys = new Set(existingCustom.map((variable) => variable.key));
+  const derived = new Map<string, SpVariableCustom>();
+
+  for (const question of questions) {
+    for (const consequence of question.consequences ?? []) {
+      const variableKey = consequence.variable_cible?.trim();
+      if (
+        consequence.type !== 'renseigner_variable' ||
+        !variableKey ||
+        existingKeys.has(variableKey) ||
+        SP_STANDARD_VARIABLES.includes(variableKey) ||
+        derived.has(variableKey)
+      ) {
+        continue;
+      }
+
+      const questionLabel = question.libelle?.trim() || 'question SP';
+      derived.set(variableKey, {
+        key: variableKey,
+        label: questionLabel,
+        description: `Variable alimentee par la question SP "${questionLabel}".`,
+        type: 'string',
+      });
+    }
+  }
+
+  return Array.from(derived.values());
+}
+
 export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data: template } = await supabase
-    .from('proposition_templates')
-    .select('file_config')
-    .eq('id', id)
-    .single();
+  const [{ data: template }, { data: org }] = await Promise.all([
+    supabase
+      .from('proposition_templates')
+      .select('file_config')
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('organizations')
+      .select('sp_questions')
+      .eq('id', user.id)
+      .single(),
+  ]);
 
   const cfg = (template?.file_config ?? {}) as WordConfig;
-  const custom = cfg.spVariablesCustom ?? [];
+  const storedCustom = cfg.spVariablesCustom ?? [];
+  const templateQuestions = ((org?.sp_questions ?? []) as SpQuestion[]).filter((question) => question.template_id === id);
+  const derivedCustom = buildQuestionDerivedVariables(templateQuestions, storedCustom);
+  const custom = [...storedCustom, ...derivedCustom];
 
   return NextResponse.json({ standard: SP_STANDARD_VARIABLES, custom });
 }
@@ -59,18 +102,27 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'key et label requis' }, { status: 400 });
   }
 
-  const { data: template } = await supabase
-    .from('proposition_templates')
-    .select('file_config')
-    .eq('id', id)
-    .single();
+  const [{ data: template }, { data: org }] = await Promise.all([
+    supabase
+      .from('proposition_templates')
+      .select('file_config')
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('organizations')
+      .select('sp_questions')
+      .eq('id', user.id)
+      .single(),
+  ]);
 
   if (!template) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
 
   const cfg = (template.file_config ?? {}) as WordConfig;
   const existing: SpVariableCustom[] = cfg.spVariablesCustom ?? [];
+  const templateQuestions = ((org?.sp_questions ?? []) as SpQuestion[]).filter((question) => question.template_id === id);
+  const derivedKeys = new Set(buildQuestionDerivedVariables(templateQuestions, existing).map((variable) => variable.key));
 
-  if (existing.some((v) => v.key === body.key)) {
+  if (existing.some((v) => v.key === body.key) || derivedKeys.has(body.key)) {
     return NextResponse.json({ error: 'Cette cl\u00e9 existe d\u00e9j\u00e0' }, { status: 409 });
   }
 
@@ -129,8 +181,10 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   const cfg = (template.file_config ?? {}) as WordConfig;
   const existing: SpVariableCustom[] = cfg.spVariablesCustom ?? [];
+  const templateQuestions = ((org?.sp_questions ?? []) as SpQuestion[]).filter((question) => question.template_id === id);
+  const derivedKeys = new Set(buildQuestionDerivedVariables(templateQuestions, existing).map((variable) => variable.key));
 
-  if (oldKey !== newKey && existing.some((v) => v.key === newKey)) {
+  if (oldKey !== newKey && (existing.some((v) => v.key === newKey) || derivedKeys.has(newKey))) {
     return NextResponse.json({ error: 'Cette clé existe déjà' }, { status: 409 });
   }
 
