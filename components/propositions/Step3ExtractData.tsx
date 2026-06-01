@@ -16,6 +16,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
+import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -294,9 +295,7 @@ export function Step3ExtractData({
                   </div>
                 </div>
                 <div className="p-6">
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-                    {resume}
-                  </pre>
+                  <SaResumeRenderer text={resume} donneesExtraites={extractedData} />
                 </div>
               </div>
             )}

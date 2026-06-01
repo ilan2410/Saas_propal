@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
+import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -197,9 +198,9 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <pre className="text-xs text-green-900 overflow-auto max-h-64 whitespace-pre-wrap leading-relaxed">
-              {saResumeText}
-            </pre>
+            <div className="overflow-auto max-h-80">
+              <SaResumeRenderer text={saResumeText} variant="compact" donneesExtraites={saResume} />
+            </div>
           </div>
         )}
       </div>

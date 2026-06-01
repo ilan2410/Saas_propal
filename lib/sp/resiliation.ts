@@ -43,6 +43,7 @@ export interface SpResiliationGroupeCalcul {
   type: ResiliationGroupType;
   libelle: string;
   mois_restants: number | null;
+  mois_avant_preavis: number | null;
   base_mensuelle: number | null;
   sous_total: number | null;
   methode: string;
@@ -60,6 +61,7 @@ export interface SpResiliationEstimation {
   explication_fiabilite: string;
   date_reference: string;
   mois_restants: number | null;
+  mois_restants_avant_preavis: number | null;
   preavis_mois: number;
   base_mensuelle: number | null;
   mensualites_restantes: number | null;
@@ -89,6 +91,7 @@ interface EngagementEvidence {
   endDate: Date;
   endDateLabel: string;
   moisRestants: number;
+  moisAvantPreavis: number;
 }
 
 interface MonthlyItemEvidence {
@@ -112,7 +115,7 @@ export const DEFAULT_SP_CONFIG_RESILIATION: SpConfigResiliation = {
   elements_pris_en_compte: {
     lignes_mensuelles: true,
     abonnements_mensuels: true,
-    locations_mensuelles: false,
+    locations_mensuelles: true,
     frais_resiliation_fixes: true,
     penalites: true,
     frais_materiel: true,
@@ -177,6 +180,59 @@ function formatMoney(value: number | null): string {
   return `${value.toFixed(2)} EUR`;
 }
 
+function normalizeLabel(value: string): string {
+  return value.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function dedupeMonthlyItemKey(item: MonthlyItemEvidence): string {
+  return `${normalizeLabel(item.label)}|${item.montant.toFixed(2)}`;
+}
+
+function isMonthlyItemOverlap(
+  item: MonthlyItemEvidence,
+  locationKeys: Set<string>,
+  locationLabelsByAmount: Map<string, Set<string>>,
+): boolean {
+  const itemKey = dedupeMonthlyItemKey(item);
+  if (locationKeys.has(itemKey)) return true;
+
+  const amountKey = item.montant.toFixed(2);
+  const labels = locationLabelsByAmount.get(amountKey);
+  if (!labels) return false;
+
+  const normalizedLabel = normalizeLabel(item.label);
+  for (const locationLabel of labels) {
+    if (normalizedLabel.includes(locationLabel) || locationLabel.includes(normalizedLabel)) return true;
+  }
+  return false;
+}
+
+function selectMonthlyItemsForResiliation(
+  lineItems: MonthlyItemEvidence[],
+  abonnementItems: MonthlyItemEvidence[],
+  locationItems: MonthlyItemEvidence[],
+): MonthlyItemEvidence[] {
+  const abonnementPrimary = abonnementItems.length > 0;
+  const locationKeys = new Set<string>();
+  const locationLabelsByAmount = new Map<string, Set<string>>();
+
+  locationItems.forEach((item) => {
+    locationKeys.add(dedupeMonthlyItemKey(item));
+    const amountKey = item.montant.toFixed(2);
+    const labels = locationLabelsByAmount.get(amountKey) ?? new Set<string>();
+    labels.add(normalizeLabel(item.label));
+    locationLabelsByAmount.set(amountKey, labels);
+  });
+
+  const filteredAbonnements = abonnementItems.filter(
+    (item) => !isMonthlyItemOverlap(item, locationKeys, locationLabelsByAmount),
+  );
+
+  return abonnementPrimary
+    ? [...filteredAbonnements, ...locationItems]
+    : [...lineItems, ...locationItems];
+}
+
 function normalizeComparableText(value: string | null | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = value
@@ -227,6 +283,12 @@ function monthDiff(referenceDate: Date, endDate: Date, preavisMois: number): num
   return Math.max(0, endValue - startValue - preavisMois);
 }
 
+function monthDiffBeforePreavis(referenceDate: Date, endDate: Date): number {
+  const startValue = referenceDate.getFullYear() * 12 + referenceDate.getMonth();
+  const endValue = endDate.getFullYear() * 12 + endDate.getMonth();
+  return Math.max(0, endValue - startValue);
+}
+
 function joinLabelParts(parts: Array<string | undefined | null>): string {
   return parts.filter((part): part is string => Boolean(part && part.trim())).join(' - ');
 }
@@ -264,19 +326,24 @@ function deriveMoisRestants(
   items: unknown,
   preavisMois: number,
   referenceDate: Date,
-): { mois: number | null; heterogene: boolean; values: number[] } {
-  if (!Array.isArray(items)) return { mois: null, heterogene: false, values: [] };
+): { mois: number | null; moisAvantPreavis: number | null; heterogene: boolean; values: number[]; valuesAvantPreavis: number[] } {
+  if (!Array.isArray(items)) return { mois: null, moisAvantPreavis: null, heterogene: false, values: [], valuesAvantPreavis: [] };
   const values: number[] = [];
+  const valuesAvantPreavis: number[] = [];
   for (const item of items) {
     if (!isRecord(item)) continue;
     const endDate = pickDateFromRecord(item).date;
     if (!endDate) continue;
+    valuesAvantPreavis.push(monthDiffBeforePreavis(referenceDate, endDate));
     values.push(monthDiff(referenceDate, endDate, preavisMois));
   }
-  if (values.length === 0) return { mois: null, heterogene: false, values: [] };
+  if (values.length === 0) return { mois: null, moisAvantPreavis: null, heterogene: false, values: [], valuesAvantPreavis: [] };
   const unique = new Set(values);
   const average = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-  return { mois: average, heterogene: unique.size > 1, values };
+  const averageAvantPreavis = Math.round(
+    valuesAvantPreavis.reduce((sum, value) => sum + value, 0) / valuesAvantPreavis.length,
+  );
+  return { mois: average, moisAvantPreavis: averageAvantPreavis, heterogene: unique.size > 1, values, valuesAvantPreavis };
 }
 
 function buildElementsConfig(config?: SpConfigResiliation): Required<SpConfigResiliationElements> {
@@ -321,6 +388,7 @@ function buildEngagementEvidences(
       endDate: pickedDate.date,
       endDateLabel: pickedDate.label,
       moisRestants: monthDiff(referenceDate, pickedDate.date, preavisMois),
+      moisAvantPreavis: monthDiffBeforePreavis(referenceDate, pickedDate.date),
     });
   });
 
@@ -481,9 +549,15 @@ function buildGroupCalculations(
     const moisValues = datedItems
       .map((item) => (item.endDate ? monthDiff(referenceDate, item.endDate, preavisMois) : null))
       .filter((value): value is number => value !== null);
+    const moisValuesAvantPreavis = datedItems
+      .map((item) => (item.endDate ? monthDiffBeforePreavis(referenceDate, item.endDate) : null))
+      .filter((value): value is number => value !== null);
     const moisRestants = moisValues.length > 0
       ? Math.round(moisValues.reduce((sum, value) => sum + value, 0) / moisValues.length)
       : bucket.engagement?.moisRestants ?? globalMoisRestants;
+    const moisAvantPreavis = moisValuesAvantPreavis.length > 0
+      ? Math.round(moisValuesAvantPreavis.reduce((sum, value) => sum + value, 0) / moisValuesAvantPreavis.length)
+      : bucket.engagement?.moisAvantPreavis ?? (moisRestants !== null ? moisRestants + preavisMois : null);
     const sousTotal = moisRestants !== null ? roundMoney(baseMensuelle * moisRestants) : null;
 
     groups.push({
@@ -491,12 +565,13 @@ function buildGroupCalculations(
       type: bucket.type,
       libelle: bucket.label || items[0]?.groupLabel || 'Groupe',
       mois_restants: moisRestants,
+      mois_avant_preavis: moisAvantPreavis,
       base_mensuelle: baseMensuelle,
       sous_total: sousTotal,
       methode: bucket.engagement?.contractLabel
-        ? `${bucket.engagement.contractLabel}: ${moisRestants !== null ? `${moisRestants} mois restants x ${formatMoney(baseMensuelle)}` : `base mensuelle ${formatMoney(baseMensuelle)}`}`
+        ? `${bucket.engagement.contractLabel}: ${moisRestants !== null ? `${moisRestants} mois restants${moisAvantPreavis !== null ? ` (${moisAvantPreavis} - ${preavisMois} de preavis)` : ''} x ${formatMoney(baseMensuelle)}` : `base mensuelle ${formatMoney(baseMensuelle)}`}`
         : moisRestants !== null
-          ? `${moisRestants} mois restants x ${formatMoney(baseMensuelle)}`
+          ? `${moisRestants} mois restants${moisAvantPreavis !== null ? ` (${moisAvantPreavis} - ${preavisMois} de preavis)` : ''} x ${formatMoney(baseMensuelle)}`
           : `Base mensuelle ${formatMoney(baseMensuelle)} sans mois restants fiables`,
       preuves: [
         ...(bucket.engagement ? [{
@@ -505,6 +580,7 @@ function buildGroupCalculations(
           label: bucket.engagement.contractLabel ?? bucket.engagement.libelle,
           valeur: bucket.engagement.endDateLabel,
           contexte: joinLabelParts([
+            `${bucket.engagement.moisRestants} mois restants (${bucket.engagement.moisAvantPreavis} - ${preavisMois} de preavis)`,
             bucket.engagement.engagementRef ? `engagement ${bucket.engagement.engagementRef}` : null,
             bucket.engagement.contexte,
           ]) || undefined,
@@ -534,6 +610,7 @@ function buildGroupCalculations(
       type: 'engagement',
       libelle: engagement.contractLabel ?? engagement.libelle,
       mois_restants: engagement.moisRestants,
+      mois_avant_preavis: engagement.moisAvantPreavis,
       base_mensuelle: null,
       sous_total: null,
       methode: engagement.engagementRef
@@ -546,6 +623,7 @@ function buildGroupCalculations(
           label: engagement.contractLabel ?? 'Fin d\'engagement',
           valeur: engagement.endDateLabel,
           contexte: joinLabelParts([
+            `${engagement.moisRestants} mois restants (${engagement.moisAvantPreavis} - ${preavisMois} de preavis)`,
             engagement.engagementRef ? `engagement ${engagement.engagementRef}` : null,
             engagement.contexte,
           ]) || undefined,
@@ -623,7 +701,8 @@ export function estimateResiliationFromSA(
   const engagementEvidences = buildEngagementEvidences(situation.engagements, referenceDate, preavisMois);
   const moisRestantsSource = normalizeInteger(indemnites.mois_restants_source);
   const moisDerives = deriveMoisRestants(situation.engagements, preavisMois, referenceDate);
-  const moisRestants = moisRestantsSource ?? moisDerives.mois;
+  const moisRestants = moisDerives.mois ?? moisRestantsSource;
+  const moisRestantsAvantPreavis = moisDerives.moisAvantPreavis ?? (moisRestants !== null ? moisRestants + preavisMois : null);
 
   const lineItems = elements.lignes_mensuelles
     ? collectMonthlyItems(situation.lignes, 'ligne', ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif'])
@@ -634,13 +713,21 @@ export function estimateResiliationFromSA(
   const locationItems = elements.locations_mensuelles
     ? collectMonthlyItems(situation.locations, 'location', ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif'])
     : [];
-  const monthlyItems = [...lineItems, ...abonnementItems, ...locationItems];
+  const monthlyItems = selectMonthlyItemsForResiliation(lineItems, abonnementItems, locationItems);
 
   const baseMensuelleSource = normalizeMoney(indemnites.base_mensuelle_source);
   const baseMensuelleCalculee = monthlyItems.length > 0
     ? roundMoney(monthlyItems.reduce((sum, item) => sum + item.montant, 0))
     : null;
-  const baseMensuelle = baseMensuelleSource ?? baseMensuelleCalculee;
+  const baseMensuelle = baseMensuelleCalculee ?? baseMensuelleSource;
+
+  const groupesCalcul = buildGroupCalculations(monthlyItems, engagementEvidences, referenceDate, moisRestants, preavisMois);
+  const groupedMensualitesAvailable = groupesCalcul.some((group) => group.sous_total !== null);
+  const groupedMensualites = groupedMensualitesAvailable
+    ? roundMoney(
+        groupesCalcul.reduce((sum, group) => sum + (group.sous_total ?? 0), 0),
+      )
+    : null;
 
   const fraisResiliationFixesSource = normalizeMoney(indemnites.frais_resiliation_fixes);
   const penalitesSource = normalizeMoney(indemnites.penalites);
@@ -653,7 +740,9 @@ export function estimateResiliationFromSA(
   const servicesAnnexes = elements.services_annexes ? servicesAnnexesSource ?? 0 : 0;
 
   const mensualitesRestantes =
-    moisRestants !== null && baseMensuelle !== null
+    groupedMensualites !== null
+      ? groupedMensualites
+      : moisRestants !== null && baseMensuelle !== null
       ? roundMoney(moisRestants * baseMensuelle)
       : null;
 
@@ -717,8 +806,10 @@ export function estimateResiliationFromSA(
       montant: mensualitesRestantes,
       inclus: elements.lignes_mensuelles || elements.abonnements_mensuels || elements.locations_mensuelles,
       disponible: mensualitesRestantes !== null,
-      formule: mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null
-        ? `${moisRestants} mois x ${formatMoney(baseMensuelle)}`
+      formule: groupedMensualites !== null
+        ? 'Somme des sous-totaux par groupe engage'
+        : mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null
+        ? `${moisRestants} mois restants${moisRestantsAvantPreavis !== null ? ` (${moisRestantsAvantPreavis} - ${preavisMois} de preavis)` : ''} x ${formatMoney(baseMensuelle)}`
         : undefined,
     },
     {
@@ -779,8 +870,6 @@ export function estimateResiliationFromSA(
     },
   ];
 
-  const groupesCalcul = buildGroupCalculations(monthlyItems, engagementEvidences, referenceDate, moisRestants, preavisMois);
-
   const preuves: SpResiliationPreuve[] = [];
   if (montantSource !== null) {
     preuves.push({
@@ -799,7 +888,7 @@ export function estimateResiliationFromSA(
       valeur: engagement.endDateLabel,
       contexte: joinLabelParts([
         engagement.contexte,
-        `${engagement.moisRestants} mois restants après préavis`,
+        `${engagement.moisRestants} mois restants (${engagement.moisAvantPreavis} - ${preavisMois} de preavis)`,
       ]) || undefined,
       groupe_id: engagement.id,
     });
@@ -853,8 +942,10 @@ export function estimateResiliationFromSA(
   const details: string[] = [];
   details.push(`Date de référence figée: ${referenceDateLabel}`);
   details.push(`Source retenue: ${explainSourceRetenue(sourceRetenue)}`);
-  if (mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null) {
-    details.push(`Mensualités restantes: ${moisRestants} mois x ${formatMoney(baseMensuelle)} = ${formatMoney(mensualitesRestantes)}`);
+  if (groupedMensualites !== null) {
+    details.push(`Mensualités restantes: somme des groupes engagés = ${formatMoney(groupedMensualites)}`);
+  } else if (mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null) {
+    details.push(`Mensualités restantes: ${moisRestants} mois restants${moisRestantsAvantPreavis !== null ? ` (${moisRestantsAvantPreavis} - ${preavisMois} de preavis)` : ''} x ${formatMoney(baseMensuelle)} = ${formatMoney(mensualitesRestantes)}`);
   }
   if (elements.frais_resiliation_fixes) details.push(`Frais fixes: ${formatMoney(fraisResiliationFixesSource ?? 0)}`);
   if (elements.penalites) details.push(`Pénalités: ${formatMoney(penalitesSource ?? 0)}`);
@@ -865,7 +956,9 @@ export function estimateResiliationFromSA(
     ? 'Aucune estimation disponible'
     : sourceRetenue === 'source'
       ? `${formatMoney(montantRetenu)} retenus depuis la situation actuelle`
-      : mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null
+      : groupedMensualites !== null
+        ? `${groupesCalcul.filter((group) => group.sous_total !== null).length} groupe(s) engagé(s) + frais complémentaires`
+        : mensualitesRestantes !== null && moisRestants !== null && baseMensuelle !== null
         ? `${moisRestants} mois x ${formatMoney(baseMensuelle)}${estimableValues.length > 1 ? ' + frais complémentaires' : ''}`
         : 'Estimation partielle depuis la situation actuelle';
 
@@ -889,6 +982,7 @@ export function estimateResiliationFromSA(
     explication_fiabilite: explainFiabilite(fiabilite, sourceRetenue, motifsManquants, moisDerives.heterogene),
     date_reference: referenceDateLabel,
     mois_restants: moisRestants,
+    mois_restants_avant_preavis: moisRestantsAvantPreavis,
     preavis_mois: preavisMois,
     base_mensuelle: baseMensuelle,
     mensualites_restantes: mensualitesRestantes,

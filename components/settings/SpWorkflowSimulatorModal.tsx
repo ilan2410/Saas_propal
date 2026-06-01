@@ -5,6 +5,7 @@ import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
+import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 
 interface Props {
   questions: SpQuestion[];
@@ -222,9 +223,9 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <pre className="text-xs text-green-900 overflow-auto max-h-64 whitespace-pre-wrap leading-relaxed">
-                {(donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
-              </pre>
+              <div className="overflow-auto max-h-80"><SaResumeRenderer variant="compact" donneesExtraites={donneesExtraites} text={
+                (donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
+              /></div>
             </div>
           )}
 

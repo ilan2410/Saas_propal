@@ -17,8 +17,17 @@ export interface SaCartSummary {
   totalMensuel: number;
   /** true si le total mensuel provient des `totaux.total_solution_actuelle_*` extraits. */
   totalFromOfficiel: boolean;
+  /** true si le total a été réconcilié sur les montants « source » (réellement facturés). */
+  reconcileSource: boolean;
   hasData: boolean;
   details: SaCartLine[];
+}
+
+/** Libellé de la ligne ajoutée pour combler l'écart Source − Calculé. */
+export const SA_RESIDUAL_LABEL = 'Autres éléments (non détaillés)';
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function toNumber(value: unknown): number {
@@ -173,11 +182,48 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     }
   }
 
-  // ── 4. Total final ─────────────────────────────────────────────────
+  // ── 4. Réconciliation sur les montants « source » ─────────────────
+  // Le client paie le montant RÉELLEMENT facturé (= « source » sur la
+  // facture). La somme des lignes extraites (= « calculé ») peut être plus
+  // basse si une option/un service n'a pas été détaillé. On aligne donc les
+  // totaux sur la source et on ajoute une ligne résiduelle pour que la somme
+  // des lignes reste égale au total réel.
+  const totaux = isRecord(sa.totaux) ? sa.totaux : {};
+  const abosSource = toNumber(totaux.total_abonnements_source);
+  const locsSource = toNumber(totaux.total_locations_source);
+  const solutionSource = toNumber(totaux.total_solution_actuelle_source);
+  let reconcileSource = false;
+
+  if (abosSource > abonnementsTotal + 0.005) {
+    const residual = round2(abosSource - abonnementsTotal);
+    details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
+    abonnementsTotal = round2(abosSource);
+    reconcileSource = true;
+  }
+  if (locsSource > locationsTotal + 0.005) {
+    const residual = round2(locsSource - locationsTotal);
+    details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'location', montant: residual });
+    locationsTotal = round2(locsSource);
+    reconcileSource = true;
+  }
+
+  // ── 5. Total final ─────────────────────────────────────────────────
   // Quand `abonnements` est la source primaire, lignes ne sont pas comptées.
-  const totalMensuel = aboPrimary
+  let totalMensuel = aboPrimary
     ? abonnementsTotal + locationsTotal
     : lignesFixes + lignesMobiles + lignesInternet + abonnementsTotal + locationsTotal;
+
+  // Réconciliation au total solution « source » (écart résiduel non couvert
+  // par les écarts abonnements/locations ci-dessus).
+  if (solutionSource > totalMensuel + 0.005) {
+    const residual = round2(solutionSource - totalMensuel);
+    details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
+    abonnementsTotal = round2(abonnementsTotal + residual);
+    totalMensuel = round2(solutionSource);
+    reconcileSource = true;
+  } else {
+    totalMensuel = round2(totalMensuel);
+  }
 
   return {
     lignesFixes,
@@ -187,6 +233,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     locations: locationsTotal,
     totalMensuel,
     totalFromOfficiel: aboPrimary,
+    reconcileSource,
     hasData: details.length > 0 || totalMensuel > 0,
     details,
   };

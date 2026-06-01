@@ -24,6 +24,7 @@ import { ActionMenu } from '@/components/propositions/ActionMenu';
 import { CopyButton } from '@/components/propositions/CopyButton';
 import { ExportButton } from '@/components/propositions/ExportButton';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
+import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -482,9 +483,7 @@ export default async function PropositionDetailPage({
             </summary>
 
             <div className="p-6">
-              <pre className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-                {resume}
-              </pre>
+              <SaResumeRenderer text={resume} donneesExtraites={extractedDataRecord} />
             </div>
           </details>
         )}

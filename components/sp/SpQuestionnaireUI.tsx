@@ -145,6 +145,24 @@ function formatResiliationMoney(value: number | null | undefined): string {
   return `${value.toFixed(2)} EUR`;
 }
 
+function hasGroupedResiliationCalculation(estimation: {
+  groupes_calcul: Array<{ sous_total: number | null }>;
+}): boolean {
+  return estimation.groupes_calcul.some((group) => group.sous_total !== null);
+}
+
+function formatResiliationRemainingMonths(
+  moisRestants: number | null | undefined,
+  moisAvantPreavis: number | null | undefined,
+  preavisMois: number,
+): string | null {
+  if (moisRestants == null) return null;
+  if (moisAvantPreavis != null) {
+    return `${moisRestants} mois restants (${moisAvantPreavis} - ${preavisMois} de preavis)`;
+  }
+  return `${moisRestants} mois restants`;
+}
+
 function getResiliationFiabiliteClasses(fiabilite: string): string {
   switch (fiabilite) {
     case 'forte':
@@ -1569,6 +1587,16 @@ export function SpQuestionnaireUI({
             <div className="space-y-3">
               {currentQuestion.affichage === 'nombre' && resiliationEstimation && (
                 <div className="space-y-2">
+                  {(() => {
+                    const groupedCalculation = hasGroupedResiliationCalculation(resiliationEstimation);
+                    const groupedCount = resiliationEstimation.groupes_calcul.filter((group) => group.sous_total !== null).length;
+                    const remainingMonthsLabel = formatResiliationRemainingMonths(
+                      resiliationEstimation.mois_restants,
+                      resiliationEstimation.mois_restants_avant_preavis,
+                      resiliationEstimation.preavis_mois,
+                    );
+                    return (
+                      <>
                   {currentQuestion.nombre_config?.afficher_estimation !== false && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
@@ -1600,9 +1628,20 @@ export function SpQuestionnaireUI({
                           <p className="text-sm text-gray-800 mt-1">{resiliationEstimation.preavis_mois} mois</p>
                         </div>
                       </div>
+                      {remainingMonthsLabel && (
+                        <div className="rounded-md bg-white/80 border border-amber-100 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Mois restants retenus</p>
+                          <p className="text-sm text-gray-800 mt-1">{remainingMonthsLabel}</p>
+                        </div>
+                      )}
 
                       <div className="space-y-1 text-xs text-amber-800">
                         <p>{resiliationEstimation.explication_fiabilite}</p>
+                        {groupedCalculation && groupedCount > 0 && (
+                          <p>
+                            Calcul retenu: somme de {groupedCount} groupe{groupedCount > 1 ? 's' : ''} engagé{groupedCount > 1 ? 's' : ''} avec leur propre base mensuelle et leurs mois restants.
+                          </p>
+                        )}
                         {resiliationEstimation.composants
                           .filter((component) => component.id !== 'total' && component.inclus && component.disponible)
                           .slice(0, 3)
@@ -1671,47 +1710,60 @@ export function SpQuestionnaireUI({
                         {resiliationEstimation.groupes_calcul.length > 0 && (
                           <div className="rounded-lg border border-gray-100 bg-white p-3">
                             <p className="text-xs font-semibold text-gray-700">Groupes de calcul</p>
+                            {groupedCalculation && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Chaque groupe applique sa propre mensualité SA et ses propres mois restants, puis les sous-totaux sont additionnés.
+                              </p>
+                            )}
                             <div className="mt-2 space-y-3">
-                              {resiliationEstimation.groupes_calcul.map((groupe) => (
-                                <div key={groupe.id} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-3">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-gray-800">{groupe.libelle}</p>
-                                      <p className="text-xs text-gray-500 mt-1">{groupe.methode}</p>
+                              {resiliationEstimation.groupes_calcul.map((groupe) => {
+                                const groupRemainingMonthsLabel = formatResiliationRemainingMonths(
+                                  groupe.mois_restants,
+                                  groupe.mois_avant_preavis,
+                                  resiliationEstimation.preavis_mois,
+                                );
+
+                                return (
+                                  <div key={groupe.id} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-800">{groupe.libelle}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{groupe.methode}</p>
+                                      </div>
+                                      {groupe.sous_total !== null && (
+                                        <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">
+                                          {formatResiliationMoney(groupe.sous_total)}
+                                        </span>
+                                      )}
                                     </div>
-                                    {groupe.sous_total !== null && (
-                                      <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">
-                                        {formatResiliationMoney(groupe.sous_total)}
-                                      </span>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
+                                      {groupRemainingMonthsLabel && (
+                                        <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
+                                          {groupRemainingMonthsLabel}
+                                        </span>
+                                      )}
+                                      {groupe.base_mensuelle !== null && (
+                                        <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
+                                          Base {formatResiliationMoney(groupe.base_mensuelle)} / mois
+                                        </span>
+                                      )}
+                                    </div>
+                                    {groupe.preuves.length > 0 && (
+                                      <div className="mt-3 space-y-2">
+                                        {groupe.preuves.map((preuve) => (
+                                          <div key={preuve.id} className="rounded-md border border-white bg-white px-3 py-2">
+                                            <p className="text-xs font-medium text-gray-800">{preuve.label}</p>
+                                            <p className="text-xs text-gray-700 mt-1">{preuve.valeur}</p>
+                                            {preuve.contexte && (
+                                              <p className="text-[11px] text-gray-500 mt-1">{preuve.contexte}</p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
                                     )}
                                   </div>
-                                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
-                                    {groupe.mois_restants !== null && (
-                                      <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
-                                        {groupe.mois_restants} mois restants
-                                      </span>
-                                    )}
-                                    {groupe.base_mensuelle !== null && (
-                                      <span className="rounded-full border border-gray-200 bg-white px-2 py-1">
-                                        Base {formatResiliationMoney(groupe.base_mensuelle)} / mois
-                                      </span>
-                                    )}
-                                  </div>
-                                  {groupe.preuves.length > 0 && (
-                                    <div className="mt-3 space-y-2">
-                                      {groupe.preuves.map((preuve) => (
-                                        <div key={preuve.id} className="rounded-md border border-white bg-white px-3 py-2">
-                                          <p className="text-xs font-medium text-gray-800">{preuve.label}</p>
-                                          <p className="text-xs text-gray-700 mt-1">{preuve.valeur}</p>
-                                          {preuve.contexte && (
-                                            <p className="text-[11px] text-gray-500 mt-1">{preuve.contexte}</p>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -1746,6 +1798,9 @@ export function SpQuestionnaireUI({
                       </div>
                     </details>
                   )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
