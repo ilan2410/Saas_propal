@@ -502,6 +502,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
                     onNext={() => {}}
                     onPrev={prevStep}
                     siteLabel={siteLabel}
+                    currentSiteName={currentSite.site_nom}
                     onMultisiteComplete={(reponses) => handleMultisiteSiteComplete(reponses, currentSiteIndex)}
                   />
                 );

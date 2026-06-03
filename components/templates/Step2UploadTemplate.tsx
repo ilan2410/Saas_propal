@@ -133,19 +133,19 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_situation_proposee_forfaits',
     label: 'Tableau solution proposée forfaits',
-    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
+    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
     hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet.',
   },
   {
     arrayId: 'sp_situation_proposee_complet',
     label: 'Tableau solution proposée complet',
-    fullBlock: `{{#sp_situation_proposee_complet}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_complet}}`,
+    fullBlock: `{{#sp_situation_proposee_complet}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_complet}}`,
     hint: 'Contient la solution proposée complète : forfaits + matériel.',
   },
   {
     arrayId: 'sp_materiel_detail',
     label: 'Tableau matériel proposé',
-    fullBlock: `{{#sp_materiel_detail}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_commentaire}}  {{%sp_matd_image_url}}\n{{/sp_materiel_detail}}`,
+    fullBlock: `{{#sp_materiel_detail}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}  {{%sp_matd_image_url}}\n{{/sp_materiel_detail}}`,
     hint: 'Pour afficher la photo produit dans Word, utilisez un tag image avec le préfixe % : {{%sp_matd_image_url}}',
   },
   {

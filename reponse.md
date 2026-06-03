@@ -210,8 +210,8 @@ calculerLoyer(bareme: SpBareme, totalPonctuel: number, dureeMois: number, marge:
 **`sp_situation_proposee_forfaits`** (lignes mobiles + fixes + internet)
 ```
 {{#sp_situation_proposee_forfaits}}
-{{sp_forfait_numero}}  {{sp_forfait_type}}  {{sp_forfait_nom}}  
-{{sp_forfait_fournisseur}}  {{sp_forfait_options}}  {{sp_forfait_prix_mensuel_ht}}
+{{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_produit}}
+{{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
 {{/sp_situation_proposee_forfaits}}
 ```
 + variable simple `sp_total_forfaits_mensuel_ht`.

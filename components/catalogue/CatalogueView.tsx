@@ -338,7 +338,15 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                   )}
 
                   <div className="min-w-0">
-                    <h3 className="font-bold text-gray-900 text-lg truncate">{p.nom}</h3>
+                    <h3 className="font-bold text-gray-900 text-lg truncate">
+                      <Link
+                        href={showHeader ? `/catalogue/${p.id}` : `/admin/catalogue/${p.id}`}
+                        className="cursor-pointer hover:text-blue-700 transition-colors"
+                        title={`Ouvrir la fiche de ${p.nom}`}
+                      >
+                        {p.nom}
+                      </Link>
+                    </h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
                         {p.categorie}

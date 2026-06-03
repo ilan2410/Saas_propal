@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
-import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
+import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -15,11 +15,46 @@ interface Props {
   onPrev: () => void;
   // Multisite: label shown above the chat (e.g. "Site 1 sur 3 — Paris")
   siteLabel?: string;
+  currentSiteName?: string;
   // Multisite: when provided, bypasses generer-suggestions and returns raw reponses
   onMultisiteComplete?: (reponses: SpQuestionReponse[]) => void;
 }
 
-export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev, siteLabel, onMultisiteComplete }: Props) {
+type SiteActuelle = { nom: string; [key: string]: unknown };
+type LigneActuelle = { site?: string; [key: string]: unknown };
+
+function filterExtractedDataForSite(
+  extractedData: Record<string, unknown>,
+  siteNom?: string,
+): Record<string, unknown> {
+  if (!siteNom) return extractedData;
+
+  const sa = extractedData.situation_actuelle as Record<string, unknown> | undefined;
+  if (!sa) return extractedData;
+
+  const sites = (sa.sites as SiteActuelle[] | undefined) ?? [];
+  const filteredSite = sites.filter((site) => site.nom === siteNom);
+
+  const filterBySite = (arr: unknown[]): unknown[] =>
+    arr.filter((item) => {
+      const line = item as LigneActuelle;
+      return !line.site || line.site === siteNom;
+    });
+
+  return {
+    ...extractedData,
+    situation_actuelle: {
+      ...sa,
+      sites: filteredSite,
+      lignes: filterBySite((sa.lignes as unknown[]) ?? []),
+      abonnements: filterBySite((sa.abonnements as unknown[]) ?? []),
+      locations: filterBySite((sa.locations as unknown[]) ?? []),
+      engagements: filterBySite((sa.engagements as unknown[]) ?? []),
+    },
+  };
+}
+
+export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev, siteLabel, currentSiteName, onMultisiteComplete }: Props) {
   const [questions, setQuestions] = useState<SpQuestion[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [preferences, setPreferences] = useState<OrganizationPreferences>({});
@@ -159,7 +194,10 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     );
   }
 
-  const saResume = (propositionData.donnees_extraites as Record<string, unknown> | undefined);
+  const saResumeBase = (propositionData.donnees_extraites as Record<string, unknown> | undefined);
+  const saResume = saResumeBase
+    ? filterExtractedDataForSite(saResumeBase, currentSiteName)
+    : undefined;
   const saResumeText = saResume
     ? ((saResume.resume as string) || (saResume['résumé'] as string) || '')
     : '';
@@ -255,28 +293,6 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
-              {showSaResume && saResumeText && (
-                <div className="mb-4 border border-green-200 rounded-lg bg-green-50/50 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-green-800">Résumé SA</p>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowSaResume(false);
-                      }}
-                      className="text-green-400 hover:text-green-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="overflow-auto max-h-80">
-                    <SaResumeRenderer text={saResumeText} variant="compact" donneesExtraites={saResume} />
-                  </div>
-                </div>
-              )}
-
               {generateError && (
                 <div className="mb-4 border border-red-200 rounded-lg bg-red-50 p-3">
                   <p className="text-sm text-red-600">{generateError}</p>
@@ -304,6 +320,16 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 />
               )}
             </div>
+
+            {showSaResume && saResume && saResumeText && (
+              <FloatingSaInspector
+                open={showSaResume}
+                onClose={() => setShowSaResume(false)}
+                donneesExtraites={saResume}
+                text={saResumeText}
+                title="Resume SA"
+              />
+            )}
 
             <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex items-center justify-between gap-3">
               <p className="text-xs text-gray-400">

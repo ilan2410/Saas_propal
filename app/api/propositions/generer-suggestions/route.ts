@@ -402,6 +402,100 @@ function getPriceOverride(
   return null;
 }
 
+function extractLineNumber(line: UnknownRecord): string | undefined {
+  const candidates = [
+    line.sp_numero,
+    line.numero_ligne,
+    line.numero,
+    line.telephone,
+    line.tel,
+    line.reference_contrat,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
+function inferSuggestedLineType(line: UnknownRecord): 'Mobile' | 'Fixe' | 'Internet' | undefined {
+  const rawType = typeof line.type === 'string'
+    ? line.type
+    : typeof line.sp_type_ligne === 'string'
+      ? line.sp_type_ligne
+      : typeof line.categorie === 'string'
+        ? line.categorie
+        : '';
+  const normalized = rawType.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized.includes('mobile')) return 'Mobile';
+  if (normalized.includes('fixe')) return 'Fixe';
+  if (normalized.includes('internet') || normalized.includes('fibre') || normalized.includes('data')) return 'Internet';
+  return undefined;
+}
+
+function parseJsonRecord(value: unknown): Record<string, string> | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function getQuantityOverride(
+  reponses: SpQuestionReponse[],
+  instanceId: string,
+  produitNom?: string,
+  produitId?: string,
+): string | undefined {
+  const rep = reponses.find((r) => r.question_id === `quantite_${instanceId}`);
+  if (!rep) return undefined;
+  const asMap = parseJsonRecord(rep.valeur);
+  if (asMap) {
+    const candidates = [produitId, produitNom].filter((value): value is string => !!value?.trim());
+    for (const key of candidates) {
+      const quantity = asMap[key];
+      if (quantity && quantity.trim()) return quantity.trim();
+    }
+    return undefined;
+  }
+  if (typeof rep.valeur === 'string' && rep.valeur.trim()) return rep.valeur.trim();
+  if (typeof rep.valeur === 'number' && Number.isFinite(rep.valeur)) return String(rep.valeur);
+  return undefined;
+}
+
+function getQuantityByProduct(
+  reponses: SpQuestionReponse[],
+  produitNom?: string,
+  produitId?: string,
+): string | undefined {
+  const candidates = [produitId, produitNom]
+    .filter((value): value is string => !!value?.trim())
+    .map((value) => value.trim());
+  if (candidates.length === 0) return undefined;
+
+  const matches = new Set<string>();
+  for (const reponse of reponses) {
+    if (!reponse.question_id.startsWith('quantite_')) continue;
+    const asMap = parseJsonRecord(reponse.valeur);
+    if (!asMap) continue;
+    for (const key of candidates) {
+      const quantity = asMap[key];
+      if (quantity && quantity.trim()) matches.add(quantity.trim());
+    }
+  }
+
+  return matches.size === 1 ? Array.from(matches)[0] : undefined;
+}
+
 function normalizeResult(
   raw: unknown,
   lines: UnknownRecord[],
@@ -524,6 +618,8 @@ function buildSpLigne(raw: UnknownRecord, priceOverrides: Map<string, number>): 
   const economie = prixActuel - prixPropose;
   return {
     sp_nom_ligne: String(raw.sp_nom_ligne ?? ''),
+    sp_numero: extractLineNumber(raw),
+    sp_quantite: typeof raw.sp_quantite === 'string' && raw.sp_quantite.trim() ? raw.sp_quantite.trim() : undefined,
     sp_produit: String(raw.sp_produit ?? 'Aucun produit semblable trouvé'),
     sp_produit_id: typeof raw.sp_produit_id === 'string' ? raw.sp_produit_id : undefined,
     sp_produit_fournisseur: typeof raw.sp_produit_fournisseur === 'string' ? raw.sp_produit_fournisseur : undefined,
@@ -617,9 +713,45 @@ function buildSpCompletes(
   const rawInternet = Array.isArray(raw.sp_internet) ? raw.sp_internet as UnknownRecord[] : [];
   const rawMateriel = Array.isArray(raw.sp_materiel) ? raw.sp_materiel as UnknownRecord[] : [];
 
-  const sp_lignes_mobiles: SpLigneMobile[] = rawMobiles.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Mobile' as const }));
-  const sp_lignes_fixes: SpLigneFixe[] = rawFixes.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Fixe' as const }));
-  const sp_internet: SpInternet[] = rawInternet.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Internet' as const }));
+  const linesByType = {
+    Mobile: [] as UnknownRecord[],
+    Fixe: [] as UnknownRecord[],
+    Internet: [] as UnknownRecord[],
+  };
+  for (const suggestion of baseResult.suggestions) {
+    const line = isPlainObject(suggestion.ligne_actuelle) ? suggestion.ligne_actuelle as UnknownRecord : undefined;
+    if (!line) continue;
+    const type = inferSuggestedLineType(line);
+    if (!type) continue;
+    linesByType[type].push(line);
+  }
+  const withFallbackSelectionData = (
+    entries: UnknownRecord[],
+    fallbackLines: UnknownRecord[],
+  ): UnknownRecord[] => entries.map((entry, index) => {
+    const fallback = fallbackLines[index] ?? {};
+    return {
+      ...entry,
+      sp_numero: extractLineNumber(entry) ?? extractLineNumber(fallback),
+      sp_quantite:
+        (typeof entry.sp_quantite === 'string' && entry.sp_quantite.trim() ? entry.sp_quantite.trim() : undefined)
+        ?? (typeof fallback.quantite === 'string' && fallback.quantite.trim() ? fallback.quantite.trim() : undefined)
+        ?? (typeof fallback.quantite === 'number' && Number.isFinite(fallback.quantite) ? String(fallback.quantite) : undefined)
+        ?? getQuantityByProduct(
+          reponses,
+          typeof entry.sp_produit === 'string' ? entry.sp_produit : undefined,
+          typeof entry.sp_produit_id === 'string' ? entry.sp_produit_id : undefined,
+        ),
+    };
+  });
+
+  const rawMobilesWithNumero = withFallbackSelectionData(rawMobiles, linesByType.Mobile);
+  const rawFixesWithNumero = withFallbackSelectionData(rawFixes, linesByType.Fixe);
+  const rawInternetWithNumero = withFallbackSelectionData(rawInternet, linesByType.Internet);
+
+  const sp_lignes_mobiles: SpLigneMobile[] = rawMobilesWithNumero.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Mobile' as const }));
+  const sp_lignes_fixes: SpLigneFixe[] = rawFixesWithNumero.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Fixe' as const }));
+  const sp_internet: SpInternet[] = rawInternetWithNumero.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Internet' as const }));
   const sp_materiel: SpMateriel[] = rawMateriel.map((r) => buildSpMateriel(r, priceOverrides));
 
   // ── Inject saisies libres ("Autre valeur") ────────────────────────────
@@ -767,6 +899,8 @@ function buildSpCompletes(
   const toSituationLigne = (l: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
     sp_sp_type: l.sp_type_ligne,
     sp_sp_nom: l.sp_nom_ligne,
+    sp_sp_numero: l.sp_numero,
+    sp_sp_quantite: l.sp_quantite,
     sp_sp_produit: l.sp_produit,
     sp_sp_fournisseur: l.sp_produit_fournisseur,
     sp_sp_prix_actuel: l.sp_prix_actuel,
@@ -803,13 +937,14 @@ function buildSpCompletes(
     const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
     const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
     const imageUrl = !isLibre && typeof cat?.image_url === 'string' ? cat.image_url : undefined;
+    const description = !isLibre && typeof cat?.description === 'string' ? cat.description : '';
     return {
       sp_matd_nom: m.sp_materiel_nom,
       sp_matd_ref: m.sp_materiel_ref,
       sp_matd_fournisseur: m.sp_materiel_fournisseur,
       sp_matd_quantite: '1',
       sp_matd_prix_ht: m.sp_materiel_prix_mensuel,
-      sp_matd_commentaire: m.sp_materiel_commentaire,
+      sp_matd_description: description,
       sp_matd_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
       sp_matd_image_url: imageUrl,
       sp_mat_image_url: imageUrl,
@@ -1023,13 +1158,15 @@ INSTRUCTIONS:
 1. Pour chaque ligne dans LIGNES À ANALYSER (même ordre), une entrée dans "suggestions".
 2. Catégoriser chaque ligne: Mobile, Fixe, Internet selon son type.
 3. Retourner aussi les tableaux sp_lignes_mobiles, sp_lignes_fixes, sp_internet${proposer_materiel ? ', sp_materiel' : ''}.
-4. Utiliser les _raw pour les nombres (non formatés), ex: _prix_actuel_raw: 29.9
+4. Pour chaque ligne telecom, recopier le numero de ligne/tel de la SA dans "sp_numero" si disponible.
+5. Pour chaque ligne telecom, recopier la quantite choisie dans les questions SP dans "sp_quantite" si disponible.
+6. Utiliser les _raw pour les nombres (non formatés), ex: _prix_actuel_raw: 29.9
 
 RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
 {
   "suggestions": [{"ligne_actuelle": {}, "produit_propose_id": "uuid", "produit_propose_nom": "...", "prix_actuel": 0, "prix_propose": 0, "economie_mensuelle": 0, "justification": "..."}],
   "synthese": {"cout_total_actuel": 0, "cout_total_propose": 0, "economie_mensuelle": 0, "economie_annuelle": 0, "ameliorations": ["..."]},
-  "sp_lignes_mobiles": [{"sp_nom_ligne": "...", "sp_produit": "...", "sp_produit_id": "uuid-ou-null", "sp_produit_fournisseur": "...", "sp_type_ligne": "Mobile", "_prix_actuel_raw": 0, "_prix_propose_raw": 0, "_economie_raw": 0, "sp_analyse": "...", "sp_justification": "..."}],
+  "sp_lignes_mobiles": [{"sp_nom_ligne": "...", "sp_numero": "06XXXXXXXX", "sp_quantite": "1", "sp_produit": "...", "sp_produit_id": "uuid-ou-null", "sp_produit_fournisseur": "...", "sp_type_ligne": "Mobile", "_prix_actuel_raw": 0, "_prix_propose_raw": 0, "_economie_raw": 0, "sp_analyse": "...", "sp_justification": "..."}],
   "sp_lignes_fixes": [],
   "sp_internet": [],
   ${proposer_materiel ? '"sp_materiel": [{"sp_materiel_nom": "...", "sp_materiel_ref": "...", "sp_materiel_produit_id": "uuid-ou-null", "sp_materiel_fournisseur": "...", "sp_type_ligne": "Materiel", "_prix_mensuel_raw": 0, "sp_materiel_duree_engagement": "...", "sp_materiel_commentaire": "..."}],' : '"sp_materiel": [],'}

@@ -5,7 +5,7 @@ import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
-import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
+import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
 interface Props {
   questions: SpQuestion[];
@@ -207,28 +207,6 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
             </div>
           )}
 
-          {!loading && !noProposition && showSaInspector && (
-            <div className="mb-4 border border-green-200 rounded-lg bg-green-50/50 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-green-800">Résumé SA</p>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowSaInspector(false);
-                  }}
-                  className="text-green-400 hover:text-green-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="overflow-auto max-h-80"><SaResumeRenderer variant="compact" donneesExtraites={donneesExtraites} text={
-                (donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
-              /></div>
-            </div>
-          )}
-
           {!loading && !noProposition && (
             <SpQuestionnaireUI
               key={sessionKey}
@@ -245,6 +223,16 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               startFromQuestionId={startFromQuestionId}
               spConfigLoyer={spConfigLoyer}
               spConfigResiliation={spConfigResiliation}
+            />
+          )}
+
+          {!loading && !noProposition && showSaInspector && (
+            <FloatingSaInspector
+              open={showSaInspector}
+              onClose={() => setShowSaInspector(false)}
+              donneesExtraites={donneesExtraites}
+              text={(donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
+              title="Resume SA"
             />
           )}
         </div>

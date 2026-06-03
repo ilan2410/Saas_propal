@@ -98,7 +98,7 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 **Syntaxe boucle :**
 ```
 {{#sp_lignes_mobiles}}
-{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
+{{sp_nom_ligne}}  {{sp_numero}}  {{sp_quantite}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
 {{/sp_lignes_mobiles}}
 ```
 > **Explication** : Ce tableau liste toutes les lignes mobiles de la proposition proposée. Chaque ligne contient le nom de la ligne, le produit/forfait choisi, le prix actuel, le prix proposé, l'économie réalisée et une analyse. Les champs `sp_produit_id`, `sp_produit_fournisseur`, `sp_justification` et `sp_type_ligne` sont aussi disponibles si besoin.
@@ -108,6 +108,8 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 | Champ interne | Description | Syntaxe |
 |---------------|-------------|---------|
 | `sp_nom_ligne` | Nom / numéro de la ligne | `{{sp_nom_ligne}}` |
+| `sp_numero` | Numéro de téléphone / ligne lié au forfait (si disponible) | `{{sp_numero}}` |
+| `sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_quantite}}` |
 | `sp_produit` | Nom du produit / forfait | `{{sp_produit}}` |
 | `sp_produit_id` | ID du produit dans le catalogue | `{{sp_produit_id}}` |
 | `sp_produit_fournisseur` | Fournisseur du produit | `{{sp_produit_fournisseur}}` |
@@ -125,7 +127,7 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 **Syntaxe boucle :**
 ```
 {{#sp_lignes_fixes}}
-{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
+{{sp_nom_ligne}}  {{sp_numero}}  {{sp_quantite}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
 {{/sp_lignes_fixes}}
 ```
 > **Explication** : Ce tableau liste toutes les lignes fixes de la proposition. Même structure que les lignes mobiles.
@@ -135,6 +137,8 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 | Champ interne | Description | Syntaxe |
 |---------------|-------------|---------|
 | `sp_nom_ligne` | Nom / numéro de la ligne | `{{sp_nom_ligne}}` |
+| `sp_numero` | Numéro de téléphone / ligne lié au forfait (si disponible) | `{{sp_numero}}` |
+| `sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_quantite}}` |
 | `sp_produit` | Nom du produit / forfait | `{{sp_produit}}` |
 | `sp_produit_id` | ID du produit dans le catalogue | `{{sp_produit_id}}` |
 | `sp_produit_fournisseur` | Fournisseur du produit | `{{sp_produit_fournisseur}}` |
@@ -152,7 +156,7 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 **Syntaxe boucle :**
 ```
 {{#sp_internet}}
-{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
+{{sp_nom_ligne}}  {{sp_numero}}  {{sp_quantite}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
 {{/sp_internet}}
 ```
 > **Explication** : Ce tableau liste toutes les offres internet (ADSL, fibre, 4G/5G box) de la proposition proposée.
@@ -162,6 +166,8 @@ Ces variables sont des **tableaux** (listes de lignes). En Word, elles s'utilise
 | Champ interne | Description | Syntaxe |
 |---------------|-------------|---------|
 | `sp_nom_ligne` | Nom de l'offre internet | `{{sp_nom_ligne}}` |
+| `sp_numero` | Numéro de téléphone / ligne lié au forfait (si disponible) | `{{sp_numero}}` |
+| `sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_quantite}}` |
 | `sp_produit` | Nom du produit / offre | `{{sp_produit}}` |
 | `sp_produit_id` | ID du produit dans le catalogue | `{{sp_produit_id}}` |
 | `sp_produit_fournisseur` | Fournisseur du produit | `{{sp_produit_fournisseur}}` |
@@ -213,7 +219,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 ```
 > **Explication** : Tableau fusionné qui regroupe automatiquement les lignes mobiles et les lignes fixes dans un seul tableau.
 
-**Champs internes :** `sp_nom_ligne`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
+**Champs internes :** `sp_nom_ligne`, `sp_numero`, `sp_quantite`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
 
 ---
 
@@ -222,12 +228,12 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_fixes_mobiles_internet}}
-{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
+{{sp_nom_ligne}}  {{sp_numero}}  {{sp_quantite}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
 {{/sp_fixes_mobiles_internet}}
 ```
 > **Explication** : Tableau fusionné qui regroupe les lignes mobiles, fixes et les offres internet dans un seul tableau.
 
-**Champs internes :** `sp_nom_ligne`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
+**Champs internes :** `sp_nom_ligne`, `sp_numero`, `sp_quantite`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
 
 ---
 
@@ -236,12 +242,12 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_toutes_lignes}}
-{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
+{{sp_nom_ligne}}  {{sp_numero}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}
 {{/sp_toutes_lignes}}
 ```
 > **Explication** : Tableau fusionné contenant toutes les lignes (mobiles + fixes + internet). Identique à `sp_fixes_mobiles_internet`.
 
-**Champs internes :** `sp_nom_ligne`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
+**Champs internes :** `sp_nom_ligne`, `sp_numero`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne`
 
 ---
 
@@ -255,7 +261,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 ```
 > **Explication** : Tableau fusionné global contenant toutes les catégories : lignes mobiles, fixes, internet ET matériel. Pour les lignes matériel, utilisez `sp_materiel_nom`, `sp_materiel_ref`, etc.
 
-**Champs internes :** `sp_nom_ligne`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne` (pour les lignes standards) ; `sp_materiel_nom`, `sp_materiel_ref`, etc. (pour les lignes matériel)
+**Champs internes :** `sp_nom_ligne`, `sp_numero`, `sp_quantite`, `sp_produit`, `sp_produit_id`, `sp_produit_fournisseur`, `sp_prix_actuel`, `sp_prix_propose`, `sp_economie`, `sp_analyse`, `sp_justification`, `sp_type_ligne` (pour les lignes standards) ; `sp_materiel_nom`, `sp_materiel_ref`, etc. (pour les lignes matériel)
 
 ---
 
@@ -264,10 +270,10 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_situation_proposee_complet}}
-{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
+{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
 {{/sp_situation_proposee_complet}}
 ```
-> **Explication** : Situation proposée complète : liste toutes les lignes de la solution proposée (mobiles, fixes, internet, matériel) avec leur type, nom, produit, fournisseur, prix actuel, prix proposé et économie.
+> **Explication** : Situation proposée complète : liste toutes les lignes de la solution proposée (mobiles, fixes, internet, matériel) avec leur type, nom, numéro lié si disponible, quantité si disponible, produit, fournisseur, prix actuel, prix proposé et économie.
 
 **Champs internes disponibles dans la boucle :**
 
@@ -275,6 +281,8 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 |---------------|-------------|---------|
 | `sp_sp_type` | Type de ligne (Mobile/Fixe/Internet/Materiel) | `{{sp_sp_type}}` |
 | `sp_sp_nom` | Nom de la ligne / offre | `{{sp_sp_nom}}` |
+| `sp_sp_numero` | Numéro de téléphone / ligne lié au forfait (si disponible) | `{{sp_sp_numero}}` |
+| `sp_sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_sp_quantite}}` |
 | `sp_sp_produit` | Nom du produit | `{{sp_sp_produit}}` |
 | `sp_sp_fournisseur` | Fournisseur | `{{sp_sp_fournisseur}}` |
 | `sp_sp_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_sp_prix_actuel}}` |
@@ -289,12 +297,12 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_situation_proposee_forfaits}}
-{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
+{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
 {{/sp_situation_proposee_forfaits}}
 ```
-> **Explication** : Situation proposée limitée aux forfaits uniquement (exclut le matériel). Même structure que `sp_situation_proposee_complet`.
+> **Explication** : Situation proposée limitée aux forfaits uniquement (exclut le matériel). Même structure que `sp_situation_proposee_complet`, avec le numéro et la quantité liés à chaque forfait si disponibles.
 
-**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
+**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
 
 ---
 
@@ -303,10 +311,10 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_materiel_detail}}
-{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}
+{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}
 {{/sp_materiel_detail}}
 ```
-> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT et fréquence (Mensuel ou Unique).
+> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT, fréquence (Mensuel ou Unique) et description issue de la fiche produit.
 
 **Champs internes disponibles dans la boucle :**
 
@@ -317,7 +325,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_matd_fournisseur` | Fournisseur | `{{sp_matd_fournisseur}}` |
 | `sp_matd_quantite` | Quantité | `{{sp_matd_quantite}}` |
 | `sp_matd_prix_ht` | Prix unitaire HT (texte formaté) | `{{sp_matd_prix_ht}}` |
-| `sp_matd_commentaire` | Commentaire | `{{sp_matd_commentaire}}` |
+| `sp_matd_description` | Description de la fiche produit | `{{sp_matd_description}}` |
 | `sp_matd_frequence` | Fréquence (Mensuel / Unique) | `{{sp_matd_frequence}}` |
 | `sp_matd_image_url` | URL de l'image du produit | `{{sp_matd_image_url}}` |
 

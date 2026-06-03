@@ -507,6 +507,8 @@ export interface SpAdresse {
 
 export interface SpLigneMobile {
   sp_nom_ligne: string;
+  sp_numero?: string;
+  sp_quantite?: string;
   sp_produit: string;
   sp_produit_id?: string;
   sp_produit_fournisseur?: string;
@@ -548,6 +550,8 @@ export interface SpMateriel {
 export interface SpSituationProposeeLigne {
   sp_sp_type: string;
   sp_sp_nom: string;
+  sp_sp_numero?: string;
+  sp_sp_quantite?: string;
   sp_sp_produit?: string;
   sp_sp_fournisseur?: string;
   sp_sp_prix_actuel?: string;
@@ -563,7 +567,7 @@ export interface SpMaterielDetail {
   sp_matd_fournisseur?: string;
   sp_matd_quantite: string;
   sp_matd_prix_ht: string;
-  sp_matd_commentaire: string;
+  sp_matd_description: string;
   sp_matd_frequence: string;
   sp_matd_image_url?: string;
   sp_mat_image_url?: string;
