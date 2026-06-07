@@ -29,7 +29,13 @@
 - Journaliser un echantillon de `sp_materiel_detail` avant rendu pour exclure un probleme de donnees.
 
 ## Log Evidence
-- Pending
+- Log ligne 1 : le scan XML trouve `{{#sp_materiel_detail}}` dans `word/document.xml`, mais pas `{{%sp_matd_image_url}}` ni `{{/sp_materiel_detail}}` sous forme contigue dans le XML brut.
+- Log ligne 2 : `sp_materiel_detail` contient bien 1 ligne materiel et aucune URL image ; ce point n'explique pas l'erreur car le module image sait deja tomber sur un placeholder.
+- Log ligne 3 : l'erreur se produit dans `ImageModule.render` avec `Cannot read properties of undefined (reading 'part')`, donc au moment du rendu image/loop et non dans la preparation des donnees.
 
 ## Verification Conclusion
-- Pending
+- A : **Partiellement confirmee** — le debut de boucle est bien vu dans la zone image, ce qui oriente vers une structure non supportee avec le module image.
+- B : **Confirmee (pragmatique)** — la combinaison `boucle de tableau + image` telle qu'utilisee produit l'erreur runtime du module image.
+- C : **Confirmee** — les tags image/fermeture ne sont pas retrouves contigus dans le XML brut, ce qui indique une fragmentation/structure Word incompatible avec l'attente du module.
+- D : **Confirmee** — les donnees `sp_materiel_detail` ne sont pas la cause.
+- E : **Confirmee** — le message actuel parle seulement de "tag image seul", alors que le vrai probleme est plus precis : structure de boucle/cellule/tableau non compatible.

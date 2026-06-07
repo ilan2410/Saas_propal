@@ -329,7 +329,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 {{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}
 {{/sp_materiel_detail}}
 ```
-> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT, fréquence (Mensuel ou Unique) et description issue de la fiche produit. Si vous utilisez l'image, placez `{{%sp_matd_image_url}}` seul dans son paragraphe ou sa cellule Word.
+> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT, fréquence (Mensuel ou Unique) et description issue de la fiche produit. Si vous utilisez l'image, placez `{{%sp_matd_image_url}}` seul dans son paragraphe ou sa cellule Word. Dans un tableau Word, ne mettez pas `{{#sp_materiel_detail}}` dans la cellule de l'image ni `{{/sp_materiel_detail}}` dans une autre cellule de la meme ligne, car cette structure peut casser le module image Docxtemplater.
 
 **Champs internes disponibles dans la boucle :**
 

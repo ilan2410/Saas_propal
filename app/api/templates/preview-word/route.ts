@@ -29,6 +29,87 @@ const PLACEHOLDER_PNG = Buffer.from(
   'base64',
 );
 
+type MaterialImageTemplateInspection = {
+  hasUnsupportedImageLoop: boolean;
+  xmlSummary: Array<{
+    name: string;
+    rawHasLoopStart: boolean;
+    rawHasImageTag: boolean;
+    rawHasLoopEnd: boolean;
+    plainHasLoopStart: boolean;
+    plainHasImageTag: boolean;
+    plainHasLoopEnd: boolean;
+    startImageCellIndex: number;
+    endCellIndex: number;
+    rowWithStartImageEndPlain: boolean;
+    fragmentedImageTag: boolean;
+    fragmentedLoopEnd: boolean;
+    unsupportedLoopAcrossCells: boolean;
+    startContext?: string;
+    imageContext?: string;
+    endContext?: string;
+  }>;
+};
+
+function inspectMaterialImageTemplate(zip: PizZip): MaterialImageTemplateInspection {
+  const loopStart = '{{#sp_materiel_detail}}';
+  const imageTag = '{{%sp_matd_image_url}}';
+  const loopEnd = '{{/sp_materiel_detail}}';
+  const toPlainText = (xml: string) => xml.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  const xmlFiles = Object.keys((zip as unknown as { files?: Record<string, unknown> }).files ?? {})
+    .filter((name) => /^word\/(document|header\d+|footer\d+)\.xml$/.test(name));
+
+  const xmlSummary = xmlFiles.map((name) => {
+    const xml = zip.file(name)?.asText?.() ?? '';
+    const plain = toPlainText(xml);
+    const cells = xml.match(/<w:tc\b[\s\S]*?<\/w:tc>/g) ?? [];
+    const rows = xml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) ?? [];
+    const cellTexts = cells.map(toPlainText);
+    const rowTexts = rows.map(toPlainText);
+    const startImageCellIndex = cellTexts.findIndex((text) => text.includes(loopStart) && text.includes(imageTag));
+    const endCellIndex = cellTexts.findIndex((text) => text.includes(loopEnd));
+    const rowWithStartImageEndPlain = rowTexts.some(
+      (text) => text.includes(loopStart) && text.includes(imageTag) && text.includes(loopEnd),
+    );
+    const around = (tag: string) => {
+      const idx = plain.indexOf(tag);
+      return idx >= 0 ? plain.slice(Math.max(0, idx - 160), Math.min(plain.length, idx + tag.length + 160)) : undefined;
+    };
+
+    const summary = {
+      name,
+      rawHasLoopStart: xml.includes(loopStart),
+      rawHasImageTag: xml.includes(imageTag),
+      rawHasLoopEnd: xml.includes(loopEnd),
+      plainHasLoopStart: plain.includes(loopStart),
+      plainHasImageTag: plain.includes(imageTag),
+      plainHasLoopEnd: plain.includes(loopEnd),
+      startImageCellIndex,
+      endCellIndex,
+      rowWithStartImageEndPlain,
+      fragmentedImageTag: plain.includes(imageTag) && !xml.includes(imageTag),
+      fragmentedLoopEnd: plain.includes(loopEnd) && !xml.includes(loopEnd),
+      unsupportedLoopAcrossCells:
+        rowWithStartImageEndPlain &&
+        startImageCellIndex >= 0 &&
+        endCellIndex >= 0 &&
+        startImageCellIndex !== endCellIndex,
+      startContext: around(loopStart),
+      imageContext: around(imageTag),
+      endContext: around(loopEnd),
+    };
+
+    return summary;
+  });
+
+  return {
+    hasUnsupportedImageLoop: xmlSummary.some(
+      (summary) => summary.unsupportedLoopAcrossCells || summary.fragmentedImageTag || summary.fragmentedLoopEnd,
+    ),
+    xmlSummary,
+  };
+}
+
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
 }
@@ -377,6 +458,19 @@ export async function POST(request: NextRequest) {
     let uint8Array: Uint8Array;
     try {
       const zip = new PizZip(Buffer.from(templateBuffer));
+      const materialImageInspection = inspectMaterialImageTemplate(zip);
+      // #region debug-point A:template-xml-structure
+      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const e=fs.readFileSync(p,'utf8');u=e.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=e.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'A',location:'preview-word/route.ts:zip-scan',msg:'[DEBUG] scanned word xml for material image loop structure',data:{hasUnsupportedImageLoop:materialImageInspection.hasUnsupportedImageLoop,xmlSummary:materialImageInspection.xmlSummary},ts:Date.now()})}).catch(()=>{})})();
+      // #endregion
+      if (materialImageInspection.hasUnsupportedImageLoop) {
+        return NextResponse.json(
+          {
+            error: 'Erreur lors du remplissage du document',
+            details: "Structure Word non supportee pour l'image materiel : ne placez pas {{#sp_materiel_detail}} dans la cellule de l'image et ne fermez pas la boucle {{/sp_materiel_detail}} dans une autre cellule de la meme ligne. Laissez {{%sp_matd_image_url}} seule dans sa cellule et placez la boucle dans un bloc ou une structure de tableau compatible.",
+          },
+          { status: 400 },
+        );
+      }
 
       // Module image : résout les variables images ({%var}) en téléchargeant l'URL,
       // sinon insère un placeholder transparent (même logique que fillWordTemplate).
@@ -410,6 +504,9 @@ export async function POST(request: NextRequest) {
         nullGetter: () => '',
       });
 
+      // #region debug-point D:before-render-material-data
+      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const e=fs.readFileSync(p,'utf8');u=e.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=e.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}const mats=Array.isArray(finalData.sp_materiel_detail)?finalData.sp_materiel_detail:[];await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'D',location:'preview-word/route.ts:before-render',msg:'[DEBUG] before render with material detail image tags',data:{materielCount:mats.length,materielSample:mats.slice(0,3),hasAnyImageUrl:mats.some((m)=>typeof (m as Record<string, unknown>)?.sp_matd_image_url==='string'&&String((m as Record<string, unknown>)?.sp_matd_image_url).length>0)},ts:Date.now()})}).catch(()=>{})})();
+      // #endregion
       await doc.renderAsync(finalData);
 
       uint8Array = doc.getZip().generate({
@@ -418,6 +515,9 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       const e = error as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
+      // #region debug-point B:render-error-image-loop
+      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const env=fs.readFileSync(p,'utf8');u=env.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=env.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'B',location:'preview-word/route.ts:catch',msg:'[DEBUG] word preview render error',data:{message:(error as Error)?.message,stack:(error as Error)?.stack,properties:(error as { properties?: unknown })?.properties},ts:Date.now()})}).catch(()=>{})})();
+      // #endregion
       const rawMessage = e?.message || (error as Error)?.message || '';
       if (rawMessage.includes("reading 'part'")) {
         return NextResponse.json(

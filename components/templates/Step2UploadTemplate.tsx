@@ -152,7 +152,7 @@ const SP_TABLE_BLOCKS = [
     arrayId: 'sp_materiel_detail',
     label: 'Tableau matériel proposé',
     fullBlock: `{{#sp_materiel_detail}}\n{{%sp_matd_image_url}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}\n{{/sp_materiel_detail}}`,
-    hint: 'Dans Word, placez le tag image seul dans son paragraphe ou sa cellule : {{%sp_matd_image_url}}',
+    hint: 'Dans Word, placez {{%sp_matd_image_url}} seul dans sa cellule ou son paragraphe, et ne mettez pas {{#sp_materiel_detail}} dans cette cellule ni {{/sp_materiel_detail}} dans une autre cellule de la meme ligne.',
   },
   {
     arrayId: 'sp_bdc_operateur_table',
