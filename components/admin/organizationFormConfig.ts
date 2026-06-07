@@ -100,16 +100,9 @@ export const SIMPLE_QUESTIONS = {
         'situation_actuelle.periodes_facturation[].date_fin',
         'situation_actuelle.engagements[].date_fin_engagement_source',
         'situation_actuelle.engagements[].date_limite_resiliation_calculee',
-        'situation_actuelle.totaux.total_abonnements_source',
-        'situation_actuelle.totaux.total_abonnements_calcule',
-        'situation_actuelle.totaux.total_locations_source',
-        'situation_actuelle.totaux.total_locations_calcule',
-        'situation_actuelle.totaux.total_solution_actuelle_source',
-        'situation_actuelle.totaux.total_solution_actuelle_calcule',
-        'situation_actuelle.indemnites.montant_source',
-        'situation_actuelle.indemnites.montant_calcule',
-        'situation_actuelle.ligne_bon_commande_materiel.libelle',
-        'situation_actuelle.ligne_bon_commande_materiel.montant'
+        'situation_actuelle.total_abonnements',
+        'situation_actuelle.total_loyer_mensuel',
+        'situation_actuelle.total_materiel'
       ]
     }
   ],
@@ -327,16 +320,9 @@ export const SIMPLE_QUESTIONS = {
         'situation_actuelle.periodes_facturation[].date_fin',
         'situation_actuelle.engagements[].date_fin_engagement_source',
         'situation_actuelle.engagements[].date_limite_resiliation_calculee',
-        'situation_actuelle.totaux.total_abonnements_source',
-        'situation_actuelle.totaux.total_abonnements_calcule',
-        'situation_actuelle.totaux.total_locations_source',
-        'situation_actuelle.totaux.total_locations_calcule',
-        'situation_actuelle.totaux.total_solution_actuelle_source',
-        'situation_actuelle.totaux.total_solution_actuelle_calcule',
-        'situation_actuelle.indemnites.montant_source',
-        'situation_actuelle.indemnites.montant_calcule',
-        'situation_actuelle.ligne_bon_commande_materiel.libelle',
-        'situation_actuelle.ligne_bon_commande_materiel.montant'
+        'situation_actuelle.total_abonnements',
+        'situation_actuelle.total_loyer_mensuel',
+        'situation_actuelle.total_materiel'
       ]
     }
   ]
@@ -438,16 +424,9 @@ export const TELEPHONIE_FIELDS = {
     'situation_actuelle.periodes_facturation[].date_fin',
     'situation_actuelle.engagements[].date_fin_engagement_source',
     'situation_actuelle.engagements[].date_limite_resiliation_calculee',
-    'situation_actuelle.totaux.total_abonnements_source',
-    'situation_actuelle.totaux.total_abonnements_calcule',
-    'situation_actuelle.totaux.total_locations_source',
-    'situation_actuelle.totaux.total_locations_calcule',
-    'situation_actuelle.totaux.total_solution_actuelle_source',
-    'situation_actuelle.totaux.total_solution_actuelle_calcule',
-    'situation_actuelle.indemnites.montant_source',
-    'situation_actuelle.indemnites.montant_calcule',
-    'situation_actuelle.ligne_bon_commande_materiel.libelle',
-    'situation_actuelle.ligne_bon_commande_materiel.montant',
+    'situation_actuelle.total_abonnements',
+    'situation_actuelle.total_loyer_mensuel',
+    'situation_actuelle.total_materiel',
   ],
 };
 
@@ -537,6 +516,45 @@ export const BUREAUTIQUE_FIELDS = {
 // Alias historique (téléphonie) : conservé pour éviter les régressions
 export const ALL_FIELDS = TELEPHONIE_FIELDS;
 
+const SA_LEGACY_TOTAL_FIELDS = new Set([
+  'situation_actuelle.totaux.total_abonnements_source',
+  'situation_actuelle.totaux.total_abonnements_calcule',
+  'situation_actuelle.totaux.total_locations_source',
+  'situation_actuelle.totaux.total_locations_calcule',
+  'situation_actuelle.totaux.total_solution_actuelle_source',
+  'situation_actuelle.totaux.total_solution_actuelle_calcule',
+  'situation_actuelle.indemnites.montant_source',
+  'situation_actuelle.indemnites.montant_calcule',
+  'situation_actuelle.ligne_bon_commande_materiel.libelle',
+  'situation_actuelle.ligne_bon_commande_materiel.montant',
+]);
+
+const SA_SIMPLIFIED_TOTAL_FIELDS = [
+  'situation_actuelle.total_abonnements',
+  'situation_actuelle.total_loyer_mensuel',
+  'situation_actuelle.total_materiel',
+];
+
+export function normalizeTemplateFieldPaths(fields: string[] = []): string[] {
+  const next: string[] = [];
+  let hasLegacySaTotal = false;
+
+  fields.forEach((field) => {
+    if (SA_LEGACY_TOTAL_FIELDS.has(field)) {
+      hasLegacySaTotal = true;
+      return;
+    }
+    if (!next.includes(field)) next.push(field);
+  });
+
+  if (hasLegacySaTotal) {
+    SA_SIMPLIFIED_TOTAL_FIELDS.forEach((field) => {
+      if (!next.includes(field)) next.push(field);
+    });
+  }
+
+  return next;
+}
 // LABELS DES CATÉGORIES
 // ============================================
 export const TELEPHONIE_CATEGORY_LABELS: Record<string, string> = {

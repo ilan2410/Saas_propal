@@ -270,23 +270,23 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_situation_proposee_complet}}
-{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
+{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
 {{/sp_situation_proposee_complet}}
 ```
-> **Explication** : Situation proposée complète : liste toutes les lignes de la solution proposée (mobiles, fixes, internet, matériel) avec leur type, nom, numéro lié si disponible, quantité si disponible, produit, fournisseur, prix actuel, prix proposé et économie.
+> **Explication** : Situation proposée complète : liste toutes les lignes de la solution proposée (mobiles, fixes, internet, matériel). Pour un rendu 100% SP, utilisez en priorité `sp_sp_produit` et `sp_sp_prix_propose`.
 
 **Champs internes disponibles dans la boucle :**
 
 | Champ interne | Description | Syntaxe |
 |---------------|-------------|---------|
 | `sp_sp_type` | Type de ligne (Mobile/Fixe/Internet/Materiel) | `{{sp_sp_type}}` |
-| `sp_sp_nom` | Nom de la ligne / offre | `{{sp_sp_nom}}` |
-| `sp_sp_numero` | Numéro de téléphone / ligne lié au forfait (si disponible) | `{{sp_sp_numero}}` |
+| `sp_sp_nom` | Nom de la ligne actuelle / offre de rattachement (peut refléter la SA) | `{{sp_sp_nom}}` |
+| `sp_sp_numero` | Numéro de téléphone / ligne lié au forfait, nettoyé quand détectable | `{{sp_sp_numero}}` |
 | `sp_sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_sp_quantite}}` |
-| `sp_sp_produit` | Nom du produit | `{{sp_sp_produit}}` |
+| `sp_sp_produit` | Nom du produit proposé (recommandé pour la désignation SP) | `{{sp_sp_produit}}` |
 | `sp_sp_fournisseur` | Fournisseur | `{{sp_sp_fournisseur}}` |
-| `sp_sp_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_sp_prix_actuel}}` |
-| `sp_sp_prix_propose` | Prix proposé (texte formaté) | `{{sp_sp_prix_propose}}` |
+| `sp_sp_prix_actuel` | Prix actuel SA (texte formaté, optionnel) | `{{sp_sp_prix_actuel}}` |
+| `sp_sp_prix_propose` | Prix proposé SP (texte formaté, recommandé) | `{{sp_sp_prix_propose}}` |
 | `sp_sp_economie` | Économie (texte formaté, optionnel) | `{{sp_sp_economie}}` |
 | `sp_sp_analyse` | Analyse (optionnel) | `{{sp_sp_analyse}}` |
 
@@ -297,24 +297,39 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_situation_proposee_forfaits}}
-{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}
+{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
 {{/sp_situation_proposee_forfaits}}
 ```
-> **Explication** : Situation proposée limitée aux forfaits uniquement (exclut le matériel). Même structure que `sp_situation_proposee_complet`, avec le numéro et la quantité liés à chaque forfait si disponibles.
+> **Explication** : Situation proposée limitée aux forfaits uniquement (exclut le matériel). Pour un tableau 100% SP, utilisez en priorité `sp_sp_produit` et `sp_sp_prix_propose`.
 
 **Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
 
 ---
 
-### 2.8 Matériel détaillé (`sp_materiel_detail`)
+### 2.8 Situation proposée forfaits sans remise (`sp_situation_proposee_forfaits_sans_remise`)
+
+**Syntaxe boucle :**
+```
+{{#sp_situation_proposee_forfaits_sans_remise}}
+{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
+{{/sp_situation_proposee_forfaits_sans_remise}}
+```
+> **Explication** : Reprend les forfaits proposés avec les tarifs catalogue avant remise. Si au moins un forfait est remisé, une dernière ligne `Remise` est ajoutée automatiquement avec le montant total de la remise dans `sp_sp_prix_propose`.
+
+**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
+
+---
+
+### 2.9 Matériel détaillé (`sp_materiel_detail`)
 
 **Syntaxe boucle :**
 ```
 {{#sp_materiel_detail}}
+{{%sp_matd_image_url}}
 {{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}
 {{/sp_materiel_detail}}
 ```
-> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT, fréquence (Mensuel ou Unique) et description issue de la fiche produit.
+> **Explication** : Détail du matériel avec nom, référence, fournisseur, quantité, prix unitaire HT, fréquence (Mensuel ou Unique) et description issue de la fiche produit. Si vous utilisez l'image, placez `{{%sp_matd_image_url}}` seul dans son paragraphe ou sa cellule Word.
 
 **Champs internes disponibles dans la boucle :**
 

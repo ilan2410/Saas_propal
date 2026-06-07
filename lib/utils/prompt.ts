@@ -166,6 +166,9 @@ const SITUATION_ACTUELLE_STRUCTURE = {
       preavis_mois: 3,
     },
   ],
+  total_abonnements: 'XX.XX',
+  total_loyer_mensuel: 'XX.XX',
+  total_materiel: 'XX.XX',
   totaux: {
     total_abonnements_source: 'XX.XX',
     total_abonnements_calcule: 'XX.XX',

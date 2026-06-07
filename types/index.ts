@@ -655,6 +655,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   // ── Lot 4: Tables filtrées ─────────────────────────────────────
   sp_situation_proposee_complet?: SpSituationProposeeLigne[];
   sp_situation_proposee_forfaits?: SpSituationProposeeLigne[];
+  sp_situation_proposee_forfaits_sans_remise?: SpSituationProposeeLigne[];
   sp_materiel_detail?: SpMaterielDetail[];
   sp_bdc_operateur_table?: SpBdcOperateurLigne[];
   sp_bdc_internet_table?: SpBdcInternetLigne[];

@@ -23,6 +23,7 @@ import {
   getSelectedTelecomCategories,
   getMergeLabel,
   generateMergedPrompt,
+  normalizeTemplateFieldPaths,
   type ViewMode,
 } from './organizationFormConfig';
 
@@ -208,7 +209,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
   useEffect(() => {
     const champsActifs = template?.champs_actifs as string[] | undefined;
     if (champsActifs && champsActifs.length > 0) {
-      const existingFields = champsActifs;
+      const existingFields = normalizeTemplateFieldPaths(champsActifs);
       const allKnownFields = getAllKnownFields();
       const knownFields = existingFields.filter((f) => allKnownFields.includes(f));
       const unknownFields = existingFields.filter((f) => !allKnownFields.includes(f));

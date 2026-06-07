@@ -36,6 +36,7 @@ import {
   getSelectedTelecomCategories,
   getMergeLabel,
   generateMergedPrompt,
+  normalizeTemplateFieldPaths,
   type ViewMode,
 } from '@/components/admin/organizationFormConfig';
 import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
@@ -67,6 +68,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
     [secteur]
   );
   const allKnownFields = getAllKnownFields();
+  const normalizedChampsActifs = normalizeTemplateFieldPaths(templateData.champs_actifs || []);
   
   const knownDefaultFields = defaultFields.filter(f => allKnownFields.includes(f));
   const customDefaultFields = defaultFields.filter(f => !allKnownFields.includes(f));
@@ -77,11 +79,11 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
   
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>(
     templateData.champs_actifs ? 
-      currentQuestions.filter(q => q.fields.every(f => (templateData.champs_actifs || []).includes(f))).map(q => q.id) :
+      currentQuestions.filter(q => q.fields.every(f => normalizedChampsActifs.includes(f))).map(q => q.id) :
       initialQuestions
   );
   const [selectedFields, setSelectedFields] = useState<string[]>(
-    templateData.champs_actifs?.filter(f => allKnownFields.includes(f)) || knownDefaultFields
+    templateData.champs_actifs ? normalizedChampsActifs.filter(f => allKnownFields.includes(f)) : knownDefaultFields
   );
 
   const fileConfig =
@@ -106,7 +108,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
   );
 
   const [legacyCustomFields, setLegacyCustomFields] = useState<string[]>(
-    templateData.champs_actifs?.filter((f) => !allKnownFields.includes(f) && !defPaths.has(f)) || customDefaultFields
+    templateData.champs_actifs ? normalizedChampsActifs.filter((f) => !allKnownFields.includes(f) && !defPaths.has(f)) : customDefaultFields
   );
   
   const [activeMerges, setActiveMerges] = useState<string[]>(templateData.merge_config || []);

@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -165,6 +166,11 @@ function enrichSituationActuelle(
     totaux.total_solution_actuelle_calcule = Math.round(totalSolutionCalcule * 100) / 100;
   }
   situation.totaux = totaux;
+
+  const saCart = calculateSaCartSummary({ situation_actuelle: situation });
+  situation.total_abonnements = Math.round((saCart.lignesFixes + saCart.lignesMobiles + saCart.lignesInternet + saCart.abonnements) * 100) / 100;
+  situation.total_loyer_mensuel = saCart.totalMensuel;
+  situation.total_materiel = saCart.locations;
 
   root.situation_actuelle = situation;
   const estimationResiliation = estimateResiliationFromSA(root, resiliationConfig, referenceDateInput);
@@ -374,6 +380,9 @@ STRUCTURE JSON ATTENDUE:
     "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "libelle": "Ligne ou service", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
     "periodes_facturation": [{"date_debut": "JJ/MM/AAAA", "date_fin": "JJ/MM/AAAA", "periodicite": "mensuelle|trimestrielle|annuelle|autre"}],
     "engagements": [{"reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "libelle": "Contrat/ligne/service", "operateur": "Nom opérateur", "site": "Site concerné", "elements_rattaches": ["06XXXXXXXX", "Accès fibre siège"], "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA", "preavis_mois": 3}],
+    "total_abonnements": "XX.XX",
+    "total_loyer_mensuel": "XX.XX",
+    "total_materiel": "XX.XX",
     "totaux": {"total_abonnements_source": "XX.XX", "total_abonnements_calcule": "XX.XX", "total_locations_source": "XX.XX", "total_locations_calcule": "XX.XX", "total_solution_actuelle_source": "XX.XX", "total_solution_actuelle_calcule": "XX.XX", "devise": "EUR", "precision": "HT|TTC|non_precise"},
     "indemnites": {"montant_source": "XX.XX", "montant_calcule": "XX.XX", "montant_estime": "XX.XX", "mois_restants_source": "X", "preavis_mois_source": "X", "base_mensuelle_source": "XX.XX", "mensualites_restantes": "XX.XX", "frais_resiliation_fixes": "XX.XX", "penalites": "XX.XX", "frais_materiel": "XX.XX", "services_annexes": "XX.XX", "source_retenue": "source|estimation|aucune", "fiabilite": "forte|moyenne|faible|insuffisante", "details_calcul": ["..."], "motifs_manquants": ["..."], "methode_calcul": "..."},
     "ligne_bon_commande_materiel": {"libelle": "Remboursement de XX.XX € au titre du solde définitif de vos contrats téléphoniques.", "montant": "XX.XX"}
@@ -400,7 +409,7 @@ RÈGLES:
 - Si "situation_actuelle" est demandée, rattache chaque ligne, abonnement ou location à son engagement/contrat en répétant la même reference_contrat, le même libelle_contrat et le même engagement_ref sur les éléments concernés.
 - Si "situation_actuelle" est demandée, dans engagements, indique les services rattachés dans elements_rattaches quand l'information est identifiable.
 - Si "situation_actuelle" est demandée, pour chaque date de fin d'engagement, conserve la date trouvée dans date_fin_engagement_source et calcule date_limite_resiliation_calculee en retirant 3 mois.
-- Si "situation_actuelle" est demandée, calcule total_abonnements_calcule, total_locations_calcule et total_solution_actuelle_calcule sans écraser les totaux source.
+- Si "situation_actuelle" est demandée, renseigne total_abonnements, total_loyer_mensuel et total_materiel, puis calcule total_abonnements_calcule, total_locations_calcule et total_solution_actuelle_calcule sans écraser les totaux source.
 - Si "situation_actuelle" est demandée, extrait si possible le détail des indemnités: mois_restants_source, preavis_mois_source, base_mensuelle_source, frais_resiliation_fixes, penalites, frais_materiel, services_annexes.
 - Si "situation_actuelle" est demandée, extrait ou estime les indemnités dans indemnites.montant_source, indemnites.montant_estime et indemnites.montant_calcule, puis prépare ligne_bon_commande_materiel.
 
@@ -557,7 +566,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       templateWordConfig.sp_config_resiliation
       ?? orgPreferences.sp_config_resiliation;
 
-    const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, proposition.created_at);
+    const propositionCreatedAt = typeof proposition.created_at === 'string' ? proposition.created_at : null;
+    const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, propositionCreatedAt);
     const extractedDataFinal =
       organization.secteur === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)

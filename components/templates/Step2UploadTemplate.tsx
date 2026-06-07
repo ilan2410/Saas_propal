@@ -133,20 +133,26 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_situation_proposee_forfaits',
     label: 'Tableau solution proposée forfaits',
-    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
-    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet.',
+    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
+    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet. Pour un tableau 100% SP, utilisez plutôt sp_sp_produit et sp_sp_prix_propose.',
+  },
+  {
+    arrayId: 'sp_situation_proposee_forfaits_sans_remise',
+    label: 'Tableau forfaits sans remise',
+    fullBlock: `{{#sp_situation_proposee_forfaits_sans_remise}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits_sans_remise}}`,
+    hint: 'Contient les mêmes forfaits avec les tarifs catalogue sans remise, puis ajoute une dernière ligne "Remise" en prix mensuel H.T. si applicable.',
   },
   {
     arrayId: 'sp_situation_proposee_complet',
     label: 'Tableau solution proposée complet',
-    fullBlock: `{{#sp_situation_proposee_complet}}\n{{sp_sp_type}}  {{sp_sp_nom}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_produit}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_actuel}}  {{sp_sp_prix_propose}}  {{sp_sp_economie}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_complet}}`,
-    hint: 'Contient la solution proposée complète : forfaits + matériel.',
+    fullBlock: `{{#sp_situation_proposee_complet}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_complet}}`,
+    hint: 'Contient la solution proposée complète : forfaits + matériel. Pour un tableau 100% SP, utilisez plutôt sp_sp_produit et sp_sp_prix_propose.',
   },
   {
     arrayId: 'sp_materiel_detail',
     label: 'Tableau matériel proposé',
-    fullBlock: `{{#sp_materiel_detail}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}  {{%sp_matd_image_url}}\n{{/sp_materiel_detail}}`,
-    hint: 'Pour afficher la photo produit dans Word, utilisez un tag image avec le préfixe % : {{%sp_matd_image_url}}',
+    fullBlock: `{{#sp_materiel_detail}}\n{{%sp_matd_image_url}}\n{{sp_matd_nom}}  {{sp_matd_ref}}  {{sp_matd_fournisseur}}  {{sp_matd_quantite}}  {{sp_matd_prix_ht}}  {{sp_matd_frequence}}  {{sp_matd_description}}\n{{/sp_materiel_detail}}`,
+    hint: 'Dans Word, placez le tag image seul dans son paragraphe ou sa cellule : {{%sp_matd_image_url}}',
   },
   {
     arrayId: 'sp_bdc_operateur_table',
@@ -256,55 +262,20 @@ const VARIABLE_HELP: Record<string, { label: string; description: string; exampl
     description: 'Ville ou numéro d’immatriculation au registre du commerce.',
     example: 'RCS Paris 123 456 789',
   },
-  'situation_actuelle.totaux.total_abonnements_source': {
-    label: 'Total abonnements lu',
-    description: 'Montant total des abonnements tel qu’il apparaît dans les documents source.',
+  'situation_actuelle.total_abonnements': {
+    label: 'Total abonnements',
+    description: 'Total mensuel des abonnements des lignes fixes, mobiles et internet.',
     example: '245.90',
   },
-  'situation_actuelle.totaux.total_abonnements_calcule': {
-    label: 'Total abonnements calculé',
-    description: 'Total recalculé automatiquement à partir des abonnements détectés.',
-    example: '239.90',
-  },
-  'situation_actuelle.totaux.total_locations_source': {
-    label: 'Total locations lu',
-    description: 'Montant total des locations ou loyers tel qu’il apparaît dans les documents source.',
-    example: '89.00',
-  },
-  'situation_actuelle.totaux.total_locations_calcule': {
-    label: 'Total locations calculé',
-    description: 'Total recalculé automatiquement à partir des loyers ou locations détectés.',
-    example: '89.00',
-  },
-  'situation_actuelle.totaux.total_solution_actuelle_source': {
-    label: 'Total situation actuelle lu',
-    description: 'Montant global de la solution actuelle tel qu’il est indiqué dans les documents.',
+  'situation_actuelle.total_loyer_mensuel': {
+    label: 'Total loyer mensuel',
+    description: 'Total mensuel SA extrait, tout compris.',
     example: '334.90',
   },
-  'situation_actuelle.totaux.total_solution_actuelle_calcule': {
-    label: 'Total situation actuelle calculé',
-    description: 'Montant global recalculé à partir des abonnements, lignes et locations détectés.',
-    example: '328.90',
-  },
-  'situation_actuelle.indemnites.montant_source': {
-    label: 'Indemnités lues',
-    description: 'Montant des indemnités ou du solde à rembourser tel qu’il est lu dans les documents.',
-    example: '1200.00',
-  },
-  'situation_actuelle.indemnites.montant_calcule': {
-    label: 'Indemnités calculées',
-    description: 'Montant des indemnités recalculé ou normalisé automatiquement.',
-    example: '1200.00',
-  },
-  'situation_actuelle.ligne_bon_commande_materiel.libelle': {
-    label: 'Libellé bon de commande',
-    description: 'Phrase prête à insérer dans le bon de commande pour le remboursement du solde télécom.',
-    example: 'Remboursement de 1200.00 € au titre du solde définitif de vos contrats téléphoniques.',
-  },
-  'situation_actuelle.ligne_bon_commande_materiel.montant': {
-    label: 'Montant bon de commande',
-    description: 'Montant à afficher sur la ligne de bon de commande matériel.',
-    example: '1200.00',
+  'situation_actuelle.total_materiel': {
+    label: 'Total matériel',
+    description: 'Total mensuel du matériel, locations et loyers.',
+    example: '89.00',
   },
 };
 

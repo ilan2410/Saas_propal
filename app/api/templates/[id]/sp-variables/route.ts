@@ -19,7 +19,7 @@ const SP_STANDARD_VARIABLES = [
   'sp_loyer_mensuel', 'sp_loyer_trimestriel', 'sp_marge',
   'sp_duree_mois', 'sp_trimestres', 'sp_mois_offerts',
   // Tables filtrées (Lot 4)
-  'sp_situation_proposee_complet', 'sp_situation_proposee_forfaits',
+  'sp_situation_proposee_complet', 'sp_situation_proposee_forfaits', 'sp_situation_proposee_forfaits_sans_remise',
   'sp_materiel_detail',
   'sp_bdc_operateur_table', 'sp_bdc_internet_table', 'sp_bdc_materiel_table',
   'sp_cadeaux_table',

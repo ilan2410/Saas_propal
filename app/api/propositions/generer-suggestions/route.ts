@@ -7,6 +7,7 @@ import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -402,6 +403,28 @@ function getPriceOverride(
   return null;
 }
 
+function sanitizeLineNumber(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const firstDigitIndex = trimmed.search(/\d/);
+  if (firstDigitIndex < 0) return undefined;
+
+  const digitCount = trimmed.replace(/\D/g, '').length;
+  if (digitCount < 8) return undefined;
+
+  const withoutLeadingText = trimmed.slice(firstDigitIndex);
+  const withoutParentheses = withoutLeadingText.replace(/\([^)]*\)/g, ' ');
+  const cleaned = withoutParentheses
+    .replace(/[A-Za-zÀ-ÿ]+/g, ' ')
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned || undefined;
+}
+
 function extractLineNumber(line: UnknownRecord): string | undefined {
   const candidates = [
     line.sp_numero,
@@ -412,7 +435,8 @@ function extractLineNumber(line: UnknownRecord): string | undefined {
     line.reference_contrat,
   ];
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    const sanitized = sanitizeLineNumber(candidate);
+    if (sanitized) return sanitized;
   }
   return undefined;
 }
@@ -695,6 +719,110 @@ function buildSpMaterielFromLibre(produit: SpProduitLibre): SpMateriel {
   };
 }
 
+function parsePositiveQuantity(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function findCatalogueMensuelProduit(
+  catalogueMap: Map<string, CatalogueProduit>,
+  produitId?: string,
+  produitNom?: string,
+): CatalogueProduit | undefined {
+  if (produitId && catalogueMap.has(produitId)) return catalogueMap.get(produitId);
+  if (produitNom) {
+    for (const item of catalogueMap.values()) {
+      if (item.nom === produitNom) return item;
+    }
+  }
+  return undefined;
+}
+
+function buildForfaitsSansRemiseTable(
+  lignes: Array<SpLigneMobile | SpLigneFixe | SpInternet>,
+  catalogueMap: Map<string, CatalogueProduit>,
+): SpSituationProposeeLigne[] {
+  const rows: SpSituationProposeeLigne[] = [];
+  let remiseTotale = 0;
+
+  for (const ligne of lignes) {
+    const quantite = parsePositiveQuantity(ligne.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, ligne.sp_produit_id, ligne.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (ligne._prix_propose_raw / quantite);
+    const originalTotal = originalUnitPrice * quantite;
+    const remiseLigne = originalTotal - ligne._prix_propose_raw;
+
+    rows.push({
+      sp_sp_type: ligne.sp_type_ligne,
+      sp_sp_nom: ligne.sp_nom_ligne,
+      sp_sp_numero: ligne.sp_numero,
+      sp_sp_quantite: ligne.sp_quantite,
+      sp_sp_produit: ligne.sp_produit,
+      sp_sp_fournisseur: ligne.sp_produit_fournisseur,
+      sp_sp_prix_actuel: ligne.sp_prix_actuel,
+      sp_sp_prix_propose: formatEuro(originalTotal),
+      sp_sp_economie: ligne.sp_economie,
+      sp_sp_analyse: ligne.sp_analyse,
+      _prix_raw: originalTotal,
+    });
+
+    if (remiseLigne > 0.005) remiseTotale += remiseLigne;
+  }
+
+  if (remiseTotale > 0.005) {
+    rows.push({
+      sp_sp_type: '',
+      sp_sp_nom: 'Remise',
+      sp_sp_numero: '',
+      sp_sp_quantite: '',
+      sp_sp_produit: 'Remise',
+      sp_sp_fournisseur: '',
+      sp_sp_prix_actuel: undefined,
+      sp_sp_prix_propose: formatEuro(-remiseTotale),
+      sp_sp_economie: undefined,
+      sp_sp_analyse: '',
+      _prix_raw: -remiseTotale,
+    });
+  }
+
+  return rows;
+}
+
+function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneFixe | SpInternet>(
+  existingLines: T[],
+  cartLines: CartLine[],
+  lineType: T['sp_type_ligne'],
+  catalogueMap: Map<string, CatalogueProduit>,
+): T[] {
+  if (cartLines.length === 0) return existingLines;
+
+  return cartLines.map((cartLine, index) => {
+    const existing = existingLines[index];
+    const catalogueItem = cartLine.produitId ? catalogueMap.get(cartLine.produitId) : undefined;
+    const prixActuel = existing?._prix_actuel_raw ?? 0;
+    const prixPropose = cartLine.prixTotal;
+    const economie = prixActuel - prixPropose;
+
+    return {
+      sp_nom_ligne: existing?.sp_nom_ligne ?? cartLine.produitNom,
+      sp_numero: existing?.sp_numero,
+      sp_quantite: String(cartLine.quantite),
+      sp_produit: cartLine.produitNom,
+      sp_produit_id: cartLine.produitId ?? existing?.sp_produit_id,
+      sp_produit_fournisseur: catalogueItem?.fournisseur ?? existing?.sp_produit_fournisseur,
+      sp_prix_actuel: formatEuro(prixActuel),
+      sp_prix_propose: formatEuro(prixPropose),
+      sp_economie: formatEuro(economie),
+      sp_analyse: existing?.sp_analyse ?? '',
+      sp_justification: existing?.sp_justification ?? '',
+      sp_type_ligne: lineType,
+      _prix_actuel_raw: prixActuel,
+      _prix_propose_raw: prixPropose,
+      _economie_raw: economie,
+    } as T;
+  });
+}
+
 function buildSpCompletes(
   raw: UnknownRecord,
   baseResult: SuggestionResult,
@@ -702,6 +830,7 @@ function buildSpCompletes(
   adresseLivraison: SpAdresse | null | undefined,
   livraisonIdentique: boolean,
   wordCfg: WordConfig,
+  templateQuestions: SpQuestion[],
   catalogueProduits?: CatalogueProduit[],
   loyerBaremes?: SpBareme[],
   priceOverrides: Map<string, number> = new Map(),
@@ -712,6 +841,9 @@ function buildSpCompletes(
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
   const rawInternet = Array.isArray(raw.sp_internet) ? raw.sp_internet as UnknownRecord[] : [];
   const rawMateriel = Array.isArray(raw.sp_materiel) ? raw.sp_materiel as UnknownRecord[] : [];
+  const reponses = Array.isArray(raw.sp_questions_reponses)
+    ? (raw.sp_questions_reponses as SpQuestionReponse[])
+    : [];
 
   const linesByType = {
     Mobile: [] as UnknownRecord[],
@@ -754,6 +886,26 @@ function buildSpCompletes(
   const sp_internet: SpInternet[] = rawInternetWithNumero.map((r) => ({ ...buildSpLigne(r, priceOverrides), sp_type_ligne: 'Internet' as const }));
   const sp_materiel: SpMateriel[] = rawMateriel.map((r) => buildSpMateriel(r, priceOverrides));
 
+  const catalogueMap = new Map<string, CatalogueProduit>();
+  if (catalogueProduits) {
+    for (const p of catalogueProduits) catalogueMap.set(p.id, p);
+  }
+
+  if (templateQuestions.length > 0 && catalogueProduits && catalogueProduits.length > 0) {
+    const questionnaireCart = calculateCartSummary(reponses, templateQuestions, catalogueProduits, {});
+    const mobileCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'mobile');
+    const fixeCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'fixe');
+    const internetCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'internet');
+    const hasTelecomSelections = mobileCartLines.length > 0 || fixeCartLines.length > 0 || internetCartLines.length > 0;
+
+    if (hasTelecomSelections) {
+      sp_lignes_mobiles.splice(0, sp_lignes_mobiles.length, ...(mobileCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp_lignes_mobiles, mobileCartLines, 'Mobile', catalogueMap) : []));
+      sp_lignes_fixes.splice(0, sp_lignes_fixes.length, ...(fixeCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp_lignes_fixes, fixeCartLines, 'Fixe', catalogueMap) : []));
+      sp_internet.splice(0, sp_internet.length, ...(internetCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp_internet, internetCartLines, 'Internet', catalogueMap) : []));
+    }
+
+  }
+
   // ── Inject saisies libres ("Autre valeur") ────────────────────────────
   const libreProduits = parseLibreFromRaw(raw);
   const libreByNom = new Map<string, SpProduitLibre>();
@@ -768,11 +920,6 @@ function buildSpCompletes(
   const totalPropose = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
 
   // ── Récurrent / Ponctuel breakdown via catalogue type_frequence ──
-  const catalogueMap = new Map<string, CatalogueProduit>();
-  if (catalogueProduits) {
-    for (const p of catalogueProduits) catalogueMap.set(p.id, p);
-  }
-
   // Lines (mobiles/fixes/internet) are always recurrent (monthly)
   const totalRecurrentLignes = totalPropose;
 
@@ -794,10 +941,6 @@ function buildSpCompletes(
   const totalPonctuel = totalMaterielPonctuel;
 
   // ── Loyer calculation ──
-  const reponses = Array.isArray(raw.sp_questions_reponses)
-    ? (raw.sp_questions_reponses as SpQuestionReponse[])
-    : [];
-
   // Résolution de la durée :
   //   1. Config "duree_depends_question" → réponse à la question SP désignée.
   //   2. Sinon : ancien mécanisme `raw.sp_duree_mois` (consequence renseigner_variable).
@@ -924,6 +1067,7 @@ function buildSpCompletes(
 
   // sp_situation_proposee_forfaits: mobiles + fixes + internet
   result.sp_situation_proposee_forfaits = toutes.map(toSituationLigne);
+  result.sp_situation_proposee_forfaits_sans_remise = buildForfaitsSansRemiseTable(toutes, catalogueMap);
 
   // sp_situation_proposee_complet: tout (forfaits + matériel)
   result.sp_situation_proposee_complet = [
@@ -1312,6 +1456,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
         adresse_livraison,
         livraison_identique,
         wordCfg,
+        templateQuestions,
         catalogue as CatalogueProduit[],
         loyerBaremes,
         priceOverrides,

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,8 +30,18 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
+    const extractedData = isRecord(proposition?.extracted_data) ? { ...proposition.extracted_data } : null;
+    if (extractedData && isRecord(extractedData.situation_actuelle)) {
+      const situationActuelle = { ...extractedData.situation_actuelle };
+      const saCart = calculateSaCartSummary({ situation_actuelle: situationActuelle });
+      situationActuelle.total_abonnements = Math.round((saCart.lignesFixes + saCart.lignesMobiles + saCart.lignesInternet + saCart.abonnements) * 100) / 100;
+      situationActuelle.total_loyer_mensuel = saCart.totalMensuel;
+      situationActuelle.total_materiel = saCart.locations;
+      extractedData.situation_actuelle = situationActuelle;
+    }
+
     return NextResponse.json({
-      extracted_data: proposition?.extracted_data ?? null,
+      extracted_data: extractedData,
       proposition_id: proposition?.id ?? null,
     });
   } catch (error) {
