@@ -5,6 +5,8 @@
  * Comportement identique à la génération réelle.
  */
 
+import { buildSituationActuelleLines } from '@/lib/sp/buildExportSaSpData';
+
 export type UnknownRecord = Record<string, unknown>;
 
 export function isPlainObject(value: unknown): value is UnknownRecord {
@@ -116,6 +118,21 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
 function normalizeSaArray(key: string, value: unknown): unknown {
   if (!Array.isArray(value)) return value;
   return value.map((item) => normalizeSaArrayItem(item, key));
+}
+
+function scoreSaArray(value: unknown): number {
+  if (!Array.isArray(value)) return -1;
+  let score = 0;
+  for (const item of value) {
+    if (!isPlainObject(item)) continue;
+    if (typeof item.designation === 'string' && item.designation.trim()) score += 3;
+    if (typeof item.numero === 'string' && item.numero.trim()) score += 2;
+    if (typeof item.numero_ligne === 'string' && item.numero_ligne.trim()) score += 2;
+    if (item.quantite !== undefined && item.quantite !== null && item.quantite !== '') score += 1;
+    if (item.prix_mensuel_ht !== undefined && item.prix_mensuel_ht !== null && item.prix_mensuel_ht !== '') score += 2;
+    if (item.tarif !== undefined && item.tarif !== null && item.tarif !== '') score += 1;
+  }
+  return score;
 }
 
 /**
@@ -287,9 +304,11 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   const hoistArrays = (obj: unknown) => {
     if (!isPlainObject(obj)) return;
     for (const [key, val] of Object.entries(obj)) {
-      // Ne pas écraser un tableau déjà remonté (la racine est prioritaire).
-      if (Array.isArray(val) && !(key in out)) {
-        out[key] = normalizeSaArray(key, val);
+      if (Array.isArray(val)) {
+        const normalized = normalizeSaArray(key, val);
+        if (!(key in out) || scoreSaArray(normalized) > scoreSaArray(out[key])) {
+          out[key] = normalized;
+        }
       }
     }
   };
@@ -298,6 +317,25 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   hoistArrays(baseData);
   // 2. Tableaux imbriqués sous situation_actuelle
   hoistArrays(baseData.situation_actuelle);
+
+  const currentLines = Array.isArray(out.lignes) ? out.lignes : [];
+  const fallbackSaLines = buildSituationActuelleLines(baseData, 0).lines.map((line, index) => {
+    const existing = isPlainObject(currentLines[index]) ? currentLines[index] : {};
+    const numero = line.numero || pickFirstString(existing, ['numero', 'numero_ligne']) || '';
+    return {
+      designation: line.offre,
+      libelle: line.offre,
+      numero,
+      numero_ligne: numero,
+      quantite: line.quantite,
+      prix_mensuel_ht: line.prixHt,
+      tarif: line.prixHt,
+      type: '',
+    };
+  });
+  if (scoreSaArray(fallbackSaLines) >= scoreSaArray(out.lignes)) {
+    out.lignes = fallbackSaLines;
+  }
 
   return out;
 }

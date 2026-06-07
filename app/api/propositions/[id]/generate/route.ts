@@ -41,8 +41,17 @@ export async function POST(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Utiliser filled_data si disponible, sinon extracted_data
-    const donnees = proposition.filled_data || proposition.extracted_data || {};
+    // Fusionner extracted_data + filled_data pour conserver les champs SA riches
+    // tout en laissant les éventuelles corrections utilisateur prendre la priorité.
+    const extracted =
+      proposition.extracted_data && typeof proposition.extracted_data === 'object'
+        ? proposition.extracted_data
+        : {};
+    const filled =
+      proposition.filled_data && typeof proposition.filled_data === 'object'
+        ? proposition.filled_data
+        : {};
+    const donnees = { ...extracted, ...filled };
 
     // Générer le fichier
     const fileUrl = await generatePropositionFile({

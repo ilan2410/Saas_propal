@@ -116,11 +116,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Préparer les données (réplique de generateWordFile)
-    const baseData: UnknownRecord = isPlainObject(proposition.filled_data)
+    const extracted: UnknownRecord = isPlainObject(proposition.extracted_data)
+      ? (proposition.extracted_data as UnknownRecord)
+      : {};
+    const filled: UnknownRecord = isPlainObject(proposition.filled_data)
       ? (proposition.filled_data as UnknownRecord)
-      : isPlainObject(proposition.extracted_data)
-        ? (proposition.extracted_data as UnknownRecord)
-        : {};
+      : {};
+    const baseData: UnknownRecord = { ...extracted, ...filled };
 
     const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
     const mappedData: UnknownRecord = { ...baseData };
