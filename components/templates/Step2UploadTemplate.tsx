@@ -417,6 +417,11 @@ export function Step2UploadTemplate({
   const [isRenderingDocx, setIsRenderingDocx] = useState(false);
   const [docxRenderError, setDocxRenderError] = useState<string | null>(null);
   const docxPreviewRef = useRef<HTMLDivElement>(null);
+  const [previewMode, setPreviewMode] = useState<'raw' | 'filled'>('raw');
+  const [filledPreviewBuffer, setFilledPreviewBuffer] = useState<ArrayBuffer | null>(null);
+  const [isLoadingFilledPreview, setIsLoadingFilledPreview] = useState(false);
+  const [filledPreviewError, setFilledPreviewError] = useState<string | null>(null);
+  const [noPropositionData, setNoPropositionData] = useState(false);
   const [copiedKeys, setCopiedKeys] = useState<Record<string, true>>({});
   const [showHelp, setShowHelp] = useState(false);
   const [currentHelpStep, setCurrentHelpStep] = useState(0);
@@ -467,6 +472,8 @@ export function Step2UploadTemplate({
   // Render docx-preview when a Word file is ready
   useEffect(() => {
     if (!hasWordPreviewSource) return;
+    // En mode "valeurs réelles", on attend que le buffer rempli soit prêt
+    if (previewMode === 'filled' && !filledPreviewBuffer) return;
 
     let cancelled = false;
     setIsRenderingDocx(true);
@@ -475,14 +482,20 @@ export function Step2UploadTemplate({
     (async () => {
       try {
         const { renderAsync } = await import('docx-preview');
-        const arrayBuffer = file
-          ? await file.arrayBuffer()
-          : await fetch(templateData.file_url as string).then(async (response) => {
-              if (!response.ok) {
-                throw new Error("Impossible de charger le document Word existant.");
-              }
-              return response.arrayBuffer();
-            });
+        let arrayBuffer: ArrayBuffer;
+        if (previewMode === 'filled' && filledPreviewBuffer) {
+          // Copie défensive : renderAsync peut détacher le buffer
+          arrayBuffer = filledPreviewBuffer.slice(0);
+        } else {
+          arrayBuffer = file
+            ? await file.arrayBuffer()
+            : await fetch(templateData.file_url as string).then(async (response) => {
+                if (!response.ok) {
+                  throw new Error("Impossible de charger le document Word existant.");
+                }
+                return response.arrayBuffer();
+              });
+        }
         if (cancelled || !docxPreviewRef.current) return;
         docxPreviewRef.current.innerHTML = '';
         await renderAsync(arrayBuffer, docxPreviewRef.current, undefined, {
@@ -498,7 +511,69 @@ export function Step2UploadTemplate({
     })();
 
     return () => { cancelled = true; };
-  }, [file, step, hasWordPreviewSource, templateData.file_url]);
+  }, [file, step, hasWordPreviewSource, templateData.file_url, previewMode, filledPreviewBuffer]);
+
+  // Charge l'aperçu rempli avec les valeurs de la dernière proposition
+  async function loadFilledPreview() {
+    if (!templateData.id) {
+      setFilledPreviewError("Sauvegardez d'abord le template pour utiliser cet aperçu.");
+      return;
+    }
+    setIsLoadingFilledPreview(true);
+    setFilledPreviewError(null);
+    setNoPropositionData(false);
+    try {
+      const formData = new FormData();
+      formData.append('templateId', templateData.id);
+      if (file) formData.append('file', file);
+
+      const response = await fetch('/api/templates/preview-word', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!response.ok) {
+        let message = "Impossible de générer l'aperçu avec les valeurs.";
+        if (contentType.includes('application/json')) {
+          const body = (await response.json().catch(() => null)) as { error?: string; details?: string } | null;
+          if (body?.error) message = body.error;
+          if (body?.details) message += ` — ${body.details}`;
+        }
+        throw new Error(message);
+      }
+
+      // Pas de proposition disponible : on bascule sur l'aperçu brut
+      if (contentType.includes('application/json')) {
+        const body = (await response.json().catch(() => null)) as { hasData?: boolean } | null;
+        if (body && body.hasData === false) {
+          setNoPropositionData(true);
+          setFilledPreviewBuffer(null);
+          setPreviewMode('raw');
+          return;
+        }
+      }
+
+      const buffer = await response.arrayBuffer();
+      setFilledPreviewBuffer(buffer);
+    } catch (error) {
+      setFilledPreviewError(
+        error instanceof Error ? error.message : "Impossible de générer l'aperçu avec les valeurs."
+      );
+      setPreviewMode('raw');
+    } finally {
+      setIsLoadingFilledPreview(false);
+    }
+  }
+
+  function handleSelectPreviewMode(mode: 'raw' | 'filled') {
+    setPreviewMode(mode);
+    setFilledPreviewError(null);
+    if (mode === 'filled' && !filledPreviewBuffer) {
+      void loadFilledPreview();
+    }
+  }
 
   // Aide contextuelle - étapes
   const helpSteps = [
@@ -883,6 +958,10 @@ export function Step2UploadTemplate({
     setWordParseMessages([]);
     setDocxRenderError(null);
     setIsRenderingDocx(false);
+    setPreviewMode('raw');
+    setFilledPreviewBuffer(null);
+    setFilledPreviewError(null);
+    setNoPropositionData(false);
     if (docxPreviewRef.current) docxPreviewRef.current.innerHTML = '';
     setValidationResults(null);
 
@@ -999,6 +1078,10 @@ export function Step2UploadTemplate({
     setWordParseMessages([]);
     setDocxRenderError(null);
     setIsRenderingDocx(false);
+    setPreviewMode('raw');
+    setFilledPreviewBuffer(null);
+    setFilledPreviewError(null);
+    setNoPropositionData(false);
     if (docxPreviewRef.current) docxPreviewRef.current.innerHTML = '';
     setCopiedKeys({});
     setValidationResults(null);
@@ -2084,24 +2167,66 @@ export function Step2UploadTemplate({
 
           {/* Aperçu Word */}
           <div id="word-preview-panel" className="bg-white border border-gray-200 rounded-xl p-6">
-            <h4 className="font-semibold text-gray-900 mb-4 text-lg flex items-center gap-2">
-              <span className="text-2xl">👁️</span>
-              Aperçu de votre document
-            </h4>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h4 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+                <span className="text-2xl">👁️</span>
+                Aperçu de votre document
+              </h4>
+              {hasWordPreviewSource && (
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreviewMode('raw')}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                      previewMode === 'raw'
+                        ? 'bg-white text-gray-900 shadow-sm font-medium'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Variables brutes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectPreviewMode('filled')}
+                    disabled={isLoadingFilledPreview}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors inline-flex items-center gap-1.5 ${
+                      previewMode === 'filled'
+                        ? 'bg-white text-gray-900 shadow-sm font-medium'
+                        : 'text-gray-500 hover:text-gray-700'
+                    } ${isLoadingFilledPreview ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    {isLoadingFilledPreview && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Valeurs de la dernière proposition
+                  </button>
+                </div>
+              )}
+            </div>
+            {filledPreviewError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p className="text-sm text-red-700">{filledPreviewError}</p>
+              </div>
+            )}
+            {noPropositionData && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-sm text-amber-800">
+                  Aucune proposition générée pour ce template : l&apos;aperçu affiche les variables brutes.
+                </p>
+              </div>
+            )}
             {hasWordPreviewSource ? (
               <div className="border-2 border-gray-200 rounded-lg overflow-auto shadow-sm bg-white" style={{ minHeight: 420, maxHeight: 600 }}>
-                {isRenderingDocx && (
+                {(isRenderingDocx || isLoadingFilledPreview) && (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 text-blue-600 animate-spin mr-3" />
                     <span className="text-gray-600">Génération de l&apos;aperçu...</span>
                   </div>
                 )}
-                {docxRenderError && !isRenderingDocx && (
+                {docxRenderError && !isRenderingDocx && !isLoadingFilledPreview && (
                   <div className="p-8 text-center">
                     <p className="text-sm text-red-500">{docxRenderError}</p>
                   </div>
                 )}
-                <div ref={docxPreviewRef} className={isRenderingDocx ? 'hidden' : 'p-4'} />
+                <div ref={docxPreviewRef} className={(isRenderingDocx || isLoadingFilledPreview) ? 'hidden' : 'p-4'} />
               </div>
             ) : (
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">

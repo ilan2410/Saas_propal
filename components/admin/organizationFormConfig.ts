@@ -923,8 +923,11 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
   const mergedArray: ArrayFieldDefinition = {
     id: 'lignes', // ID unifié dans le JSON final
     label: getMergeLabel(validMerges),
-    description: 'Liste consolidée des lignes (fusion)',
+    description: 'Liste consolidée des lignes (fusion), avec alias communs designation / numero / quantite / prix_mensuel_ht.',
     rowFields: [
+      { id: 'designation', label: 'Désignation', type: 'string' },
+      { id: 'numero', label: 'Numéro (alias)', type: 'string' },
+      { id: 'prix_mensuel_ht', label: 'Prix mensuel HT', type: 'number' },
       { id: 'numero_ligne', label: 'Numéro', type: 'string' },
       { id: 'type', label: 'Type', type: 'string' },
       ...(includesMateriel
