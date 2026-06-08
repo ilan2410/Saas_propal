@@ -1075,8 +1075,14 @@ function buildSpCompletes(
     ...sp_materiel.map(toSituationMateriel),
   ];
 
-  // sp_materiel_detail: matériel enrichi avec infos catalogue
-  result.sp_materiel_detail = sp_materiel.map((m): SpMaterielDetail => {
+  // sp_materiel_detail: matériel enrichi avec infos catalogue (hors cadeaux — ceux-ci vont dans sp_cadeaux_table)
+  result.sp_materiel_detail = sp_materiel
+    .filter((m) => {
+      if (m.sp_materiel_produit_id === FREE_ENTRY_MARKER) return true;
+      const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+      return cat?.categorie !== 'cadeau';
+    })
+    .map((m): SpMaterielDetail => {
     const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
     const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
     const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');

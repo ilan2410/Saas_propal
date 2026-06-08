@@ -32,6 +32,7 @@
 - Log ligne 1 : le scan XML trouve `{{#sp_materiel_detail}}` dans `word/document.xml`, mais pas `{{%sp_matd_image_url}}` ni `{{/sp_materiel_detail}}` sous forme contigue dans le XML brut.
 - Log ligne 2 : `sp_materiel_detail` contient bien 1 ligne materiel et aucune URL image ; ce point n'explique pas l'erreur car le module image sait deja tomber sur un placeholder.
 - Log ligne 3 : l'erreur se produit dans `ImageModule.render` avec `Cannot read properties of undefined (reading 'part')`, donc au moment du rendu image/loop et non dans la preparation des donnees.
+- Tentative de remplacement du module image par `docxtemplater-image` : nouvel echec `TypeError | moduleResolved.then is not a function | file=word/document.xml`, ce qui montre une incompatibilite d'integration avec notre pipeline Docxtemplater actuel et ne resout pas le probleme metier.
 
 ## Verification Conclusion
 - A : **Partiellement confirmee** — le debut de boucle est bien vu dans la zone image, ce qui oriente vers une structure non supportee avec le module image.
@@ -39,3 +40,4 @@
 - C : **Confirmee** — les tags image/fermeture ne sont pas retrouves contigus dans le XML brut, ce qui indique une fragmentation/structure Word incompatible avec l'attente du module.
 - D : **Confirmee** — les donnees `sp_materiel_detail` ne sont pas la cause.
 - E : **Confirmee** — le message actuel parle seulement de "tag image seul", alors que le vrai probleme est plus precis : structure de boucle/cellule/tableau non compatible.
+- F : **Confirmee** — remplacer rapidement le module image ne suffit pas ; le fork teste ne supprime pas la contrainte structurelle et ajoute une incompatibilite technique.

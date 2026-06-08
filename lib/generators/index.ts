@@ -4,9 +4,8 @@
  */
 
 import ExcelJS from 'exceljs';
-import Docxtemplater from 'docxtemplater';
-import PizZip from 'pizzip';
 import { createServiceClient } from '@/lib/supabase/server';
+import { renderWordWithImages } from './word-image';
 import { buildSpWordData } from './sp-word-data';
 import {
   isPlainObject,
@@ -382,15 +381,6 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
   }
 
   const templateBuffer = await response.arrayBuffer();
-  const zip = new PizZip(Buffer.from(templateBuffer));
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    delimiters: {
-      start: '{{',
-      end: '}}',
-    },
-  });
 
   const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
   const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
@@ -430,10 +420,14 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
   const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
   // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
   const saData = buildSaWordData(baseData);
-  const finalData = { ...spData, ...mappedData, ...flatData, ...saData };
+  // Ordre de priorité : données extraites (flat) < SA < SP calculées < mapping utilisateur.
+  const finalData = { ...flatData, ...saData, ...spData, ...mappedData };
 
+  let uint8Array: Uint8Array;
   try {
-    doc.render(finalData);
+    // Rend le DOCX avec support des images, y compris à l'intérieur des boucles
+    // de tableau (ex: {{#sp_materiel_detail}} ... {{%sp_matd_image_url}} ...).
+    uint8Array = await renderWordWithImages(templateBuffer, finalData);
   } catch (error) {
     const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
     const details =
@@ -442,11 +436,6 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
       'Erreur inconnue';
     throw new Error(`Erreur Docxtemplater: ${details}`);
   }
-
-  const uint8Array = doc.getZip().generate({
-    type: 'uint8array',
-    compression: 'DEFLATE',
-  });
 
   if (uint8Array.byteLength === 0) {
     throw new Error('Le fichier Word généré est vide');

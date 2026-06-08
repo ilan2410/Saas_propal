@@ -1659,7 +1659,7 @@ export function SpQuestionnaireUI({
                     <details className="rounded-lg border border-gray-200 bg-white p-3 group">
                       <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-gray-800">Détail premium du calcul</p>
+                          <p className="text-sm font-semibold text-gray-800">Détail du calcul</p>
                           <p className="text-xs text-gray-500 mt-0.5">
                             Décomposition, hypothèses, preuves SA et groupes d&apos;engagement
                           </p>

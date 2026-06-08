@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Docxtemplater from 'docxtemplater';
-import PizZip from 'pizzip';
 import { createClient } from '@/lib/supabase/server';
+import { renderWordWithImages } from '@/lib/generators/word-image';
 import { buildSpWordData } from '@/lib/generators/sp-word-data';
 import {
   isPlainObject,
@@ -14,101 +13,7 @@ import {
 } from '@/lib/generators/word-data-utils';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
-import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne } from '@/types';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ImageModule = require('docxtemplater-image-module') as new (opts: {
-  centered?: boolean;
-  fileType?: string;
-  getImage: (tagValue: string) => Promise<Buffer> | Buffer;
-  getSize: (img: Buffer, tagValue: string) => [number, number];
-}) => object;
-
-// 1×1 transparent PNG — placeholder quand aucune URL d'image n'est fournie
-const PLACEHOLDER_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-  'base64',
-);
-
-type MaterialImageTemplateInspection = {
-  hasUnsupportedImageLoop: boolean;
-  xmlSummary: Array<{
-    name: string;
-    rawHasLoopStart: boolean;
-    rawHasImageTag: boolean;
-    rawHasLoopEnd: boolean;
-    plainHasLoopStart: boolean;
-    plainHasImageTag: boolean;
-    plainHasLoopEnd: boolean;
-    startImageCellIndex: number;
-    endCellIndex: number;
-    rowWithStartImageEndPlain: boolean;
-    fragmentedImageTag: boolean;
-    fragmentedLoopEnd: boolean;
-    unsupportedLoopAcrossCells: boolean;
-    startContext?: string;
-    imageContext?: string;
-    endContext?: string;
-  }>;
-};
-
-function inspectMaterialImageTemplate(zip: PizZip): MaterialImageTemplateInspection {
-  const loopStart = '{{#sp_materiel_detail}}';
-  const imageTag = '{{%sp_matd_image_url}}';
-  const loopEnd = '{{/sp_materiel_detail}}';
-  const toPlainText = (xml: string) => xml.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-  const xmlFiles = Object.keys((zip as unknown as { files?: Record<string, unknown> }).files ?? {})
-    .filter((name) => /^word\/(document|header\d+|footer\d+)\.xml$/.test(name));
-
-  const xmlSummary = xmlFiles.map((name) => {
-    const xml = zip.file(name)?.asText?.() ?? '';
-    const plain = toPlainText(xml);
-    const cells = xml.match(/<w:tc\b[\s\S]*?<\/w:tc>/g) ?? [];
-    const rows = xml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) ?? [];
-    const cellTexts = cells.map(toPlainText);
-    const rowTexts = rows.map(toPlainText);
-    const startImageCellIndex = cellTexts.findIndex((text) => text.includes(loopStart) && text.includes(imageTag));
-    const endCellIndex = cellTexts.findIndex((text) => text.includes(loopEnd));
-    const rowWithStartImageEndPlain = rowTexts.some(
-      (text) => text.includes(loopStart) && text.includes(imageTag) && text.includes(loopEnd),
-    );
-    const around = (tag: string) => {
-      const idx = plain.indexOf(tag);
-      return idx >= 0 ? plain.slice(Math.max(0, idx - 160), Math.min(plain.length, idx + tag.length + 160)) : undefined;
-    };
-
-    const summary = {
-      name,
-      rawHasLoopStart: xml.includes(loopStart),
-      rawHasImageTag: xml.includes(imageTag),
-      rawHasLoopEnd: xml.includes(loopEnd),
-      plainHasLoopStart: plain.includes(loopStart),
-      plainHasImageTag: plain.includes(imageTag),
-      plainHasLoopEnd: plain.includes(loopEnd),
-      startImageCellIndex,
-      endCellIndex,
-      rowWithStartImageEndPlain,
-      fragmentedImageTag: plain.includes(imageTag) && !xml.includes(imageTag),
-      fragmentedLoopEnd: plain.includes(loopEnd) && !xml.includes(loopEnd),
-      unsupportedLoopAcrossCells:
-        rowWithStartImageEndPlain &&
-        startImageCellIndex >= 0 &&
-        endCellIndex >= 0 &&
-        startImageCellIndex !== endCellIndex,
-      startContext: around(loopStart),
-      imageContext: around(imageTag),
-      endContext: around(loopEnd),
-    };
-
-    return summary;
-  });
-
-  return {
-    hasUnsupportedImageLoop: xmlSummary.some(
-      (summary) => summary.unsupportedLoopAcrossCells || summary.fragmentedImageTag || summary.fragmentedLoopEnd,
-    ),
-    xmlSummary,
-  };
-}
+import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail } from '@/types';
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
@@ -246,6 +151,46 @@ function repairSpCompletesFromQuestionnaire(
     : (sp.sp_internet ?? []);
   const toutes = [...fixes, ...mobiles, ...internet];
 
+  // ── Reconstruire le matériel à partir des réponses du questionnaire ─────
+  // Exclure les catégories telecom (gérées séparément) ET les cadeaux (sp_cadeaux_table)
+  const materielCartLines = cart.lines.filter((line) =>
+    !['mobile', 'fixe', 'internet', 'cadeau'].includes(line.categorie)
+  );
+  const sp_materiel: SpMateriel[] = materielCartLines.map((line) => {
+    const cat = line.produitId ? catalogueMap.get(line.produitId) : undefined;
+    return {
+      sp_materiel_nom: line.produitNom,
+      sp_materiel_ref: undefined,
+      sp_materiel_fournisseur: cat?.fournisseur,
+      sp_materiel_prix_mensuel: formatEuro(line.prixTotal),
+      sp_materiel_duree_engagement: '',
+      sp_materiel_commentaire: '',
+      sp_materiel_produit_id: line.produitId,
+      sp_type_ligne: 'Materiel',
+      _prix_mensuel_raw: line.prixTotal,
+    };
+  });
+
+  const sp_materiel_detail: SpMaterielDetail[] = materielCartLines.map((line) => {
+    const isLibre = !line.produitId;
+    const cat = !isLibre && line.produitId ? catalogueMap.get(line.produitId) : undefined;
+    const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
+    const imageUrl = !isLibre && typeof cat?.image_url === 'string' ? cat.image_url : undefined;
+    const description = !isLibre && typeof cat?.description === 'string' ? cat.description : '';
+    return {
+      sp_matd_nom: line.produitNom,
+      sp_matd_ref: undefined,
+      sp_matd_fournisseur: cat?.fournisseur,
+      sp_matd_quantite: String(line.quantite ?? 1),
+      sp_matd_prix_ht: formatEuro(line.prixTotal),
+      sp_matd_description: description,
+      sp_matd_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
+      sp_matd_image_url: imageUrl,
+      sp_mat_image_url: imageUrl,
+      _prix_raw: line.prixTotal,
+    };
+  });
+
   const toSituationLigne = (line: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
     sp_sp_type: line.sp_type_ligne,
     sp_sp_nom: line.sp_nom_ligne,
@@ -260,6 +205,21 @@ function repairSpCompletesFromQuestionnaire(
     _prix_raw: line._prix_propose_raw,
   });
 
+  const toSituationMateriel = (m: SpMateriel): SpSituationProposeeLigne => ({
+    sp_sp_type: 'Materiel',
+    sp_sp_nom: m.sp_materiel_nom,
+    sp_sp_produit: m.sp_materiel_nom,
+    sp_sp_fournisseur: m.sp_materiel_fournisseur,
+    sp_sp_prix_actuel: undefined,
+    sp_sp_prix_propose: m.sp_materiel_prix_mensuel,
+    sp_sp_economie: undefined,
+    sp_sp_analyse: m.sp_materiel_commentaire,
+    _prix_raw: m._prix_mensuel_raw,
+  });
+
+  const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
+  const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
+
   const repaired = {
     ...sp,
     sp_lignes_mobiles: mobiles,
@@ -268,23 +228,17 @@ function repairSpCompletesFromQuestionnaire(
     sp_fixes_mobiles: [...fixes, ...mobiles],
     sp_fixes_mobiles_internet: toutes,
     sp_toutes_lignes: toutes,
+    sp_materiel,
+    sp_materiel_detail,
     sp_situation_proposee_forfaits: toutes.map(toSituationLigne),
     sp_situation_proposee_forfaits_sans_remise: buildForfaitsSansRemiseTable(toutes, catalogueMap),
     sp_situation_proposee_complet: [
       ...toutes.map(toSituationLigne),
-      ...(sp.sp_materiel ?? []).map((m) => ({
-        sp_sp_type: 'Materiel',
-        sp_sp_nom: m.sp_materiel_nom,
-        sp_sp_produit: m.sp_materiel_nom,
-        sp_sp_fournisseur: m.sp_materiel_fournisseur,
-        sp_sp_prix_actuel: undefined,
-        sp_sp_prix_propose: m.sp_materiel_prix_mensuel,
-        sp_sp_economie: undefined,
-        sp_sp_analyse: m.sp_materiel_commentaire,
-        _prix_raw: m._prix_mensuel_raw,
-      })),
+      ...sp_materiel.map(toSituationMateriel),
     ],
-    sp_total_forfaits_mensuel_ht: formatEuro(toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0)),
+    sp_total_forfaits_mensuel_ht: formatEuro(totalForfaits),
+    sp_total_materiel_ht: formatEuro(totalMateriel),
+    sp_total_complet: formatEuro(totalForfaits + totalMateriel),
   };
 
   return repaired;
@@ -452,84 +406,42 @@ export async function POST(request: NextRequest) {
     const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
     // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
     const saData = buildSaWordData(baseData);
-    const finalData = { ...spData, ...mappedData, ...flatData, ...saData };
+    // Ordre de priorité : données extraites (flat) < SA < SP calculées < mapping utilisateur.
+    // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
+    const finalData = { ...flatData, ...saData, ...spData, ...mappedData };
 
-    // 5. Rendre le DOCX rempli en mémoire
+    // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
     let uint8Array: Uint8Array;
     try {
-      const zip = new PizZip(Buffer.from(templateBuffer));
-      const materialImageInspection = inspectMaterialImageTemplate(zip);
-      // #region debug-point A:template-xml-structure
-      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const e=fs.readFileSync(p,'utf8');u=e.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=e.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'A',location:'preview-word/route.ts:zip-scan',msg:'[DEBUG] scanned word xml for material image loop structure',data:{hasUnsupportedImageLoop:materialImageInspection.hasUnsupportedImageLoop,xmlSummary:materialImageInspection.xmlSummary},ts:Date.now()})}).catch(()=>{})})();
-      // #endregion
-      if (materialImageInspection.hasUnsupportedImageLoop) {
-        return NextResponse.json(
-          {
-            error: 'Erreur lors du remplissage du document',
-            details: "Structure Word non supportee pour l'image materiel : ne placez pas {{#sp_materiel_detail}} dans la cellule de l'image et ne fermez pas la boucle {{/sp_materiel_detail}} dans une autre cellule de la meme ligne. Laissez {{%sp_matd_image_url}} seule dans sa cellule et placez la boucle dans un bloc ou une structure de tableau compatible.",
-          },
-          { status: 400 },
-        );
-      }
-
-      // Module image : résout les variables images ({%var}) en téléchargeant l'URL,
-      // sinon insère un placeholder transparent (même logique que fillWordTemplate).
-      const imageCache = new Map<string, Buffer>();
-      const imageModule = new ImageModule({
-        centered: false,
-        fileType: 'docx',
-        getImage: async (tagValue: string) => {
-          if (!tagValue || !/^https?:\/\//.test(tagValue)) return PLACEHOLDER_PNG;
-          if (imageCache.has(tagValue)) return imageCache.get(tagValue)!;
-          try {
-            const imgRes = await fetch(tagValue);
-            const buf = Buffer.from(await imgRes.arrayBuffer());
-            imageCache.set(tagValue, buf);
-            return buf;
-          } catch {
-            return PLACEHOLDER_PNG;
-          }
-        },
-        getSize: () => [150, 100] as [number, number],
-      });
-
-      // Construction : en docxtemplater v3 le parsing du template peut lever ici
-      // (tags mal formés, fractionnés par la mise en forme, etc.).
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        delimiters: { start: '{{', end: '}}' },
-        modules: [imageModule],
-        // Aperçu tolérant : variable absente -> chaîne vide (ne bloque pas le rendu).
-        nullGetter: () => '',
-      });
-
-      // #region debug-point D:before-render-material-data
-      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const e=fs.readFileSync(p,'utf8');u=e.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=e.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}const mats=Array.isArray(finalData.sp_materiel_detail)?finalData.sp_materiel_detail:[];await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'D',location:'preview-word/route.ts:before-render',msg:'[DEBUG] before render with material detail image tags',data:{materielCount:mats.length,materielSample:mats.slice(0,3),hasAnyImageUrl:mats.some((m)=>typeof (m as Record<string, unknown>)?.sp_matd_image_url==='string'&&String((m as Record<string, unknown>)?.sp_matd_image_url).length>0)},ts:Date.now()})}).catch(()=>{})})();
-      // #endregion
-      await doc.renderAsync(finalData);
-
-      uint8Array = doc.getZip().generate({
-        type: 'uint8array',
-        compression: 'DEFLATE',
-      });
+      uint8Array = await renderWordWithImages(templateBuffer, finalData);
     } catch (error) {
-      const e = error as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
-      // #region debug-point B:render-error-image-loop
-      await (async()=>{const fs=require('node:fs'),p='.dbg/word-image-table-loop.env';let u='http://127.0.0.1:7777/event',s='word-image-table-loop';try{const env=fs.readFileSync(p,'utf8');u=env.match(/DEBUG_SERVER_URL=(.+)/)?.[1]||u;s=env.match(/DEBUG_SESSION_ID=(.+)/)?.[1]||s}catch{}await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s,runId:'post-fix',hypothesisId:'B',location:'preview-word/route.ts:catch',msg:'[DEBUG] word preview render error',data:{message:(error as Error)?.message,stack:(error as Error)?.stack,properties:(error as { properties?: unknown })?.properties},ts:Date.now()})}).catch(()=>{})})();
-      // #endregion
-      const rawMessage = e?.message || (error as Error)?.message || '';
-      if (rawMessage.includes("reading 'part'")) {
-        return NextResponse.json(
-          {
-            error: 'Erreur lors du remplissage du document',
-            details: "Le tag image Word semble mal place. Placez {{%sp_matd_image_url}} seul dans son paragraphe ou sa cellule, sans autre texte ni variable sur la meme ligne.",
-          },
-          { status: 400 }
-        );
-      }
-      const details =
-        e?.properties?.errors?.map((er) => er?.properties?.explanation).filter(Boolean).join('\n') ||
+      const e = error as {
+        message?: string;
+        properties?: {
+          errors?: Array<{
+            name?: string;
+            message?: string;
+            properties?: {
+              id?: string;
+              explanation?: string;
+              xtag?: string;
+              file?: string;
+            };
+          }>;
+        };
+      };
+      const details = e?.properties?.errors?.map((er) => {
+        const explanation = er?.properties?.explanation?.trim();
+        if (explanation) return explanation;
+        const parts = [
+          er?.properties?.id,
+          er?.name,
+          er?.message,
+          er?.properties?.xtag ? `tag=${er.properties.xtag}` : undefined,
+          er?.properties?.file ? `file=${er.properties.file}` : undefined,
+        ].filter(Boolean);
+        return parts.join(' | ');
+      }).filter(Boolean).join('\n') ||
         e?.message ||
         'Erreur inconnue';
       return NextResponse.json(
