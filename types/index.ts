@@ -469,6 +469,7 @@ export interface SpQuestion {
   nombre_config?: SpQuestionNombreConfig;
   consequences: SpConsequence[];
   priorite_ia: 'normale' | 'haute';
+  sa_prefill?: boolean;
   /** Identifiant du groupe de boucle (toutes les questions avec le même id forment un bloc répété) */
   groupe_boucle_id?: string;
   /** Définition de la boucle (uniquement sur la première question du groupe) */
@@ -492,10 +493,16 @@ export interface SpProduitLibre {
 }
 
 export interface SpAdresse {
+  societe?: string;
   adresse: string;
   complement?: string;
   code_postal: string;
   ville: string;
+  contact?: string;
+  ligne_fixe?: string;
+  ligne_mobile?: string;
+  email?: string;
+  siret?: string;
   pays?: string;
 }
 

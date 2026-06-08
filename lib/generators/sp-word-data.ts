@@ -38,9 +38,10 @@ export function buildSpWordData(
   if (!sp) return {};
 
   const adresseFact = sp.sp_adresse_facturation;
-  const adresseLiv = sp.sp_livraison_identique
-    ? adresseFact
-    : sp.sp_adresse_livraison;
+  // Pour la variable 1-ligne formatée, livraison = facturation si identique
+  const adresseLivDisplay = sp.sp_livraison_identique ? adresseFact : sp.sp_adresse_livraison;
+  // Pour les 9 champs SP, livraison est vide si identique (les champs facturation suffisent)
+  const adresseLiv = sp.sp_livraison_identique ? null : sp.sp_adresse_livraison;
 
   const data: Record<string, unknown> = {
     sp_economie_mensuelle: sp.sp_economie_mensuelle ?? '',
@@ -53,15 +54,28 @@ export function buildSpWordData(
     sp_fournisseur_propose: sp.sp_fournisseur_propose ?? '',
 
     sp_adresse_facturation: adresseFact ? formatAdresse(adresseFact) : '',
-    sp_adresse_facturation_rue: adresseFact?.adresse ?? '',
-    sp_adresse_facturation_cp: adresseFact?.code_postal ?? '',
-    sp_adresse_facturation_ville: adresseFact?.ville ?? '',
-
-    sp_adresse_livraison: adresseLiv ? formatAdresse(adresseLiv) : '',
-    sp_adresse_livraison_rue: adresseLiv?.adresse ?? adresseFact?.adresse ?? '',
-    sp_adresse_livraison_cp: adresseLiv?.code_postal ?? adresseFact?.code_postal ?? '',
-    sp_adresse_livraison_ville: adresseLiv?.ville ?? adresseFact?.ville ?? '',
+    sp_adresse_livraison: adresseLivDisplay ? formatAdresse(adresseLivDisplay) : '',
     sp_livraison_identique: sp.sp_livraison_identique ? 'Oui' : 'Non',
+
+    Adresse_facturation_SP_societe:      adresseFact?.societe ?? '',
+    Adresse_facturation_SP_adresse:      adresseFact?.adresse ?? '',
+    Adresse_facturation_SP_cp:           adresseFact?.code_postal ?? '',
+    Adresse_facturation_SP_ville:        adresseFact?.ville ?? '',
+    Adresse_facturation_SP_contact:      adresseFact?.contact ?? '',
+    Adresse_facturation_SP_ligne_fixe:   adresseFact?.ligne_fixe ?? '',
+    Adresse_facturation_SP_ligne_mobile: adresseFact?.ligne_mobile ?? '',
+    Adresse_facturation_SP_email:        adresseFact?.email ?? '',
+    Adresse_facturation_SP_siret:        adresseFact?.siret ?? '',
+
+    Adresse_livraison_SP_societe:        adresseLiv?.societe ?? '',
+    Adresse_livraison_SP_adresse:        adresseLiv?.adresse ?? '',
+    Adresse_livraison_SP_cp:             adresseLiv?.code_postal ?? '',
+    Adresse_livraison_SP_ville:          adresseLiv?.ville ?? '',
+    Adresse_livraison_SP_contact:        adresseLiv?.contact ?? '',
+    Adresse_livraison_SP_ligne_fixe:     adresseLiv?.ligne_fixe ?? '',
+    Adresse_livraison_SP_ligne_mobile:   adresseLiv?.ligne_mobile ?? '',
+    Adresse_livraison_SP_email:          adresseLiv?.email ?? '',
+    Adresse_livraison_SP_siret:          adresseLiv?.siret ?? '',
 
     sp_lignes_mobiles: normalizeSpArrayRows(sp.sp_lignes_mobiles ?? []),
     sp_lignes_fixes: normalizeSpArrayRows(sp.sp_lignes_fixes ?? []),

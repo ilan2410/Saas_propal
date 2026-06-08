@@ -112,9 +112,13 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       const fournisseurRep = reponses.find((r) =>
         questions.find((q) => q.id === r.question_id && q.affichage === 'boutons_choix_unique' && q.source === 'catalogue')
       );
-      const adresseRep = reponses.find((r) =>
-        questions.find((q) => q.id === r.question_id && q.affichage === 'adresse_complete')
-      );
+      const hasConsequenceTo = (qId: string, variable: string) =>
+        questions.find((q) => q.id === qId && q.consequences?.some((c) => c.type === 'renseigner_variable' && c.variable_cible === variable));
+
+      const adresseFactuRep = reponses.find((r) => hasConsequenceTo(r.question_id, 'sp_adresse_facturation'))
+        ?? reponses.find((r) => questions.find((q) => q.id === r.question_id && q.affichage === 'adresse_complete'));
+      const adresseLivraisonRep = reponses.find((r) => hasConsequenceTo(r.question_id, 'sp_adresse_livraison'));
+      const livraisonIdentiqueRep = reponses.find((r) => hasConsequenceTo(r.question_id, 'sp_livraison_identique'));
       const materielRep = reponses.find((r) =>
         questions.find((q) => q.id === r.question_id && q.affichage === 'oui_non')
       );
@@ -145,8 +149,11 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
         preferences: {
           fournisseur_prefere: fournisseurRep ? String(fournisseurRep.valeur) : undefined,
           proposer_materiel: materielRep ? (materielRep.valeur === true || materielRep.valeur === 'Oui') : false,
-          adresse_facturation: adresseRep?.valeur as SpAdresse | undefined,
-          livraison_identique: true,
+          adresse_facturation: adresseFactuRep?.valeur as SpAdresse | undefined,
+          adresse_livraison: adresseLivraisonRep?.valeur as SpAdresse | undefined,
+          livraison_identique: livraisonIdentiqueRep
+            ? (livraisonIdentiqueRep.valeur === true || livraisonIdentiqueRep.valeur === 'Oui')
+            : true,
         },
       };
 

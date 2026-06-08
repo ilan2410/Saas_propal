@@ -716,7 +716,8 @@ export function SpQuestionnaireUI({
   const [messages, setMessages] = useState<MessageBubble[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [inputValue, setInputValue] = useState('');
-  const [adresseEdit, setAdresseEdit] = useState<SpAdresse>({ adresse: '', code_postal: '', ville: '' });
+  const EMPTY_ADRESSE: SpAdresse = { societe: '', adresse: '', code_postal: '', ville: '', contact: '', ligne_fixe: '', ligne_mobile: '', email: '', siret: '' };
+  const [adresseEdit, setAdresseEdit] = useState<SpAdresse>(EMPTY_ADRESSE);
   // Marge : durée éditable directement dans la question (défaut = config template, sinon 63 mois)
   const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(
     spConfigLoyer?.duree_mois_par_defaut ?? 63,
@@ -759,7 +760,7 @@ export function SpQuestionnaireUI({
     setMessages([]);
     setIsTyping(false);
     setInputValue('');
-    setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
+    setAdresseEdit(EMPTY_ADRESSE);
     setHiddenByConsequence(new Set());
     setShownByConsequence(new Set());
     setDynamicFilters(new Map());
@@ -1039,7 +1040,7 @@ export function SpQuestionnaireUI({
     setCurrentIdx(snapshot.currentIdx);
     setIsTyping(false);
     setInputValue('');
-    setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
+    setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
   };
@@ -1059,7 +1060,7 @@ export function SpQuestionnaireUI({
     setMessages((prev) => [...prev, { from: 'user', text: 'Passer' }]);
     setInputValue('');
     setCatalogueSearch('');
-    setAdresseEdit({ adresse: '', code_postal: '', ville: '' });
+    setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
 
@@ -1127,6 +1128,30 @@ export function SpQuestionnaireUI({
   const currentExpanded = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
   const currentQuestionVisible = currentExpanded !== null && isQuestionVisible(currentExpanded);
   const currentQuestion = currentQuestionVisible ? currentExpanded.question : null;
+
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'adresse_complete') return;
+    if (currentQuestion.sa_prefill === false) return;
+    const get = (path: string) => {
+      const v = getNestedValue(donneesExtraites, path);
+      return typeof v === 'string' ? v : (v != null ? String(v) : '');
+    };
+    const nom = get('client.nom');
+    const prenom = get('client.prenom');
+    const contact = [nom, prenom].filter(Boolean).join(' ');
+    setAdresseEdit({
+      societe:       get('client.raison_sociale'),
+      adresse:       get('client.adresse'),
+      code_postal:   get('client.code_postal'),
+      ville:         get('client.ville'),
+      contact,
+      ligne_fixe:    get('client.fixe'),
+      ligne_mobile:  get('client.mobile'),
+      email:         get('client.email'),
+      siret:         get('client.siret') || get('client.siren'),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentExpanded?.instanceId]);
   const resiliationEstimation = useMemo(() => {
     if (
       !currentQuestion ||
@@ -1991,20 +2016,40 @@ export function SpQuestionnaireUI({
           })()}
 
           {currentQuestion.affichage === 'adresse_complete' && (
-            <div className="space-y-2">
-              <input placeholder="Adresse (rue, numéro)" value={adresseEdit.adresse}
+            <div className="space-y-1.5">
+              <input placeholder="Société" value={adresseEdit.societe ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, societe: e.target.value }))}
+                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
+              <input placeholder="Adresse (rue, numéro) *" value={adresseEdit.adresse}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, adresse: e.target.value }))}
                 className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
               <div className="flex gap-2">
-                <input placeholder="Code postal" value={adresseEdit.code_postal}
+                <input placeholder="C.P. *" value={adresseEdit.code_postal}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, code_postal: e.target.value }))}
-                  className="h-8 text-sm border border-gray-300 rounded px-2 w-32" />
-                <input placeholder="Ville" value={adresseEdit.ville}
+                  className="h-8 text-sm border border-gray-300 rounded px-2 w-28" />
+                <input placeholder="Ville *" value={adresseEdit.ville}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ville: e.target.value }))}
                   className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
               </div>
+              <input placeholder="Contact (nom prénom)" value={adresseEdit.contact ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, contact: e.target.value }))}
+                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
+              <div className="flex gap-2">
+                <input placeholder="Ligne fixe" value={adresseEdit.ligne_fixe ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: e.target.value }))}
+                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
+                <input placeholder="Ligne mobile" value={adresseEdit.ligne_mobile ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: e.target.value }))}
+                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
+              </div>
+              <input placeholder="Adresse e-mail" value={adresseEdit.email ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, email: e.target.value }))}
+                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
+              <input placeholder="Numéro de SIRET" value={adresseEdit.siret ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, siret: e.target.value }))}
+                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
               <Button size="sm" disabled={!adresseEdit.adresse || !adresseEdit.code_postal || !adresseEdit.ville}
-                onClick={() => { recordAnswer(currentExpanded.instanceId, { ...adresseEdit }); setAdresseEdit({ adresse: '', code_postal: '', ville: '' }); }}>
+                onClick={() => { recordAnswer(currentExpanded.instanceId, { ...adresseEdit }); setAdresseEdit(EMPTY_ADRESSE); }}>
                 Valider
               </Button>
             </div>

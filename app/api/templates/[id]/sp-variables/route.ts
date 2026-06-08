@@ -9,9 +9,15 @@ const SP_STANDARD_VARIABLES = [
   'sp_economie_mensuelle', 'sp_economie_annuelle', 'sp_total_actuel', 'sp_total_propose',
   'sp_ameliorations', 'sp_fournisseur_propose', 'sp_nb_lignes', 'sp_est_economie',
   // Adresses
-  'sp_adresse_facturation', 'sp_adresse_facturation_rue', 'sp_adresse_facturation_cp',
-  'sp_adresse_facturation_ville', 'sp_adresse_livraison', 'sp_adresse_livraison_rue',
-  'sp_adresse_livraison_cp', 'sp_adresse_livraison_ville', 'sp_livraison_identique',
+  'sp_adresse_facturation', 'sp_adresse_livraison', 'sp_livraison_identique',
+  // Adresse facturation enrichie
+  'Adresse_facturation_SP_societe', 'Adresse_facturation_SP_adresse', 'Adresse_facturation_SP_cp',
+  'Adresse_facturation_SP_ville', 'Adresse_facturation_SP_contact', 'Adresse_facturation_SP_ligne_fixe',
+  'Adresse_facturation_SP_ligne_mobile', 'Adresse_facturation_SP_email', 'Adresse_facturation_SP_siret',
+  // Adresse livraison enrichie
+  'Adresse_livraison_SP_societe', 'Adresse_livraison_SP_adresse', 'Adresse_livraison_SP_cp',
+  'Adresse_livraison_SP_ville', 'Adresse_livraison_SP_contact', 'Adresse_livraison_SP_ligne_fixe',
+  'Adresse_livraison_SP_ligne_mobile', 'Adresse_livraison_SP_email', 'Adresse_livraison_SP_siret',
   // Récurrent / Ponctuel
   'sp_fas_total', 'sp_total_recurrent', 'sp_total_ponctuel', 'sp_total_indemnites',
   'sp_remise_mois_offert', 'sp_total_installation', 'sp_total_materiel_achat',

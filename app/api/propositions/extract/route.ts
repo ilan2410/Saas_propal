@@ -362,7 +362,7 @@ STRUCTURE JSON ATTENDUE:
     "adresse": "Adresse complète",
     "code_postal": "75001",
     "ville": "Paris",
-    "siret": "XXXXXXXXXXXXX",
+    "siret": "SIRET (14 chiffres) ou SIREN (9 chiffres) selon ce qui est disponible dans le document",
     "ape": "Code APE",
     "capital": "Capital social",
     "forme_juridique": "SAS/SARL/etc",
@@ -395,6 +395,7 @@ CHAMPS À EXTRAIRE:
 RÈGLES:
 - Retourne UNIQUEMENT un JSON valide
 - Utilise null pour les informations absentes
+- IMPORTANT: Si un numéro SIRET (14 chiffres) ou SIREN (9 chiffres) est visible dans le document (libellés : "SIRET", "SIREN", "N° Siret", "N° Siren", "Numéro SIRET", "Numéro SIREN"), il DOIT toujours être extrait dans client.siret. Ne jamais laisser client.siret à null si ce numéro est présent, même si le document dit "SIREN" et non "SIRET".
 - Les tarifs sont des nombres (29.99 et non "29,99€")
 - Les tableaux peuvent contenir plusieurs éléments
 - Extrais TOUTES les lignes trouvées dans le document

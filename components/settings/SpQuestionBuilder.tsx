@@ -385,6 +385,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const [libelle, setLibelle] = useState(initial?.libelle ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [obligatoire, setObligatoire] = useState(initial?.obligatoire ?? true);
+  const [saPrefill, setSaPrefill] = useState<boolean>(initial?.sa_prefill ?? true);
   const [prioriteIa, setPrioriteIa] = useState<'normale' | 'haute'>(initial?.priorite_ia ?? 'normale');
   const [nombreConfig, setNombreConfig] = useState<SpQuestionNombreConfig>(initial?.nombre_config ?? {});
   const [isSaving, setIsSaving] = useState(false);
@@ -666,6 +667,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           ? filtresCatalogue
           : undefined,
         obligatoire,
+        sa_prefill: affichage === 'adresse_complete' ? saPrefill : undefined,
         priorite_ia: prioriteIa,
         nombre_config: affichage === 'nombre' && nombreConfig.suggestion_source
           ? nombreConfig
@@ -1220,6 +1222,19 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {affichage === 'adresse_complete' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="sa_prefill"
+                checked={saPrefill}
+                onChange={(e) => setSaPrefill(e.target.checked)}
+              />
+              <label htmlFor="sa_prefill" className="text-sm text-gray-700">Pré-remplir les champs depuis les données SA <span className="text-gray-400">(client.*)</span></label>
+              <InfoIcon tooltip="Si activé, les champs du formulaire (société, adresse, contact, email, SIRET…) seront pré-remplis automatiquement à partir des données client extraites de la SA. L'utilisateur peut modifier avant de valider." />
             </div>
           )}
 
