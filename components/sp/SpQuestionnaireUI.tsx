@@ -1145,7 +1145,7 @@ export function SpQuestionnaireUI({
   }, [currentQuestion, donneesExtraites, spConfigResiliation]);
 
   const currentCatalogueOptions: CatalogueProduit[] = (() => {
-    if (!currentQuestion || (currentQuestion.source !== 'catalogue' && currentQuestion.source !== 'catalogue_et_sa')) return [];
+    if (!currentQuestion || currentQuestion.source !== 'catalogue') return [];
     let filtered = catalogue.filter((p) => p.actif);
     if (currentQuestion.filtres_catalogue) filtered = filterCatalogueByFiltre(filtered, currentQuestion.filtres_catalogue);
     const dynFilter = currentExpanded ? dynamicFilters.get(currentQuestion.id) ?? dynamicFilters.get(currentExpanded.instanceId) : undefined;
@@ -1154,7 +1154,7 @@ export function SpQuestionnaireUI({
     return filtered;
   })();
 
-  const isCatalogueQuestion = currentQuestion?.source === 'catalogue' || currentQuestion?.source === 'catalogue_et_sa';
+  const isCatalogueQuestion = currentQuestion?.source === 'catalogue';
   const currentDiscountProducts = currentQuestion?.affichage === 'remise_produits'
     ? getEligibleDiscountProducts({
       rules: discountRules,
@@ -1990,7 +1990,7 @@ export function SpQuestionnaireUI({
             );
           })()}
 
-          {(currentQuestion.affichage === 'adresse_complete' || currentQuestion.affichage === 'edition_sa') && (
+          {currentQuestion.affichage === 'adresse_complete' && (
             <div className="space-y-2">
               <input placeholder="Adresse (rue, numéro)" value={adresseEdit.adresse}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, adresse: e.target.value }))}
@@ -2010,16 +2010,6 @@ export function SpQuestionnaireUI({
             </div>
           )}
 
-          {currentQuestion.affichage === 'confirmation_sa' && (
-            <div className="flex gap-2">
-              <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => recordAnswer(currentExpanded.instanceId, true)}>
-                Oui, c&apos;est correct
-              </Button>
-              <Button size="sm" variant="outline" className="bg-white" onClick={() => recordAnswer(currentExpanded.instanceId, false)}>
-                Non, modifier
-              </Button>
-            </div>
-          )}
 
           {/* Zone de confirmation pour sélection catalogue (unique + liste_deroulante) */}
           {pendingCatalogueSelection?.instanceId === currentExpanded.instanceId && (

@@ -86,7 +86,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
         activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'boutons_choix_unique' && q.source === 'catalogue')
       );
       const adresseRep = reponses.find((r) =>
-        activeQuestions.find((q) => q.id === r.question_id && (q.affichage === 'adresse_complete' || q.affichage === 'edition_sa'))
+        activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'adresse_complete')
       );
       const materielRep = reponses.find((r) =>
         activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'oui_non')

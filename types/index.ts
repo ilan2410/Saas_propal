@@ -334,9 +334,7 @@ export type SuggestionsGenerees = {
 
 export type SpQuestionSource =
   | 'catalogue'
-  | 'sa'
-  | 'aucune'
-  | 'catalogue_et_sa';
+  | 'aucune';
 
 export type SpQuestionAffichage =
   | 'boutons_choix_unique'
@@ -344,8 +342,6 @@ export type SpQuestionAffichage =
   | 'liste_deroulante'
   | 'liste_deroulante_choix_multiple'
   | 'oui_non'
-  | 'confirmation_sa'
-  | 'edition_sa'
   | 'texte_court'
   | 'texte_long'
   | 'nombre'

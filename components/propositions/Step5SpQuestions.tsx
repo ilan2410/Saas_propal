@@ -113,7 +113,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
         questions.find((q) => q.id === r.question_id && q.affichage === 'boutons_choix_unique' && q.source === 'catalogue')
       );
       const adresseRep = reponses.find((r) =>
-        questions.find((q) => q.id === r.question_id && (q.affichage === 'adresse_complete' || q.affichage === 'edition_sa'))
+        questions.find((q) => q.id === r.question_id && q.affichage === 'adresse_complete')
       );
       const materielRep = reponses.find((r) =>
         questions.find((q) => q.id === r.question_id && q.affichage === 'oui_non')

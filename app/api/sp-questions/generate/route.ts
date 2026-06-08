@@ -31,8 +31,8 @@ Chaque question doit respecter cette structure JSON :
 - actif: true
 - libelle: string
 - description?: string
-- source: "catalogue" | "sa" | "aucune" | "catalogue_et_sa"
-- affichage: "boutons_choix_unique" | "boutons_choix_multiple" | "liste_deroulante" | "oui_non" | "confirmation_sa" | "edition_sa" | "texte_court" | "texte_long" | "nombre" | "date" | "choix_liste_manuelle" | "adresse_complete"
+- source: "catalogue" | "aucune"
+- affichage: "boutons_choix_unique" | "boutons_choix_multiple" | "liste_deroulante" | "oui_non" | "texte_court" | "texte_long" | "nombre" | "date" | "choix_liste_manuelle" | "adresse_complete"
 - options_manuelles?: string[]
 - options_libres?: boolean
 - nombre_max_resultats?: number
@@ -50,11 +50,9 @@ Chaque question doit respecter cette structure JSON :
 
 ## Combinaisons source ↔ affichage valides
 - source "catalogue" → boutons_choix_unique | boutons_choix_multiple | liste_deroulante
-- source "sa" → oui_non | confirmation_sa | edition_sa
 - source "aucune" → oui_non | texte_court | texte_long | nombre | date | choix_liste_manuelle | adresse_complete
-- source "catalogue_et_sa" → boutons_choix_unique | boutons_choix_multiple | confirmation_sa
 
-NE JAMAIS utiliser boutons_choix_unique ou boutons_choix_multiple avec source "aucune" ou "sa".
+NE JAMAIS utiliser boutons_choix_unique ou boutons_choix_multiple avec source "aucune".
 Pour les choix fixes, utilise source "aucune" + affichage "choix_liste_manuelle" + options_manuelles.
 
 ## Conditions de visibilité
@@ -126,7 +124,6 @@ Pour répéter un bloc de questions (multi-site, multi-ligne, multi-équipement)
 - Génère de nouveaux IDs descriptifs pour les nouvelles questions.
 - La variable_cible dans renseigner_variable est en snake_case, idéalement préfixée par sp_ pour les variables Word.
 - Quand affichage est "choix_liste_manuelle", options_manuelles est obligatoire et doit contenir au moins 2 options.
-- Pour source "sa" + affichage "edition_sa", renseigne edition_type si le type attendu est évident.
 - Pour email/téléphone/SIRET, renseigne validation_format.
 
 ## Format de réponse

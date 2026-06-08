@@ -179,7 +179,7 @@ export function calculateCartSummary(
     const baseQId = rep.question_id.replace(/__iter_\d+$/, '');
     const question = questionById.get(baseQId);
     if (!question) continue;
-    if (question.source !== 'catalogue' && question.source !== 'catalogue_et_sa') continue;
+    if (question.source !== 'catalogue') continue;
     if (question.affichage === 'remise_produits') continue;
 
     const selectedNames: string[] = Array.isArray(rep.valeur)

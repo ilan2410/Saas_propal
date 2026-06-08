@@ -40,16 +40,12 @@ function InfoIcon({ tooltip }: { tooltip: string }) {
 // ── Labels lisibles ───────────────────────────────────────────────────────────
 const SOURCE_LABELS: Record<string, string> = {
   catalogue: 'Catalogue',
-  sa: 'Données SA',
   aucune: 'Saisie libre',
-  catalogue_et_sa: 'Catalogue + SA',
 };
 
 const SOURCE_TOOLTIPS: Record<string, string> = {
   catalogue: "Les choix proposés proviennent de votre catalogue produits.",
-  sa: "La question utilise les données extraites du document SA (opérateur, lignes, montant…).",
   aucune: "L'utilisateur saisit une réponse libre, sans pré-remplissage.",
-  catalogue_et_sa: "Combine le catalogue et les données SA pour proposer des choix contextuels.",
 };
 
 const AFFICHAGE_LABELS: Record<string, string> = {
@@ -58,8 +54,6 @@ const AFFICHAGE_LABELS: Record<string, string> = {
   liste_deroulante: 'Liste déroulante choix unique',
   liste_deroulante_choix_multiple: 'Liste déroulante choix multiple',
   oui_non: 'Oui / Non',
-  confirmation_sa: 'Confirmation SA',
-  edition_sa: 'Édition SA',
   texte_court: 'Texte court',
   texte_long: 'Texte long',
   nombre: 'Nombre',
@@ -74,8 +68,6 @@ const AFFICHAGE_TOOLTIPS: Record<string, string> = {
   liste_deroulante: "Menu déroulant compact pour choisir une seule option.",
   liste_deroulante_choix_multiple: "Menu déroulant compact pour choisir plusieurs options.",
   oui_non: "Deux boutons Oui / Non.",
-  confirmation_sa: "Affiche la valeur SA extraite et demande confirmation (lecture seule).",
-  edition_sa: "Affiche la valeur SA et permet à l'utilisateur de la modifier.",
   texte_court: "Champ texte sur une ligne.",
   texte_long: "Zone de texte multi-lignes.",
   nombre: "Champ numérique.",
@@ -369,9 +361,7 @@ function getBoucleHeaderText(leader: SpQuestion, allQuestions: SpQuestion[]): st
 // ── Icônes source ─────────────────────────────────────────────────────────────
 const SOURCE_ICONS: Record<string, React.ElementType> = {
   catalogue: Package,
-  sa: FileText,
   aucune: PenLine,
-  catalogue_et_sa: Layers,
 };
 
 // ── Carte question ────────────────────────────────────────────────────────────

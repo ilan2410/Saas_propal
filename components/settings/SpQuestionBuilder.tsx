@@ -160,22 +160,10 @@ const SOURCES: { value: SpQuestionSource; label: string; desc: string; tooltip: 
     tooltip: "L'IA parcourt votre catalogue et propose les produits correspondant aux critères. Idéal pour choisir un opérateur, un forfait mobile, un équipement.",
   },
   {
-    value: 'sa',
-    label: 'Données SA extraites',
-    desc: "Utilise les données du document situation actuelle",
-    tooltip: "La question s'appuie sur les données extraites automatiquement du document SA (ex: opérateur actuel, nombre de lignes, montant). L'utilisateur confirme ou corrige.",
-  },
-  {
     value: 'aucune',
     label: 'Aucune (saisie manuelle)',
     desc: "L'utilisateur saisit une réponse libre",
     tooltip: "Aucune donnée n'est pré-remplie. L'utilisateur répond directement (texte, nombre, date, adresse…). Utile pour des informations non présentes dans le document SA.",
-  },
-  {
-    value: 'catalogue_et_sa',
-    label: 'Catalogue + SA combinés',
-    desc: "Propose des choix du catalogue en tenant compte du SA",
-    tooltip: "Combine les deux : l'IA filtre le catalogue en tenant compte des données SA. Ex: proposer des forfaits adaptés au nombre de lignes détecté dans le SA.",
   },
 ];
 
@@ -185,8 +173,6 @@ const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   liste_deroulante: "Menu déroulant compact avec un seul choix possible. Utile quand il y a beaucoup de choix possibles.",
   liste_deroulante_choix_multiple: "Menu déroulant compact permettant de sélectionner plusieurs choix. Utile quand il y a beaucoup de choix possibles.",
   oui_non: "Deux boutons Oui / Non. Pour les questions binaires simples.",
-  confirmation_sa: "Affiche la valeur extraite du document SA et demande à l'utilisateur de confirmer. Pas de modification possible.",
-  edition_sa: "Affiche la valeur extraite du SA et permet à l'utilisateur de la modifier avant de valider.",
   texte_court: "Champ de saisie texte sur une seule ligne. Pour les réponses courtes (nom, référence…).",
   texte_long: "Zone de texte multi-lignes. Pour les commentaires ou descriptions longues.",
   nombre: "Champ numérique. L'utilisateur saisit un nombre (ex: nombre de postes, budget mensuel).",
@@ -204,11 +190,6 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'liste_deroulante', label: 'Liste déroulante — choix unique' },
     { value: 'liste_deroulante_choix_multiple', label: 'Liste déroulante — choix multiple' },
   ],
-  sa: [
-    { value: 'oui_non', label: 'Oui / Non' },
-    { value: 'confirmation_sa', label: 'Confirmation (lecture seule)' },
-    { value: 'edition_sa', label: 'Édition (modifiable)' },
-  ],
   aucune: [
     { value: 'oui_non', label: 'Oui / Non' },
     { value: 'texte_court', label: 'Texte court' },
@@ -219,13 +200,6 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'choix_liste_manuelle', label: 'Choix dans une liste' },
     { value: 'adresse_complete', label: 'Adresse complète' },
     { value: 'marge', label: 'Marge (calcul loyer)' },
-  ],
-  catalogue_et_sa: [
-    { value: 'boutons_choix_unique', label: 'Boutons — choix unique' },
-    { value: 'boutons_choix_multiple', label: 'Boutons — choix multiple' },
-    { value: 'liste_deroulante', label: 'Liste déroulante — choix unique' },
-    { value: 'liste_deroulante_choix_multiple', label: 'Liste déroulante — choix multiple' },
-    { value: 'confirmation_sa', label: 'Confirmation (lecture seule)' },
   ],
 };
 
@@ -599,7 +573,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
     return question.ordre < currentQuestionOrdre;
   });
   const previousCatalogueQuestionsForCount = previousQuestionsForText.filter((question) =>
-    question.source === 'catalogue' || question.source === 'catalogue_et_sa',
+    question.source === 'catalogue',
   );
 
   // Options manuelles (pour choix_liste_manuelle)
@@ -616,7 +590,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const [produitsLoaded, setProduitsLoaded] = useState(false);
 
   useEffect(() => {
-    if ((source === 'catalogue' || source === 'catalogue_et_sa') && !produitsLoaded) {
+    if (source === 'catalogue' && !produitsLoaded) {
       fetch('/api/catalogue')
         .then((r) => r.json())
         .then((d: { produits?: CatalogueProduit[] }) => {
@@ -686,8 +660,8 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         source,
         affichage,
         options_manuelles: affichage === 'choix_liste_manuelle' && optionsManuelles.length > 0 ? optionsManuelles : undefined,
-        options_libres: (source === 'catalogue' || source === 'catalogue_et_sa') && optionsLibres ? true : undefined,
-        filtres_catalogue: (source === 'catalogue' || source === 'catalogue_et_sa') &&
+        options_libres: source === 'catalogue' && optionsLibres ? true : undefined,
+        filtres_catalogue: source === 'catalogue' &&
           (filtresCatalogue.categories?.length || filtresCatalogue.type_facturation || filtresCatalogue.produits_ids?.length)
           ? filtresCatalogue
           : undefined,
@@ -829,7 +803,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
             ))}
           </div>
 
-          {(source === 'catalogue' || source === 'catalogue_et_sa') && (
+          {source === 'catalogue' && (
             <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/50 space-y-3">
               <div className="flex items-center gap-2">
                 <p className="text-xs font-semibold text-gray-700">Filtrer les produits affichés</p>
@@ -972,7 +946,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           )}
 
           {/* Options libres (catalogue) */}
-          {(source === 'catalogue' || source === 'catalogue_et_sa') && (
+          {source === 'catalogue' && (
             <div className="flex items-center gap-2 py-1">
               <input
                 type="checkbox"
