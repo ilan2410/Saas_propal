@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { validateClaudeApiKey } from '@/lib/ai/claude';
-import Anthropic from '@anthropic-ai/sdk';
 import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
@@ -9,20 +7,10 @@ import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
-
 type UnknownRecord = Record<string, unknown>;
 
 function isPlainObject(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function extractJsonFromText(text: string): unknown {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  const jsonStr = jsonMatch ? jsonMatch[0] : text;
-  return JSON.parse(jsonStr);
 }
 
 function toNumber(value: unknown): number | null {
@@ -35,321 +23,6 @@ function toNumber(value: unknown): number | null {
     .replace(/[^\d.-]/g, '');
   const num = Number(cleaned);
   return Number.isFinite(num) ? num : null;
-}
-
-function isLikelyPriceKey(key: string): boolean {
-  const normalized = key.toLowerCase();
-  return (
-    normalized.includes('prix') ||
-    normalized.includes('tarif') ||
-    normalized.includes('montant') ||
-    normalized.includes('cout') ||
-    normalized.includes('coût') ||
-    normalized.includes('total_ht') ||
-    normalized.includes('totalttc') ||
-    normalized.includes('total_ttc')
-  );
-}
-
-function isLikelyIdentifierKey(key: string): boolean {
-  const normalized = key.toLowerCase();
-  return [
-    'numero',
-    'num',
-    'ligne',
-    'tel',
-    'telephone',
-    'téléphone',
-    'mobile',
-    'id',
-    'reference',
-    'référence',
-    'ref',
-    'rio',
-    'siret',
-    'poste',
-    'compte',
-    'contrat',
-    'ndi',
-    'identifiant',
-  ].some((token) => normalized.includes(token));
-}
-
-function isPlausiblePrice(value: number): boolean {
-  return Number.isFinite(value) && value >= 0 && value <= 100000;
-}
-
-function extractMonthlyPrice(line: UnknownRecord): number | null {
-  const exactKeys = [
-    'prix_mensuel',
-    'montant_mensuel',
-    'tarif_mensuel',
-    'cout_mensuel',
-    'prix',
-    'tarif',
-    'montant',
-    'total_ht',
-    'total',
-  ];
-
-  for (const k of exactKeys) {
-    const num = toNumber(line[k]);
-    if (num !== null && isPlausiblePrice(num)) return num;
-  }
-
-  for (const [key, value] of Object.entries(line)) {
-    if (isLikelyIdentifierKey(key) || !isLikelyPriceKey(key)) continue;
-    const num = toNumber(value);
-    if (num !== null && isPlausiblePrice(num)) return num;
-  }
-
-  for (const [key, value] of Object.entries(line)) {
-    if (isLikelyIdentifierKey(key)) continue;
-    if (typeof value !== 'string') continue;
-    const lowered = value.toLowerCase();
-    const hasMoneyHint = lowered.includes('€') || lowered.includes('eur') || /[.,]\d{1,2}\b/.test(lowered);
-    if (!hasMoneyHint) continue;
-    const num = toNumber(value);
-    if (num !== null && isPlausiblePrice(num)) return num;
-  }
-
-  return null;
-}
-
-function extractPriceFromCatalogueItem(item: unknown): number | null {
-  if (!isPlainObject(item)) return null;
-
-  const candidates = [
-    item.prix_mensuel,
-    item.tarif_mensuel,
-    item.montant_mensuel,
-    item.prix,
-    item.tarif,
-    item.montant,
-  ];
-
-  for (const candidate of candidates) {
-    const num = toNumber(candidate);
-    if (num !== null && isPlausiblePrice(num)) return num;
-  }
-
-  return null;
-}
-
-function shouldExcludePath(pathLower: string): boolean {
-  const excluded = [
-    'contact',
-    'contacts',
-    'adresse',
-    'adresses',
-    'facturation',
-    'releve',
-    'releves',
-    'compteur',
-    'compteurs',
-    'engagement',
-    'engagements',
-    'document',
-    'documents',
-    'fichier',
-    'fichiers',
-    'piece',
-    'pieces',
-    'materiel',
-    'materiels',
-    'location',
-    'locations',
-    'maintenance',
-  ];
-  return excluded.some((t) => pathLower.includes(t));
-}
-
-function looksLikeTelecomLinesPath(pathLower: string): boolean {
-  const hints = [
-    'ligne',
-    'lignes',
-    'service',
-    'services',
-    'abonnement',
-    'abonnements',
-    'forfait',
-    'forfaits',
-    'mobile',
-    'fixe',
-    'internet',
-    'fibre',
-    'adsl',
-    'box',
-    'telephonie',
-    'telecom',
-    'sim',
-  ];
-  return hints.some((t) => pathLower.includes(t));
-}
-
-function looksLikeLineItem(item: UnknownRecord): boolean {
-  const keys = Object.keys(item);
-  if (keys.length === 0) return false;
-
-  const hasUsefulKey = keys.some((k) => {
-    const kl = k.toLowerCase();
-    return (
-      kl.includes('prix') ||
-      kl.includes('tarif') ||
-      kl.includes('montant') ||
-      kl.includes('cout') ||
-      kl.includes('forfait') ||
-      kl.includes('type') ||
-      kl.includes('categorie') ||
-      kl.includes('numero') ||
-      kl.includes('debit') ||
-      kl.includes('data')
-    );
-  });
-
-  if (hasUsefulKey) return true;
-
-  const hasPrimitive = Object.values(item).some((v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
-  return hasPrimitive && keys.length >= 2;
-}
-
-function collectLinesToAnalyze(situationActuelle: unknown): UnknownRecord[] {
-  const results: UnknownRecord[] = [];
-  const seen = new Set<string>();
-
-  const addLine = (line: UnknownRecord, path: string, index: number) => {
-    const stableKey = JSON.stringify(line);
-    if (seen.has(stableKey)) return;
-    seen.add(stableKey);
-    results.push({ ...line, __meta: { path, index } });
-  };
-
-  const walk = (node: unknown, path: string) => {
-    if (Array.isArray(node)) {
-      const pathLower = path.toLowerCase();
-      if (shouldExcludePath(pathLower)) return;
-
-      const objectItems = node.filter((v) => isPlainObject(v)) as UnknownRecord[];
-      const isMostlyObjects = objectItems.length > 0 && objectItems.length / node.length >= 0.6;
-
-      if (isMostlyObjects) {
-        const isPreferred = looksLikeTelecomLinesPath(pathLower);
-        for (let i = 0; i < objectItems.length; i += 1) {
-          const item = objectItems[i];
-          if (isPreferred || looksLikeLineItem(item)) addLine(item, path, i);
-        }
-      }
-
-      return;
-    }
-
-    if (!isPlainObject(node)) return;
-    for (const [k, v] of Object.entries(node)) {
-      const nextPath = path ? `${path}.${k}` : k;
-      walk(v, nextPath);
-    }
-  };
-
-  walk(situationActuelle, '');
-
-  if (results.length > 0) return results;
-  if (isPlainObject(situationActuelle)) return [{ ...situationActuelle, __meta: { path: 'root', index: 0 } }];
-  return [];
-}
-
-type SuggestionResult = {
-  suggestions: Array<{
-    ligne_actuelle: UnknownRecord;
-    produit_propose_id?: string;
-    produit_propose_nom: string;
-    produit_propose_fournisseur?: string;
-    prix_actuel: number;
-    prix_propose: number;
-    economie_mensuelle: number;
-    justification: string;
-  }>;
-  synthese: {
-    cout_total_actuel: number;
-    cout_total_propose: number;
-    economie_mensuelle: number;
-    economie_annuelle: number;
-    ameliorations?: string[];
-  };
-};
-
-function buildFallbackSuggestion(line: UnknownRecord) {
-  const prix = extractMonthlyPrice(line) ?? 0;
-  return {
-    ligne_actuelle: line,
-    produit_propose_nom: 'Aucun produit similaire trouvé',
-    prix_actuel: prix,
-    prix_propose: prix,
-    economie_mensuelle: 0,
-    justification: "Aucun produit de votre catalogue ne semble correspondre à cette ligne/service.",
-  };
-}
-
-function findSupplierInCatalogue(catalogue: unknown[], produitId?: string, produitNom?: string): string | undefined {
-  const id = typeof produitId === 'string' && produitId.trim() ? produitId.trim() : undefined;
-  const nom = typeof produitNom === 'string' && produitNom.trim() ? produitNom.trim().toLowerCase() : undefined;
-
-  if (!id && !nom) return undefined;
-
-  for (const item of catalogue) {
-    if (!isPlainObject(item)) continue;
-
-    const itemId = typeof item.id === 'string' ? item.id : undefined;
-    const itemNom = typeof item.nom === 'string' ? item.nom : undefined;
-    const itemFournisseur = typeof item.fournisseur === 'string' ? item.fournisseur : undefined;
-
-    if (!itemFournisseur) continue;
-
-    if (id && itemId === id) return itemFournisseur;
-    if (nom && itemNom && itemNom.toLowerCase() === nom) return itemFournisseur;
-  }
-
-  return undefined;
-}
-
-function findCatalogueItem(catalogue: unknown[], produitId?: string, produitNom?: string): UnknownRecord | undefined {
-  const id = typeof produitId === 'string' && produitId.trim() ? produitId.trim() : undefined;
-  const nom = typeof produitNom === 'string' && produitNom.trim() ? produitNom.trim().toLowerCase() : undefined;
-
-  if (!id && !nom) return undefined;
-
-  for (const item of catalogue) {
-    if (!isPlainObject(item)) continue;
-
-    const itemId = typeof item.id === 'string' ? item.id : undefined;
-    const itemNom = typeof item.nom === 'string' ? item.nom : undefined;
-
-    if (id && itemId === id) return item;
-    if (nom && itemNom && itemNom.toLowerCase() === nom) return item;
-  }
-
-  return undefined;
-}
-
-function resolveCurrentPrice(rawPrice: unknown, line: UnknownRecord): number {
-  const extracted = extractMonthlyPrice(line);
-  if (extracted !== null) return extracted;
-
-  const candidate = toNumber(rawPrice);
-  if (candidate !== null && isPlausiblePrice(candidate)) return candidate;
-
-  return 0;
-}
-
-function resolveProposedPrice(rawPrice: unknown, fallbackCurrentPrice: number, catalogueItem?: UnknownRecord): number {
-  const cataloguePrice = extractPriceFromCatalogueItem(catalogueItem);
-  if (cataloguePrice !== null) return cataloguePrice;
-
-  if (!catalogueItem) return fallbackCurrentPrice;
-
-  const candidate = toNumber(rawPrice);
-  if (candidate !== null && isPlausiblePrice(candidate)) return candidate;
-
-  return fallbackCurrentPrice;
 }
 
 function buildPriceOverridesMap(spReponses: SpQuestionReponse[]): Map<string, number> {
@@ -518,97 +191,6 @@ function getQuantityByProduct(
   }
 
   return matches.size === 1 ? Array.from(matches)[0] : undefined;
-}
-
-function normalizeResult(
-  raw: unknown,
-  lines: UnknownRecord[],
-  catalogue: unknown[],
-  priceOverrides: Map<string, number>,
-): SuggestionResult {
-  const empty: SuggestionResult = {
-    suggestions: lines.map((l) => buildFallbackSuggestion(l)),
-    synthese: {
-      cout_total_actuel: 0,
-      cout_total_propose: 0,
-      economie_mensuelle: 0,
-      economie_annuelle: 0,
-      ameliorations: ['Aucun produit similaire trouvé dans le catalogue'],
-    },
-  };
-
-  if (!isPlainObject(raw)) return empty;
-  const rawSuggestions = Array.isArray(raw.suggestions) ? raw.suggestions : [];
-  const rawSynthese = isPlainObject(raw.synthese) ? raw.synthese : {};
-
-  const suggestions = rawSuggestions
-    .map((s) => (isPlainObject(s) ? (s as UnknownRecord) : null))
-    .filter(Boolean)
-    .map((s) => {
-      const ligneActuelle = isPlainObject(s!.ligne_actuelle) ? (s!.ligne_actuelle as UnknownRecord) : {};
-      const produitProposeNom =
-        typeof s!.produit_propose_nom === 'string' && s!.produit_propose_nom.trim()
-          ? s!.produit_propose_nom
-          : 'Aucun produit similaire trouvé';
-      const justification =
-        typeof s!.justification === 'string' && s!.justification.trim()
-          ? s!.justification
-          : "Aucun produit de votre catalogue ne semble correspondre à cette ligne/service.";
-      const prixActuel = resolveCurrentPrice(s!.prix_actuel, ligneActuelle);
-
-      const out: SuggestionResult['suggestions'][number] = {
-        ligne_actuelle: ligneActuelle,
-        produit_propose_nom: produitProposeNom,
-        prix_actuel: prixActuel,
-        prix_propose: prixActuel,
-        economie_mensuelle: 0,
-        justification,
-      };
-
-      if (typeof s!.produit_propose_id === 'string' && s!.produit_propose_id.trim()) {
-        out.produit_propose_id = s!.produit_propose_id;
-      }
-
-      const catalogueItem = findCatalogueItem(catalogue, out.produit_propose_id, out.produit_propose_nom);
-      const overriddenPrice = getPriceOverride(priceOverrides, out.produit_propose_id, out.produit_propose_nom);
-      const prixPropose = overriddenPrice ?? resolveProposedPrice(s!.prix_propose, prixActuel, catalogueItem);
-      const economieMensuelle = prixActuel - prixPropose;
-
-      out.prix_actuel = prixActuel;
-      out.prix_propose = prixPropose;
-      out.economie_mensuelle = economieMensuelle;
-
-      const fournisseur = findSupplierInCatalogue(catalogue, out.produit_propose_id, out.produit_propose_nom);
-      if (fournisseur) out.produit_propose_fournisseur = fournisseur;
-
-      return out;
-    });
-
-  const targetCount = Math.max(0, lines.length);
-  const resized =
-    suggestions.length >= targetCount
-      ? suggestions.slice(0, targetCount)
-      : suggestions.concat(lines.slice(suggestions.length).map((l) => buildFallbackSuggestion(l)));
-
-  const coutTotalActuel = resized.reduce((sum, s) => sum + (Number.isFinite(s.prix_actuel) ? s.prix_actuel : 0), 0);
-  const coutTotalPropose = resized.reduce((sum, s) => sum + (Number.isFinite(s.prix_propose) ? s.prix_propose : 0), 0);
-  const economieMensuelle = coutTotalActuel - coutTotalPropose;
-  const economieAnnuelle = economieMensuelle * 12;
-
-  const ameliorations = Array.isArray(rawSynthese.ameliorations)
-    ? rawSynthese.ameliorations.filter((v) => typeof v === 'string') as string[]
-    : undefined;
-
-  return {
-    suggestions: resized,
-    synthese: {
-      cout_total_actuel: coutTotalActuel,
-      cout_total_propose: coutTotalPropose,
-      economie_mensuelle: economieMensuelle,
-      economie_annuelle: economieAnnuelle,
-      ameliorations,
-    },
-  };
 }
 
 function formatEuro(value: number): string {
@@ -822,6 +404,26 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
     } as T;
   });
 }
+
+type SuggestionResult = {
+  suggestions: Array<{
+    ligne_actuelle: UnknownRecord;
+    produit_propose_id?: string;
+    produit_propose_nom: string;
+    produit_propose_fournisseur?: string;
+    prix_actuel: number;
+    prix_propose: number;
+    economie_mensuelle: number;
+    justification: string;
+  }>;
+  synthese: {
+    cout_total_actuel: number;
+    cout_total_propose: number;
+    economie_mensuelle: number;
+    economie_annuelle: number;
+    ameliorations?: string[];
+  };
+};
 
 function buildSpCompletes(
   raw: UnknownRecord,
@@ -1223,16 +825,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!validateClaudeApiKey()) {
-      return NextResponse.json(
-        {
-          error: 'Clé API Claude non configurée',
-          details: "La variable ANTHROPIC_API_KEY n'est pas définie",
-        },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json().catch(() => ({}));
     const {
       situation_actuelle,
@@ -1244,8 +836,6 @@ export async function POST(request: NextRequest) {
       sp_fas_total,
     } = body ?? {};
 
-    const fournisseur_prefere: string | undefined = isPlainObject(preferences) && typeof preferences.fournisseur_prefere === 'string' ? preferences.fournisseur_prefere : undefined;
-    const proposer_materiel: boolean = isPlainObject(preferences) && preferences.proposer_materiel === true;
     const adresse_facturation: SpAdresse | undefined = isPlainObject(preferences) && isPlainObject(preferences.adresse_facturation) ? preferences.adresse_facturation as unknown as SpAdresse : undefined;
     const adresse_livraison: SpAdresse | null | undefined = isPlainObject(preferences) ? (isPlainObject(preferences.adresse_livraison) ? preferences.adresse_livraison as unknown as SpAdresse : null) : undefined;
     const livraison_identique: boolean = isPlainObject(preferences) && preferences.livraison_identique === true;
@@ -1254,7 +844,7 @@ export async function POST(request: NextRequest) {
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
       const { data: proposition, error: propError } = await supabase
         .from('propositions')
-        .select('id, suggestions_generees')
+        .select('id, suggestions_sp_completes')
         .eq('id', proposition_id)
         .eq('organization_id', user.id)
         .single();
@@ -1263,8 +853,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
       }
 
-      if (proposition.suggestions_generees && !force_regenerate) {
-        return NextResponse.json(proposition.suggestions_generees);
+      if (proposition.suggestions_sp_completes && !force_regenerate) {
+        return NextResponse.json(proposition.suggestions_sp_completes);
       }
     }
 
@@ -1272,214 +862,154 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'catalogue invalide' }, { status: 400 });
     }
 
-    const lignesAAnalyser = collectLinesToAnalyze(situation_actuelle ?? {});
-
-    const reponsesSummary = spReponses.length > 0
-      ? `\nRÉPONSES AUX QUESTIONS SP:\n${JSON.stringify(spReponses, null, 2)}`
-      : '';
-
-    const prompt = `Tu es un expert en télécommunications. Analyse la situation actuelle et génère une proposition complète.
-
-SITUATION ACTUELLE:
-${JSON.stringify(situation_actuelle ?? {}, null, 2)}
-
-LIGNES À ANALYSER (${lignesAAnalyser.length} éléments, ordre imposé):
-${JSON.stringify(lignesAAnalyser, null, 2)}
-
-NOTRE CATALOGUE (${catalogue.length} produits):
-${JSON.stringify(catalogue, null, 2)}
-${reponsesSummary}
-${fournisseur_prefere ? `\nFOURNISSEUR PRÉFÉRÉ: ${fournisseur_prefere}` : ''}
-
-RÈGLE ABSOLUE 1 — PRODUITS:
-- Tu ne peux proposer QUE des produits qui existent dans NOTRE CATALOGUE avec leur ID exact.
-- Si aucun produit du catalogue ne convient: produit_propose_nom = "Aucun produit semblable trouvé", produit_propose_id = null, prix_propose = prix_actuel, economie_mensuelle = 0
-- INTERDICTION ABSOLUE de reprendre un produit de la situation actuelle ou d'inventer un produit.
-
-RÈGLE ABSOLUE 2 — FOURNISSEUR:
-- ${fournisseur_prefere ? `Fournisseur préféré: ${fournisseur_prefere}. Privilégier ses produits EN PRIORITÉ.` : 'Aucun fournisseur préféré spécifié.'}
-- Si aucun produit du fournisseur préféré ne convient: retourner "Aucun produit semblable trouvé".
-
-RÈGLE ABSOLUE 3 — MATÉRIEL:
-- N'inclure sp_materiel QUE si proposer_materiel = ${proposer_materiel}.
-- Le matériel doit venir du catalogue (catégorie equipement) uniquement.
-
-INSTRUCTIONS:
-1. Pour chaque ligne dans LIGNES À ANALYSER (même ordre), une entrée dans "suggestions".
-2. Catégoriser chaque ligne: Mobile, Fixe, Internet selon son type.
-3. Retourner aussi les tableaux sp_lignes_mobiles, sp_lignes_fixes, sp_internet${proposer_materiel ? ', sp_materiel' : ''}.
-4. Pour chaque ligne telecom, recopier le numero de ligne/tel de la SA dans "sp_numero" si disponible.
-5. Pour chaque ligne telecom, recopier la quantite choisie dans les questions SP dans "sp_quantite" si disponible.
-6. Utiliser les _raw pour les nombres (non formatés), ex: _prix_actuel_raw: 29.9
-
-RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
-{
-  "suggestions": [{"ligne_actuelle": {}, "produit_propose_id": "uuid", "produit_propose_nom": "...", "prix_actuel": 0, "prix_propose": 0, "economie_mensuelle": 0, "justification": "..."}],
-  "synthese": {"cout_total_actuel": 0, "cout_total_propose": 0, "economie_mensuelle": 0, "economie_annuelle": 0, "ameliorations": ["..."]},
-  "sp_lignes_mobiles": [{"sp_nom_ligne": "...", "sp_numero": "06XXXXXXXX", "sp_quantite": "1", "sp_produit": "...", "sp_produit_id": "uuid-ou-null", "sp_produit_fournisseur": "...", "sp_type_ligne": "Mobile", "_prix_actuel_raw": 0, "_prix_propose_raw": 0, "_economie_raw": 0, "sp_analyse": "...", "sp_justification": "..."}],
-  "sp_lignes_fixes": [],
-  "sp_internet": [],
-  ${proposer_materiel ? '"sp_materiel": [{"sp_materiel_nom": "...", "sp_materiel_ref": "...", "sp_materiel_produit_id": "uuid-ou-null", "sp_materiel_fournisseur": "...", "sp_type_ligne": "Materiel", "_prix_mensuel_raw": 0, "sp_materiel_duree_engagement": "...", "sp_materiel_commentaire": "..."}],' : '"sp_materiel": [],'}
-  "sp_fournisseur_propose": "...",
-  "sp_ameliorations": "..."
-}`;
-
-    const model = process.env.CLAUDE_MODEL_SUGGESTIONS || 'claude-sonnet-4-6';
-
-    const message = await anthropic.messages.create({
-      model,
-      max_tokens: 16384,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    const text = message.content[0].type === 'text' ? message.content[0].text : '';
-    const result = extractJsonFromText(text);
-
     const priceOverrides = buildPriceOverridesMap(spReponses);
-    const normalized = normalizeResult(result, lignesAAnalyser, catalogue, priceOverrides);
 
-    // Construction des données SP complètes si l'IA a retourné des tableaux SP
-    let suggestionsSpCompletes: SuggestionsSpCompletes | null = null;
-    const rawResult = isPlainObject(result) ? result as UnknownRecord : {};
+    const rawResult: UnknownRecord = {
+      sp_lignes_mobiles: [],
+      sp_lignes_fixes: [],
+      sp_internet: [],
+      sp_materiel: [],
+      sp_questions_reponses: spReponses,
+    };
 
-    if (
-      Array.isArray(rawResult.sp_lignes_mobiles) ||
-      Array.isArray(rawResult.sp_lignes_fixes) ||
-      Array.isArray(rawResult.sp_internet)
-    ) {
-      let wordCfg: WordConfig = { formatVariables: '', fieldMappings: {} };
-      let templateQuestions: SpQuestion[] = [];
-      let resiliationConfig: SpConfigResiliation | undefined;
-      let propositionCreatedAt: string | undefined;
-      if (typeof proposition_id === 'string' && proposition_id.length > 0) {
-        const { data: prop } = await supabase
-          .from('propositions')
-          .select('template_id, created_at')
-          .eq('id', proposition_id)
-          .single();
-        propositionCreatedAt = typeof prop?.created_at === 'string' ? prop.created_at : undefined;
-        if (prop?.template_id) {
-          const [{ data: tmpl }, { data: org }] = await Promise.all([
-            supabase
-              .from('proposition_templates')
-              .select('file_config')
-              .eq('id', prop.template_id)
-              .single(),
-            supabase
-              .from('organizations')
-              .select('preferences, sp_questions')
-              .eq('id', user.id)
-              .single(),
-          ]);
-          if (isPlainObject(tmpl?.file_config)) {
-            wordCfg = tmpl.file_config as unknown as WordConfig;
-          }
-          if (Array.isArray(org?.sp_questions)) {
-            templateQuestions = (org.sp_questions as SpQuestion[])
-              .filter((question) => question.template_id === prop.template_id);
-          }
-          const orgPreferences = isPlainObject(org?.preferences)
-            ? (org.preferences as UnknownRecord)
-            : undefined;
-          resiliationConfig = wordCfg.sp_config_resiliation
-            ?? (orgPreferences?.sp_config_resiliation as SpConfigResiliation | undefined);
+    const emptyBaseResult: SuggestionResult = {
+      suggestions: [],
+      synthese: {
+        cout_total_actuel: 0,
+        cout_total_propose: 0,
+        economie_mensuelle: 0,
+        economie_annuelle: 0,
+      },
+    };
+
+    let wordCfg: WordConfig = { formatVariables: '', fieldMappings: {} };
+    let templateQuestions: SpQuestion[] = [];
+    let resiliationConfig: SpConfigResiliation | undefined;
+    let propositionCreatedAt: string | undefined;
+    if (typeof proposition_id === 'string' && proposition_id.length > 0) {
+      const { data: prop } = await supabase
+        .from('propositions')
+        .select('template_id, created_at')
+        .eq('id', proposition_id)
+        .single();
+      propositionCreatedAt = typeof prop?.created_at === 'string' ? prop.created_at : undefined;
+      if (prop?.template_id) {
+        const [{ data: tmpl }, { data: org }] = await Promise.all([
+          supabase
+            .from('proposition_templates')
+            .select('file_config')
+            .eq('id', prop.template_id)
+            .single(),
+          supabase
+            .from('organizations')
+            .select('preferences, sp_questions')
+            .eq('id', user.id)
+            .single(),
+        ]);
+        if (isPlainObject(tmpl?.file_config)) {
+          wordCfg = tmpl.file_config as unknown as WordConfig;
         }
-      }
-      // Load loyer baremes: template file_config first, org preferences as fallback
-      let loyerBaremes: SpBareme[] | undefined;
-      let loyerDureeConfig: { depends_question?: boolean; question_id?: string; defaut?: number } | undefined;
-
-      // 1. Template file_config (new format)
-      const tmplCfg = wordCfg as WordConfig & {
-        sp_config_loyer?: {
-          baremes?: SpBareme[];
-          duree_mois_par_defaut?: number;
-          duree_depends_question?: boolean;
-          duree_question_id?: string;
-        };
-      };
-      if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer!.baremes!.length > 0) {
-        loyerBaremes = tmplCfg.sp_config_loyer!.baremes;
-      }
-      if (tmplCfg.sp_config_loyer) {
-        loyerDureeConfig = {
-          depends_question: tmplCfg.sp_config_loyer.duree_depends_question,
-          question_id: tmplCfg.sp_config_loyer.duree_question_id,
-          defaut: tmplCfg.sp_config_loyer.duree_mois_par_defaut,
-        };
-      }
-
-      // 2. Org preferences fallback (supports new {baremes:[]} and legacy {taux_durees:[]})
-      if (!loyerBaremes) {
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('preferences')
-          .eq('id', user.id)
-          .single();
-        const orgCfg = isPlainObject(orgData?.preferences)
-          ? (orgData.preferences as UnknownRecord).sp_config_loyer
+        if (Array.isArray(org?.sp_questions)) {
+          templateQuestions = (org.sp_questions as SpQuestion[])
+            .filter((question) => question.template_id === prop.template_id);
+        }
+        const orgPreferences = isPlainObject(org?.preferences)
+          ? (org.preferences as UnknownRecord)
           : undefined;
-        if (isPlainObject(orgCfg)) {
-          const cfg = orgCfg as UnknownRecord;
-          if (Array.isArray(cfg.baremes) && (cfg.baremes as unknown[]).length > 0) {
-            loyerBaremes = cfg.baremes as SpBareme[];
-          } else if (Array.isArray(cfg.taux_durees)) {
-            // Convert legacy format to single fallback barème
-            loyerBaremes = [{
-              id: 'migrated',
-              nom: 'Barème migré',
-              ordre: 0,
-              taux_durees: cfg.taux_durees as SpTauxDuree[],
-            }];
-          }
-        }
-      }
-
-      const questionVariableValues = templateQuestions.length > 0
-        ? collectQuestionVariableValues(templateQuestions, spReponses)
-        : {};
-      const resiliationEstimation = estimateResiliationFromSA(
-        isPlainObject(situation_actuelle) && isPlainObject(situation_actuelle.situation_actuelle)
-          ? situation_actuelle
-          : { situation_actuelle },
-        resiliationConfig,
-        propositionCreatedAt,
-      );
-      const montantIndemnites =
-        normalizeResiliationAmount(questionVariableValues.sp_total_indemnites)
-        ?? resiliationEstimation.montant_source
-        ?? resiliationEstimation.montant_estime;
-      const buildRaw = {
-        ...rawResult,
-        ...questionVariableValues,
-        sp_questions_reponses: spReponses,
-      };
-
-      suggestionsSpCompletes = buildSpCompletes(
-        buildRaw,
-        normalized,
-        adresse_facturation,
-        adresse_livraison,
-        livraison_identique,
-        wordCfg,
-        templateQuestions,
-        catalogue as CatalogueProduit[],
-        loyerBaremes,
-        priceOverrides,
-        typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
-        loyerDureeConfig,
-      );
-
-      if (montantIndemnites !== null) {
-        suggestionsSpCompletes.sp_total_indemnites = formatEuro(montantIndemnites);
+        resiliationConfig = wordCfg.sp_config_resiliation
+          ?? (orgPreferences?.sp_config_resiliation as SpConfigResiliation | undefined);
       }
     }
 
-    if (typeof proposition_id === 'string' && proposition_id.length > 0) {
-      const updatePayload: UnknownRecord = { suggestions_generees: normalized };
-      if (suggestionsSpCompletes) {
-        updatePayload.suggestions_sp_completes = suggestionsSpCompletes;
+    // Load loyer baremes: template file_config first, org preferences as fallback
+    let loyerBaremes: SpBareme[] | undefined;
+    let loyerDureeConfig: { depends_question?: boolean; question_id?: string; defaut?: number } | undefined;
+
+    const tmplCfg = wordCfg as WordConfig & {
+      sp_config_loyer?: {
+        baremes?: SpBareme[];
+        duree_mois_par_defaut?: number;
+        duree_depends_question?: boolean;
+        duree_question_id?: string;
+      };
+    };
+    if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer!.baremes!.length > 0) {
+      loyerBaremes = tmplCfg.sp_config_loyer!.baremes;
+    }
+    if (tmplCfg.sp_config_loyer) {
+      loyerDureeConfig = {
+        depends_question: tmplCfg.sp_config_loyer.duree_depends_question,
+        question_id: tmplCfg.sp_config_loyer.duree_question_id,
+        defaut: tmplCfg.sp_config_loyer.duree_mois_par_defaut,
+      };
+    }
+
+    if (!loyerBaremes) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('preferences')
+        .eq('id', user.id)
+        .single();
+      const orgCfg = isPlainObject(orgData?.preferences)
+        ? (orgData.preferences as UnknownRecord).sp_config_loyer
+        : undefined;
+      if (isPlainObject(orgCfg)) {
+        const cfg = orgCfg as UnknownRecord;
+        if (Array.isArray(cfg.baremes) && (cfg.baremes as unknown[]).length > 0) {
+          loyerBaremes = cfg.baremes as SpBareme[];
+        } else if (Array.isArray(cfg.taux_durees)) {
+          loyerBaremes = [{
+            id: 'migrated',
+            nom: 'Barème migré',
+            ordre: 0,
+            taux_durees: cfg.taux_durees as SpTauxDuree[],
+          }];
+        }
       }
+    }
+
+    const questionVariableValues = templateQuestions.length > 0
+      ? collectQuestionVariableValues(templateQuestions, spReponses)
+      : {};
+    const resiliationEstimation = estimateResiliationFromSA(
+      isPlainObject(situation_actuelle) && isPlainObject(situation_actuelle.situation_actuelle)
+        ? situation_actuelle
+        : { situation_actuelle },
+      resiliationConfig,
+      propositionCreatedAt,
+    );
+    const montantIndemnites =
+      normalizeResiliationAmount(questionVariableValues.sp_total_indemnites)
+      ?? resiliationEstimation.montant_source
+      ?? resiliationEstimation.montant_estime;
+
+    const buildRaw = {
+      ...rawResult,
+      ...questionVariableValues,
+      sp_questions_reponses: spReponses,
+    };
+
+    const suggestionsSpCompletes = buildSpCompletes(
+      buildRaw,
+      emptyBaseResult,
+      adresse_facturation,
+      adresse_livraison,
+      livraison_identique,
+      wordCfg,
+      templateQuestions,
+      catalogue as CatalogueProduit[],
+      loyerBaremes,
+      priceOverrides,
+      typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
+      loyerDureeConfig,
+    );
+
+    if (montantIndemnites !== null) {
+      suggestionsSpCompletes.sp_total_indemnites = formatEuro(montantIndemnites);
+    }
+
+    if (typeof proposition_id === 'string' && proposition_id.length > 0) {
+      const updatePayload: UnknownRecord = { suggestions_sp_completes: suggestionsSpCompletes };
       if (spReponses.length > 0) {
         updatePayload.sp_reponses = spReponses;
       }
@@ -1494,7 +1024,7 @@ RETOURNE UNIQUEMENT UN JSON VALIDE (sans markdown, sans backticks):
       }
     }
 
-    return NextResponse.json(suggestionsSpCompletes ?? normalized);
+    return NextResponse.json(suggestionsSpCompletes);
   } catch {
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
