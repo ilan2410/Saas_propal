@@ -4,6 +4,7 @@ import type {
   SpQuestion,
   SpQuestionReponse,
   SpConfigLoyer,
+  SpConfigMoisOfferts,
   SpProduitLibre,
 } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
@@ -162,6 +163,7 @@ export function calculateCartSummary(
   catalogue: CatalogueProduit[],
   donneesExtraites: Record<string, unknown> = {},
   spConfigLoyer?: SpConfigLoyer,
+  spConfigMoisOfferts?: SpConfigMoisOfferts,
 ): SpCartSummary {
   const lines: CartLine[] = [];
 
@@ -330,8 +332,15 @@ export function calculateCartSummary(
     }
   }
   // 5. Composantes additionnelles : remise mois offert, indemnités, marge
+  const categoriesMoisOfferts = spConfigMoisOfferts?.categories_inclues ?? ['fixe', 'mobile'];
+  let totalRecurrentMoisOfferts = 0;
+  if (categoriesMoisOfferts.includes('fixe')) totalRecurrentMoisOfferts += abos.fixe;
+  if (categoriesMoisOfferts.includes('mobile')) totalRecurrentMoisOfferts += abos.mobile;
+  if (categoriesMoisOfferts.includes('internet')) totalRecurrentMoisOfferts += abos.internet;
+  if (categoriesMoisOfferts.includes('autres_mensuels')) totalRecurrentMoisOfferts += autresMensuels;
+
   const remiseMoisOffert = bareme
-    ? calculerRemiseMoisOffert(bareme, abos.totalMensuel, dureeMois)
+    ? calculerRemiseMoisOffert(bareme, totalRecurrentMoisOfferts, dureeMois)
     : 0;
 
   const indemnites = resolveIndemnites(reponses, questions, donneesExtraites);
@@ -370,7 +379,7 @@ function parseNumeric(raw: unknown): number {
   return Number.isFinite(v) ? v : 0;
 }
 
-function resolveIndemnites(
+export function resolveIndemnites(
   reponses: SpQuestionReponse[],
   questions: SpQuestion[],
   donneesExtraites: Record<string, unknown>,

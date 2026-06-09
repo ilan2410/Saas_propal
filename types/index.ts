@@ -72,6 +72,7 @@ export interface OrganizationPreferences {
   sp_customization?: SpCustomization;
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
+  sp_config_mois_offerts?: SpConfigMoisOfferts;
   sp_regles_remise?: SpRegleRemise[];
 }
 
@@ -705,6 +706,12 @@ export interface SpConfigLoyer {
   duree_depends_question?: boolean;
   /** ID de la question SP dont la réponse fournit la durée du contrat (en mois). */
   duree_question_id?: string;
+}
+
+export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';
+
+export interface SpConfigMoisOfferts {
+  categories_inclues: SpMoisOffertsCategorieIncluse[];
 }
 
 export interface SpConfigResiliationElements {

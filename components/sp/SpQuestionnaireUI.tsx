@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -31,6 +31,7 @@ export interface SpQuestionnaireUIProps {
   startFromQuestionId?: string;
   spConfigLoyer?: SpConfigLoyer;
   spConfigResiliation?: SpConfigResiliation;
+  spConfigMoisOfferts?: SpConfigMoisOfferts;
 }
 
 type MessageBubble =
@@ -710,6 +711,7 @@ export function SpQuestionnaireUI({
   startFromQuestionId,
   spConfigLoyer,
   spConfigResiliation,
+  spConfigMoisOfferts,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -1896,6 +1898,7 @@ export function SpQuestionnaireUI({
               catalogue,
               donneesExtraites,
               spConfigLoyer,
+              spConfigMoisOfferts,
             );
             const baseAvantMarge =
               baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites;
@@ -2316,6 +2319,7 @@ export function SpQuestionnaireUI({
           catalogue,
           donneesExtraites,
           spConfigLoyer,
+          spConfigMoisOfferts,
         );
         // Pour la comparaison, on aligne sur le loyer mensuel SP (qui inclut
         // matériel, FAS, cadeaux, indemnités, marge). Fallback : total abonnements.
@@ -2335,6 +2339,7 @@ export function SpQuestionnaireUI({
               catalogue={catalogue}
               donneesExtraites={donneesExtraites}
               spConfigLoyer={spConfigLoyer}
+              spConfigMoisOfferts={spConfigMoisOfferts}
             />
           </div>
         );

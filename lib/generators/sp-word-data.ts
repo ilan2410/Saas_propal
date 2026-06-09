@@ -1,4 +1,5 @@
 import type { SuggestionsSpCompletes, SpAdresse, SpTableauFusionne } from '@/types';
+import { deepApplyTitleCase } from '@/lib/generators/word-data-utils';
 
 function sanitizeLineNumber(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -104,6 +105,22 @@ export function buildSpWordData(
     sp_total_bdc_materiel_ht: sp.sp_total_bdc_materiel_ht ?? '',
     sp_total_cadeaux_ht: sp.sp_total_cadeaux_ht ?? '',
     sp_total_complet: sp.sp_total_complet ?? '',
+
+    sp_total_recurrent: sp.sp_total_recurrent ?? '',
+    sp_total_ponctuel: sp.sp_total_ponctuel ?? '',
+    sp_total_indemnites: sp.sp_total_indemnites ?? '',
+    sp_remise_mois_offert: sp.sp_remise_mois_offert ?? '',
+    sp_total_fas: sp.sp_total_fas ?? '',
+    sp_total_installation: sp.sp_total_installation ?? '',
+    sp_total_materiel_achat: sp.sp_total_materiel_achat ?? '',
+    sp_fas_total: sp.sp_fas_total ?? '',
+
+    sp_loyer_mensuel: sp.sp_loyer_mensuel ?? '',
+    sp_loyer_trimestriel: sp.sp_loyer_trimestriel ?? '',
+    sp_marge: sp.sp_marge ?? '',
+    sp_duree_mois: sp.sp_duree_mois ?? '',
+    sp_trimestres: sp.sp_trimestres ?? '',
+    sp_mois_offerts: sp.sp_mois_offerts ?? '',
   };
 
   if (tableauxFusionnes) {
@@ -128,7 +145,7 @@ export function buildSpWordData(
     }
   }
 
-  return data;
+  return deepApplyTitleCase(data) as Record<string, unknown>;
 }
 
 function formatAdresse(a: SpAdresse): string {

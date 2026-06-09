@@ -87,6 +87,23 @@ function sanitizeNumero(rawNumero: unknown, item: UnknownRecord, arrayKey: strin
   return numero;
 }
 
+function formatEuro(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.includes('€')) return trimmed;
+    const cleaned = trimmed.replace(/\s/g, '').replace(',', '.').replace(/[^\d.\-]/g, '');
+    const n = Number(cleaned);
+    if (Number.isFinite(n) && cleaned !== '') {
+      return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
+    }
+    return trimmed;
+  }
+  return String(value ?? '');
+}
+
 function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
   if (!isPlainObject(item)) return item;
   if (!looksLikeSaCommercialRow(item, arrayKey)) return item;
@@ -102,6 +119,7 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
     'loyer_brut_mensuel',
     'prix_mensuel_ht',
   ]) ?? '';
+  const tarifFormatted = formatEuro(tarif);
 
   return {
     ...item,
@@ -110,8 +128,8 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
     numero,
     numero_ligne: numero,
     quantite,
-    prix_mensuel_ht: tarif,
-    tarif,
+    prix_mensuel_ht: tarifFormatted,
+    tarif: tarifFormatted,
   };
 }
 
@@ -322,14 +340,15 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   const fallbackSaLines = buildSituationActuelleLines(baseData, 0).lines.map((line, index) => {
     const existing = isPlainObject(currentLines[index]) ? currentLines[index] : {};
     const numero = line.numero || pickFirstString(existing, ['numero', 'numero_ligne']) || '';
+    const prixFormatted = formatEuro(line.prixHt);
     return {
       designation: line.offre,
       libelle: line.offre,
       numero,
       numero_ligne: numero,
       quantite: line.quantite,
-      prix_mensuel_ht: line.prixHt,
-      tarif: line.prixHt,
+      prix_mensuel_ht: prixFormatted,
+      tarif: prixFormatted,
       type: '',
     };
   });
@@ -337,13 +356,36 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
     out.lignes = fallbackSaLines;
   }
 
-  return out;
+  return deepApplyTitleCase(out) as UnknownRecord;
+}
+
+export function toTitleCase(s: string): string {
+  // Skip emails
+  if (s.includes('@')) return s;
+  // Skip strings that look like numbers, prices, percentages (contain digits but no real letters)
+  if (/^[\d\s,.'%+\-€$£/*()]+$/.test(s)) return s;
+  // Skip phone/fax numbers (mostly digits with separators, no real letters except maybe a leading +)
+  if (/^[+\d][\d\s\-./()]{4,}$/.test(s.trim())) return s;
+  // Capitalize first letter of each word, lowercase the rest
+  return s.replace(/\S+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+export function deepApplyTitleCase(value: unknown): unknown {
+  if (typeof value === 'string') return toTitleCase(value);
+  if (Array.isArray(value)) return value.map(deepApplyTitleCase);
+  if (isPlainObject(value)) {
+    const result: UnknownRecord = {};
+    for (const [k, v] of Object.entries(value)) result[k] = deepApplyTitleCase(v);
+    return result;
+  }
+  return value;
 }
 
 export function formatValueForWord(value: unknown): unknown {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'string' || typeof value === 'number') return value;
+  if (typeof value === 'string') return toTitleCase(value);
+  if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
 
   if (Array.isArray(value)) {

@@ -220,7 +220,7 @@ function repairSpCompletesFromQuestionnaire(
   const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
   const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
 
-  const repaired = {
+  const repaired: SuggestionsSpCompletes = {
     ...sp,
     sp_lignes_mobiles: mobiles,
     sp_lignes_fixes: fixes,
@@ -239,6 +239,18 @@ function repairSpCompletesFromQuestionnaire(
     sp_total_forfaits_mensuel_ht: formatEuro(totalForfaits),
     sp_total_materiel_ht: formatEuro(totalMateriel),
     sp_total_complet: formatEuro(totalForfaits + totalMateriel),
+    sp_total_recurrent: formatEuro(cart.abonnements.totalMensuel),
+    sp_total_ponctuel: formatEuro(cart.totalPonctuel),
+    sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : sp.sp_total_indemnites,
+    sp_remise_mois_offert: cart.remiseMoisOffert > 0 ? formatEuro(cart.remiseMoisOffert) : sp.sp_remise_mois_offert,
+    sp_marge: cart.marge > 0 ? formatEuro(cart.marge) : sp.sp_marge,
+    ...(cart.loyer ? {
+      sp_loyer_mensuel: formatEuro(cart.loyer.loyer_mensuel),
+      sp_loyer_trimestriel: formatEuro(cart.loyer.loyer_trimestriel),
+      sp_duree_mois: cart.loyer.duree_mois,
+      sp_trimestres: cart.loyer.trimestres,
+      sp_mois_offerts: cart.loyer.mois_offerts,
+    } : {}),
   };
 
   return repaired;

@@ -5,6 +5,7 @@ import { ShoppingCart, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react
 import type {
   CatalogueProduit,
   SpConfigLoyer,
+  SpConfigMoisOfferts,
   SpQuestion,
   SpQuestionReponse,
 } from '@/types';
@@ -17,6 +18,7 @@ interface SpRealTimeCartProps {
   catalogue: CatalogueProduit[];
   donneesExtraites?: Record<string, unknown>;
   spConfigLoyer?: SpConfigLoyer;
+  spConfigMoisOfferts?: SpConfigMoisOfferts;
 }
 
 function Line({
@@ -167,6 +169,7 @@ export function SpRealTimeCart({
   catalogue,
   donneesExtraites,
   spConfigLoyer,
+  spConfigMoisOfferts,
 }: SpRealTimeCartProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -180,8 +183,8 @@ export function SpRealTimeCart({
     });
 
   const summary = useMemo(
-    () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer),
-    [reponses, questions, catalogue, donneesExtraites, spConfigLoyer],
+    () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer, spConfigMoisOfferts),
+    [reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts],
   );
 
   const grouped = useMemo(() => {

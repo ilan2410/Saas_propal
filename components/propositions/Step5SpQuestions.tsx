@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, Database, X, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -61,6 +61,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
+  const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,6 +89,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       const fileCfg = tData.template?.file_config as WordConfig | undefined;
       if (fileCfg?.sp_config_loyer?.baremes) setSpConfigLoyer(fileCfg.sp_config_loyer);
       setSpConfigResiliation(fileCfg?.sp_config_resiliation ?? pData.preferences?.sp_config_resiliation);
+      setSpConfigMoisOfferts(pData.preferences?.sp_config_mois_offerts);
       setLoadingQuestions(false);
     }).catch(() => setLoadingQuestions(false));
   }, [templateId]);
@@ -324,6 +326,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   siteLabel={siteLabel}
                   spConfigLoyer={spConfigLoyer}
                   spConfigResiliation={spConfigResiliation}
+                  spConfigMoisOfferts={spConfigMoisOfferts}
                 />
               )}
             </div>

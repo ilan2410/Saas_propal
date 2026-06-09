@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, CatalogueProduit, SpQuestion } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
@@ -34,6 +34,7 @@ import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 import { SpLoyerManager } from '@/components/settings/SpLoyerManager';
 import { SpResiliationManager } from '@/components/settings/SpResiliationManager';
+import { SpMoisOffertsManager, getDefaultSpConfigMoisOfferts } from '@/components/settings/SpMoisOffertsManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -59,6 +60,7 @@ interface SettingsPageProps {
 type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises';
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
+type RemisesSubTabId = 'regles_remise' | 'mois_offerts';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -222,6 +224,7 @@ export default function SettingsPage({
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(currentTab);
   const [calculsSubTab, setCalculsSubTab] = useState<CalculsSubTabId>('loyer');
+  const [remisesSubTab, setRemisesSubTab] = useState<RemisesSubTabId>('regles_remise');
 
   // Profile State
   const [profileData, setProfileData] = useState({
@@ -315,6 +318,9 @@ export default function SettingsPage({
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>(organization.preferences?.sp_regles_remise ?? []);
   const [discountProducts, setDiscountProducts] = useState<CatalogueProduit[]>([]);
   const [discountQuestions, setDiscountQuestions] = useState<SpQuestion[]>([]);
+  const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts>(
+    organization.preferences?.sp_config_mois_offerts ?? getDefaultSpConfigMoisOfferts(),
+  );
   const [isDiscountSaving, setIsDiscountSaving] = useState(false);
 
   // Appearance State
@@ -898,6 +904,25 @@ export default function SettingsPage({
       router.refresh();
     } catch {
       toast.error('Erreur lors de la sauvegarde des remises');
+    } finally {
+      setIsDiscountSaving(false);
+    }
+  };
+
+  const handleSaveMoisOfferts = async () => {
+    if (isDiscountSaving) return;
+    setIsDiscountSaving(true);
+    try {
+      const res = await fetch('/api/settings/update-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sp_config_mois_offerts: spConfigMoisOfferts }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      toast.success('Configuration des mois offerts enregistrée');
+      router.refresh();
+    } catch {
+      toast.error('Erreur lors de la sauvegarde des mois offerts');
     } finally {
       setIsDiscountSaving(false);
     }
@@ -2196,22 +2221,61 @@ export default function SettingsPage({
         {activeTab === 'sp-remises' && (
           <div className="p-6 space-y-6">
             <div className="border-b border-gray-100 pb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Remises conditionnelles SP</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Remises SP</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Configurez les règles qui rendent disponibles les tarifs remisés du catalogue pendant le questionnaire SP.
+                Configurez les remises appliquées pendant le questionnaire SP et dans les documents générés.
               </p>
             </div>
 
-            <SpDiscountRulesManager
-              rules={discountRules}
-              products={discountProducts}
-              questions={discountQuestions}
-              onChange={setDiscountRules}
-            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setRemisesSubTab('regles_remise')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  remisesSubTab === 'regles_remise'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Règles de remise
+              </button>
+              <button
+                type="button"
+                onClick={() => setRemisesSubTab('mois_offerts')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  remisesSubTab === 'mois_offerts'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Remise mois offert
+              </button>
+            </div>
+
+            {remisesSubTab === 'regles_remise' ? (
+              <SpDiscountRulesManager
+                rules={discountRules}
+                products={discountProducts}
+                questions={discountQuestions}
+                onChange={setDiscountRules}
+              />
+            ) : (
+              <SpMoisOffertsManager
+                value={spConfigMoisOfferts}
+                onChange={setSpConfigMoisOfferts}
+              />
+            )}
 
             <div className="flex gap-2 pt-4 border-t border-gray-100">
-              <Button onClick={handleSaveDiscountRules} disabled={isDiscountSaving}>
-                {isDiscountSaving ? 'Sauvegarde...' : 'Enregistrer les règles'}
+              <Button
+                onClick={remisesSubTab === 'regles_remise' ? handleSaveDiscountRules : handleSaveMoisOfferts}
+                disabled={isDiscountSaving}
+              >
+                {isDiscountSaving
+                  ? 'Sauvegarde...'
+                  : remisesSubTab === 'regles_remise'
+                    ? 'Enregistrer les règles'
+                    : 'Enregistrer la configuration'}
               </Button>
             </div>
           </div>

@@ -26,9 +26,11 @@ function repairMaterialDetailFromQuestionnaire(
     !['mobile', 'fixe', 'internet', 'cadeau'].includes(line.categorie)
   );
 
-  if (materielCartLines.length === 0) return sp;
+  const hasMaterial = materielCartLines.length > 0;
+  const hasIndemnites = cart.indemnites > 0;
+  if (!hasMaterial && !hasIndemnites) return sp;
 
-  const sp_materiel: SpMateriel[] = materielCartLines.map((line) => {
+  const sp_materiel: SpMateriel[] = hasMaterial ? materielCartLines.map((line) => {
     const cat = line.produitId ? catalogueMap.get(line.produitId) : undefined;
     return {
       sp_materiel_nom: line.produitNom,
@@ -41,9 +43,9 @@ function repairMaterialDetailFromQuestionnaire(
       sp_type_ligne: 'Materiel',
       _prix_mensuel_raw: line.prixTotal,
     };
-  });
+  }) : [];
 
-  const sp_materiel_detail: SpMaterielDetail[] = materielCartLines.map((line) => {
+  const sp_materiel_detail: SpMaterielDetail[] = hasMaterial ? materielCartLines.map((line) => {
     const isLibre = !line.produitId;
     const cat = !isLibre && line.produitId ? catalogueMap.get(line.produitId) : undefined;
     const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
@@ -61,16 +63,20 @@ function repairMaterialDetailFromQuestionnaire(
       sp_mat_image_url: imageUrl,
       _prix_raw: line.prixTotal,
     };
-  });
+  }) : [];
 
-  const totalMateriel = sp_materiel.reduce((sum, item) => sum + item._prix_mensuel_raw, 0);
+  const totalMateriel = hasMaterial ? sp_materiel.reduce((sum, item) => sum + item._prix_mensuel_raw, 0) : 0;
 
-  return {
-    ...sp,
-    sp_materiel,
-    sp_materiel_detail,
-    sp_total_materiel_ht: formatEuro(totalMateriel),
-  };
+  const result: SuggestionsSpCompletes = { ...sp };
+  if (hasMaterial) {
+    result.sp_materiel = sp_materiel;
+    result.sp_materiel_detail = sp_materiel_detail;
+    result.sp_total_materiel_ht = formatEuro(totalMateriel);
+  }
+  if (hasIndemnites) {
+    result.sp_total_indemnites = formatEuro(cart.indemnites);
+  }
+  return result;
 }
 
 export async function POST(

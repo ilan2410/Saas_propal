@@ -57,6 +57,9 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_config_resiliation !== undefined
         ? { sp_config_resiliation: newPreferences.sp_config_resiliation }
         : {}),
+      ...(newPreferences.sp_config_mois_offerts !== undefined
+        ? { sp_config_mois_offerts: newPreferences.sp_config_mois_offerts }
+        : {}),
       ...(newPreferences.sp_regles_remise !== undefined
         ? { sp_regles_remise: newPreferences.sp_regles_remise }
         : {}),

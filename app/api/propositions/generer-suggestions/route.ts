@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
@@ -438,6 +438,7 @@ function buildSpCompletes(
   priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
   loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
+  spConfigMoisOfferts?: SpConfigMoisOfferts,
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -541,6 +542,15 @@ function buildSpCompletes(
 
   const totalRecurrent = totalRecurrentLignes + totalMaterielRecurrent;
   const totalPonctuel = totalMaterielPonctuel;
+  const categoriesMoisOfferts = spConfigMoisOfferts?.categories_inclues ?? ['fixe', 'mobile'];
+  const totalFixeMoisOfferts = sp_lignes_fixes.reduce((s, l) => s + l._prix_propose_raw, 0);
+  const totalMobileMoisOfferts = sp_lignes_mobiles.reduce((s, l) => s + l._prix_propose_raw, 0);
+  const totalInternetMoisOfferts = sp_internet.reduce((s, l) => s + l._prix_propose_raw, 0);
+  let totalRecurrentMoisOfferts = 0;
+  if (categoriesMoisOfferts.includes('fixe')) totalRecurrentMoisOfferts += totalFixeMoisOfferts;
+  if (categoriesMoisOfferts.includes('mobile')) totalRecurrentMoisOfferts += totalMobileMoisOfferts;
+  if (categoriesMoisOfferts.includes('internet')) totalRecurrentMoisOfferts += totalInternetMoisOfferts;
+  if (categoriesMoisOfferts.includes('autres_mensuels')) totalRecurrentMoisOfferts += totalMaterielRecurrent;
 
   // ── Loyer calculation ──
   // Résolution de la durée :
@@ -569,7 +579,7 @@ function buildSpCompletes(
   const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
-  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
+  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrentMoisOfferts, dureeMois) : 0;
   // Indemnités : prioriser réponse SP, sinon raw.sp_total_indemnites
   let indemnitesNum = 0;
   const indemRep = reponses.find((r) => r.question_id === 'sp_total_indemnites');
@@ -924,6 +934,7 @@ export async function POST(request: NextRequest) {
     // Load loyer baremes: template file_config first, org preferences as fallback
     let loyerBaremes: SpBareme[] | undefined;
     let loyerDureeConfig: { depends_question?: boolean; question_id?: string; defaut?: number } | undefined;
+    let spConfigMoisOfferts: SpConfigMoisOfferts | undefined;
 
     const tmplCfg = wordCfg as WordConfig & {
       sp_config_loyer?: {
@@ -968,6 +979,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (!spConfigMoisOfferts) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('preferences')
+        .eq('id', user.id)
+        .single();
+      const orgMoisOffertsCfg = isPlainObject(orgData?.preferences)
+        ? (orgData.preferences as UnknownRecord).sp_config_mois_offerts
+        : undefined;
+      if (isPlainObject(orgMoisOffertsCfg) && Array.isArray(orgMoisOffertsCfg.categories_inclues)) {
+        spConfigMoisOfferts = orgMoisOffertsCfg as unknown as SpConfigMoisOfferts;
+      }
+    }
+
     const questionVariableValues = templateQuestions.length > 0
       ? collectQuestionVariableValues(templateQuestions, spReponses)
       : {};
@@ -1002,6 +1027,7 @@ export async function POST(request: NextRequest) {
       priceOverrides,
       typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
       loyerDureeConfig,
+      spConfigMoisOfferts,
     );
 
     if (montantIndemnites !== null) {
