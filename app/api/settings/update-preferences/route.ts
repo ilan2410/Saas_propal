@@ -63,6 +63,9 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_regles_remise !== undefined
         ? { sp_regles_remise: newPreferences.sp_regles_remise }
         : {}),
+      ...(newPreferences.sp_objectifs_config !== undefined
+        ? { sp_objectifs_config: newPreferences.sp_objectifs_config }
+        : {}),
     };
 
     const supabaseAdmin = createServiceClient();

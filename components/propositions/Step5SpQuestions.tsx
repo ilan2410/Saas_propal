@@ -327,6 +327,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigLoyer={spConfigLoyer}
                   spConfigResiliation={spConfigResiliation}
                   spConfigMoisOfferts={spConfigMoisOfferts}
+                  objectifsConfig={preferences.sp_objectifs_config ?? []}
+                  templateId={templateId}
                 />
               )}
             </div>

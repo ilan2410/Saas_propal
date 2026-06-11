@@ -6,6 +6,7 @@ import type {
   SpConditionLogique,
   SpFiltresCatalogue,
   CatalogueProduit,
+  SuggestionsSpCompletes,
 } from '@/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -141,6 +142,7 @@ function resolveConditionValue(
   condition: SpCondition,
   reponses: SpQuestionReponse[],
   donneesExtraites: Record<string, unknown>,
+  suggestionsSpCompletes?: SuggestionsSpCompletes | null,
 ): unknown {
   switch (condition.source) {
     case 'reponse_question': {
@@ -158,6 +160,10 @@ function resolveConditionValue(
       }
       return base;
     }
+    case 'suggestions': {
+      if (!condition.variable_sa || !suggestionsSpCompletes) return undefined;
+      return suggestionsSpCompletes[condition.variable_sa as keyof SuggestionsSpCompletes];
+    }
     case 'catalogue':
       // Catalogue conditions are evaluated separately via filterCatalogue
       return undefined;
@@ -171,6 +177,7 @@ function evaluateSingleCondition(
   reponses: SpQuestionReponse[],
   donneesExtraites: Record<string, unknown>,
   catalogue?: CatalogueProduit[],
+  suggestionsSpCompletes?: SuggestionsSpCompletes | null,
 ): boolean {
   // Catalogue conditions are evaluated against the products actually selected
   // in SP answers, not against raw catalogue availability.
@@ -190,7 +197,7 @@ function evaluateSingleCondition(
     }
   }
 
-  const actualValue = resolveConditionValue(condition, reponses, donneesExtraites);
+  const actualValue = resolveConditionValue(condition, reponses, donneesExtraites, suggestionsSpCompletes);
   const comparable = toComparable(actualValue);
   const targetStr = condition.valeur != null ? String(condition.valeur) : '';
 
@@ -202,10 +209,13 @@ function evaluateSingleCondition(
       return actualValue != null && comparable !== '' && comparable !== undefined;
 
     case 'egal':
+      // Pour les réponses multi-choix (tableaux), "egal" vérifie que la valeur est incluse
+      if (Array.isArray(actualValue)) return containsEquivalentValue(actualValue, condition.valeur);
       return areEquivalentValues(actualValue, condition.valeur);
 
     case 'different':
       if (comparable == null) return targetStr !== '';
+      if (Array.isArray(actualValue)) return !containsEquivalentValue(actualValue, condition.valeur);
       return !areEquivalentValues(actualValue, condition.valeur);
 
     case 'contient': {
@@ -258,18 +268,19 @@ function evaluateGroup(
   reponses: SpQuestionReponse[],
   donneesExtraites: Record<string, unknown>,
   catalogue?: CatalogueProduit[],
+  suggestionsSpCompletes?: SuggestionsSpCompletes | null,
 ): boolean {
   const { conditions, logique_groupe = 'ET' } = group;
   if (!conditions || conditions.length === 0) return true;
 
   if (logique_groupe === 'OU') {
     return conditions.some((c) =>
-      evaluateSingleCondition(c, reponses, donneesExtraites, catalogue),
+      evaluateSingleCondition(c, reponses, donneesExtraites, catalogue, suggestionsSpCompletes),
     );
   }
   // Default: ET
   return conditions.every((c) =>
-    evaluateSingleCondition(c, reponses, donneesExtraites, catalogue),
+    evaluateSingleCondition(c, reponses, donneesExtraites, catalogue, suggestionsSpCompletes),
   );
 }
 
@@ -299,6 +310,30 @@ export function evaluateQuestionVisibility(
   // Default: ET
   return groupes_conditions.every((g) =>
     evaluateGroup(g, reponses, donneesExtraites, catalogue),
+  );
+}
+
+/**
+ * Evaluate a list of SpGroupeConditions with optional access to SuggestionsSpCompletes.
+ * Used by the objectifs system to evaluate message and affichage conditions.
+ */
+export function evaluateGroupes(
+  groupes: SpGroupeConditions[],
+  logique: 'ET' | 'OU' = 'ET',
+  reponses: SpQuestionReponse[],
+  donneesExtraites: Record<string, unknown>,
+  suggestionsSpCompletes?: SuggestionsSpCompletes | null,
+  catalogue?: CatalogueProduit[],
+): boolean {
+  if (!groupes || groupes.length === 0) return true;
+
+  if (logique === 'OU') {
+    return groupes.some((g) =>
+      evaluateGroup(g, reponses, donneesExtraites, catalogue, suggestionsSpCompletes),
+    );
+  }
+  return groupes.every((g) =>
+    evaluateGroup(g, reponses, donneesExtraites, catalogue, suggestionsSpCompletes),
   );
 }
 

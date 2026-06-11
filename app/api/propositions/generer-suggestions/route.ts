@@ -616,6 +616,7 @@ function buildSpCompletes(
     sp_ameliorations: typeof raw.sp_ameliorations === 'string' ? raw.sp_ameliorations : '',
     sp_nb_lignes: String(toutes.length),
     sp_est_economie: economieTotale > 0 ? 'Oui' : 'Non',
+    sp_taux_economie_pct: totalActuel > 0 ? Math.round((economieTotale / totalActuel) * 100 * 10) / 10 : 0,
     // Récurrent / Ponctuel
     sp_total_recurrent: formatEuro(totalRecurrent),
     sp_total_ponctuel: formatEuro(totalPonctuel),

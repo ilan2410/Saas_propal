@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import type {
   SpGroupeConditions,
   SpCondition,
@@ -20,6 +21,8 @@ interface Props {
   otherQuestions: SpQuestion[];
   /** Catalogue products (for "catalogue" source) */
   catalogueProduits?: CatalogueProduit[];
+  /** Enable "suggestions" source (SuggestionsSpCompletes fields) */
+  enableSuggestionsSource?: boolean;
 }
 
 const OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
@@ -39,6 +42,20 @@ const OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
 const SOURCES: { value: SpCondition['source']; label: string }[] = [
   { value: 'reponse_question', label: 'Réponse à une question' },
   { value: 'catalogue', label: 'Catalogue produits' },
+];
+
+const SOURCES_WITH_SUGGESTIONS: { value: SpCondition['source']; label: string }[] = [
+  ...SOURCES,
+  { value: 'suggestions', label: 'Données SP calculées' },
+];
+
+const SUGGESTIONS_FIELDS: { value: string; label: string }[] = [
+  { value: 'sp_est_economie',       label: 'Est une économie (Oui/Non)' },
+  { value: 'sp_taux_economie_pct',  label: 'Taux d\'économie (%)' },
+  { value: 'sp_economie_mensuelle', label: 'Économie mensuelle (€)' },
+  { value: 'sp_economie_annuelle',  label: 'Économie annuelle (€)' },
+  { value: 'sp_total_actuel',       label: 'Total actuel (€)' },
+  { value: 'sp_total_propose',      label: 'Total proposé (€)' },
 ];
 
 // Operators shown when source is 'catalogue' (checks if a product is selected in SP)
@@ -99,7 +116,8 @@ function getQuestionSelectableValues(question?: SpQuestion): string[] {
   return [];
 }
 
-export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions, catalogueProduits }: Props) {
+export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions, catalogueProduits, enableSuggestionsSource }: Props) {
+  const availableSources = enableSuggestionsSource ? SOURCES_WITH_SUGGESTIONS : SOURCES;
   const [localGroupes, setLocalGroupes] = useState<SpGroupeConditions[]>(
     groupes.length > 0 ? groupes : [],
   );
@@ -214,9 +232,22 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 const selectedQuestion = cond.source === 'reponse_question'
                   ? otherQuestions.find((q) => q.id === cond.question_id)
                   : undefined;
+                const isCatalogueQuestion = selectedQuestion?.source === 'catalogue';
+                const filteredCatalogueProducts = (() => {
+                  if (!isCatalogueQuestion || !catalogueProduits?.length) return [];
+                  if (selectedQuestion?.filtres_catalogue) {
+                    return filterCatalogueByFiltre(catalogueProduits, selectedQuestion.filtres_catalogue);
+                  }
+                  return catalogueProduits;
+                })();
                 const selectableValues = getQuestionSelectableValues(selectedQuestion);
+                const useCatalogueProductSelect =
+                  cond.source === 'reponse_question' &&
+                  filteredCatalogueProducts.length > 0 &&
+                  QUESTION_VALUE_SELECT_OPERATORS.includes(cond.operateur);
                 const useSelectForValue =
                   cond.source === 'reponse_question' &&
+                  !isCatalogueQuestion &&
                   selectableValues.length > 0 &&
                   QUESTION_VALUE_SELECT_OPERATORS.includes(cond.operateur);
 
@@ -234,10 +265,26 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 }
                 className="px-2 py-1 border border-gray-300 rounded bg-white"
               >
-                {SOURCES.map((s) => (
+                {availableSources.map((s) => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
+
+              {/* Field selector (for suggestions) */}
+              {cond.source === 'suggestions' && (
+                <select
+                  value={cond.variable_sa ?? ''}
+                  onChange={(e) =>
+                    updateCondition(groupe.id, cond.id, { variable_sa: e.target.value || undefined })
+                  }
+                  className="px-2 py-1 border border-gray-300 rounded bg-white max-w-56"
+                >
+                  <option value="">-- Champ --</option>
+                  {SUGGESTIONS_FIELDS.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+              )}
 
               {/* Question selector (for reponse_question) */}
               {cond.source === 'reponse_question' && (
@@ -308,9 +355,36 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 ))}
               </select>
 
+              {/* Value input for 'suggestions' source */}
+              {NEEDS_VALUE.includes(cond.operateur) && cond.source === 'suggestions' && (
+                <input
+                  value={cond.valeur != null ? String(cond.valeur) : ''}
+                  onChange={(e) =>
+                    updateCondition(groupe.id, cond.id, { valeur: e.target.value })
+                  }
+                  placeholder="Valeur (ex: 15, Oui)"
+                  className="px-2 py-1 border border-gray-300 rounded bg-white w-36"
+                />
+              )}
+
               {/* Value — hidden for catalogue source because the product filter drives the condition */}
-              {NEEDS_VALUE.includes(cond.operateur) && cond.source !== 'catalogue' && (
-                useSelectForValue ? (
+              {NEEDS_VALUE.includes(cond.operateur) && cond.source !== 'catalogue' && cond.source !== 'suggestions' && (
+                useCatalogueProductSelect ? (
+                  <select
+                    value={cond.valeur != null ? String(cond.valeur) : ''}
+                    onChange={(e) =>
+                      updateCondition(groupe.id, cond.id, { valeur: e.target.value })
+                    }
+                    className="px-2 py-1 border border-gray-300 rounded bg-white min-w-40 max-w-56"
+                  >
+                    <option value="">-- Produit --</option>
+                    {filteredCatalogueProducts.map((p) => (
+                      <option key={p.id} value={p.nom}>
+                        {p.nom}{p.fournisseur ? ` (${p.fournisseur})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : useSelectForValue ? (
                   <select
                     value={cond.valeur != null ? String(cond.valeur) : ''}
                     onChange={(e) =>

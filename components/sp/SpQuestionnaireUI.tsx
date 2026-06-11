@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
-import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -14,6 +15,8 @@ import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
+import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 
 export interface SpQuestionnaireUIProps {
   questions: SpQuestion[];
@@ -32,6 +35,8 @@ export interface SpQuestionnaireUIProps {
   spConfigLoyer?: SpConfigLoyer;
   spConfigResiliation?: SpConfigResiliation;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
+  objectifsConfig?: SpObjectifConfig[];
+  templateId?: string;
 }
 
 type MessageBubble =
@@ -712,6 +717,8 @@ export function SpQuestionnaireUI({
   spConfigLoyer,
   spConfigResiliation,
   spConfigMoisOfferts,
+  objectifsConfig = [],
+  templateId,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -746,8 +753,24 @@ export function SpQuestionnaireUI({
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
   const hasReportedCompletion = useRef(false);
-  // Track pending show timer to cancel it on re-init (prevents StrictMode duplicate messages)
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [objectifsResolved, setObjectifsResolved] = useState<import('@/lib/sp/evaluateObjectifs').ResolvedObjectif[]>([]);
+  const [objectifsOverlayState, setObjectifsOverlayState] = useState<'hidden' | 'loading' | 'visible'>('hidden');
+
+  const confettiPieces = useMemo(() => {
+    const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316'];
+    return Array.from({ length: 60 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: 6 + Math.random() * 8,
+      duration: 2.5 + Math.random() * 2,
+      delay: Math.random() * 1.5,
+      rotate: Math.random() * 360,
+      isCircle: Math.random() > 0.5,
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reset when questions change (e.g. switching sites in multisite)
   useEffect(() => {
@@ -1213,8 +1236,88 @@ export function SpQuestionnaireUI({
     onComplete(reponses);
   }, [isSimulation, isDone, onComplete, reponses]);
 
+  // Objectifs popup: trigger when questionnaire completes
+  useEffect(() => {
+    if (!isDone) {
+      setObjectifsOverlayState('hidden');
+      return;
+    }
+    if (objectifsConfig.length === 0 || !templateId) return;
+
+    const resolved = evaluateObjectifsForRender(objectifsConfig, templateId, reponses, null, catalogue);
+    if (resolved.length === 0) return;
+
+    setObjectifsResolved(resolved);
+    setObjectifsOverlayState('loading');
+
+    const timer = setTimeout(() => setObjectifsOverlayState('visible'), 2000);
+    return () => clearTimeout(timer);
+  }, [isDone, objectifsConfig, templateId, reponses]);
+
   return (
     <div className="space-y-4">
+      {/* Objectifs Accomplis — portal popup rendered at document.body to escape stacking context */}
+      {objectifsOverlayState !== 'hidden' && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+          {/* Confetti layer */}
+          {objectifsOverlayState === 'visible' && (
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {confettiPieces.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${p.x}%`,
+                    top: '-20px',
+                    width: `${p.size}px`,
+                    height: `${p.size}px`,
+                    backgroundColor: p.color,
+                    borderRadius: p.isCircle ? '50%' : '2px',
+                    animation: `spConfettiFall ${p.duration}s ${p.delay}s ease-in both`,
+                    transform: `rotate(${p.rotate}deg)`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Card */}
+          <div className="relative z-10 w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl">
+            {objectifsOverlayState === 'loading' ? (
+              <div className="flex flex-col items-center gap-4 py-16 bg-white rounded-2xl">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-600">Analyse de vos objectifs…</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-1">
+                <SpObjectifsAccomplis resolvedObjectifs={objectifsResolved} />
+                <div className="px-4 pb-4 pt-4 flex justify-center">
+                  <Button
+                    onClick={() => setObjectifsOverlayState('hidden')}
+                    className="px-8 bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-600 hover:to-blue-700 text-white border-0"
+                  >
+                    Continuer
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <style>{`
+            @keyframes spConfettiFall {
+              0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+              100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
+            }
+          `}</style>
+        </div>,
+        document.body
+      )}
+
       {siteLabel && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200">
           <span className="text-sm font-medium text-purple-800">{siteLabel}</span>

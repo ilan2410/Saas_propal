@@ -35,6 +35,7 @@ import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesMan
 import { SpLoyerManager } from '@/components/settings/SpLoyerManager';
 import { SpResiliationManager } from '@/components/settings/SpResiliationManager';
 import { SpMoisOffertsManager, getDefaultSpConfigMoisOfferts } from '@/components/settings/SpMoisOffertsManager';
+import { SpObjectifsManager } from '@/components/settings/SpObjectifsManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -61,6 +62,7 @@ type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees'
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts';
+type QuestionsSpSubTabId = 'questions' | 'objectifs';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -225,6 +227,7 @@ export default function SettingsPage({
   const [activeTab, setActiveTab] = useState<TabId>(currentTab);
   const [calculsSubTab, setCalculsSubTab] = useState<CalculsSubTabId>('loyer');
   const [remisesSubTab, setRemisesSubTab] = useState<RemisesSubTabId>('regles_remise');
+  const [questionsSpSubTab, setQuestionsSpSubTab] = useState<QuestionsSpSubTabId>('questions');
 
   // Profile State
   const [profileData, setProfileData] = useState({
@@ -2150,12 +2153,42 @@ export default function SettingsPage({
         {activeTab === 'sp-questions' && (
           <div className="p-6 space-y-6">
             <div className="border-b border-gray-100 pb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Constructeur de questions SP</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Questions SP</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Configurez les questions posées lors de la génération de la Situation Proposée, par template Word.
+                Configurez les questions et les objectifs affichés dans la Situation Proposée.
               </p>
             </div>
-            <SpQuestionsManager templates={templates} />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('questions')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'questions'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Questions
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('objectifs')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'objectifs'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Objectifs
+              </button>
+            </div>
+
+            {questionsSpSubTab === 'questions' ? (
+              <SpQuestionsManager templates={templates} />
+            ) : (
+              <SpObjectifsManager templates={templates} />
+            )}
           </div>
         )}
 

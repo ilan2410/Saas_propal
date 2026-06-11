@@ -74,6 +74,7 @@ export interface OrganizationPreferences {
   sp_config_resiliation?: SpConfigResiliation;
   sp_config_mois_offerts?: SpConfigMoisOfferts;
   sp_regles_remise?: SpRegleRemise[];
+  sp_objectifs_config?: SpObjectifConfig[];
 }
 
 export type SpOutputFormat = 'pdf' | 'word';
@@ -369,7 +370,7 @@ export type SpConditionLogique = 'ET' | 'OU';
 
 export interface SpCondition {
   id: string;
-  source: 'sa' | 'catalogue' | 'reponse_question';
+  source: 'sa' | 'catalogue' | 'reponse_question' | 'suggestions';
   variable_sa?: string;
   sous_champ_sa?: string;
   filtre_catalogue?: SpFiltresCatalogue;
@@ -480,6 +481,28 @@ export interface SpQuestion {
 export interface SpQuestionReponse {
   question_id: string;
   valeur: string | boolean | string[] | SpAdresse;
+}
+
+// ── Objectifs SP ─────────────────────────────────────────────────
+
+export interface SpObjectifMessage {
+  id: string;
+  ordre: number;
+  label: string;
+  texte: string;
+  groupes_conditions: SpGroupeConditions[];
+  logique_conditions: SpConditionLogique;
+}
+
+export interface SpObjectifConfig {
+  id: string;
+  template_id: string;
+  ordre: number;
+  actif: boolean;
+  titre: string;
+  question_id: string;
+  icone?: string;
+  messages: SpObjectifMessage[];
 }
 
 /**
@@ -637,6 +660,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_ameliorations: string;
   sp_nb_lignes: string;
   sp_est_economie: string;
+  sp_taux_economie_pct?: number;
 
   // ── Récurrent / Ponctuel ───────────────────────────────────────
   sp_total_recurrent?: string;

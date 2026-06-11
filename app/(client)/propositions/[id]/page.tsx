@@ -31,8 +31,10 @@ import { CopyButton } from '@/components/propositions/CopyButton';
 import { ExportButton } from '@/components/propositions/ExportButton';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
-import type { SpQuestion, SpQuestionReponse, SuggestionsSpCompletes } from '@/types';
+import type { SpObjectifConfig, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes } from '@/types';
 import { resolveIndemnites } from '@/lib/sp/calculateCart';
+import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
+import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -702,6 +704,23 @@ function StatusBadge({ statut }: { statut: string }) {
   );
 }
 
+function ObjectifsSection({
+  objectifsConfig,
+  templateId,
+  reponses,
+  sp,
+}: {
+  objectifsConfig: SpObjectifConfig[];
+  templateId: string;
+  reponses: SpQuestionReponse[];
+  sp: SuggestionsSpCompletes | null;
+}) {
+  if (!objectifsConfig.length || !templateId) return null;
+  const resolved = evaluateObjectifsForRender(objectifsConfig, templateId, reponses, sp);
+  if (resolved.length === 0) return null;
+  return <SpObjectifsAccomplis resolvedObjectifs={resolved} />;
+}
+
 export default async function PropositionDetailPage({
   params,
 }: {
@@ -769,7 +788,7 @@ export default async function PropositionDetailPage({
     : [];
   const { data: organization } = await supabase
     .from('organizations')
-    .select('sp_questions')
+    .select('sp_questions, preferences')
     .eq('id', user.id)
     .single();
   const allSpQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
@@ -777,6 +796,10 @@ export default async function PropositionDetailPage({
   const spQuestions = templateId
     ? allSpQuestions.filter((question) => question.template_id === templateId)
     : allSpQuestions;
+
+  const spObjectifsConfig = Array.isArray((organization?.preferences as Record<string, unknown>)?.sp_objectifs_config)
+    ? (organization!.preferences as Record<string, unknown>).sp_objectifs_config as import('@/types').SpObjectifConfig[]
+    : [];
 
   // Résolution des indemnités identique au tableau comparatif SA/SP
   const donneesExtraitesForCalc: Record<string, unknown> =
@@ -1085,6 +1108,12 @@ export default async function PropositionDetailPage({
 
             <div className="p-6">
               <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} />
+              <ObjectifsSection
+                objectifsConfig={spObjectifsConfig}
+                templateId={templateId ?? ''}
+                reponses={spReponses}
+                sp={suggestionsSpCompletes}
+              />
             </div>
           </details>
         )}

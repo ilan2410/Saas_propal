@@ -192,6 +192,9 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
   ],
   aucune: [
     { value: 'oui_non', label: 'Oui / Non' },
+    { value: 'boutons_choix_unique', label: 'Boutons — choix unique (options manuelles)' },
+    { value: 'boutons_choix_multiple', label: 'Boutons — choix multiple (options manuelles)' },
+    { value: 'liste_deroulante_choix_multiple', label: 'Liste déroulante — choix multiple (options manuelles)' },
     { value: 'texte_court', label: 'Texte court' },
     { value: 'texte_long', label: 'Texte long' },
     { value: 'nombre', label: 'Nombre' },
@@ -660,7 +663,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         description: description || undefined,
         source,
         affichage,
-        options_manuelles: affichage === 'choix_liste_manuelle' && optionsManuelles.length > 0 ? optionsManuelles : undefined,
+        options_manuelles: (affichage === 'choix_liste_manuelle' || affichage === 'boutons_choix_unique' || affichage === 'boutons_choix_multiple' || affichage === 'liste_deroulante_choix_multiple') && optionsManuelles.length > 0 ? optionsManuelles : undefined,
         options_libres: source === 'catalogue' && optionsLibres ? true : undefined,
         filtres_catalogue: source === 'catalogue' &&
           (filtresCatalogue.categories?.length || filtresCatalogue.type_facturation || filtresCatalogue.produits_ids?.length)
@@ -744,7 +747,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const blockComplete: Record<Block, boolean> = {
     1: !!source,
     2: true,
-    3: !!affichage && !!libelle && (affichage !== 'choix_liste_manuelle' || optionsManuelles.length > 0),
+    3: !!affichage && !!libelle && (!(['choix_liste_manuelle', 'boutons_choix_unique', 'boutons_choix_multiple', 'liste_deroulante_choix_multiple'] as string[]).includes(affichage) || source === 'catalogue' || optionsManuelles.length > 0),
     4: true,
     5: true,
   };
@@ -880,8 +883,8 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
             </div>
           </div>
 
-          {/* Options manuelles (choix_liste_manuelle) */}
-          {affichage === 'choix_liste_manuelle' && (
+          {/* Options manuelles (choix_liste_manuelle, boutons_choix_unique/multiple, liste_deroulante_choix_multiple) */}
+          {(affichage === 'choix_liste_manuelle' || affichage === 'boutons_choix_unique' || affichage === 'boutons_choix_multiple' || affichage === 'liste_deroulante_choix_multiple') && source === 'aucune' && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-700">Options de la liste *</label>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -23,6 +23,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
+  const [objectifsConfig, setObjectifsConfig] = useState<SpObjectifConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
   const [propositionId, setPropositionId] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
       setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
       setSpConfigMoisOfferts(prefsData?.preferences?.sp_config_mois_offerts);
+      setObjectifsConfig(prefsData?.preferences?.sp_objectifs_config ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [templateId]);
@@ -226,6 +228,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spConfigLoyer={spConfigLoyer}
               spConfigResiliation={spConfigResiliation}
               spConfigMoisOfferts={spConfigMoisOfferts}
+              objectifsConfig={objectifsConfig}
+              templateId={templateId}
             />
           )}
 
