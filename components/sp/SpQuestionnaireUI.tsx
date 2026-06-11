@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
+import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -35,6 +36,8 @@ export interface SpQuestionnaireUIProps {
   spConfigLoyer?: SpConfigLoyer;
   spConfigResiliation?: SpConfigResiliation;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
+  spCodesPromo?: SpCodePromo[];
+  spCodesPromoMode?: 'addition' | 'soustraction';
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
 }
@@ -717,6 +720,8 @@ export function SpQuestionnaireUI({
   spConfigLoyer,
   spConfigResiliation,
   spConfigMoisOfferts,
+  spCodesPromo = [],
+  spCodesPromoMode = 'addition',
   objectifsConfig = [],
   templateId,
 }: SpQuestionnaireUIProps) {
@@ -731,6 +736,8 @@ export function SpQuestionnaireUI({
   const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(
     spConfigLoyer?.duree_mois_par_defaut ?? 63,
   );
+  const [promoApplied, setPromoApplied] = useState<{ nom: string; valeur: number } | null>(null);
+  const [promoError, setPromoError] = useState<string>('');
   const [hiddenByConsequence, setHiddenByConsequence] = useState<Set<string>>(new Set());
   const [shownByConsequence, setShownByConsequence] = useState<Set<string>>(new Set());
   const [dynamicFilters, setDynamicFilters] = useState<Map<string, SpFiltresCatalogue>>(new Map());
@@ -791,6 +798,8 @@ export function SpQuestionnaireUI({
     setDynamicFilters(new Map());
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
+    setPromoApplied(null);
+    setPromoError('');
     setHistory([]);
     hasReportedCompletion.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1068,6 +1077,8 @@ export function SpQuestionnaireUI({
     setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
+    setPromoApplied(null);
+    setPromoError('');
   };
 
   const skipCurrentQuestion = () => {
@@ -1088,6 +1099,8 @@ export function SpQuestionnaireUI({
     setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
+    setPromoApplied(null);
+    setPromoError('');
 
     const nextIdx = findNextVisibleIndex(currentIdx, reponses, hiddenByConsequence, shownByConsequence);
     if (nextIdx < expandedQuestions.length) {
@@ -1153,6 +1166,15 @@ export function SpQuestionnaireUI({
   const currentExpanded = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
   const currentQuestionVisible = currentExpanded !== null && isQuestionVisible(currentExpanded);
   const currentQuestion = currentQuestionVisible ? currentExpanded.question : null;
+
+  // Sync inputValue when landing on a "marge" question (bidirectional sync with widget)
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'marge') return;
+    const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+    if (margeRep) {
+      setInputValue(String(margeRep.valeur));
+    }
+  }, [currentQuestion, reponses]);
 
   useEffect(() => {
     if (!currentQuestion || currentQuestion.affichage !== 'adresse_complete') return;
@@ -2121,6 +2143,89 @@ export function SpQuestionnaireUI({
             );
           })()}
 
+          {currentQuestion.affichage === 'code_promo' && (() => {
+            const baremes = (spConfigLoyer ?? DEFAULT_CONFIG_LOYER).baremes;
+            const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue);
+            let dureeQuestionId: string | undefined;
+            if (spConfigLoyer?.duree_depends_question && spConfigLoyer.duree_question_id) {
+              dureeQuestionId = spConfigLoyer.duree_question_id;
+            } else {
+              const dureeQuestion = questions.find((q) =>
+                q.consequences?.some((c) => c.type === 'renseigner_variable' && c.variable_cible === 'sp_duree_mois')
+              );
+              dureeQuestionId = dureeQuestion?.id;
+            }
+            const dureeRep = dureeQuestionId
+              ? reponses.find((r) => r.question_id === dureeQuestionId)
+              : undefined;
+            let dureeFromReponse = 0;
+            if (dureeRep) {
+              const raw = Array.isArray(dureeRep.valeur) ? dureeRep.valeur[0] : dureeRep.valeur;
+              const match = String(raw ?? '').match(/-?\d+(?:[.,]\d+)?/);
+              const parsed = match ? Number(match[0].replace(',', '.')) : NaN;
+              if (Number.isFinite(parsed) && parsed > 0) dureeFromReponse = parsed;
+            }
+            const dureeMois = dureeFromReponse || margeDureeMoisOverride;
+
+            const applyPromo = (code: string) => {
+              const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
+              if (!found) { setPromoApplied(null); setPromoError('Code promo invalide'); return; }
+              setPromoError('');
+              const margeNum = spCodesPromoMode === 'soustraction' ? -found.valeur : found.valeur;
+              const margeVal = String(margeNum);
+              const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
+              const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+              const baseLoyer = baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites + margeNum;
+              const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
+              const extras: SpQuestionReponse[] = [{ question_id: 'sp_marge_calculee', valeur: margeVal }];
+              if (loyer) {
+                extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
+                extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
+              }
+              // Affiche la confirmation 1 seconde, puis valide et passe à la suite
+              setPromoApplied({ nom: found.nom, valeur: found.valeur });
+              setTimeout(() => {
+                recordAnswer(currentExpanded.instanceId, margeVal, extras);
+                setInputValue('');
+                setPromoApplied(null);
+                setPromoError('');
+              }, 1000);
+            };
+
+            return (
+              <div className="space-y-3">
+                {promoApplied ? (
+                  <p className="text-sm font-medium text-green-700">
+                    ✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={inputValue}
+                        onChange={(e) => { setInputValue(e.target.value); setPromoError(''); }}
+                        placeholder="Entrez votre code promo"
+                        className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono uppercase"
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyPromo(inputValue); }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applyPromo(inputValue)}
+                      >
+                        Appliquer votre code promo
+                      </Button>
+                    </div>
+                    {promoError && (
+                      <p className="text-xs text-red-600">{promoError}</p>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
           {currentQuestion.affichage === 'adresse_complete' && (
             <div className="space-y-1.5">
               <input placeholder="Société" value={adresseEdit.societe ?? ''}
@@ -2432,6 +2537,17 @@ export function SpQuestionnaireUI({
             : spSummary.abonnements.totalMensuel;
         return (
           <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-3 items-end">
+            <SpMargeWidget
+              reponses={reponses}
+              questions={questions}
+              catalogue={catalogue}
+              donneesExtraites={donneesExtraites}
+              spConfigLoyer={spConfigLoyer}
+              spConfigMoisOfferts={spConfigMoisOfferts}
+              onUpdateReponses={(nextReponses) => {
+                setReponses(nextReponses);
+              }}
+            />
             <SaRealTimeCart
               donneesExtraites={donneesExtraites}
               spTotalMensuel={spReference}

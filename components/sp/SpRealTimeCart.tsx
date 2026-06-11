@@ -392,7 +392,7 @@ export function SpRealTimeCart({
                       {summary.indemnites > 0 && (
                         <Line label="Indemnités" value={summary.indemnites} muted />
                       )}
-                      {summary.marge > 0 && <Line label="Marge" value={summary.marge} muted />}
+                      {summary.marge !== 0 && <Line label="Marge" value={summary.marge} muted />}
                       <Line label="Base loyer" value={summary.baseLoyer} bold />
                     </div>
                   )}

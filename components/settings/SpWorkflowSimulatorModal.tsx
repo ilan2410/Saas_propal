@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -20,6 +20,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
+  const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>([]);
+  const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>('addition');
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
@@ -57,6 +59,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
       setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
+      setCodesPromo(prefsData?.preferences?.sp_codes_promo ?? []);
+      setCodesPromoMode(prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
       const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
       setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
       setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
@@ -228,6 +232,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spConfigLoyer={spConfigLoyer}
               spConfigResiliation={spConfigResiliation}
               spConfigMoisOfferts={spConfigMoisOfferts}
+              spCodesPromo={codesPromo}
+              spCodesPromoMode={codesPromoMode}
               objectifsConfig={objectifsConfig}
               templateId={templateId}
             />

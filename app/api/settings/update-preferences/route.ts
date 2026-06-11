@@ -63,6 +63,12 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_regles_remise !== undefined
         ? { sp_regles_remise: newPreferences.sp_regles_remise }
         : {}),
+      ...(newPreferences.sp_codes_promo !== undefined
+        ? { sp_codes_promo: newPreferences.sp_codes_promo }
+        : {}),
+      ...(newPreferences.sp_codes_promo_mode !== undefined
+        ? { sp_codes_promo_mode: newPreferences.sp_codes_promo_mode }
+        : {}),
       ...(newPreferences.sp_objectifs_config !== undefined
         ? { sp_objectifs_config: newPreferences.sp_objectifs_config }
         : {}),

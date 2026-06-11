@@ -74,6 +74,8 @@ export interface OrganizationPreferences {
   sp_config_resiliation?: SpConfigResiliation;
   sp_config_mois_offerts?: SpConfigMoisOfferts;
   sp_regles_remise?: SpRegleRemise[];
+  sp_codes_promo?: SpCodePromo[];
+  sp_codes_promo_mode?: 'addition' | 'soustraction';
   sp_objectifs_config?: SpObjectifConfig[];
 }
 
@@ -338,6 +340,12 @@ export type SpQuestionSource =
   | 'catalogue'
   | 'aucune';
 
+export interface SpCodePromo {
+  id: string;
+  nom: string;
+  valeur: number;
+}
+
 export type SpQuestionAffichage =
   | 'boutons_choix_unique'
   | 'boutons_choix_multiple'
@@ -351,7 +359,8 @@ export type SpQuestionAffichage =
   | 'remise_produits'
   | 'choix_liste_manuelle'
   | 'adresse_complete'
-  | 'marge';
+  | 'marge'
+  | 'code_promo';
 
 export type SpConditionOperateur =
   | 'egal'

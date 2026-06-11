@@ -181,6 +181,7 @@ const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   choix_liste_manuelle: "L'utilisateur choisit dans une liste que vous définissez vous-même (ex: 'Oui / Non / En cours').",
   adresse_complete: "Formulaire d'adresse structuré avec rue, complément, code postal, ville, pays.",
   marge: "Champ libre où l'utilisateur saisit sa marge en €. Le loyer mensuel/trimestriel est calculé en live selon le barème applicable du template.",
+  code_promo: "L'utilisateur saisit un code promo. Le système applique la valeur € associée au code comme marge pour le calcul du loyer, sans afficher le détail.",
 };
 
 const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAffichage; label: string }>> = {
@@ -203,6 +204,7 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'choix_liste_manuelle', label: 'Choix dans une liste' },
     { value: 'adresse_complete', label: 'Adresse complète' },
     { value: 'marge', label: 'Marge (calcul loyer)' },
+    { value: 'code_promo', label: 'Code promo' },
   ],
 };
 
