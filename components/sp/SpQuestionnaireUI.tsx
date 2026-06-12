@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2 } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
@@ -764,6 +764,12 @@ export function SpQuestionnaireUI({
   const [objectifsResolved, setObjectifsResolved] = useState<import('@/lib/sp/evaluateObjectifs').ResolvedObjectif[]>([]);
   const [objectifsOverlayState, setObjectifsOverlayState] = useState<'hidden' | 'loading' | 'visible'>('hidden');
 
+  // Drag state for the widget container
+  const [widgetPos, setWidgetPos] = useState<{ x: number; y: number } | null>(null);
+  const widgetContainerRef = useRef<HTMLDivElement>(null);
+  const isDraggingWidget = useRef(false);
+  const widgetDragOffset = useRef({ x: 0, y: 0 });
+
   const confettiPieces = useMemo(() => {
     const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316'];
     return Array.from({ length: 60 }, (_, i) => ({
@@ -809,6 +815,24 @@ export function SpQuestionnaireUI({
   useEffect(() => {
     return () => {
       if (showTimerRef.current) clearTimeout(showTimerRef.current);
+    };
+  }, []);
+
+  // Widget drag — mouse events on window to support moving outside the element
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingWidget.current || !widgetContainerRef.current) return;
+      const { width, height } = widgetContainerRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(window.innerWidth - width, e.clientX - widgetDragOffset.current.x));
+      const y = Math.max(0, Math.min(window.innerHeight - height, e.clientY - widgetDragOffset.current.y));
+      setWidgetPos({ x, y });
+    };
+    const handleMouseUp = () => { isDraggingWidget.current = false; };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
 
@@ -2536,30 +2560,56 @@ export function SpQuestionnaireUI({
             ? spSummary.loyer.loyer_mensuel
             : spSummary.abonnements.totalMensuel;
         return (
-          <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-3 items-end">
-            <SpMargeWidget
-              reponses={reponses}
-              questions={questions}
-              catalogue={catalogue}
-              donneesExtraites={donneesExtraites}
-              spConfigLoyer={spConfigLoyer}
-              spConfigMoisOfferts={spConfigMoisOfferts}
-              onUpdateReponses={(nextReponses) => {
-                setReponses(nextReponses);
+          <div
+            ref={widgetContainerRef}
+            className="fixed z-40 group"
+            style={
+              widgetPos
+                ? { left: widgetPos.x, top: widgetPos.y }
+                : { bottom: 16, right: 16 }
+            }
+          >
+            {/* Discrete drag handle — top-right corner, appears on hover */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (!widgetContainerRef.current) return;
+                const rect = widgetContainerRef.current.getBoundingClientRect();
+                widgetDragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                setWidgetPos({ x: rect.left, y: rect.top });
+                isDraggingWidget.current = true;
               }}
-            />
-            <SaRealTimeCart
-              donneesExtraites={donneesExtraites}
-              spTotalMensuel={spReference}
-            />
-            <SpRealTimeCart
-              reponses={reponses}
-              questions={questions}
-              catalogue={catalogue}
-              donneesExtraites={donneesExtraites}
-              spConfigLoyer={spConfigLoyer}
-              spConfigMoisOfferts={spConfigMoisOfferts}
-            />
+              className="absolute top-1 right-1 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-black/20 hover:bg-black/40 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing select-none transition-all"
+              title="Déplacer les widgets"
+            >
+              <GripHorizontal className="h-3.5 w-3.5 text-white" />
+            </div>
+
+            <div className="flex flex-col gap-3 items-end">
+              <SpMargeWidget
+                reponses={reponses}
+                questions={questions}
+                catalogue={catalogue}
+                donneesExtraites={donneesExtraites}
+                spConfigLoyer={spConfigLoyer}
+                spConfigMoisOfferts={spConfigMoisOfferts}
+                onUpdateReponses={(nextReponses) => {
+                  setReponses(nextReponses);
+                }}
+              />
+              <SaRealTimeCart
+                donneesExtraites={donneesExtraites}
+                spTotalMensuel={spReference}
+              />
+              <SpRealTimeCart
+                reponses={reponses}
+                questions={questions}
+                catalogue={catalogue}
+                donneesExtraites={donneesExtraites}
+                spConfigLoyer={spConfigLoyer}
+                spConfigMoisOfferts={spConfigMoisOfferts}
+              />
+            </div>
           </div>
         );
       })()}
