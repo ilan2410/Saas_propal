@@ -1,7 +1,7 @@
 'use client';
 
-import { Fragment, useMemo } from 'react';
-import { Wallet } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { Wallet, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatting';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 
@@ -174,6 +174,122 @@ function parseResume(text: string): Block[] {
   return blocks;
 }
 
+function CollapsibleSection({
+  block,
+  compact,
+  blockIndex,
+}: {
+  block: Extract<Block, { kind: 'section' }>;
+  compact: boolean;
+  blockIndex: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section
+      className={`rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden ${
+        compact ? '' : 'shadow-sm'
+      }`}
+    >
+      {block.text && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`w-full flex items-center gap-2 bg-white/70 text-left transition-colors hover:bg-gray-50 ${
+            open ? 'border-b border-gray-100' : ''
+          } ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}
+        >
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+          )}
+          <span className="h-4 w-1 rounded-full bg-indigo-500 shrink-0" />
+          <h4
+            className={`font-semibold uppercase tracking-wide text-gray-700 ${
+              compact ? 'text-[11px]' : 'text-xs'
+            }`}
+          >
+            {block.text}
+          </h4>
+        </button>
+      )}
+      {open &&
+        block.parts.map((part, p) =>
+          part.type === 'items' ? (
+            <dl key={p} className="divide-y divide-gray-100">
+              {part.items.map((item, j) =>
+                item.label ? (
+                  <div
+                    key={j}
+                    className={`flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3 ${
+                      compact ? 'px-3 py-1.5' : 'px-4 py-2.5'
+                    }`}
+                  >
+                    <dt
+                      className={`shrink-0 font-medium text-gray-500 sm:w-44 ${
+                        compact ? 'text-[11px]' : 'text-xs'
+                      }`}
+                    >
+                      {item.label}
+                    </dt>
+                    <dd className={`text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}>
+                      {item.value ? renderInline(item.value, `v-${blockIndex}-${p}-${j}`) : '—'}
+                    </dd>
+                  </div>
+                ) : (
+                  <div
+                    key={j}
+                    className={`text-gray-700 ${compact ? 'px-3 py-1.5 text-xs' : 'px-4 py-2.5 text-sm'}`}
+                  >
+                    {renderInline(item.value, `t-${blockIndex}-${p}-${j}`)}
+                  </div>
+                )
+              )}
+            </dl>
+          ) : (
+            <div key={p} className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                {part.headers.length > 0 && (
+                  <thead>
+                    <tr className="bg-white/70">
+                      {part.headers.map((h, hi) => (
+                        <th
+                          key={hi}
+                          className={`border-b border-gray-200 text-left font-semibold text-gray-600 ${
+                            compact ? 'px-3 py-1.5 text-[11px]' : 'px-4 py-2 text-xs'
+                          }`}
+                        >
+                          {renderInline(h, `th-${blockIndex}-${p}-${hi}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                )}
+                <tbody>
+                  {part.rows.map((row, ri) => (
+                    <tr key={ri} className="even:bg-gray-50/50">
+                      {row.map((cell, ci) => (
+                        <td
+                          key={ci}
+                          className={`border-b border-gray-100 align-top text-gray-800 ${
+                            ci === 0 ? 'font-medium text-gray-900' : ''
+                          } ${compact ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'}`}
+                        >
+                          {renderInline(cell, `td-${blockIndex}-${p}-${ri}-${ci}`)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+    </section>
+  );
+}
+
 export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, className = '' }: Props) {
   const blocks = useMemo(() => parseResume(text), [text]);
   const monthly = useMemo(() => resolveMonthlyTotal(donneesExtraites), [donneesExtraites]);
@@ -224,102 +340,7 @@ export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, 
         }
 
         // section
-        return (
-          <section
-            key={i}
-            className={`rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden ${
-              compact ? '' : 'shadow-sm'
-            }`}
-          >
-            {block.text && (
-              <header
-                className={`flex items-center gap-2 border-b border-gray-100 bg-white/70 ${
-                  compact ? 'px-3 py-2' : 'px-4 py-3'
-                }`}
-              >
-                <span className="h-4 w-1 rounded-full bg-indigo-500" />
-                <h4
-                  className={`font-semibold uppercase tracking-wide text-gray-700 ${
-                    compact ? 'text-[11px]' : 'text-xs'
-                  }`}
-                >
-                  {block.text}
-                </h4>
-              </header>
-            )}
-            {block.parts.map((part, p) =>
-              part.type === 'items' ? (
-                <dl key={p} className="divide-y divide-gray-100">
-                  {part.items.map((item, j) =>
-                    item.label ? (
-                      <div
-                        key={j}
-                        className={`flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3 ${
-                          compact ? 'px-3 py-1.5' : 'px-4 py-2.5'
-                        }`}
-                      >
-                        <dt
-                          className={`shrink-0 font-medium text-gray-500 sm:w-44 ${
-                            compact ? 'text-[11px]' : 'text-xs'
-                          }`}
-                        >
-                          {item.label}
-                        </dt>
-                        <dd className={`text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}>
-                          {item.value ? renderInline(item.value, `v-${i}-${p}-${j}`) : '—'}
-                        </dd>
-                      </div>
-                    ) : (
-                      <div
-                        key={j}
-                        className={`text-gray-700 ${compact ? 'px-3 py-1.5 text-xs' : 'px-4 py-2.5 text-sm'}`}
-                      >
-                        {renderInline(item.value, `t-${i}-${p}-${j}`)}
-                      </div>
-                    )
-                  )}
-                </dl>
-              ) : (
-                <div key={p} className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    {part.headers.length > 0 && (
-                      <thead>
-                        <tr className="bg-white/70">
-                          {part.headers.map((h, hi) => (
-                            <th
-                              key={hi}
-                              className={`border-b border-gray-200 text-left font-semibold text-gray-600 ${
-                                compact ? 'px-3 py-1.5 text-[11px]' : 'px-4 py-2 text-xs'
-                              }`}
-                            >
-                              {renderInline(h, `th-${i}-${p}-${hi}`)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                    )}
-                    <tbody>
-                      {part.rows.map((row, ri) => (
-                        <tr key={ri} className="even:bg-gray-50/50">
-                          {row.map((cell, ci) => (
-                            <td
-                              key={ci}
-                              className={`border-b border-gray-100 align-top text-gray-800 ${
-                                ci === 0 ? 'font-medium text-gray-900' : ''
-                              } ${compact ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'}`}
-                            >
-                              {renderInline(cell, `td-${i}-${p}-${ri}-${ci}`)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            )}
-          </section>
-        );
+        return <CollapsibleSection key={i} block={block} compact={compact} blockIndex={i} />;
       })}
     </div>
   );

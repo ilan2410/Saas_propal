@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Database, X, Play } from 'lucide-react';
+import { Loader2, Database, X, Play, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FloatingModal } from '@/components/ui/floating-modal';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
@@ -257,51 +258,79 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       )}
 
       {isQuestionnaireOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl w-full max-w-5xl flex flex-col shadow-2xl" style={{ maxHeight: '90vh' }}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Play className="w-4 h-4 text-green-600" />
+        <>
+          <FloatingModal
+            defaultWidth={900}
+            defaultHeight={640}
+            header={
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <GripHorizontal className="w-4 h-4 text-gray-300" />
+                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
+                    <Play className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-900">Questions SP en réel</h2>
+                    <p className="text-xs text-gray-400">
+                      {siteLabel || 'Questionnaire de situation proposée'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Questions SP en réel</h2>
-                  <p className="text-xs text-gray-400">
-                    {siteLabel || 'Questionnaire de situation proposée'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {saResumeText && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowSaResume((v) => !v);
+                <div className="flex items-center gap-2">
+                  {saResumeText && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowSaResume((v) => !v);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <Database className="w-3.5 h-3.5" />
+                      Données SA
+                    </button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsQuestionnaireOpen(false);
+                      setShowSaResume(false);
                     }}
-                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="h-7 w-7 p-0"
+                    disabled={isGenerating}
                   >
-                    <Database className="w-3.5 h-3.5" />
-                    Données SA
-                  </button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setIsQuestionnaireOpen(false);
-                    setShowSaResume(false);
-                  }}
-                  className="h-7 w-7 p-0"
-                  disabled={isGenerating}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+            }
+            footer={
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-400">
+                  {siteLabel || `${questions.length} question(s) configurée(s)`}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={onPrev} disabled={isGenerating}>
+                    Précédent
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setIsQuestionnaireOpen(false);
+                      setShowSaResume(false);
+                    }}
+                    disabled={isGenerating}
+                  >
+                    Fermer
+                  </Button>
+                </div>
+              </div>
+            }
+          >
+            <div className="px-5 py-4">
               {generateError && (
                 <div className="mb-4 border border-red-200 rounded-lg bg-red-50 p-3">
                   <p className="text-sm text-red-600">{generateError}</p>
@@ -334,40 +363,18 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                 />
               )}
             </div>
+          </FloatingModal>
 
-            {showSaResume && saResume && saResumeText && (
-              <FloatingSaInspector
-                open={showSaResume}
-                onClose={() => setShowSaResume(false)}
-                donneesExtraites={saResume}
-                text={saResumeText}
-                title="Resume SA"
-              />
-            )}
-
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-400">
-                {siteLabel || `${questions.length} question(s) configurée(s)`}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={onPrev} disabled={isGenerating}>
-                  Précédent
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setIsQuestionnaireOpen(false);
-                    setShowSaResume(false);
-                  }}
-                  disabled={isGenerating}
-                >
-                  Fermer
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+          {showSaResume && saResume && saResumeText && (
+            <FloatingSaInspector
+              open={showSaResume}
+              onClose={() => setShowSaResume(false)}
+              donneesExtraites={saResume}
+              text={saResumeText}
+              title="Resume SA"
+            />
+          )}
+        </>
       )}
     </div>
   );

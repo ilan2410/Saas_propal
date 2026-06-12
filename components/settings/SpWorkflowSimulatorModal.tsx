@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Play, RotateCcw, Loader2, Database } from 'lucide-react';
+import { X, Play, RotateCcw, Loader2, Database, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FloatingModal } from '@/components/ui/floating-modal';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
@@ -153,52 +154,66 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col shadow-2xl" style={{ maxHeight: '90vh' }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
-              <Play className="w-4 h-4 text-green-600" />
+    <>
+      <FloatingModal
+        defaultWidth={700}
+        defaultHeight={600}
+        header={
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <GripHorizontal className="w-4 h-4 text-gray-300" />
+              <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
+                <Play className="w-4 h-4 text-green-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Simulation du workflow</h2>
+                <p className="text-xs text-gray-400">
+                  {templateNom}{startQuestion ? ` · depuis « ${startQuestion.libelle.length > 30 ? startQuestion.libelle.slice(0, 30) + '…' : startQuestion.libelle} »` : ''}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Simulation du workflow</h2>
-              <p className="text-xs text-gray-400">
-                {templateNom}{startQuestion ? ` · depuis « ${startQuestion.libelle.length > 30 ? startQuestion.libelle.slice(0, 30) + '…' : startQuestion.libelle} »` : ''}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {Object.keys(donneesExtraites).length > 0 && (
+            <div className="flex items-center gap-2">
+              {Object.keys(donneesExtraites).length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowSaInspector((v) => !v);
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  Données SA
+                </button>
+              )}
               <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowSaInspector((v) => !v);
-                }}
+                onClick={handleReset}
                 className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <Database className="w-3.5 h-3.5" />
-                Données SA
+                <RotateCcw className="w-3.5 h-3.5" />
+                Réinitialiser
               </button>
-            )}
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Réinitialiser
-            </button>
-            <Button size="sm" variant="ghost" onClick={onClose} className="h-7 w-7 p-0">
-              <X className="w-4 h-4" />
+              <Button size="sm" variant="ghost" onClick={onClose} className="h-7 w-7 p-0">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        }
+        footer={
+          <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+            <p className="text-xs text-gray-400">
+              {completedReponses
+                ? `${completedReponses.length} réponse(s) collectée(s)`
+                : `${activeQuestions.length} question(s) configurée(s)`}
+            </p>
+            <Button size="sm" variant="outline" onClick={onClose}>
+              Fermer
             </Button>
           </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+        }
+      >
+        <div className="px-5 py-4">
           {loading && (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -238,30 +253,18 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               templateId={templateId}
             />
           )}
-
-          {!loading && !noProposition && showSaInspector && (
-            <FloatingSaInspector
-              open={showSaInspector}
-              onClose={() => setShowSaInspector(false)}
-              donneesExtraites={donneesExtraites}
-              text={(donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
-              title="Resume SA"
-            />
-          )}
         </div>
+      </FloatingModal>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
-            {completedReponses
-              ? `${completedReponses.length} réponse(s) collectée(s)`
-              : `${activeQuestions.length} question(s) configurée(s)`}
-          </p>
-          <Button size="sm" variant="outline" onClick={onClose}>
-            Fermer
-          </Button>
-        </div>
-      </div>
-    </div>
+      {!loading && !noProposition && showSaInspector && (
+        <FloatingSaInspector
+          open={showSaInspector}
+          onClose={() => setShowSaInspector(false)}
+          donneesExtraites={donneesExtraites}
+          text={(donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
+          title="Resume SA"
+        />
+      )}
+    </>
   );
 }
