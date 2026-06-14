@@ -8,6 +8,7 @@ import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
+import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
@@ -2585,7 +2586,7 @@ export function SpQuestionnaireUI({
               <GripHorizontal className="h-3.5 w-3.5 text-white" />
             </div>
 
-            <div className="flex flex-col gap-3 items-end">
+            <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
               <SpMargeWidget
                 reponses={reponses}
                 questions={questions}
@@ -2593,6 +2594,15 @@ export function SpQuestionnaireUI({
                 donneesExtraites={donneesExtraites}
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
+                onUpdateReponses={(nextReponses) => {
+                  setReponses(nextReponses);
+                }}
+              />
+              <SpIndemniteWidget
+                reponses={reponses}
+                questions={questions}
+                donneesExtraites={donneesExtraites}
+                spConfigResiliation={spConfigResiliation}
                 onUpdateReponses={(nextReponses) => {
                   setReponses(nextReponses);
                 }}

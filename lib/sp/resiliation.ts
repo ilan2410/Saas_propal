@@ -1000,3 +1000,83 @@ export function estimateResiliationFromSA(
     groupes_calcul: groupesCalcul,
   };
 }
+
+function formatMoneyResume(value: number | null): string {
+  if (value === null) return 'Non disponible';
+  return `${value.toFixed(2).replace('.', ',')} EUR`;
+}
+
+export function replaceIndemnitesSectionInResume(
+  resume: unknown,
+  estimation: SpResiliationEstimation,
+): string {
+  if (typeof resume !== 'string' || !resume.trim()) return typeof resume === 'string' ? resume : '';
+
+  // Cherche le titre de section "## 11. INDEMNITÉS DE RÉSILIATION" (insensible à la casse)
+  const sectionRegex = /#{2,}\s+11\.?\s*INDEMNIT[ÉE]S?\s+DE\s+R[ÉE]SILIATION[^\n]*/i;
+  const match = resume.match(sectionRegex);
+  if (!match) return resume;
+
+  const sectionStart = match.index!;
+  const afterTitle = resume.slice(sectionStart + match[0].length);
+
+  // Cherche le début de la prochaine section markdown (titre commençant par #)
+  const nextSectionRegex = /\n#{1,2}\s/;
+  const nextMatch = afterTitle.match(nextSectionRegex);
+  const sectionEnd = nextMatch
+    ? sectionStart + match[0].length + nextMatch.index!
+    : resume.length;
+
+  const parts: string[] = [];
+
+  const montantStr = estimation.montant_retenu !== null
+    ? `~${formatMoneyResume(estimation.montant_retenu)}`
+    : 'Non calculable';
+
+  const fiabiliteLabel =
+    estimation.fiabilite === 'forte' ? 'Forte' :
+    estimation.fiabilite === 'moyenne' ? 'Moyenne' :
+    estimation.fiabilite === 'faible' ? 'Faible' : 'Insuffisante';
+
+  const fiabiliteDetail = estimation.motifs_manquants.length > 0
+    ? ` — ${estimation.motifs_manquants.join(', ')}`
+    : '';
+
+  const moisRestantsStr = estimation.mois_restants !== null
+    ? estimation.mois_restants_avant_preavis !== null
+      ? `${estimation.mois_restants} mois (${estimation.mois_restants_avant_preavis} avant préavis − ${estimation.preavis_mois} de préavis)`
+      : `${estimation.mois_restants} mois`
+    : 'Non déterminés';
+
+  const groupesActifs = estimation.groupes_calcul?.filter((g) => g.sous_total !== null) ?? [];
+  const mensualitesStr = formatMoneyResume(estimation.mensualites_restantes);
+
+  const detailCalc = groupesActifs.length > 0
+    ? `${groupesActifs.length} groupe(s) engagé(s), mensualités restantes = ${mensualitesStr}`
+    : (estimation.calcul_resume || 'Estimation depuis la situation actuelle');
+
+  parts.push('## 11. INDEMNITÉS DE RÉSILIATION');
+  parts.push('');
+  parts.push(`- **Montant estimé** : ${montantStr}`);
+  parts.push(`- **Source retenue** : ${estimation.source_retenue_label}`);
+  parts.push(`- **Fiabilité** : ${fiabiliteLabel}${fiabiliteDetail}`);
+  parts.push(`- **Préavis** : ${estimation.preavis_mois} mois`);
+  parts.push(`- **Mois restants** : ${moisRestantsStr}`);
+  parts.push(`- **Détail** : ${detailCalc}`);
+  parts.push(`- **Mensualités restantes** : ${mensualitesStr}`);
+
+  const fraisItems: string[] = [];
+  if (estimation.frais_resiliation_fixes > 0) fraisItems.push(`frais fixes ${formatMoneyResume(estimation.frais_resiliation_fixes)}`);
+  if (estimation.penalites > 0) fraisItems.push(`pénalités ${formatMoneyResume(estimation.penalites)}`);
+  if (estimation.frais_materiel > 0) fraisItems.push(`matériel ${formatMoneyResume(estimation.frais_materiel)}`);
+  if (estimation.services_annexes > 0) fraisItems.push(`services annexes ${formatMoneyResume(estimation.services_annexes)}`);
+
+  if (fraisItems.length > 0) {
+    parts.push(`- **Frais complémentaires** : ${fraisItems.join(', ')}`);
+  } else {
+    parts.push('- **Frais complémentaires** : 0,00 EUR');
+  }
+
+  const newSection = parts.join('\n');
+  return resume.slice(0, sectionStart) + newSection + resume.slice(sectionEnd);
+}

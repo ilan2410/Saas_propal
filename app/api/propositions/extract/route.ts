@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
-import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 
@@ -216,6 +216,12 @@ function enrichSituationActuelle(
   }
 
   root.situation_actuelle = situation;
+
+  // Remplacer la section "11. INDEMNITÉS DE RÉSILIATION" du résumé IA par le calcul structuré
+  if (typeof root.resume === 'string') {
+    root.resume = replaceIndemnitesSectionInResume(root.resume, estimationResiliation);
+  }
+
   return root;
 }
 
