@@ -38,7 +38,7 @@ export function SpMargeWidget({
   const margeInput = (() => {
     const rep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
     const val = rep ? Number(rep.valeur) || 0 : 0;
-    return val > 0 ? String(val) : '';
+    return rep ? String(val) : '';
   })();
 
   // Helper: resolve contract duration

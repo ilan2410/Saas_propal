@@ -148,6 +148,7 @@ export interface WordConfig {
   spVariablesCustom?: SpVariableCustom[];
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
+  sp_config_resume_ref?: SpConfigResumeRef;
 }
 
 export interface PDFConfig {
@@ -360,7 +361,9 @@ export type SpQuestionAffichage =
   | 'choix_liste_manuelle'
   | 'adresse_complete'
   | 'marge'
-  | 'code_promo';
+  | 'code_promo'
+  | 'resume_ref'
+  | 'affichage_loyer';
 
 export type SpConditionOperateur =
   | 'egal'
@@ -456,6 +459,11 @@ export interface SpQuestionBoucle {
   source_sa_filtre_champ?: string;
   /** Valeur attendue pour le filtre (ex: "mobile") */
   source_sa_filtre_valeur?: string;
+}
+
+export interface SpConfigResumeRef {
+  partie_fixe: string;
+  partie_variable?: 'loyer_sans_marge' | 'loyer_avec_marge' | null;
 }
 
 export interface SpQuestion {

@@ -37,6 +37,7 @@ import { SpResiliationManager } from '@/components/settings/SpResiliationManager
 import { SpMoisOffertsManager, getDefaultSpConfigMoisOfferts } from '@/components/settings/SpMoisOffertsManager';
 import { SpCodesPromoManager } from '@/components/settings/SpCodesPromoManager';
 import { SpObjectifsManager } from '@/components/settings/SpObjectifsManager';
+import { SpReferenceManager } from '@/components/settings/SpReferenceManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -63,7 +64,7 @@ type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees'
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs';
+type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -2212,13 +2213,22 @@ export default function SettingsPage({
               >
                 Objectifs
               </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('reference')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'reference'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Référence
+              </button>
             </div>
 
-            {questionsSpSubTab === 'questions' ? (
-              <SpQuestionsManager templates={templates} />
-            ) : (
-              <SpObjectifsManager templates={templates} />
-            )}
+            {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
+            {questionsSpSubTab === 'objectifs' && <SpObjectifsManager templates={templates} />}
+            {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
           </div>
         )}
 

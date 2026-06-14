@@ -9,7 +9,7 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -41,6 +41,7 @@ export interface SpQuestionnaireUIProps {
   spCodesPromoMode?: 'addition' | 'soustraction';
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
+  spConfigResumeRef?: SpConfigResumeRef;
 }
 
 type MessageBubble =
@@ -725,6 +726,7 @@ export function SpQuestionnaireUI({
   spCodesPromoMode = 'addition',
   objectifsConfig = [],
   templateId,
+  spConfigResumeRef,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -764,6 +766,9 @@ export function SpQuestionnaireUI({
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [objectifsResolved, setObjectifsResolved] = useState<import('@/lib/sp/evaluateObjectifs').ResolvedObjectif[]>([]);
   const [objectifsOverlayState, setObjectifsOverlayState] = useState<'hidden' | 'loading' | 'visible'>('hidden');
+
+  const [showResumeRefPopup, setShowResumeRefPopup] = useState(false);
+  const [showLoyerPopup, setShowLoyerPopup] = useState(false);
 
   // Drag state for the widget container
   const [widgetPos, setWidgetPos] = useState<{ x: number; y: number } | null>(null);
@@ -1283,6 +1288,18 @@ export function SpQuestionnaireUI({
     onComplete(reponses);
   }, [isSimulation, isDone, onComplete, reponses]);
 
+  // Résumé+Ref popup: trigger when landing on a resume_ref question
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'resume_ref' || isTyping) return;
+    setShowResumeRefPopup(true);
+  }, [currentQuestion, isTyping]);
+
+  // Loyer popup: trigger when landing on an affichage_loyer question
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'affichage_loyer' || isTyping) return;
+    setShowLoyerPopup(true);
+  }, [currentQuestion, isTyping]);
+
   // Objectifs popup: trigger when questionnaire completes
   useEffect(() => {
     if (!isDone) {
@@ -1365,6 +1382,130 @@ export function SpQuestionnaireUI({
         document.body
       )}
 
+      {/* Résumé+Ref popup */}
+      {showResumeRefPopup && currentExpanded && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
+              <h2 className="text-lg font-bold text-white">Récapitulatif de vos réponses</h2>
+              <p className="text-sm text-blue-100 mt-0.5">Voici un résumé de vos réponses avant de continuer</p>
+            </div>
+
+            {/* Corps — liste des réponses précédentes */}
+            <div className="px-6 py-4 max-h-72 overflow-y-auto space-y-2">
+              {expandedQuestions.slice(0, currentIdx).filter((eq) =>
+                eq.question.affichage !== 'resume_ref' &&
+                reponses.some((r) => r.question_id === eq.instanceId)
+              ).length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Aucune réponse précédente.</p>
+              ) : (
+                expandedQuestions.slice(0, currentIdx)
+                  .filter((eq) =>
+                    eq.question.affichage !== 'resume_ref' &&
+                    reponses.some((r) => r.question_id === eq.instanceId)
+                  )
+                  .map((eq) => {
+                    const rep = reponses.find((r) => r.question_id === eq.instanceId);
+                    return (
+                      <div key={eq.instanceId} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-500 truncate">
+                            {resolveTemplateText(eq.displayLabel, donneesExtraites, reponses, eq.iterationIndex)}
+                          </p>
+                          <p className="text-sm text-gray-900 mt-0.5">
+                            {rep ? formatReponseText(rep.valeur) : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            {/* Section référence */}
+            {(() => {
+              const fixe = spConfigResumeRef?.partie_fixe?.trim();
+              if (!fixe || !spConfigResumeRef) return null;
+              const partieVariable = spConfigResumeRef.partie_variable;
+              const cartWithMarge = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+              const cartSansMarge = partieVariable === 'loyer_sans_marge'
+                ? calculateCartSummary(reponses.filter((r) => r.question_id !== 'sp_marge_calculee'), questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts)
+                : null;
+              let montant: number | null | undefined = undefined;
+              if (partieVariable === 'loyer_avec_marge') {
+                montant = cartWithMarge.loyer?.loyer_mensuel;
+              } else if (partieVariable === 'loyer_sans_marge') {
+                montant = cartSansMarge?.loyer?.loyer_mensuel;
+              }
+              const refText = montant != null
+                ? `${fixe}${Math.ceil(montant)}`
+                : fixe;
+              return (
+                <div className="mx-6 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-medium text-blue-600 mb-1">Référence de la proposition</p>
+                  <p className="text-sm font-semibold text-blue-900">{refText}</p>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="px-6 pb-6 pt-2 flex justify-center">
+              <Button
+                onClick={() => {
+                  setShowResumeRefPopup(false);
+                  recordAnswer(currentExpanded.instanceId, 'vu');
+                }}
+                className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continuer
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Loyer popup */}
+      {showLoyerPopup && currentExpanded && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
+              <h2 className="text-lg font-bold text-white">Loyer mensuel</h2>
+              <p className="text-sm text-blue-100 mt-0.5">Montant calculé sur la base de vos réponses</p>
+            </div>
+            <div className="px-6 py-6 flex flex-col items-center gap-1">
+              {(() => {
+                const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+                const loyer = cart.loyer?.loyer_mensuel;
+                return loyer != null ? (
+                  <p className="text-4xl font-bold text-gray-900">
+                    {loyer.toFixed(2).replace('.', ',')} €
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Loyer non calculé</p>
+                );
+              })()}
+              <p className="text-xs text-gray-400">par mois</p>
+            </div>
+            <div className="px-6 pb-6 flex justify-center">
+              <Button
+                onClick={() => {
+                  setShowLoyerPopup(false);
+                  recordAnswer(currentExpanded.instanceId, 'vu');
+                }}
+                className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continuer
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {siteLabel && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200">
           <span className="text-sm font-medium text-purple-800">{siteLabel}</span>
@@ -1429,7 +1570,7 @@ export function SpQuestionnaireUI({
       )}
 
       {/* Current question input */}
-      {currentQuestion && currentExpanded && !isTyping && (
+      {currentQuestion && currentExpanded && !isTyping && currentQuestion.affichage !== 'resume_ref' && currentQuestion.affichage !== 'affichage_loyer' && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
           <p className="text-sm font-medium text-blue-900">
             {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
@@ -2196,7 +2337,9 @@ export function SpQuestionnaireUI({
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
               if (!found) { setPromoApplied(null); setPromoError('Code promo invalide'); return; }
               setPromoError('');
-              const margeNum = spCodesPromoMode === 'soustraction' ? -found.valeur : found.valeur;
+              const existingMargeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+              const existingMarge = existingMargeRep ? Number(existingMargeRep.valeur) || 0 : 0;
+              const margeNum = spCodesPromoMode === 'soustraction' ? existingMarge - found.valeur : existingMarge + found.valeur;
               const margeVal = String(margeNum);
               const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
               const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
