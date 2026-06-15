@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2, GripHorizontal } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2, GripHorizontal, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig } from '@/types';
+import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -40,6 +41,8 @@ export interface SpQuestionnaireUIProps {
   spCodesPromoMode?: 'addition' | 'soustraction';
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
+  spConfigResumeRef?: SpConfigResumeRef;
+  spConfigModeClient?: SpConfigModeClient;
 }
 
 type MessageBubble =
@@ -286,9 +289,11 @@ interface FreeEntryDraft {
 function FreeEntryForm({
   draft,
   onChange,
+  hidePrix = false,
 }: {
   draft: FreeEntryDraft;
   onChange: (next: FreeEntryDraft) => void;
+  hidePrix?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -302,16 +307,18 @@ function FreeEntryForm({
           className="h-7 flex-1 text-sm border border-gray-300 rounded px-2"
         />
       </div>
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-600 shrink-0 w-24">Prix (€) :</label>
-        <input
-          type="number" min="0" step="0.01"
-          value={draft.prix}
-          onChange={(e) => onChange({ ...draft, prix: e.target.value })}
-          placeholder="0"
-          className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
-        />
-      </div>
+      {!hidePrix && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600 shrink-0 w-24">Prix (€) :</label>
+          <input
+            type="number" min="0" step="0.01"
+            value={draft.prix}
+            onChange={(e) => onChange({ ...draft, prix: e.target.value })}
+            placeholder="0"
+            className="h-7 w-28 text-sm border border-gray-300 rounded px-2"
+          />
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <label className="text-xs text-gray-600 shrink-0 w-24">Catégorie :</label>
         <select
@@ -352,11 +359,15 @@ function CatalogueMultipleChoiceInput({
   onSubmit,
   display = 'buttons',
   allowFreeEntry = false,
+  hidePrice = false,
+  hidePrixEditing = false,
 }: {
   products: CatalogueProduit[];
   onSubmit: (selectedNames: string[], extraReponses?: SpQuestionReponse[]) => void;
   display?: 'buttons' | 'select';
   allowFreeEntry?: boolean;
+  hidePrice?: boolean;
+  hidePrixEditing?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
@@ -429,7 +440,7 @@ function CatalogueMultipleChoiceInput({
                   }`}
                 >
                   <div className="font-medium">{p.nom}</div>
-                  {(prix || fas) && (
+                  {!hidePrice && (prix || fas) && (
                     <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
                       {[prix, fas].filter(Boolean).join(' · ')}
                     </div>
@@ -455,7 +466,7 @@ function CatalogueMultipleChoiceInput({
                 }`}
               >
                 <div className="text-sm font-medium">{p.nom}</div>
-                {(prix || fas) && (
+                {!hidePrice && (prix || fas) && (
                   <div className={`text-xs mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
                     {[prix, fas].filter(Boolean).join(' · ')}
                   </div>
@@ -486,28 +497,34 @@ function CatalogueMultipleChoiceInput({
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                   Qté {getQuantityValue(quantityValues[p.nom])}
                 </span>
-                {formatProduitPrixValue(prixValues[p.nom] ?? '', p) && (
+                {!hidePrice && formatProduitPrixValue(prixValues[p.nom] ?? '', p) && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                     Unitaire: {formatProduitPrixValue(prixValues[p.nom] ?? '', p)}
                   </span>
                 )}
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  Total: {formatProduitTotalValue(prixValues[p.nom] ?? '', p, quantityValues[p.nom]) ?? '0,00 €'}
-                </span>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {shouldMultiplyFas(p)
-                    ? formatProduitFasTotalValue(fasValues[p.nom] ?? '0', quantityValues[p.nom])
-                    : formatProduitFasValue(fasValues[p.nom] ?? '0')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEditingPrixFor((current) => current === p.nom ? null : p.nom)}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
-                  aria-label={`Modifier le prix et le FAS de ${p.nom}`}
-                  title={`Modifier le prix et le FAS de ${p.nom}`}
-                >
-                  {editingPrixFor === p.nom ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-                </button>
+                {!hidePrice && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    Total: {formatProduitTotalValue(prixValues[p.nom] ?? '', p, quantityValues[p.nom]) ?? '0,00 €'}
+                  </span>
+                )}
+                {!hidePrice && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {shouldMultiplyFas(p)
+                      ? formatProduitFasTotalValue(fasValues[p.nom] ?? '0', quantityValues[p.nom])
+                      : formatProduitFasValue(fasValues[p.nom] ?? '0')}
+                  </span>
+                )}
+                {!hidePrixEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingPrixFor((current) => current === p.nom ? null : p.nom)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                    aria-label={`Modifier le prix et le FAS de ${p.nom}`}
+                    title={`Modifier le prix et le FAS de ${p.nom}`}
+                  >
+                    {editingPrixFor === p.nom ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 shrink-0">Quantité</label>
@@ -520,7 +537,7 @@ function CatalogueMultipleChoiceInput({
                   className="h-7 w-20 text-sm border border-gray-300 rounded px-2"
                 />
               </div>
-              {editingPrixFor === p.nom && (
+              {editingPrixFor === p.nom && !hidePrixEditing && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-500 shrink-0">{getProduitPrixLabel(p)}</label>
@@ -549,7 +566,7 @@ function CatalogueMultipleChoiceInput({
           {allowFreeEntry && freeEntryEnabled && (
             <div className="rounded-md border border-blue-200 bg-blue-50/40 px-3 py-2">
               <p className="text-xs font-medium text-blue-800 mb-1">{FREE_ENTRY_LABEL}</p>
-              <FreeEntryForm draft={freeEntryDraft} onChange={setFreeEntryDraft} />
+              <FreeEntryForm draft={freeEntryDraft} onChange={setFreeEntryDraft} hidePrix={hidePrice} />
             </div>
           )}
           <Button
@@ -724,6 +741,8 @@ export function SpQuestionnaireUI({
   spCodesPromoMode = 'addition',
   objectifsConfig = [],
   templateId,
+  spConfigResumeRef,
+  spConfigModeClient,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -763,6 +782,15 @@ export function SpQuestionnaireUI({
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [objectifsResolved, setObjectifsResolved] = useState<import('@/lib/sp/evaluateObjectifs').ResolvedObjectif[]>([]);
   const [objectifsOverlayState, setObjectifsOverlayState] = useState<'hidden' | 'loading' | 'visible'>('hidden');
+
+  const [showResumeRefPopup, setShowResumeRefPopup] = useState(false);
+  const [showLoyerPopup, setShowLoyerPopup] = useState(false);
+
+  // Mode client
+  const [modeClientActif, setModeClientActif] = useState(spConfigModeClient?.actif ?? false);
+  const [widgetsVisibles, setWidgetsVisibles] = useState(
+    !(spConfigModeClient?.actif && spConfigModeClient?.masquer_widgets_par_defaut),
+  );
 
   // Drag state for the widget container
   const [widgetPos, setWidgetPos] = useState<{ x: number; y: number } | null>(null);
@@ -997,6 +1025,40 @@ export function SpQuestionnaireUI({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenByConsequence, shownByConsequence, currentIdx]);
+
+  // ── Mode client : skip silencieux des questions sensibles ────────────────────
+  const autoSkipQuestion = useCallback((
+    eq: ExpandedQuestion,
+    skipValue: SpQuestionReponse['valeur'],
+    extraReponses: SpQuestionReponse[] = [],
+  ) => {
+    if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
+    const rep: SpQuestionReponse = { question_id: eq.instanceId, valeur: skipValue };
+    const nextReps = [
+      ...reponses.filter((r) => r.question_id !== eq.instanceId && !extraReponses.some((er) => er.question_id === r.question_id)),
+      rep,
+      ...extraReponses,
+    ];
+    setReponses(nextReps);
+    const { newHidden, newShown } = processConsequences(eq.question.consequences ?? [], skipValue, hiddenByConsequence, shownByConsequence);
+    const nextIdx = findNextVisibleIndex(currentIdx, nextReps, newHidden, newShown);
+    if (nextIdx < expandedQuestions.length) showQuestion(nextIdx, nextReps);
+    else setCurrentIdx(expandedQuestions.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reponses, currentIdx, hiddenByConsequence, shownByConsequence, expandedQuestions]);
+
+  useEffect(() => {
+    if (!modeClientActif || isTyping) return;
+    const eq = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
+    if (!eq) return;
+    const aff = eq.question.affichage;
+    if (spConfigModeClient?.passer_question_marge && aff === 'marge') {
+      autoSkipQuestion(eq, '0', [{ question_id: 'sp_marge_calculee', valeur: '0' }]);
+    } else if (spConfigModeClient?.passer_question_code_promo && aff === 'code_promo') {
+      autoSkipQuestion(eq, '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIdx, modeClientActif]);
 
   const showQuestion = (idx: number, activeReponses = reponses) => {
     if (idx >= expandedQuestions.length) return;
@@ -1282,6 +1344,18 @@ export function SpQuestionnaireUI({
     onComplete(reponses);
   }, [isSimulation, isDone, onComplete, reponses]);
 
+  // Résumé+Ref popup: trigger when landing on a resume_ref question
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'resume_ref' || isTyping) return;
+    setShowResumeRefPopup(true);
+  }, [currentQuestion, isTyping]);
+
+  // Loyer popup: trigger when landing on an affichage_loyer question
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.affichage !== 'affichage_loyer' || isTyping) return;
+    setShowLoyerPopup(true);
+  }, [currentQuestion, isTyping]);
+
   // Objectifs popup: trigger when questionnaire completes
   useEffect(() => {
     if (!isDone) {
@@ -1364,6 +1438,137 @@ export function SpQuestionnaireUI({
         document.body
       )}
 
+      {/* Résumé+Ref popup */}
+      {showResumeRefPopup && currentExpanded && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
+              <h2 className="text-lg font-bold text-white">Récapitulatif de vos réponses</h2>
+              <p className="text-sm text-blue-100 mt-0.5">Voici un résumé de vos réponses avant de continuer</p>
+            </div>
+
+            {/* Corps — liste des réponses précédentes */}
+            <div className="px-6 py-4 max-h-72 overflow-y-auto space-y-2">
+              {expandedQuestions.slice(0, currentIdx).filter((eq) =>
+                eq.question.affichage !== 'resume_ref' &&
+                reponses.some((r) => r.question_id === eq.instanceId)
+              ).length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Aucune réponse précédente.</p>
+              ) : (
+                expandedQuestions.slice(0, currentIdx)
+                  .filter((eq) =>
+                    eq.question.affichage !== 'resume_ref' &&
+                    reponses.some((r) => r.question_id === eq.instanceId)
+                  )
+                  .map((eq) => {
+                    const rep = reponses.find((r) => r.question_id === eq.instanceId);
+                    return (
+                      <div key={eq.instanceId} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-500 truncate">
+                            {resolveTemplateText(eq.displayLabel, donneesExtraites, reponses, eq.iterationIndex)}
+                          </p>
+                          <p className="text-sm text-gray-900 mt-0.5">
+                            {rep ? formatReponseText(rep.valeur) : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            {/* Section référence */}
+            {(() => {
+              const fixe = spConfigResumeRef?.partie_fixe?.trim();
+              if (!fixe || !spConfigResumeRef) return null;
+              const partieVariable = spConfigResumeRef.partie_variable;
+              const cartWithMarge = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+              const cartSansMarge = partieVariable === 'loyer_sans_marge'
+                ? calculateCartSummary(reponses.filter((r) => r.question_id !== 'sp_marge_calculee'), questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts)
+                : null;
+              let montant: number | null | undefined = undefined;
+              if (partieVariable === 'loyer_avec_marge') {
+                montant = cartWithMarge.loyer?.loyer_mensuel;
+              } else if (partieVariable === 'loyer_sans_marge') {
+                montant = cartSansMarge?.loyer?.loyer_mensuel;
+              }
+              const refText = montant != null
+                ? `${fixe}${Math.ceil(montant)}`
+                : fixe;
+              return (
+                <div className="mx-6 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-medium text-blue-600 mb-1">Référence de la proposition</p>
+                  <p className="text-sm font-semibold text-blue-900">{refText}</p>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="px-6 pb-6 pt-2 flex justify-center">
+              <Button
+                onClick={() => {
+                  setShowResumeRefPopup(false);
+                  recordAnswer(currentExpanded.instanceId, 'vu');
+                }}
+                className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continuer
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Loyer popup */}
+      {showLoyerPopup && currentExpanded && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
+              <h2 className="text-lg font-bold text-white">Loyer mensuel</h2>
+              <p className="text-sm text-blue-100 mt-0.5">Montant calculé sur la base de vos réponses</p>
+            </div>
+            <div className="px-6 py-6 flex flex-col items-center gap-1">
+              {(() => {
+                const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+                const loyer = cart.loyer?.loyer_mensuel;
+                return loyer != null ? (
+                  <p className="text-4xl font-bold text-gray-900">
+                    {loyer.toFixed(2).replace('.', ',')} €
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Loyer non calculé</p>
+                );
+              })()}
+              <p className="text-xs text-gray-400">par mois</p>
+            </div>
+            <div className="px-6 pb-6 flex justify-center">
+              <Button
+                onClick={() => {
+                  setShowLoyerPopup(false);
+                  recordAnswer(currentExpanded.instanceId, 'vu');
+                }}
+                className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continuer
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {modeClientActif && spConfigModeClient?.afficher_indicateur_mode_client && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+          <EyeOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span className="text-xs font-medium text-amber-700">Mode client actif — tarifs masqués</span>
+        </div>
+      )}
+
       {siteLabel && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200">
           <span className="text-sm font-medium text-purple-800">{siteLabel}</span>
@@ -1428,7 +1633,7 @@ export function SpQuestionnaireUI({
       )}
 
       {/* Current question input */}
-      {currentQuestion && currentExpanded && !isTyping && (
+      {currentQuestion && currentExpanded && !isTyping && currentQuestion.affichage !== 'resume_ref' && currentQuestion.affichage !== 'affichage_loyer' && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
           <p className="text-sm font-medium text-blue-900">
             {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
@@ -1482,29 +1687,35 @@ export function SpQuestionnaireUI({
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{p.nom}</p>
-                            <p className="text-xs text-gray-500">
-                              {formatPrixProduit(p)} → {effectivePrix != null && Number.isFinite(effectivePrix) ? `${effectivePrix.toFixed(2).replace('.', ',')} €/mois` : '—'}
-                            </p>
+                            {!(modeClientActif && spConfigModeClient?.masquer_prix_remises) && (
+                              <p className="text-xs text-gray-500">
+                                {formatPrixProduit(p)} → {effectivePrix != null && Number.isFinite(effectivePrix) ? `${effectivePrix.toFixed(2).replace('.', ',')} €/mois` : '—'}
+                              </p>
+                            )}
                           </div>
-                          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">
-                            {remiseLabel}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDiscountFor((current) => current === p.id ? null : p.id);
-                              if (overrideValue === undefined && computedPrixRemise != null) {
-                                setDiscountPrixOverrides((prev) => ({ ...prev, [p.id]: String(computedPrixRemise) }));
-                              }
-                            }}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
-                            aria-label={`Modifier le prix remisé de ${p.nom}`}
-                            title={`Modifier le prix remisé de ${p.nom}`}
-                          >
-                            {isEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-                          </button>
+                          {!(modeClientActif && spConfigModeClient?.masquer_prix_remises) && (
+                            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                              {remiseLabel}
+                            </span>
+                          )}
+                          {!(modeClientActif && spConfigModeClient?.masquer_bouton_modifier_prix) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDiscountFor((current) => current === p.id ? null : p.id);
+                                if (overrideValue === undefined && computedPrixRemise != null) {
+                                  setDiscountPrixOverrides((prev) => ({ ...prev, [p.id]: String(computedPrixRemise) }));
+                                }
+                              }}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                              aria-label={`Modifier le prix remisé de ${p.nom}`}
+                              title={`Modifier le prix remisé de ${p.nom}`}
+                            >
+                              {isEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
                         </div>
-                        {isEditing && (
+                        {isEditing && !(modeClientActif && spConfigModeClient?.masquer_bouton_modifier_prix) && (
                           <div className="flex items-center gap-2">
                             <label className="text-xs text-gray-500 shrink-0">Prix remisé (€ / mois)</label>
                             <input
@@ -1585,7 +1796,7 @@ export function SpQuestionnaireUI({
                         }`}
                       >
                         <div className="text-sm font-medium">{p.nom}</div>
-                        {(prix || fas) && (
+                        {!(modeClientActif && spConfigModeClient?.masquer_prix_produits) && (prix || fas) && (
                           <div className={`text-xs mt-0.5 ${isPending ? 'text-blue-100' : 'text-gray-400'}`}>
                             {[prix, fas].filter(Boolean).join(' · ')}
                           </div>
@@ -1670,8 +1881,8 @@ export function SpQuestionnaireUI({
                 <option value="">Sélectionnez...</option>
                 {currentCatalogueOptions.length > 0
                   ? filteredCatalogueOptions.map((p) => {
-                    const prix = formatPrixProduit(p);
-                    const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                    const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
+                    const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
                     return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
                   })
                   : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
@@ -1689,6 +1900,8 @@ export function SpQuestionnaireUI({
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
                 allowFreeEntry={!!currentQuestion.options_libres}
+                hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
+                hidePrixEditing={modeClientActif && (spConfigModeClient?.masquer_bouton_modifier_prix ?? true)}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -1722,6 +1935,8 @@ export function SpQuestionnaireUI({
                 products={currentCatalogueOptions}
                 display="select"
                 allowFreeEntry={!!currentQuestion.options_libres}
+                hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
+                hidePrixEditing={modeClientActif && (spConfigModeClient?.masquer_bouton_modifier_prix ?? true)}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -1773,7 +1988,7 @@ export function SpQuestionnaireUI({
                     );
                     return (
                       <>
-                  {currentQuestion.nombre_config?.afficher_estimation !== false && (
+                  {currentQuestion.nombre_config?.afficher_estimation !== false && !(modeClientActif && spConfigModeClient?.masquer_estimation_resiliation) && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
@@ -1831,7 +2046,7 @@ export function SpQuestionnaireUI({
                     </div>
                   )}
 
-                  {currentQuestion.nombre_config?.afficher_detail_calcul && (
+                  {currentQuestion.nombre_config?.afficher_detail_calcul && !(modeClientActif && spConfigModeClient?.masquer_estimation_resiliation) && (
                     <details className="rounded-lg border border-gray-200 bg-white p-3 group">
                       <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
                         <div>
@@ -2086,64 +2301,68 @@ export function SpQuestionnaireUI({
                   </div>
                 )}
 
-                {/* Détail base loyer */}
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1 text-xs">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
-                    Base du calcul
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Total ponctuel (matériel + FAS + installations + cadeaux)</span>
-                    <span className="tabular-nums">{baseSummary.totalPonctuel.toFixed(2)} €</span>
-                  </div>
-                  {baseSummary.remiseMoisOffert > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">
-                        Remise mois offert ({baseSummary.loyer?.mois_offerts ?? 0} × {baseSummary.abonnements.totalMensuel.toFixed(2)} €)
-                      </span>
-                      <span className="tabular-nums">{baseSummary.remiseMoisOffert.toFixed(2)} €</span>
+                {/* Détail base loyer — masqué en mode client si masquer_details_marge */}
+                {!(modeClientActif && spConfigModeClient?.masquer_details_marge) && (
+                  <>
+                    <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1 text-xs">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                        Base du calcul
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Total ponctuel (matériel + FAS + installations + cadeaux)</span>
+                        <span className="tabular-nums">{baseSummary.totalPonctuel.toFixed(2)} €</span>
+                      </div>
+                      {baseSummary.remiseMoisOffert > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">
+                            Remise mois offert ({baseSummary.loyer?.mois_offerts ?? 0} × {baseSummary.abonnements.totalMensuel.toFixed(2)} €)
+                          </span>
+                          <span className="tabular-nums">{baseSummary.remiseMoisOffert.toFixed(2)} €</span>
+                        </div>
+                      )}
+                      {baseSummary.indemnites > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Indemnités de résiliation</span>
+                          <span className="tabular-nums">{baseSummary.indemnites.toFixed(2)} €</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600">Marge saisie</span>
+                        <span className="tabular-nums">{margeNum.toFixed(2)} €</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-gray-200 font-semibold text-gray-900">
+                        <span>Base loyer</span>
+                        <span className="tabular-nums">{baseLoyer.toFixed(2)} €</span>
+                      </div>
                     </div>
-                  )}
-                  {baseSummary.indemnites > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Indemnités de résiliation</span>
-                      <span className="tabular-nums">{baseSummary.indemnites.toFixed(2)} €</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Marge saisie</span>
-                    <span className="tabular-nums">{margeNum.toFixed(2)} €</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-gray-200 font-semibold text-gray-900">
-                    <span>Base loyer</span>
-                    <span className="tabular-nums">{baseLoyer.toFixed(2)} €</span>
-                  </div>
-                </div>
 
-                {loyer ? (
-                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">
-                        Loyer mensuel HT
-                        <span className="block text-[10px] text-gray-400">
-                          ({baseLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
-                        </span>
-                      </span>
-                      <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Loyer trimestriel HT</span>
-                      <span className="font-semibold text-blue-800">{loyer.loyer_trimestriel.toFixed(2)} €</span>
-                    </div>
-                    <div className="flex gap-4 text-xs text-gray-500 pt-1 border-t border-blue-100">
-                      <span>Durée : {loyer.duree_mois} mois</span>
-                      <span>Trimestres : {loyer.trimestres}</span>
-                      <span>Mois offerts : {loyer.mois_offerts}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-amber-600">
-                    Aucun barème applicable pour {dureeMois} mois. Configurez-en un dans Paramètres → Calculer Loyer.
-                  </p>
+                    {loyer ? (
+                      <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">
+                            Loyer mensuel HT
+                            <span className="block text-[10px] text-gray-400">
+                              ({baseLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
+                            </span>
+                          </span>
+                          <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Loyer trimestriel HT</span>
+                          <span className="font-semibold text-blue-800">{loyer.loyer_trimestriel.toFixed(2)} €</span>
+                        </div>
+                        <div className="flex gap-4 text-xs text-gray-500 pt-1 border-t border-blue-100">
+                          <span>Durée : {loyer.duree_mois} mois</span>
+                          <span>Trimestres : {loyer.trimestres}</span>
+                          <span>Mois offerts : {loyer.mois_offerts}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600">
+                        Aucun barème applicable pour {dureeMois} mois. Configurez-en un dans Paramètres → Calculer Loyer.
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <Button
@@ -2195,13 +2414,22 @@ export function SpQuestionnaireUI({
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
               if (!found) { setPromoApplied(null); setPromoError('Code promo invalide'); return; }
               setPromoError('');
-              const margeNum = spCodesPromoMode === 'soustraction' ? -found.valeur : found.valeur;
+              const existingMargeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+              const existingMarge = existingMargeRep ? Number(existingMargeRep.valeur) || 0 : 0;
+              const margeNum = spCodesPromoMode === 'soustraction' ? existingMarge - found.valeur : existingMarge + found.valeur;
               const margeVal = String(margeNum);
               const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
               const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
               const baseLoyer = baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites + margeNum;
               const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
-              const extras: SpQuestionReponse[] = [{ question_id: 'sp_marge_calculee', valeur: margeVal }];
+              const extras: SpQuestionReponse[] = [
+                { question_id: 'sp_marge_calculee', valeur: margeVal },
+                // Détail du code promo (pour affichage panier + export comparatif)
+                { question_id: 'sp_marge_avant_promo', valeur: String(existingMarge) },
+                { question_id: 'sp_code_promo_nom', valeur: found.nom },
+                { question_id: 'sp_code_promo_valeur', valeur: String(found.valeur) },
+                { question_id: 'sp_code_promo_mode', valeur: spCodesPromoMode },
+              ];
               if (loyer) {
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
@@ -2299,32 +2527,38 @@ export function SpQuestionnaireUI({
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                   Qté {getQuantityValue(pendingCatalogueSelection.quantityValue)}
                 </span>
-                {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product) && (
+                {!(modeClientActif && spConfigModeClient?.masquer_prix_confirmation) && formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product) && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                     Unitaire: {formatProduitPrixValue(pendingCatalogueSelection.prixValue, pendingCatalogueSelection.product)}
                   </span>
                 )}
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  Total: {formatProduitTotalValue(
-                    pendingCatalogueSelection.prixValue,
-                    pendingCatalogueSelection.product,
-                    pendingCatalogueSelection.quantityValue,
-                  ) ?? '0,00 €'}
-                </span>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {shouldMultiplyFas(pendingCatalogueSelection.product)
-                    ? formatProduitFasTotalValue(pendingCatalogueSelection.fasValue, pendingCatalogueSelection.quantityValue)
-                    : formatProduitFasValue(pendingCatalogueSelection.fasValue)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPendingCatalogueSelection((prev) => prev ? { ...prev, prixEditing: !prev.prixEditing } : null)}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
-                  aria-label="Modifier le prix et le FAS"
-                  title="Modifier le prix et le FAS"
-                >
-                  {pendingCatalogueSelection.prixEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-                </button>
+                {!(modeClientActif && spConfigModeClient?.masquer_prix_confirmation) && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    Total: {formatProduitTotalValue(
+                      pendingCatalogueSelection.prixValue,
+                      pendingCatalogueSelection.product,
+                      pendingCatalogueSelection.quantityValue,
+                    ) ?? '0,00 €'}
+                  </span>
+                )}
+                {!(modeClientActif && spConfigModeClient?.masquer_prix_confirmation) && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {shouldMultiplyFas(pendingCatalogueSelection.product)
+                      ? formatProduitFasTotalValue(pendingCatalogueSelection.fasValue, pendingCatalogueSelection.quantityValue)
+                      : formatProduitFasValue(pendingCatalogueSelection.fasValue)}
+                  </span>
+                )}
+                {!(modeClientActif && spConfigModeClient?.masquer_bouton_modifier_prix) && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingCatalogueSelection((prev) => prev ? { ...prev, prixEditing: !prev.prixEditing } : null)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors"
+                    aria-label="Modifier le prix et le FAS"
+                    title="Modifier le prix et le FAS"
+                  >
+                    {pendingCatalogueSelection.prixEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-600 shrink-0">Quantité :</label>
@@ -2362,7 +2596,7 @@ export function SpQuestionnaireUI({
                   </p>
                 ) : null;
               })()}
-              {pendingCatalogueSelection.prixEditing && (
+              {pendingCatalogueSelection.prixEditing && !(modeClientActif && spConfigModeClient?.masquer_bouton_modifier_prix) && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-600 shrink-0">{getProduitPrixLabel(pendingCatalogueSelection.product)} :</label>
@@ -2424,6 +2658,7 @@ export function SpQuestionnaireUI({
               <FreeEntryForm
                 draft={pendingFreeEntry.draft}
                 onChange={(next) => setPendingFreeEntry((prev) => prev ? { ...prev, draft: next } : null)}
+                hidePrix={modeClientActif && (spConfigModeClient?.masquer_prix_saisie_libre ?? true)}
               />
               <div className="flex gap-2">
                 <Button
@@ -2564,7 +2799,9 @@ export function SpQuestionnaireUI({
             ref={widgetContainerRef}
             className="fixed z-40 group"
             style={
-              widgetPos
+              !widgetsVisibles
+                ? { display: 'none' }
+                : widgetPos
                 ? { left: widgetPos.x, top: widgetPos.y }
                 : { bottom: 16, right: 16 }
             }
@@ -2585,7 +2822,7 @@ export function SpQuestionnaireUI({
               <GripHorizontal className="h-3.5 w-3.5 text-white" />
             </div>
 
-            <div className="flex flex-col gap-3 items-end">
+            <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
               <SpMargeWidget
                 reponses={reponses}
                 questions={questions}
@@ -2593,6 +2830,15 @@ export function SpQuestionnaireUI({
                 donneesExtraites={donneesExtraites}
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
+                onUpdateReponses={(nextReponses) => {
+                  setReponses(nextReponses);
+                }}
+              />
+              <SpIndemniteWidget
+                reponses={reponses}
+                questions={questions}
+                donneesExtraites={donneesExtraites}
+                spConfigResiliation={spConfigResiliation}
                 onUpdateReponses={(nextReponses) => {
                   setReponses(nextReponses);
                 }}
@@ -2613,6 +2859,37 @@ export function SpQuestionnaireUI({
           </div>
         );
       })()}
+
+      {/* Boutons de contrôle mode client (visibles uniquement si toggle autorisé) */}
+      {spConfigModeClient?.permettre_toggle_depuis_questionnaire && (
+        <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 items-start">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !modeClientActif;
+              setModeClientActif(next);
+              if (next && spConfigModeClient.masquer_widgets_par_defaut) setWidgetsVisibles(false);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm transition-colors ${
+              modeClientActif
+                ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            {modeClientActif
+              ? <><EyeOff className="w-3 h-3" />Mode client ON</>
+              : <><Eye className="w-3 h-3" />Mode client OFF</>
+            }
+          </button>
+          <button
+            type="button"
+            onClick={() => setWidgetsVisibles((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm bg-white text-gray-600 border-gray-300 hover:border-gray-400 transition-colors"
+          >
+            {widgetsVisibles ? <><EyeOff className="w-3 h-3" />Cacher widgets</> : <><Eye className="w-3 h-3" />Afficher widgets</>}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -148,6 +148,8 @@ export interface WordConfig {
   spVariablesCustom?: SpVariableCustom[];
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
+  sp_config_resume_ref?: SpConfigResumeRef;
+  sp_config_mode_client?: SpConfigModeClient;
 }
 
 export interface PDFConfig {
@@ -346,6 +348,15 @@ export interface SpCodePromo {
   valeur: number;
 }
 
+/** Détail d'un code promo appliqué sur la marge SP (pour affichage/export). */
+export interface SpCodePromoInfo {
+  nom: string;
+  valeur: number;
+  mode: 'addition' | 'soustraction';
+  /** Marge avant application du code promo. */
+  margeAvant: number;
+}
+
 export type SpQuestionAffichage =
   | 'boutons_choix_unique'
   | 'boutons_choix_multiple'
@@ -360,7 +371,9 @@ export type SpQuestionAffichage =
   | 'choix_liste_manuelle'
   | 'adresse_complete'
   | 'marge'
-  | 'code_promo';
+  | 'code_promo'
+  | 'resume_ref'
+  | 'affichage_loyer';
 
 export type SpConditionOperateur =
   | 'egal'
@@ -456,6 +469,11 @@ export interface SpQuestionBoucle {
   source_sa_filtre_champ?: string;
   /** Valeur attendue pour le filtre (ex: "mobile") */
   source_sa_filtre_valeur?: string;
+}
+
+export interface SpConfigResumeRef {
+  partie_fixe: string;
+  partie_variable?: 'loyer_sans_marge' | 'loyer_avec_marge' | null;
 }
 
 export interface SpQuestion {
@@ -763,6 +781,31 @@ export interface SpConfigResiliation {
   elements_pris_en_compte?: SpConfigResiliationElements;
 }
 
+export interface SpConfigModeClient {
+  actif: boolean;
+
+  // Groupe 1 : Prix produits
+  masquer_prix_produits: boolean;
+  masquer_prix_confirmation: boolean;
+  masquer_prix_remises: boolean;
+  masquer_bouton_modifier_prix: boolean;
+  masquer_prix_saisie_libre: boolean;
+  texte_substitution_prix?: string;
+
+  // Groupe 2 : Étapes sensibles
+  masquer_details_marge: boolean;
+  passer_question_marge: boolean;
+  passer_question_code_promo: boolean;
+  masquer_estimation_resiliation: boolean;
+
+  // Groupe 3 : Widgets
+  masquer_widgets_par_defaut: boolean;
+
+  // Groupe 4 : UX commercial
+  afficher_indicateur_mode_client: boolean;
+  permettre_toggle_depuis_questionnaire: boolean;
+}
+
 // ── Extension WordConfig ──────────────────────────────────────────
 
 export interface SpTableauFusionne {
@@ -851,4 +894,7 @@ export interface ExportSaSpInput {
   remiseSoldeContrat: number;
   remiseTotalPonctuel: number;
   remiseTotal: number;
+
+  /** Code promo appliqué sur la marge (optionnel, pour détail). */
+  codePromo?: SpCodePromoInfo | null;
 }

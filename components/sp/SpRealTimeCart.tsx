@@ -392,7 +392,50 @@ export function SpRealTimeCart({
                       {summary.indemnites > 0 && (
                         <Line label="Indemnités" value={summary.indemnites} muted />
                       )}
-                      {summary.marge !== 0 && <Line label="Marge" value={summary.marge} muted />}
+                      {summary.marge !== 0 && (
+                        summary.codePromo ? (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => toggleCat('marge_promo')}
+                              className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              <span className="flex items-center gap-1">
+                                {expandedCats.has('marge_promo') ? (
+                                  <ChevronDown className="h-3 w-3 text-gray-400" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3 text-gray-400" />
+                                )}
+                                Marge
+                              </span>
+                              <span className="tabular-nums">{formatEuro(summary.marge)}</span>
+                            </button>
+                            {expandedCats.has('marge_promo') && (
+                              <div className="mt-1 ml-3 space-y-0.5 border-l-2 border-gray-100 pl-2">
+                                <Line
+                                  label="Marge avant code promo"
+                                  value={summary.codePromo.margeAvant}
+                                  muted
+                                />
+                                <div className="flex items-center justify-between text-[11px] text-emerald-700">
+                                  <span>
+                                    Code promo{' '}
+                                    <span className="font-mono font-medium">
+                                      {summary.codePromo.nom}
+                                    </span>
+                                  </span>
+                                  <span className="tabular-nums">
+                                    {summary.codePromo.mode === 'soustraction' ? '−' : '+'}
+                                    {formatEuro(summary.codePromo.valeur)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <Line label="Marge" value={summary.marge} muted />
+                        )
+                      )}
                       <Line label="Base loyer" value={summary.baseLoyer} bold />
                     </div>
                   )}

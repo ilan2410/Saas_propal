@@ -308,6 +308,31 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   ws.getRow(recapTotalR).height = 20;
   recapR++;
 
+  // ── 4 bis. Détail code promo appliqué sur la marge (si présent) ──
+  if (input.codePromo) {
+    const promo = input.codePromo;
+    const signe = promo.mode === 'soustraction' ? '-' : '+';
+    const promoRows: Array<[string, string]> = [
+      ['Marge avant code promo', eur(promo.margeAvant)],
+      [`Code promo « ${promo.nom} »`, `${signe}${eur(promo.valeur)}`],
+    ];
+    promoRows.forEach(([label, value]) => {
+      const row = ws.getRow(recapR);
+      row.getCell(1).value = label;
+      ws.mergeCells(recapR, 1, recapR, 4);
+      row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      row.getCell(5).value = value;
+      row.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+      for (let c = 1; c <= 5; c++) {
+        const cell = ws.getCell(recapR, c);
+        cell.font = { size: 9, italic: true, color: { argb: 'FF666666' } };
+        cell.border = thinBorder();
+      }
+      row.height = 16;
+      recapR++;
+    });
+  }
+
   // Footer
   const footerR = Math.max(recapR, remiseLastRow + 1) + 2;
   ws.getCell(footerR, 1).value = `Document généré par ${input.companyName} — ${input.dateProposition}`;

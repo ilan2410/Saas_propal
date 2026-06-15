@@ -182,6 +182,8 @@ const AFFICHAGE_TOOLTIPS: Record<SpQuestionAffichage, string> = {
   adresse_complete: "Formulaire d'adresse structuré avec rue, complément, code postal, ville, pays.",
   marge: "Champ libre où l'utilisateur saisit sa marge en €. Le loyer mensuel/trimestriel est calculé en live selon le barème applicable du template.",
   code_promo: "L'utilisateur saisit un code promo. Le système applique la valeur € associée au code comme marge pour le calcul du loyer, sans afficher le détail.",
+  resume_ref: "Affiche un popup récapitulatif de toutes les réponses précédentes et la référence de proposition si configurée. L'utilisateur clique 'Continuer' pour poursuivre.",
+  affichage_loyer: "Affiche un popup avec le loyer mensuel du panier SP au moment de son apparition. L'utilisateur clique 'Continuer' pour poursuivre.",
 };
 
 const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAffichage; label: string }>> = {
@@ -205,6 +207,8 @@ const AFFICHAGE_BY_SOURCE: Record<SpQuestionSource, Array<{ value: SpQuestionAff
     { value: 'adresse_complete', label: 'Adresse complète' },
     { value: 'marge', label: 'Marge (calcul loyer)' },
     { value: 'code_promo', label: 'Code promo' },
+    { value: 'resume_ref', label: 'Résumé + Référence (popup récapitulatif)' },
+    { value: 'affichage_loyer', label: 'Loyer mensuel (popup)' },
   ],
 };
 
@@ -759,24 +763,29 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   return (
     <div className="space-y-6 max-w-2xl">
 
-      {/* Navigation blocs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {([1, 2, 3, 4, 5] as Block[]).map((b) => (
-          <Tooltip key={b} text={BLOCK_TOOLTIPS[b]}>
-            <button
-              onClick={() => setActiveBlock(b)}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeBlock === b
-                  ? 'bg-blue-600 text-white'
-                  : blockComplete[b]
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-500'
-              }`}
-            >
-              {b}. {BLOCK_LABELS[b - 1]}
-            </button>
-          </Tooltip>
-        ))}
+      {/* Navigation blocs + bouton enregistrer persistant */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          {(([1, 2, 3, 4, 5] as Block[]).filter((b) => affichage !== 'resume_ref' && affichage !== 'affichage_loyer' || b <= 3)).map((b) => (
+            <Tooltip key={b} text={BLOCK_TOOLTIPS[b]}>
+              <button
+                onClick={() => setActiveBlock(b)}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  activeBlock === b
+                    ? 'bg-blue-600 text-white'
+                    : blockComplete[b]
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {b}. {BLOCK_LABELS[b - 1]}
+              </button>
+            </Tooltip>
+          ))}
+        </div>
+        <Button size="sm" onClick={handleSave} disabled={!libelle.trim() || isSaving}>
+          {isSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />{initial?.id ? 'Mise à jour...' : 'Création...'}</> : initial?.id ? 'Mettre à jour' : 'Créer la question'}
+        </Button>
       </div>
 
       {/* ── BLOC 1 — SOURCE ────────────────────────────────────────────── */}
@@ -1243,26 +1252,30 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="obligatoire"
-              checked={obligatoire}
-              onChange={(e) => setObligatoire(e.target.checked)}
-            />
-            <label htmlFor="obligatoire" className="text-sm text-gray-700">Question obligatoire</label>
-            <InfoIcon tooltip="Si activé, l'utilisateur devra obligatoirement répondre à cette question avant de pouvoir lancer la génération de la SP. Les questions non-obligatoires peuvent être ignorées." />
-          </div>
+          {affichage !== 'resume_ref' && affichage !== 'affichage_loyer' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="obligatoire"
+                checked={obligatoire}
+                onChange={(e) => setObligatoire(e.target.checked)}
+              />
+              <label htmlFor="obligatoire" className="text-sm text-gray-700">Question obligatoire</label>
+              <InfoIcon tooltip="Si activé, l'utilisateur devra obligatoirement répondre à cette question avant de pouvoir lancer la génération de la SP. Les questions non-obligatoires peuvent être ignorées." />
+            </div>
+          )}
 
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setActiveBlock(2)}>← Précédent</Button>
-            <Button size="sm" onClick={() => setActiveBlock(4)} disabled={!libelle.trim()}>Suivant →</Button>
+            {affichage !== 'resume_ref' && affichage !== 'affichage_loyer' && (
+              <Button size="sm" onClick={() => setActiveBlock(4)} disabled={!libelle.trim()}>Suivant →</Button>
+            )}
           </div>
         </div>
       )}
 
       {/* ── BLOC 4 — RÉSULTAT & CONSÉQUENCES ──────────────────────────── */}
-      {activeBlock === 4 && (
+      {activeBlock === 4 && affichage !== 'resume_ref' && affichage !== 'affichage_loyer' && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-gray-900">Bloc 4 — Résultat &amp; Conséquences</h3>
@@ -1557,7 +1570,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
       )}
 
       {/* ── BLOC 5 — BOUCLE ──────────────────────────────────────────── */}
-      {activeBlock === 5 && (
+      {activeBlock === 5 && affichage !== 'resume_ref' && affichage !== 'affichage_loyer' && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-gray-900">Bloc 5 — Boucle <span className="text-gray-400 font-normal">(optionnel)</span></h3>

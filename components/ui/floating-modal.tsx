@@ -80,7 +80,7 @@ export function FloatingModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-50" />
+      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50" />
       <div
         className="fixed z-[55] flex flex-col rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
         style={{
