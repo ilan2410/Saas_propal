@@ -149,6 +149,7 @@ export interface WordConfig {
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
   sp_config_resume_ref?: SpConfigResumeRef;
+  sp_config_mode_client?: SpConfigModeClient;
 }
 
 export interface PDFConfig {
@@ -778,6 +779,31 @@ export interface SpConfigResiliation {
   utiliser_montant_source_si_disponible?: boolean;
   preavis_mois_defaut?: number;
   elements_pris_en_compte?: SpConfigResiliationElements;
+}
+
+export interface SpConfigModeClient {
+  actif: boolean;
+
+  // Groupe 1 : Prix produits
+  masquer_prix_produits: boolean;
+  masquer_prix_confirmation: boolean;
+  masquer_prix_remises: boolean;
+  masquer_bouton_modifier_prix: boolean;
+  masquer_prix_saisie_libre: boolean;
+  texte_substitution_prix?: string;
+
+  // Groupe 2 : Étapes sensibles
+  masquer_details_marge: boolean;
+  passer_question_marge: boolean;
+  passer_question_code_promo: boolean;
+  masquer_estimation_resiliation: boolean;
+
+  // Groupe 3 : Widgets
+  masquer_widgets_par_defaut: boolean;
+
+  // Groupe 4 : UX commercial
+  afficher_indicateur_mode_client: boolean;
+  permettre_toggle_depuis_questionnaire: boolean;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

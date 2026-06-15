@@ -5,7 +5,7 @@ import { Loader2, Database, X, Play, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -64,6 +64,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
+  const [spConfigModeClient, setSpConfigModeClient] = useState<SpConfigModeClient | undefined>(undefined);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -93,6 +94,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       setSpConfigResiliation(fileCfg?.sp_config_resiliation ?? pData.preferences?.sp_config_resiliation);
       setSpConfigMoisOfferts(pData.preferences?.sp_config_mois_offerts);
       setSpConfigResumeRef(fileCfg?.sp_config_resume_ref);
+      setSpConfigModeClient(fileCfg?.sp_config_mode_client);
       setLoadingQuestions(false);
     }).catch(() => setLoadingQuestions(false));
   }, [templateId]);
@@ -359,6 +361,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigResiliation={spConfigResiliation}
                   spConfigMoisOfferts={spConfigMoisOfferts}
                   spConfigResumeRef={spConfigResumeRef}
+                  spConfigModeClient={spConfigModeClient}
                   spCodesPromo={preferences.sp_codes_promo ?? []}
                   spCodesPromoMode={preferences.sp_codes_promo_mode ?? 'addition'}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
