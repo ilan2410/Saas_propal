@@ -2345,7 +2345,14 @@ export function SpQuestionnaireUI({
               const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
               const baseLoyer = baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites + margeNum;
               const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
-              const extras: SpQuestionReponse[] = [{ question_id: 'sp_marge_calculee', valeur: margeVal }];
+              const extras: SpQuestionReponse[] = [
+                { question_id: 'sp_marge_calculee', valeur: margeVal },
+                // Détail du code promo (pour affichage panier + export comparatif)
+                { question_id: 'sp_marge_avant_promo', valeur: String(existingMarge) },
+                { question_id: 'sp_code_promo_nom', valeur: found.nom },
+                { question_id: 'sp_code_promo_valeur', valeur: String(found.valeur) },
+                { question_id: 'sp_code_promo_mode', valeur: spCodesPromoMode },
+              ];
               if (loyer) {
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });

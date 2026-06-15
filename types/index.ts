@@ -347,6 +347,15 @@ export interface SpCodePromo {
   valeur: number;
 }
 
+/** Détail d'un code promo appliqué sur la marge SP (pour affichage/export). */
+export interface SpCodePromoInfo {
+  nom: string;
+  valeur: number;
+  mode: 'addition' | 'soustraction';
+  /** Marge avant application du code promo. */
+  margeAvant: number;
+}
+
 export type SpQuestionAffichage =
   | 'boutons_choix_unique'
   | 'boutons_choix_multiple'
@@ -859,4 +868,7 @@ export interface ExportSaSpInput {
   remiseSoldeContrat: number;
   remiseTotalPonctuel: number;
   remiseTotal: number;
+
+  /** Code promo appliqué sur la marge (optionnel, pour détail). */
+  codePromo?: SpCodePromoInfo | null;
 }

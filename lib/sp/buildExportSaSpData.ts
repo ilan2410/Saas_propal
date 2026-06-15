@@ -584,5 +584,7 @@ export function buildExportSaSpData(input: BuildExportSaSpDataInput): ExportSaSp
     remiseSoldeContrat: cart.indemnites,
     remiseTotalPonctuel,
     remiseTotal,
+
+    codePromo: cart.codePromo,
   };
 }

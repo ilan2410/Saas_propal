@@ -6,6 +6,7 @@ import type {
   SpConfigLoyer,
   SpConfigMoisOfferts,
   SpProduitLibre,
+  SpCodePromoInfo,
 } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
 import { findApplicableBareme } from './evaluateBareme';
@@ -46,6 +47,8 @@ export interface SpCartSummary {
   dureeMois: number;
   loyer: ResultatLoyer | null;
   lines: CartLine[];
+  /** Code promo appliqué sur la marge (null si aucun). */
+  codePromo: SpCodePromoInfo | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -351,6 +354,21 @@ export function calculateCartSummary(
   const baseLoyer = totalPonctuel + remiseMoisOffert + indemnites + marge;
   const loyer = bareme ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
 
+  // Détail du code promo appliqué sur la marge (si renseigné lors du questionnaire)
+  const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');
+  let codePromo: SpCodePromoInfo | null = null;
+  if (codePromoNomRep && String(codePromoNomRep.valeur).trim()) {
+    const valeurRep = reponses.find((r) => r.question_id === 'sp_code_promo_valeur');
+    const modeRep = reponses.find((r) => r.question_id === 'sp_code_promo_mode');
+    const margeAvantRep = reponses.find((r) => r.question_id === 'sp_marge_avant_promo');
+    codePromo = {
+      nom: String(codePromoNomRep.valeur),
+      valeur: valeurRep ? Number(valeurRep.valeur) || 0 : 0,
+      mode: String(modeRep?.valeur) === 'soustraction' ? 'soustraction' : 'addition',
+      margeAvant: margeAvantRep ? Number(margeAvantRep.valeur) || 0 : 0,
+    };
+  }
+
   return {
     abonnements: abos,
     materiel,
@@ -367,6 +385,7 @@ export function calculateCartSummary(
     dureeMois,
     loyer,
     lines,
+    codePromo,
   };
 }
 
