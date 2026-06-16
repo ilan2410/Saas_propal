@@ -39,6 +39,7 @@ export interface SpQuestionnaireUIProps {
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spCodesPromo?: SpCodePromo[];
   spCodesPromoMode?: 'addition' | 'soustraction';
+  spCodesPromoMasquerSaisie?: boolean;
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
   spConfigResumeRef?: SpConfigResumeRef;
@@ -739,6 +740,7 @@ export function SpQuestionnaireUI({
   spConfigMoisOfferts,
   spCodesPromo = [],
   spCodesPromoMode = 'addition',
+  spCodesPromoMasquerSaisie = false,
   objectifsConfig = [],
   templateId,
   spConfigResumeRef,
@@ -2448,17 +2450,19 @@ export function SpQuestionnaireUI({
               <div className="space-y-3">
                 {promoApplied ? (
                   <p className="text-sm font-medium text-green-700">
-                    ✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué
+                    {spCodesPromoMasquerSaisie
+                      ? '✓ Code promo appliqué'
+                      : <>✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué</>}
                   </p>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
                       <input
-                        type="text"
+                        type={spCodesPromoMasquerSaisie ? 'password' : 'text'}
                         value={inputValue}
                         onChange={(e) => { setInputValue(e.target.value); setPromoError(''); }}
                         placeholder="Entrez votre code promo"
-                        className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono uppercase"
+                        className={`h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono${spCodesPromoMasquerSaisie ? '' : ' uppercase'}`}
                         onKeyDown={(e) => { if (e.key === 'Enter') applyPromo(inputValue); }}
                       />
                       <Button

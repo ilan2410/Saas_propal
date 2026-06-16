@@ -32,6 +32,13 @@ const SYSTEM_FIELDS: MappedField[] = [
   { systemField: 'engagement_mois', fileHeader: null, required: false, label: 'Engagement (mois)' },
   { systemField: 'image_url', fileHeader: null, required: false, label: 'Image URL' },
   { systemField: 'tags', fileHeader: null, required: false, label: 'Tags (séparés par virgules)' },
+  { systemField: 'mode_fas', fileHeader: null, required: false, label: 'Mode FAS (fixe_par_selection / multiplie_par_quantite)' },
+  { systemField: 'remise_type', fileHeader: null, required: false, label: 'Type de remise (fixe / pourcentage)' },
+  { systemField: 'remise_valeur', fileHeader: null, required: false, label: 'Valeur de remise' },
+  { systemField: 'actif', fileHeader: null, required: false, label: 'Actif (oui/non)' },
+  { systemField: 'destinations_proposition', fileHeader: null, required: false, label: 'Destination Proposition (oui/non)' },
+  { systemField: 'destinations_bdc_operateur', fileHeader: null, required: false, label: 'Destination BDC Opérateur (oui/non)' },
+  { systemField: 'destinations_bdc_materiel', fileHeader: null, required: false, label: 'Destination BDC Matériel (oui/non)' },
 ];
 
 export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportProductModalProps) {
@@ -120,6 +127,11 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
       // Default values
       if (!product.categorie) product.categorie = 'autre';
       if (!product.type_frequence) product.type_frequence = 'mensuel';
+      if (!product.mode_fas) product.mode_fas = 'fixe_par_selection';
+      if (product.actif === undefined) product.actif = 'oui';
+      if (product.destinations_proposition === undefined) product.destinations_proposition = 'oui';
+      if (product.destinations_bdc_operateur === undefined) product.destinations_bdc_operateur = 'oui';
+      if (product.destinations_bdc_materiel === undefined) product.destinations_bdc_materiel = 'oui';
       return product;
     });
 

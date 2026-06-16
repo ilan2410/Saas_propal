@@ -76,6 +76,7 @@ export interface OrganizationPreferences {
   sp_regles_remise?: SpRegleRemise[];
   sp_codes_promo?: SpCodePromo[];
   sp_codes_promo_mode?: 'addition' | 'soustraction';
+  sp_codes_promo_masquer_saisie?: boolean;
   sp_objectifs_config?: SpObjectifConfig[];
 }
 

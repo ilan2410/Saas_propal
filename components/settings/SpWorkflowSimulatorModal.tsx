@@ -23,6 +23,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>([]);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>('addition');
+  const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(false);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
@@ -64,6 +65,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
       setCodesPromo(prefsData?.preferences?.sp_codes_promo ?? []);
       setCodesPromoMode(prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
+      setCodesPromoMasquerSaisie(prefsData?.preferences?.sp_codes_promo_masquer_saisie ?? false);
       const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
       setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
       setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
@@ -255,6 +257,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spConfigModeClient={spConfigModeClient}
               spCodesPromo={codesPromo}
               spCodesPromoMode={codesPromoMode}
+              spCodesPromoMasquerSaisie={codesPromoMasquerSaisie}
               objectifsConfig={objectifsConfig}
               templateId={templateId}
             />

@@ -330,6 +330,7 @@ export default function SettingsPage({
   );
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>(organization.preferences?.sp_codes_promo ?? []);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>(organization.preferences?.sp_codes_promo_mode ?? 'addition');
+  const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(organization.preferences?.sp_codes_promo_masquer_saisie ?? false);
   const [isDiscountSaving, setIsDiscountSaving] = useState(false);
 
   useEffect(() => {
@@ -952,7 +953,7 @@ export default function SettingsPage({
       const res = await fetch('/api/settings/update-preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sp_codes_promo: codesPromo, sp_codes_promo_mode: codesPromoMode }),
+        body: JSON.stringify({ sp_codes_promo: codesPromo, sp_codes_promo_mode: codesPromoMode, sp_codes_promo_masquer_saisie: codesPromoMasquerSaisie }),
       });
       if (!res.ok) throw new Error('Erreur');
       toast.success('Codes promo enregistrés');
@@ -2371,6 +2372,8 @@ export default function SettingsPage({
                 onChange={setCodesPromo}
                 mode={codesPromoMode}
                 onModeChange={setCodesPromoMode}
+                masquerSaisie={codesPromoMasquerSaisie}
+                onMasquerSaisieChange={setCodesPromoMasquerSaisie}
               />
             )}
 

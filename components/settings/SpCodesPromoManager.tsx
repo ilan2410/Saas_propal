@@ -10,13 +10,15 @@ interface Props {
   onChange: (codes: SpCodePromo[]) => void;
   mode: 'addition' | 'soustraction';
   onModeChange: (mode: 'addition' | 'soustraction') => void;
+  masquerSaisie?: boolean;
+  onMasquerSaisieChange?: (v: boolean) => void;
 }
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function SpCodesPromoManager({ codes, onChange, mode, onModeChange }: Props) {
+export function SpCodesPromoManager({ codes, onChange, mode, onModeChange, masquerSaisie = false, onMasquerSaisieChange }: Props) {
   // Edition d'un code existant
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNom, setEditNom] = useState('');
@@ -91,6 +93,30 @@ export function SpCodesPromoManager({ codes, onChange, mode, onModeChange }: Pro
             className="accent-blue-600"
           />
           Soustraire de la marge
+        </label>
+      </div>
+
+      <div className="flex items-center gap-4 p-3 rounded-lg border border-gray-200 bg-gray-50">
+        <span className="text-sm font-medium text-gray-700 shrink-0">Saisie du code promo :</span>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="radio"
+            name="codes-promo-saisie"
+            checked={!masquerSaisie}
+            onChange={() => onMasquerSaisieChange?.(false)}
+            className="accent-blue-600"
+          />
+          Caractères visibles
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="radio"
+            name="codes-promo-saisie"
+            checked={masquerSaisie}
+            onChange={() => onMasquerSaisieChange?.(true)}
+            className="accent-blue-600"
+          />
+          Caractères masqués (comme un mot de passe)
         </label>
       </div>
 

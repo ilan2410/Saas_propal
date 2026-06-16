@@ -364,6 +364,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigModeClient={spConfigModeClient}
                   spCodesPromo={preferences.sp_codes_promo ?? []}
                   spCodesPromoMode={preferences.sp_codes_promo_mode ?? 'addition'}
+                  spCodesPromoMasquerSaisie={preferences.sp_codes_promo_masquer_saisie ?? false}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
                   templateId={templateId}
                 />

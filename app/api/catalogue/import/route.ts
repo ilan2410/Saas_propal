@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const errors: string[] = [];
 
     // Valid categories
-    const validCategories: CatalogueCategorie[] = ['mobile', 'internet', 'fixe', 'cloud', 'equipement', 'autre'];
+    const validCategories: CatalogueCategorie[] = ['mobile', 'internet', 'fixe', 'cloud', 'equipement', 'autre', 'cadeau', 'installation'];
 
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
@@ -54,9 +54,41 @@ export async function POST(request: NextRequest) {
       const engagement_mois = p.engagement_mois ? parseInt(String(p.engagement_mois)) : null;
 
       // Tags
-      const tags = typeof p.tags === 'string' 
+      const tags = typeof p.tags === 'string'
         ? p.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
         : [];
+
+      const remise_valeur = p.remise_valeur ? parseFloat(String(p.remise_valeur).replace(',', '.')) : null;
+      const remise_type = (p.remise_type === 'fixe' || p.remise_type === 'pourcentage') ? p.remise_type : null;
+
+      const actif = p.actif !== undefined && p.actif !== null
+        ? !['false', '0', 'non', 'no'].includes(String(p.actif).toLowerCase().trim())
+        : true;
+
+      const parseBool = (val: unknown) => {
+        if (val === undefined || val === null) return true;
+        const s = String(val).toLowerCase().trim();
+        return !(s === 'false' || s === '0' || s === 'non' || s === 'no');
+      };
+      const destinations = {
+        proposition: parseBool(p.destinations_proposition ?? p.proposition),
+        bdc_operateur: parseBool(p.destinations_bdc_operateur ?? p.bdc_operateur),
+        bdc_materiel: parseBool(p.destinations_bdc_materiel ?? p.bdc_materiel),
+      };
+
+      // Check duplicate
+      const orgId = isGlobalImport ? null : user.id;
+      const { data: existing } = await supabase
+        .from('catalogues_produits')
+        .select('id')
+        .eq('nom', p.nom)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+
+      if (existing) {
+        errors.push(`Ligne ${rowNum}: Doublon ignoré — le produit "${p.nom}" existe déjà`);
+        continue;
+      }
 
       try {
         const { error } = await supabase.from('catalogues_produits').insert({
@@ -68,6 +100,8 @@ export async function POST(request: NextRequest) {
           type_frequence,
           mode_fas,
           prix_mensuel,
+          remise_type,
+          remise_valeur,
           prix_vente,
           prix_installation,
           engagement_mois,
@@ -75,7 +109,8 @@ export async function POST(request: NextRequest) {
           tags,
           caracteristiques: {}, // Default empty
           est_produit_base: false,
-          actif: true
+          actif,
+          destinations,
         });
 
         if (error) {
