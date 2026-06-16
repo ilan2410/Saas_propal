@@ -777,6 +777,12 @@ export function SpQuestionnaireUI({
   const [catalogueSearch, setCatalogueSearch] = useState('');
   const [editingDiscountFor, setEditingDiscountFor] = useState<string | null>(null);
   const [discountPrixOverrides, setDiscountPrixOverrides] = useState<Record<string, string>>({});
+  const [editingLoopLabel, setEditingLoopLabel] = useState<{
+    instanceId: string;
+    groupId: string;
+    iterIndex: number;
+    value: string;
+  } | null>(null);
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
@@ -918,7 +924,15 @@ export function SpQuestionnaireUI({
         }
 
         for (let iter = 0; iter < iterationCount; iter++) {
-          const iterLabel = labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
+          const editedLabelRep = reponses.find(
+            (r) => r.question_id === `loop_label__${groupId}__iter_${iter}`,
+          );
+          const editedLabel =
+            editedLabelRep && typeof editedLabelRep.valeur === 'string'
+              ? editedLabelRep.valeur.trim()
+              : '';
+          const iterLabel =
+            editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
           for (const lq of loopQuestions) {
             result.push({
               question: lq,
@@ -1645,10 +1659,53 @@ export function SpQuestionnaireUI({
               {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
             </p>
           )}
-          {currentExpanded.iterationLabel && (
-            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-              {currentExpanded.iterationLabel}
-            </span>
+          {currentExpanded.iterationLabel !== undefined && currentExpanded.question.groupe_boucle_id && (
+            editingLoopLabel?.instanceId === currentExpanded.instanceId ? (
+              <input
+                autoFocus
+                value={editingLoopLabel.value}
+                onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: e.target.value })}
+                onBlur={() => {
+                  if (!editingLoopLabel) return;
+                  const { groupId, iterIndex, value } = editingLoopLabel;
+                  const qId = `loop_label__${groupId}__iter_${iterIndex}`;
+                  setReponses((prev) => [
+                    ...prev.filter((r) => r.question_id !== qId),
+                    { question_id: qId, valeur: value.trim() },
+                  ]);
+                  setEditingLoopLabel(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!editingLoopLabel) return;
+                    const { groupId, iterIndex, value } = editingLoopLabel;
+                    const qId = `loop_label__${groupId}__iter_${iterIndex}`;
+                    setReponses((prev) => [
+                      ...prev.filter((r) => r.question_id !== qId),
+                      { question_id: qId, valeur: value.trim() },
+                    ]);
+                    setEditingLoopLabel(null);
+                  }
+                  if (e.key === 'Escape') setEditingLoopLabel(null);
+                }}
+                className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium border border-purple-400 outline-none w-44"
+              />
+            ) : (
+              <span
+                className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium cursor-pointer hover:bg-purple-200 transition-colors"
+                title="Cliquer pour modifier le numéro"
+                onClick={() =>
+                  setEditingLoopLabel({
+                    instanceId: currentExpanded.instanceId,
+                    groupId: currentExpanded.question.groupe_boucle_id!,
+                    iterIndex: currentExpanded.iterationIndex,
+                    value: currentExpanded.iterationLabel!,
+                  })
+                }
+              >
+                {currentExpanded.iterationLabel}
+              </span>
+            )
           )}
 
           {currentQuestion.affichage === 'oui_non' && (

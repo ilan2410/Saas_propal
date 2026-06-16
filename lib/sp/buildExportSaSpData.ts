@@ -360,10 +360,16 @@ function buildLoopLabelsByGroup(
       );
     }
 
-    // Compléter avec des labels par défaut si manquants
     const finalLabels: string[] = [];
     for (let iter = 0; iter < iterationCount; iter++) {
-      finalLabels.push(labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`);
+      const editedRep = reponses.find(
+        (r) => r.question_id === `loop_label__${q.groupe_boucle_id}__iter_${iter}`,
+      );
+      const editedLabel =
+        editedRep && typeof editedRep.valeur === 'string' ? editedRep.valeur.trim() : '';
+      finalLabels.push(
+        editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`,
+      );
     }
     out.set(q.groupe_boucle_id, finalLabels);
   }
