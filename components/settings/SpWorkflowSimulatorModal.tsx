@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, WordConfig, SpCustomization } from '@/types';
+import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -30,6 +31,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [objectifsConfig, setObjectifsConfig] = useState<SpObjectifConfig[]>([]);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
   const [spConfigModeClient, setSpConfigModeClient] = useState<SpConfigModeClient | undefined>(undefined);
+  const [spCustomization, setSpCustomization] = useState<SpCustomization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
   const [propositionId, setPropositionId] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setObjectifsConfig(prefsData?.preferences?.sp_objectifs_config ?? []);
       setSpConfigResumeRef(fileConfig?.sp_config_resume_ref);
       setSpConfigModeClient(fileConfig?.sp_config_mode_client);
+      setSpCustomization(prefsData?.preferences?.sp_customization);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [templateId]);
@@ -164,6 +167,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       <FloatingModal
         defaultWidth={700}
         defaultHeight={600}
+        backdrop={buildQuestionnaireBgBackdrop(spCustomization)}
         header={
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2">

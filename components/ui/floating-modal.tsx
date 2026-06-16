@@ -10,6 +10,7 @@ interface FloatingModalProps {
   defaultHeight?: number;
   minWidth?: number;
   minHeight?: number;
+  backdrop?: ReactNode;
 }
 
 type DragState =
@@ -31,6 +32,7 @@ export function FloatingModal({
   defaultHeight = 620,
   minWidth = 480,
   minHeight = 400,
+  backdrop,
 }: FloatingModalProps) {
   const [left, setLeft] = useState(0);
   const [top, setTop] = useState(0);
@@ -80,7 +82,7 @@ export function FloatingModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50" />
+      {backdrop !== undefined ? backdrop : <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50" />}
       <div
         className="fixed z-[55] flex flex-col rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
         style={{

@@ -6,6 +6,7 @@ import { Upload, X, Check, AlertCircle, FileSpreadsheet, ArrowRight } from 'luci
 import { useRouter } from 'next/navigation';
 
 type ImportStep = 'upload' | 'mapping' | 'preview' | 'importing';
+type UpdateMode = 'skip' | 'upsert';
 
 interface ImportProductModalProps {
   isOpen: boolean;
@@ -49,7 +50,8 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
   const [data, setData] = useState<unknown[][]>([]);
   const [mapping, setMapping] = useState<MappedField[]>(SYSTEM_FIELDS);
   const [importErrors, setImportErrors] = useState<string[]>([]);
-  const [successCount, setSuccessCount] = useState(0);
+  const [resultStats, setResultStats] = useState({ created: 0, updated: 0, skipped: 0 });
+  const [updateMode, setUpdateMode] = useState<UpdateMode>('skip');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -112,7 +114,7 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
   const processImport = async () => {
     setStep('importing');
     setImportErrors([]);
-    setSuccessCount(0);
+    setResultStats({ created: 0, updated: 0, skipped: 0 });
 
     const productsToImport = data.map((row) => {
       const product: Record<string, unknown> = {};
@@ -140,16 +142,21 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
       const res = await fetch('/api/catalogue/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           products: productsToImport,
-          is_global: isAdmin
+          is_global: isAdmin,
+          update_mode: updateMode,
         }),
       });
 
       const result = await res.json();
-      
+
       if (result.success) {
-        setSuccessCount(result.count);
+        setResultStats({
+          created: result.created || 0,
+          updated: result.updated || 0,
+          skipped: result.skipped || 0,
+        });
         if (result.errors && result.errors.length > 0) {
           setImportErrors(result.errors);
         } else {
@@ -201,6 +208,40 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
           {step === 'mapping' && (
             <div className="space-y-4">
               <p className="text-sm text-gray-600 mb-4">Associez les colonnes de votre fichier aux champs du catalogue.</p>
+
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mode d&apos;import</label>
+                <div className="flex rounded-lg bg-white p-1 border border-blue-200 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setUpdateMode('skip')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      updateMode === 'skip'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    Ajouter seulement
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUpdateMode('upsert')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      updateMode === 'upsert'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    Ajouter + Mettre à jour
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {updateMode === 'skip'
+                    ? 'Les doublons (même nom + fournisseur + tarif) seront ignorés.'
+                    : 'Les produits existants seront remplacés par les nouvelles données du fichier.'}
+                </p>
+              </div>
+
               <div className="space-y-2">
                 {mapping.map((field) => (
                   <div key={field.systemField} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
@@ -234,8 +275,14 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertCircle className="w-8 h-8" />
                   </div>
-                  <h3 className="text-lg font-bold mb-2">Erreur d&apos;importation</h3>
-                  <p className="mb-4">{successCount} produits importés avec succès.</p>
+                  <h3 className="text-lg font-bold mb-2">Importation terminée avec des erreurs</h3>
+                  <div className="mb-4 text-sm text-gray-600">
+                    <span className="text-green-600 font-medium">{resultStats.created} créés</span>
+                    {' · '}
+                    <span className="text-blue-600 font-medium">{resultStats.updated} mis à jour</span>
+                    {' · '}
+                    <span className="text-gray-500 font-medium">{resultStats.skipped} ignorés</span>
+                  </div>
                   <div className="text-left bg-red-50 p-4 rounded-lg text-sm max-h-40 overflow-y-auto">
                     <ul className="list-disc pl-4">
                       {importErrors.map((err, i) => (
@@ -244,13 +291,17 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
                     </ul>
                   </div>
                 </div>
-              ) : successCount > 0 ? (
+              ) : (resultStats.created + resultStats.updated + resultStats.skipped) > 0 ? (
                 <div className="text-green-600">
                   <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Check className="w-8 h-8" />
                   </div>
                   <h3 className="text-lg font-bold">Importation réussie !</h3>
-                  <p>{successCount} produits ajoutés.</p>
+                  <div className="mt-2 text-sm text-gray-600 space-y-1">
+                    <p><span className="text-green-600 font-medium">{resultStats.created} créés</span></p>
+                    <p><span className="text-blue-600 font-medium">{resultStats.updated} mis à jour</span></p>
+                    {resultStats.skipped > 0 && <p><span className="text-gray-500 font-medium">{resultStats.skipped} ignorés (doublons)</span></p>}
+                  </div>
                 </div>
               ) : (
                 <div className="text-blue-600">
