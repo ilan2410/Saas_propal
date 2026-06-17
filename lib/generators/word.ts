@@ -1,7 +1,21 @@
 // Générateur Word - Modification directe du template
+import Docxtemplater from 'docxtemplater';
+import PizZip from 'pizzip';
 import { createClient } from '@/lib/supabase/server';
 import { WordConfig } from '@/types';
-import { renderWordWithImages } from '@/lib/generators/word-image';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ImageModule = require('docxtemplater-image-module') as new (opts: {
+  centered?: boolean;
+  fileType?: string;
+  getImage: (tagValue: string) => Promise<Buffer> | Buffer;
+  getSize: (img: Buffer, tagValue: string) => [number, number];
+}) => object;
+
+// 1×1 transparent PNG — placeholder when no image URL is provided
+const PLACEHOLDER_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 /**
  * Remplit un template Word en le dupliquant et en le modifiant
@@ -28,7 +42,40 @@ export async function fillWordTemplate(
     }
     const templateBuffer = await response.arrayBuffer();
 
-    // 2. Préparer les données selon le mapping
+    // 2. Charger le template avec PizZip
+    const zip = new PizZip(Buffer.from(templateBuffer));
+
+    // 3. Initialiser Docxtemplater avec module image
+    const imageCache = new Map<string, Buffer>();
+    const imageModule = new ImageModule({
+      centered: false,
+      fileType: 'docx',
+      getImage: async (tagValue: string) => {
+        if (!tagValue || !/^https?:\/\//.test(tagValue)) return PLACEHOLDER_PNG;
+        if (imageCache.has(tagValue)) return imageCache.get(tagValue)!;
+        try {
+          const imgRes = await fetch(tagValue);
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          imageCache.set(tagValue, buf);
+          return buf;
+        } catch {
+          return PLACEHOLDER_PNG;
+        }
+      },
+      getSize: (_img: Buffer, _tagValue: string) => [150, 100] as [number, number],
+    });
+
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      modules: [imageModule],
+      delimiters: {
+        start: '{{',
+        end: '}}',
+      },
+    });
+
+    // 4. Préparer les données selon le mapping
     const mappedData: Record<string, unknown> = {};
 
     for (const [templateVar, dataKey] of Object.entries(
@@ -41,8 +88,14 @@ export async function fillWordTemplate(
         value === undefined || value === null ? '' : typeof value === 'string' ? value : String(value);
     }
 
-    // 3. Remplir le template (images supportées, y compris en boucle de tableau).
-    const filledBuffer = Buffer.from(await renderWordWithImages(templateBuffer, mappedData));
+    // 5. Remplir le template (MODIFICATION DIRECTE)
+    await doc.renderAsync(mappedData);
+
+    // 6. Générer le buffer du fichier modifié
+    const filledBuffer = doc.getZip().generate({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+    });
 
     // 7. Upload du fichier dupliqué et modifié vers Supabase Storage
     const fileName = `proposition-${Date.now()}.docx`;

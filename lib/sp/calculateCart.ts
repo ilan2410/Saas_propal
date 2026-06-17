@@ -200,13 +200,19 @@ export function calculateCartSummary(
       if (nom === FREE_ENTRY_MARKER) {
         const libre = parseLibreReponse(reponses, rep.question_id);
         if (libre) {
+          const quantite = getQuantite(reponses, rep.question_id, libre.label);
+          const prixOverride = getPrixOverride(reponses, rep.question_id, libre.label, undefined);
+          const prixTotal = prixOverride != null
+            ? prixOverride
+            : libre.prix * quantite;
+          const fasOverride = getFas(reponses, rep.question_id, libre.label);
           lines.push({
             produitNom: libre.label,
             categorie: libre.categorie,
-            type_frequence: 'unique',
-            quantite: 1,
-            prixTotal: libre.prix,
-            fasTotal: 0,
+            type_frequence: libre.type_frequence ?? 'unique',
+            quantite,
+            prixTotal,
+            fasTotal: fasOverride || 0,
             instanceId: rep.question_id,
           });
         }

@@ -286,6 +286,7 @@ interface FreeEntryDraft {
   label: string;
   prix: string;
   categorie: CatalogueCategorie;
+  type_frequence?: 'mensuel' | 'unique';
 }
 
 function FreeEntryForm({
@@ -297,6 +298,8 @@ function FreeEntryForm({
   onChange: (next: FreeEntryDraft) => void;
   hidePrix?: boolean;
 }) {
+  const canBeMensuel = ['mobile', 'fixe', 'internet', 'cloud'].includes(draft.categorie);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -311,7 +314,9 @@ function FreeEntryForm({
       </div>
       {!hidePrix && (
         <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600 shrink-0 w-24">Prix (€) :</label>
+          <label className="text-xs text-gray-600 shrink-0 w-24">
+            {draft.type_frequence === 'mensuel' ? 'Prix mensuel (€) :' : 'Prix (€) :'}
+          </label>
           <input
             type="number" min="0" step="0.01"
             value={draft.prix}
@@ -325,13 +330,33 @@ function FreeEntryForm({
         <label className="text-xs text-gray-600 shrink-0 w-24">Catégorie :</label>
         <select
           value={draft.categorie}
-          onChange={(e) => onChange({ ...draft, categorie: e.target.value as CatalogueCategorie })}
+          onChange={(e) => {
+            const categorie = e.target.value as CatalogueCategorie;
+            onChange({
+              ...draft,
+              categorie,
+              type_frequence: ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie)
+                ? draft.type_frequence
+                : 'unique',
+            });
+          }}
           className="h-7 text-sm border border-gray-300 rounded px-2 bg-white"
         >
           {FREE_ENTRY_CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>{c.label}</option>
           ))}
         </select>
+        {canBeMensuel && (
+          <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.type_frequence === 'mensuel'}
+              onChange={(e) => onChange({ ...draft, type_frequence: e.target.checked ? 'mensuel' : 'unique' })}
+              className="h-3.5 w-3.5"
+            />
+            Mensuel
+          </label>
+        )}
       </div>
     </div>
   );
@@ -352,6 +377,7 @@ function buildFreeEntryReponses(
     label: draft.label.trim(),
     prix: Number(draft.prix) || 0,
     categorie: draft.categorie,
+    type_frequence: draft.type_frequence ?? 'unique',
   };
   return [{ question_id: 'libre_' + instanceId, valeur: JSON.stringify(produit) }];
 }
@@ -404,6 +430,7 @@ function CatalogueMultipleChoiceInput({
     label: '',
     prix: '',
     categorie: 'equipement',
+    type_frequence: 'unique',
   });
   const [search, setSearch] = useState('');
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {
@@ -694,6 +721,7 @@ function CatalogueMultipleChoiceInput({
                 label: freeEntryDraft.label.trim(),
                 prix: Number(freeEntryDraft.prix) || 0,
                 categorie: freeEntryDraft.categorie,
+                type_frequence: freeEntryDraft.type_frequence ?? 'unique',
               } satisfies SpProduitLibre) });
             }
             onSubmit(names, extraReponses.length > 0 ? extraReponses : undefined);
@@ -1973,7 +2001,7 @@ export function SpQuestionnaireUI({
                   type="button"
                   onClick={() => setPendingFreeEntry({
                     instanceId: currentExpanded.instanceId,
-                    draft: { label: '', prix: '', categorie: 'equipement' },
+                    draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
                   })}
                   className={`text-left px-3 py-2 rounded-md border border-dashed transition-colors ${
                     pendingFreeEntry?.instanceId === currentExpanded.instanceId
@@ -2012,7 +2040,7 @@ export function SpQuestionnaireUI({
                     if (e.target.value === FREE_ENTRY_MARKER) {
                       setPendingFreeEntry({
                         instanceId: currentExpanded.instanceId,
-                        draft: { label: '', prix: '', categorie: 'equipement' },
+                        draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
                       });
                       return;
                     }

@@ -563,13 +563,14 @@ export interface SpObjectifConfig {
 
 /**
  * Saisie libre (option "Autre valeur") associée à une question SP catalogue
- * lorsque `options_libres === true`. Toujours ponctuel.
+ * lorsque `options_libres === true`.
  * Stocké sous question_id = `libre_<instanceId>`, valeur = JSON stringifié.
  */
 export interface SpProduitLibre {
   label: string;
   prix: number;
   categorie: CatalogueCategorie;
+  type_frequence?: 'mensuel' | 'unique';
 }
 
 export interface SpAdresse {
