@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, WordConfig, SpCustomization } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
@@ -31,6 +31,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [objectifsConfig, setObjectifsConfig] = useState<SpObjectifConfig[]>([]);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
   const [spConfigModeClient, setSpConfigModeClient] = useState<SpConfigModeClient | undefined>(undefined);
+  const [spPreferencesProduits, setSpPreferencesProduits] = useState<SpPreferencesProduits | undefined>(undefined);
   const [spCustomization, setSpCustomization] = useState<SpCustomization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
@@ -75,6 +76,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setObjectifsConfig(prefsData?.preferences?.sp_objectifs_config ?? []);
       setSpConfigResumeRef(fileConfig?.sp_config_resume_ref);
       setSpConfigModeClient(fileConfig?.sp_config_mode_client);
+      setSpPreferencesProduits(fileConfig?.sp_preferences_produits);
       setSpCustomization(prefsData?.preferences?.sp_customization);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -259,6 +261,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spConfigMoisOfferts={spConfigMoisOfferts}
               spConfigResumeRef={spConfigResumeRef}
               spConfigModeClient={spConfigModeClient}
+              spPreferencesProduits={spPreferencesProduits}
               spCodesPromo={codesPromo}
               spCodesPromoMode={codesPromoMode}
               spCodesPromoMasquerSaisie={codesPromoMasquerSaisie}

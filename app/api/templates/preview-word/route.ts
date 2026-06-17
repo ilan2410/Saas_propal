@@ -13,7 +13,7 @@ import {
 } from '@/lib/generators/word-data-utils';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
-import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail } from '@/types';
+import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail, SpPreferencesProduits } from '@/types';
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
@@ -129,10 +129,11 @@ function repairSpCompletesFromQuestionnaire(
   questions: SpQuestion[],
   catalogue: CatalogueProduit[],
   donneesExtraites: UnknownRecord,
+  spPreferencesProduits?: SpPreferencesProduits,
 ): SuggestionsSpCompletes | null {
   if (!sp || reponses.length === 0 || questions.length === 0 || catalogue.length === 0) return sp;
 
-  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites);
+  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, undefined, undefined, spPreferencesProduits);
   const catalogueMap = new Map<string, CatalogueProduit>();
   for (const item of catalogue) catalogueMap.set(item.id, item);
   const mobileCartLines = cart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'mobile');
@@ -413,7 +414,8 @@ export async function POST(request: NextRequest) {
     const catalogue = Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [];
 
     const storedSpCompletes = (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
-    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData);
+    const spPreferencesProduits = isPlainObject(fileConfig.sp_preferences_produits) ? fileConfig.sp_preferences_produits as unknown as SpPreferencesProduits : undefined;
+    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData, spPreferencesProduits);
     const wordCfg = fileConfig as unknown as WordConfig;
     const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
     // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
-import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes } from '@/types';
+import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -16,10 +16,11 @@ function repairMaterialDetailFromQuestionnaire(
   questions: SpQuestion[],
   catalogue: CatalogueProduit[],
   donneesExtraites: UnknownRecord,
+  spPreferencesProduits?: SpPreferencesProduits,
 ): SuggestionsSpCompletes | null {
   if (!sp || reponses.length === 0 || questions.length === 0 || catalogue.length === 0) return sp;
 
-  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites);
+  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, undefined, undefined, spPreferencesProduits);
   const catalogueMap = new Map<string, CatalogueProduit>();
   for (const item of catalogue) catalogueMap.set(item.id, item);
   const materielCartLines = cart.lines.filter((line) =>
@@ -146,12 +147,17 @@ export async function POST(
     const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
     const spReponses = Array.isArray(proposition.sp_reponses) ? proposition.sp_reponses as SpQuestionReponse[] : [];
     const catalogue = Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [];
+    const templateFileCfg = typeof template.file_config === 'object' && template.file_config !== null ? template.file_config as UnknownRecord : {};
+    const spPreferencesProduits = typeof templateFileCfg.sp_preferences_produits === 'object' && templateFileCfg.sp_preferences_produits !== null
+      ? templateFileCfg.sp_preferences_produits as SpPreferencesProduits
+      : undefined;
     const suggestionsSpCompletes = repairMaterialDetailFromQuestionnaire(
       (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null,
       spReponses,
       templateQuestions,
       catalogue,
       donnees as UnknownRecord,
+      spPreferencesProduits,
     );
 
     // Générer le fichier

@@ -1,13 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ShoppingCart, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import { ShoppingCart, ChevronDown, ChevronUp } from 'lucide-react';
 import type {
   CatalogueProduit,
   SpConfigLoyer,
   SpConfigMoisOfferts,
   SpQuestion,
   SpQuestionReponse,
+  SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 import { formatEuro } from '@/lib/sp/calculLoyer';
@@ -19,6 +20,7 @@ interface SpRealTimeCartProps {
   donneesExtraites?: Record<string, unknown>;
   spConfigLoyer?: SpConfigLoyer;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
+  spPreferencesProduits?: SpPreferencesProduits;
 }
 
 function Line({
@@ -131,11 +133,7 @@ function CategoryAccordion({
             bold ? 'font-semibold text-gray-900' : muted ? 'text-gray-500' : 'text-gray-700'
           }`}
         >
-          {expanded ? (
-            <ChevronDown className="h-3 w-3 text-gray-400" />
-          ) : (
-            <ChevronRight className="h-3 w-3 text-gray-400" />
-          )}
+          <ChevronDown className={`h-3 w-3 text-gray-400 transition-transform ${expanded ? '' : '-rotate-90'}`} />
           {label}
         </span>
         <span
@@ -170,6 +168,7 @@ export function SpRealTimeCart({
   donneesExtraites,
   spConfigLoyer,
   spConfigMoisOfferts,
+  spPreferencesProduits,
 }: SpRealTimeCartProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -183,8 +182,8 @@ export function SpRealTimeCart({
     });
 
   const summary = useMemo(
-    () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer, spConfigMoisOfferts),
-    [reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts],
+    () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits),
+    [reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits],
   );
 
   const grouped = useMemo(() => {
@@ -375,11 +374,7 @@ export function SpRealTimeCart({
                     className="w-full flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-blue-600 hover:opacity-80"
                   >
                     <span className="flex items-center gap-1">
-                      {expandedCats.has('loyer_detail') ? (
-                        <ChevronDown className="h-3 w-3" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3" />
-                      )}
+                      <ChevronDown className={`h-3 w-3 transition-transform ${expandedCats.has('loyer_detail') ? '' : '-rotate-90'}`} />
                       Loyer ({summary.loyer.duree_mois} mois)
                     </span>
                   </button>
@@ -401,11 +396,7 @@ export function SpRealTimeCart({
                               className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-700"
                             >
                               <span className="flex items-center gap-1">
-                                {expandedCats.has('marge_promo') ? (
-                                  <ChevronDown className="h-3 w-3 text-gray-400" />
-                                ) : (
-                                  <ChevronRight className="h-3 w-3 text-gray-400" />
-                                )}
+                                <ChevronDown className={`h-3 w-3 text-gray-400 transition-transform ${expandedCats.has('marge_promo') ? '' : '-rotate-90'}`} />
                                 Marge
                               </span>
                               <span className="tabular-nums">{formatEuro(summary.marge)}</span>

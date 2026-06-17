@@ -7,10 +7,12 @@ import type {
   SpConfigMoisOfferts,
   SpProduitLibre,
   SpCodePromoInfo,
+  SpPreferencesProduits,
 } from '@/types';
 import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
 import { findApplicableBareme } from './evaluateBareme';
 import { collectQuestionVariableValues } from './questionVariables';
+import { evaluateGroupes } from './evaluateConditions';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -167,6 +169,7 @@ export function calculateCartSummary(
   donneesExtraites: Record<string, unknown> = {},
   spConfigLoyer?: SpConfigLoyer,
   spConfigMoisOfferts?: SpConfigMoisOfferts,
+  spPreferencesProduits?: SpPreferencesProduits,
 ): SpCartSummary {
   const lines: CartLine[] = [];
 
@@ -261,6 +264,57 @@ export function calculateCartSummary(
         if (line.produitId === target.id || line.produitNom === target.nom) {
           line.prixTotal = unitPrix * line.quantite;
         }
+      }
+    }
+  }
+
+  // 2b. Inject auto-products from preferences
+  if (spPreferencesProduits) {
+    const alreadyAutoIds = new Set<string>();
+
+    for (const produitId of spPreferencesProduits.produits_fixes_ids) {
+      if (alreadyAutoIds.has(produitId)) continue;
+      const p = catalogue.find((c) => c.id === produitId);
+      if (!p || !p.actif) continue;
+      alreadyAutoIds.add(produitId);
+      lines.push({
+        produitNom: p.nom,
+        produitId: p.id,
+        categorie: p.categorie,
+        type_frequence: p.type_frequence,
+        quantite: 1,
+        prixTotal: defaultPrixUnitaire(p),
+        fasTotal: p.prix_installation ?? 0,
+        instanceId: `auto_fixed_${p.id}`,
+      });
+    }
+
+    for (const regle of spPreferencesProduits.regles_auto) {
+      if (!regle.actif) continue;
+      const condMet = evaluateGroupes(
+        regle.groupes_conditions,
+        regle.logique_declencheur,
+        reponses,
+        donneesExtraites,
+        null,
+        catalogue,
+      );
+      if (!condMet) continue;
+      for (const produitId of regle.produits_ids) {
+        if (alreadyAutoIds.has(`cond_${regle.id}_${produitId}`)) continue;
+        const p = catalogue.find((c) => c.id === produitId);
+        if (!p || !p.actif) continue;
+        alreadyAutoIds.add(`cond_${regle.id}_${produitId}`);
+        lines.push({
+          produitNom: p.nom,
+          produitId: p.id,
+          categorie: p.categorie,
+          type_frequence: p.type_frequence,
+          quantite: 1,
+          prixTotal: defaultPrixUnitaire(p),
+          fasTotal: p.prix_installation ?? 0,
+          instanceId: `auto_cond_${regle.id}_${p.id}`,
+        });
       }
     }
   }

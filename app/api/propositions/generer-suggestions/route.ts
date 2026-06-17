@@ -495,7 +495,7 @@ function buildSpCompletes(
   }
 
   if (templateQuestions.length > 0 && catalogueProduits && catalogueProduits.length > 0) {
-    const questionnaireCart = calculateCartSummary(reponses, templateQuestions, catalogueProduits, {});
+    const questionnaireCart = calculateCartSummary(reponses, templateQuestions, catalogueProduits, {}, undefined, undefined, wordCfg.sp_preferences_produits);
     const mobileCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'mobile');
     const fixeCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'fixe');
     const internetCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'internet');

@@ -9,7 +9,7 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
@@ -44,6 +44,7 @@ export interface SpQuestionnaireUIProps {
   templateId?: string;
   spConfigResumeRef?: SpConfigResumeRef;
   spConfigModeClient?: SpConfigModeClient;
+  spPreferencesProduits?: SpPreferencesProduits;
 }
 
 type MessageBubble =
@@ -782,6 +783,7 @@ export function SpQuestionnaireUI({
   templateId,
   spConfigResumeRef,
   spConfigModeClient,
+  spPreferencesProduits,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -1538,9 +1540,9 @@ export function SpQuestionnaireUI({
               const fixe = spConfigResumeRef?.partie_fixe?.trim();
               if (!fixe || !spConfigResumeRef) return null;
               const partieVariable = spConfigResumeRef.partie_variable;
-              const cartWithMarge = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+              const cartWithMarge = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
               const cartSansMarge = partieVariable === 'loyer_sans_marge'
-                ? calculateCartSummary(reponses.filter((r) => r.question_id !== 'sp_marge_calculee'), questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts)
+                ? calculateCartSummary(reponses.filter((r) => r.question_id !== 'sp_marge_calculee'), questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits)
                 : null;
               let montant: number | null | undefined = undefined;
               if (partieVariable === 'loyer_avec_marge') {
@@ -1587,7 +1589,7 @@ export function SpQuestionnaireUI({
             </div>
             <div className="px-6 py-6 flex flex-col items-center gap-1">
               {(() => {
-                const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+                const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
                 const loyer = cart.loyer?.loyer_mensuel;
                 return loyer != null ? (
                   <p className="text-4xl font-bold text-gray-900">
@@ -2363,6 +2365,7 @@ export function SpQuestionnaireUI({
               donneesExtraites,
               spConfigLoyer,
               spConfigMoisOfferts,
+              spPreferencesProduits,
             );
             const baseAvantMarge =
               baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites;
@@ -2519,7 +2522,7 @@ export function SpQuestionnaireUI({
               const margeNum = spCodesPromoMode === 'soustraction' ? existingMarge - found.valeur : existingMarge + found.valeur;
               const margeVal = String(margeNum);
               const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
-              const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts);
+              const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
               const baseLoyer = baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites + margeNum;
               const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
               const extras: SpQuestionReponse[] = [
@@ -2889,6 +2892,7 @@ export function SpQuestionnaireUI({
           donneesExtraites,
           spConfigLoyer,
           spConfigMoisOfferts,
+          spPreferencesProduits,
         );
         // Pour la comparaison, on aligne sur le loyer mensuel SP (qui inclut
         // matériel, FAS, cadeaux, indemnités, marge). Fallback : total abonnements.
@@ -2932,6 +2936,7 @@ export function SpQuestionnaireUI({
                 donneesExtraites={donneesExtraites}
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
+                spPreferencesProduits={spPreferencesProduits}
                 onUpdateReponses={(nextReponses) => {
                   setReponses(nextReponses);
                 }}
@@ -2956,6 +2961,7 @@ export function SpQuestionnaireUI({
                 donneesExtraites={donneesExtraites}
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
+                spPreferencesProduits={spPreferencesProduits}
               />
             </div>
           </div>

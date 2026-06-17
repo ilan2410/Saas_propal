@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Archive, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import { Archive, ChevronDown, ChevronUp } from 'lucide-react';
 import { calculateSaCartSummary, type SaCartLine } from '@/lib/sp/calculateSaCart';
 import { formatEuro } from '@/lib/sp/calculLoyer';
 
@@ -57,7 +57,7 @@ function CategoryAccordion({ label, total, lines, expanded, onToggle }: Category
         className="w-full flex items-center justify-between text-xs text-gray-700 hover:text-gray-900"
       >
         <span className="flex items-center gap-1">
-          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? '' : '-rotate-90'}`} />
           {label}
         </span>
         <span className="tabular-nums">
@@ -201,7 +201,7 @@ export function SaRealTimeCart({ donneesExtraites, spTotalMensuel }: SaRealTimeC
                 grouped.internet.length > 0) && (
                 <details className="ml-3">
                   <summary className="cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 list-none flex items-center gap-1">
-                    <ChevronRight className="h-3 w-3" />
+                    <ChevronDown className="h-3 w-3 -rotate-90" />
                     Détail par ligne (informatif)
                   </summary>
                   <div className="mt-1 space-y-0.5">

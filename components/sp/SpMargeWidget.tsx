@@ -8,6 +8,7 @@ import type {
   SpConfigMoisOfferts,
   SpQuestion,
   SpQuestionReponse,
+  SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
@@ -20,6 +21,7 @@ interface SpMargeWidgetProps {
   donneesExtraites?: Record<string, unknown>;
   spConfigLoyer?: SpConfigLoyer;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
+  spPreferencesProduits?: SpPreferencesProduits;
   onUpdateReponses: (nextReponses: SpQuestionReponse[]) => void;
 }
 
@@ -30,6 +32,7 @@ export function SpMargeWidget({
   donneesExtraites,
   spConfigLoyer,
   spConfigMoisOfferts,
+  spPreferencesProduits,
   onUpdateReponses,
 }: SpMargeWidgetProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -74,12 +77,13 @@ export function SpMargeWidget({
         donneesExtraites ?? {},
         spConfigLoyer,
         spConfigMoisOfferts,
+        spPreferencesProduits,
       );
       const baseLoyer = summary.totalPonctuel + summary.remiseMoisOffert + summary.indemnites + margeNum;
       const loyer = bareme ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
       return { loyer, dureeMois, baseLoyer, margeNum };
     },
-    [resolveDureeMois, spConfigLoyer, reponses, donneesExtraites, catalogue, questions, spConfigMoisOfferts],
+    [resolveDureeMois, spConfigLoyer, reponses, donneesExtraites, catalogue, questions, spConfigMoisOfferts, spPreferencesProduits],
   );
 
   const loyerResult = useMemo(() => computeLoyer(margeInput), [margeInput, computeLoyer]);

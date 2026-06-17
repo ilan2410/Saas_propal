@@ -163,6 +163,7 @@ export interface WordConfig {
   sp_config_resiliation?: SpConfigResiliation;
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
+  sp_preferences_produits?: SpPreferencesProduits;
 }
 
 export interface PDFConfig {
@@ -430,6 +431,20 @@ export interface SpRegleRemise {
   produits_ids?: string[];
   categories?: string[];
   fournisseurs?: string[];
+}
+
+export interface SpRegleProduitAuto {
+  id: string;
+  nom: string;
+  actif: boolean;
+  produits_ids: string[];
+  groupes_conditions: SpGroupeConditions[];
+  logique_declencheur: SpConditionLogique;
+}
+
+export interface SpPreferencesProduits {
+  produits_fixes_ids: string[];
+  regles_auto: SpRegleProduitAuto[];
 }
 
 export interface SpFiltresCatalogue {

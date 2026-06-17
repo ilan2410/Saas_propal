@@ -7,6 +7,7 @@ import type {
   SpCustomization,
   SpQuestion,
   SpQuestionReponse,
+  SpPreferencesProduits,
 } from '@/types';
 import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-generator';
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
@@ -104,23 +105,25 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
   // 6. Récupérer la config loyer (depuis preferences ou template file_config)
   let spConfigLoyer: SpConfigLoyer | undefined;
+  let templateFileCfg: Record<string, unknown> = {};
   if (isRecord(prefs.sp_config_loyer)) {
     spConfigLoyer = prefs.sp_config_loyer as unknown as SpConfigLoyer;
   }
-  if (!spConfigLoyer && typeof templateId === 'string') {
+  if (typeof templateId === 'string') {
     const { data: tmpl } = await supabase
       .from('proposition_templates')
       .select('file_config')
       .eq('id', templateId)
       .single();
-    const fileCfg = isRecord(tmpl?.file_config) ? (tmpl.file_config as Record<string, unknown>) : {};
-    if (isRecord(fileCfg.sp_config_loyer)) {
-      spConfigLoyer = fileCfg.sp_config_loyer as unknown as SpConfigLoyer;
+    templateFileCfg = isRecord(tmpl?.file_config) ? (tmpl.file_config as Record<string, unknown>) : {};
+    if (!spConfigLoyer && isRecord(templateFileCfg.sp_config_loyer)) {
+      spConfigLoyer = templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer;
     }
   }
 
   // 7. Calculer le panier SP en temps réel
-  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer);
+  const spPreferencesProduits = isRecord(templateFileCfg.sp_preferences_produits) ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits) : undefined;
+  const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, undefined, spPreferencesProduits);
 
   // 8. Construire les données d'export
   const exportData = buildExportSaSpData({

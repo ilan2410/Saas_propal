@@ -29,9 +29,11 @@ import {
   Calculator,
   Plus,
   Percent,
-  EyeOff
+  EyeOff,
+  Package
 } from 'lucide-react';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
+import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 import { SpLoyerManager } from '@/components/settings/SpLoyerManager';
 import { SpResiliationManager } from '@/components/settings/SpResiliationManager';
@@ -66,7 +68,7 @@ type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees'
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence';
+type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -2346,12 +2348,25 @@ export default function SettingsPage({
                 <Monitor className="w-3.5 h-3.5" />
                 Apparence
               </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('preferences_produits')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'preferences_produits'
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Préférences produits
+              </button>
             </div>
 
             {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
             {questionsSpSubTab === 'objectifs' && <SpObjectifsManager templates={templates} />}
             {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
+            {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
             {questionsSpSubTab === 'apparence' && (
               <div className="space-y-6">
                 <div className="border border-gray-100 rounded-xl p-5 space-y-5">
