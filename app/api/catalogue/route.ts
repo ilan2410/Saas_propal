@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         image_url: body?.image_url ?? null,
         caracteristiques: body?.caracteristiques ?? {},
         tags: body?.tags ?? [],
+        options_produits_ids: body?.options_produits_ids ?? null,
         est_produit_base: false,
         actif: body?.actif ?? true,
       })

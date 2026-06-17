@@ -237,6 +237,45 @@ export function calculateCartSummary(
     }
   }
 
+  // 1b. Collect option products selected alongside a catalogue product
+  for (const rep of reponses) {
+    if (!rep.question_id.startsWith('options_')) continue;
+
+    const optionKeys: string[] = Array.isArray(rep.valeur)
+      ? rep.valeur.map((v) => String(v))
+      : typeof rep.valeur === 'string'
+        ? (() => {
+            try {
+              const parsed = JSON.parse(rep.valeur);
+              return Array.isArray(parsed) ? parsed.map((v) => String(v)) : [rep.valeur];
+            } catch {
+              return [rep.valeur];
+            }
+          })()
+        : [];
+
+    for (const key of optionKeys) {
+      const produit = findProduct(catalogue, key);
+      if (!produit) continue;
+      const quantite = getQuantite(reponses, rep.question_id, produit.nom);
+      const prixOverride = getPrixOverride(reponses, rep.question_id, produit.nom, produit.id);
+      const prixTotal = prixOverride != null
+        ? prixOverride
+        : defaultPrixUnitaire(produit) * quantite;
+      const fasOverride = getFas(reponses, rep.question_id, produit.nom);
+      lines.push({
+        produitNom: produit.nom,
+        produitId: produit.id,
+        categorie: produit.categorie,
+        type_frequence: produit.type_frequence,
+        quantite,
+        prixTotal,
+        fasTotal: fasOverride || produit.prix_installation || 0,
+        instanceId: rep.question_id,
+      });
+    }
+  }
+
   // 2. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
   for (const rep of reponses) {
     if (rep.question_id.startsWith('fas_')) continue;
@@ -277,15 +316,22 @@ export function calculateCartSummary(
       const p = catalogue.find((c) => c.id === produitId);
       if (!p || !p.actif) continue;
       alreadyAutoIds.add(produitId);
+      const instanceId = `auto_fixed_${p.id}`;
+      const quantite = getQuantite(reponses, instanceId, p.nom);
+      const prixOverride = getPrixOverride(reponses, instanceId, p.nom, p.id);
+      const prixTotal = prixOverride != null
+        ? prixOverride
+        : defaultPrixUnitaire(p) * quantite;
+      const fasOverride = getFas(reponses, instanceId, p.nom);
       lines.push({
         produitNom: p.nom,
         produitId: p.id,
         categorie: p.categorie,
         type_frequence: p.type_frequence,
-        quantite: 1,
-        prixTotal: defaultPrixUnitaire(p),
-        fasTotal: p.prix_installation ?? 0,
-        instanceId: `auto_fixed_${p.id}`,
+        quantite,
+        prixTotal,
+        fasTotal: fasOverride || p.prix_installation || 0,
+        instanceId,
       });
     }
 
@@ -305,15 +351,22 @@ export function calculateCartSummary(
         const p = catalogue.find((c) => c.id === produitId);
         if (!p || !p.actif) continue;
         alreadyAutoIds.add(`cond_${regle.id}_${produitId}`);
+        const instanceId = `auto_cond_${regle.id}_${p.id}`;
+        const quantite = getQuantite(reponses, instanceId, p.nom);
+        const prixOverride = getPrixOverride(reponses, instanceId, p.nom, p.id);
+        const prixTotal = prixOverride != null
+          ? prixOverride
+          : defaultPrixUnitaire(p) * quantite;
+        const fasOverride = getFas(reponses, instanceId, p.nom);
         lines.push({
           produitNom: p.nom,
           produitId: p.id,
           categorie: p.categorie,
           type_frequence: p.type_frequence,
-          quantite: 1,
-          prixTotal: defaultPrixUnitaire(p),
-          fasTotal: p.prix_installation ?? 0,
-          instanceId: `auto_cond_${regle.id}_${p.id}`,
+          quantite,
+          prixTotal,
+          fasTotal: fasOverride || p.prix_installation || 0,
+          instanceId,
         });
       }
     }

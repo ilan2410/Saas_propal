@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { ShoppingCart, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ShoppingCart, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import type {
   CatalogueProduit,
   SpConfigLoyer,
+  SpConfigModeClient,
   SpConfigMoisOfferts,
   SpQuestion,
   SpQuestionReponse,
@@ -21,6 +22,42 @@ interface SpRealTimeCartProps {
   spConfigLoyer?: SpConfigLoyer;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spPreferencesProduits?: SpPreferencesProduits;
+  modeClientActif?: boolean;
+  spConfigModeClient?: SpConfigModeClient;
+  onUpdateReponses?: (reponses: SpQuestionReponse[]) => void;
+}
+
+function parseJsonMap(value: SpQuestionReponse['valeur']): Record<string, string> | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
+}
+
+function setReponseMapValue(
+  reponses: SpQuestionReponse[],
+  questionId: string,
+  key: string,
+  value: number,
+): SpQuestionReponse[] {
+  const existing = reponses.find((r) => r.question_id === questionId);
+  const currentMap: Record<string, string> = existing ? (parseJsonMap(existing.valeur) ?? {}) : {};
+  currentMap[key] = String(value);
+  const newValeur = JSON.stringify(currentMap);
+  if (existing) {
+    return reponses.map((r) => (r.question_id === questionId ? { ...r, valeur: newValeur } : r));
+  }
+  return [...reponses, { question_id: questionId, valeur: newValeur }];
 }
 
 function Line({
@@ -51,43 +88,124 @@ function Line({
   );
 }
 
+function EditInput({
+  value,
+  onChange,
+  min,
+  step,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  step?: number;
+}) {
+  return (
+    <input
+      type="number"
+      value={value}
+      min={min ?? 0}
+      step={step ?? 1}
+      onChange={(e) => {
+        const v = parseFloat(e.target.value);
+        if (Number.isFinite(v)) onChange(v);
+      }}
+      className="w-16 rounded border border-blue-300 bg-blue-50 px-1 py-0.5 text-[11px] text-blue-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
 function DetailRow({
   line,
   suffix,
   mode = 'price',
+  editMode,
+  onUpdate,
 }: {
   line: CartLine;
   suffix?: string;
   mode?: 'price' | 'fas';
+  editMode?: boolean;
+  onUpdate?: (field: 'prix' | 'quantite' | 'fas', value: number) => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+
   const qty = line.quantite > 0 ? line.quantite : 1;
   const prixUnitaire = line.prixTotal / qty;
   const headerAmount = mode === 'fas' ? line.fasTotal : line.prixTotal;
   const headerSuffix = mode === 'fas' ? undefined : suffix;
+  const canEdit = editMode && mode !== 'fas';
+
   return (
     <div className="flex flex-col gap-0.5 py-0.5 border-l-2 border-gray-100 pl-2">
       <div className="flex items-start justify-between gap-2 text-[11px] text-gray-700">
         <span className="truncate" title={line.produitNom}>
           {line.produitNom}
         </span>
-        <span className="tabular-nums shrink-0 text-gray-600">
-          {formatEuro(headerAmount)}
-          {headerSuffix && <span className="ml-0.5 text-[9px] text-gray-400">{headerSuffix}</span>}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
-        <span className="tabular-nums">
-          {formatEuro(prixUnitaire)}
-          {suffix && <span className="ml-0.5">{suffix}</span>}
-          <span className="mx-1">×</span>
-          {qty}
-        </span>
-        {mode !== 'fas' && line.fasTotal > 0 && (
-          <span className="tabular-nums">
-            FAS&nbsp;{formatEuro(line.fasTotal)}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="tabular-nums text-gray-600">
+            {formatEuro(headerAmount)}
+            {headerSuffix && <span className="ml-0.5 text-[9px] text-gray-400">{headerSuffix}</span>}
           </span>
-        )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsEditing((v) => !v); }}
+              title={isEditing ? 'Fermer' : 'Éditer'}
+              className={`rounded p-0.5 transition-colors hover:bg-gray-100 ${
+                isEditing ? 'text-blue-500' : 'text-gray-300 hover:text-gray-500'
+              }`}
+            >
+              <Pencil className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {isEditing ? (
+        <div className="mt-1 flex flex-col gap-1 border-l-2 border-blue-200 pl-2">
+          <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
+            <span>Prix{suffix ? ` (${suffix})` : ''}</span>
+            {/* calculateCart expects the TOTAL (unit × qty) as override */}
+            <EditInput
+              value={prixUnitaire}
+              step={0.01}
+              onChange={(v) => onUpdate?.('prix', v * qty)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
+            <span>Quantité</span>
+            <EditInput
+              value={qty}
+              min={1}
+              step={1}
+              onChange={(v) => onUpdate?.('quantite', Math.max(1, Math.round(v)))}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-1 text-[10px] text-gray-500">
+            <span>FAS</span>
+            <EditInput
+              value={line.fasTotal}
+              step={0.01}
+              onChange={(v) => onUpdate?.('fas', v)}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
+          <span className="tabular-nums">
+            {formatEuro(prixUnitaire)}
+            {suffix && <span className="ml-0.5">{suffix}</span>}
+            <span className="mx-1">×</span>
+            {qty}
+          </span>
+          {mode !== 'fas' && line.fasTotal > 0 && (
+            <span className="tabular-nums">
+              FAS&nbsp;{formatEuro(line.fasTotal)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -103,6 +221,14 @@ interface CategoryAccordionProps {
   lines: CartLine[];
   expanded: boolean;
   onToggle: () => void;
+  editMode?: boolean;
+  onUpdateLine?: (
+    instanceId: string,
+    produitNom: string,
+    produitId: string | undefined,
+    field: 'prix' | 'quantite' | 'fas',
+    value: number,
+  ) => void;
 }
 
 function CategoryAccordion({
@@ -116,6 +242,8 @@ function CategoryAccordion({
   lines,
   expanded,
   onToggle,
+  editMode,
+  onUpdateLine,
 }: CategoryAccordionProps) {
   const hasDetails = lines.length > 0;
   if (!hasDetails) {
@@ -153,6 +281,10 @@ function CategoryAccordion({
               line={l}
               suffix={detailSuffix ?? suffix}
               mode={detailMode}
+              editMode={editMode}
+              onUpdate={(field, value) =>
+                onUpdateLine?.(l.instanceId, l.produitNom, l.produitId, field, value)
+              }
             />
           ))}
         </div>
@@ -169,10 +301,15 @@ export function SpRealTimeCart({
   spConfigLoyer,
   spConfigMoisOfferts,
   spPreferencesProduits,
+  modeClientActif,
+  spConfigModeClient,
+  onUpdateReponses,
 }: SpRealTimeCartProps) {
   const [collapsed, setCollapsed] = useState(false);
-
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+
+  const editMode = !!(modeClientActif && spConfigModeClient?.permettre_edition_panier_client);
+
   const toggleCat = (key: string) =>
     setExpandedCats((prev) => {
       const next = new Set(prev);
@@ -182,7 +319,16 @@ export function SpRealTimeCart({
     });
 
   const summary = useMemo(
-    () => calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits),
+    () =>
+      calculateCartSummary(
+        reponses,
+        questions,
+        catalogue,
+        donneesExtraites ?? {},
+        spConfigLoyer,
+        spConfigMoisOfferts,
+        spPreferencesProduits,
+      ),
     [reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits],
   );
 
@@ -215,6 +361,45 @@ export function SpRealTimeCart({
     return acc;
   }, [summary.lines]);
 
+  // Auto-expand all categories when edit mode activates so pencil icons are visible
+  useEffect(() => {
+    if (!editMode) return;
+    setExpandedCats(
+      new Set(['fixe', 'mobile', 'internet', 'autres_m', 'equipement', 'cadeau', 'installation', 'fas', 'autres_p']),
+    );
+  }, [editMode]);
+
+  const handleUpdateLine = (
+    instanceId: string,
+    produitNom: string,
+    produitId: string | undefined,
+    field: 'prix' | 'quantite' | 'fas',
+    value: number,
+  ) => {
+    const questionId = `${field}_${instanceId}`;
+    const key = field === 'prix' ? (produitId ?? produitNom) : produitNom;
+    let updated = setReponseMapValue(reponses, questionId, key, value);
+
+    if (field === 'quantite') {
+      const currentLine = summary.lines.find((l) =>
+        l.instanceId === instanceId &&
+        (l.produitId === produitId || l.produitNom === produitNom)
+      );
+      if (currentLine) {
+        const currentQty = currentLine.quantite > 0 ? currentLine.quantite : 1;
+        const unitPrice = currentLine.prixTotal / currentQty;
+        updated = setReponseMapValue(
+          updated,
+          `prix_${instanceId}`,
+          produitId ?? produitNom,
+          unitPrice * value,
+        );
+      }
+    }
+
+    onUpdateReponses?.(updated);
+  };
+
   const hasAnyLine = summary.lines.length > 0;
   const grandTotalMensuel = summary.loyer?.loyer_mensuel ?? summary.abonnements.totalMensuel;
 
@@ -232,6 +417,11 @@ export function SpRealTimeCart({
         <span className="flex items-center gap-2 text-sm font-semibold">
           <ShoppingCart className="h-4 w-4" />
           Situation Proposée
+          {editMode && (
+            <span className="text-[10px] font-normal opacity-80 bg-white/20 px-1.5 py-0.5 rounded-full">
+              édition
+            </span>
+          )}
         </span>
         <span className="flex items-center gap-2">
           <span className="text-xs tabular-nums opacity-90">
@@ -245,9 +435,7 @@ export function SpRealTimeCart({
       {!collapsed && (
         <div className="px-3 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
           {!hasAnyLine && (
-            <p className="text-xs text-gray-400 italic">
-              Aucun produit sélectionné pour l’instant.
-            </p>
+            <p className="text-xs text-gray-400 italic">Aucun produit sélectionné pour l'instant.</p>
           )}
 
           {hasAnyLine && (
@@ -264,6 +452,8 @@ export function SpRealTimeCart({
                   lines={grouped.fixe}
                   expanded={expandedCats.has('fixe')}
                   onToggle={() => toggleCat('fixe')}
+                  editMode={editMode}
+                  onUpdateLine={handleUpdateLine}
                 />
                 <CategoryAccordion
                   label="Mobile"
@@ -272,6 +462,8 @@ export function SpRealTimeCart({
                   lines={grouped.mobile}
                   expanded={expandedCats.has('mobile')}
                   onToggle={() => toggleCat('mobile')}
+                  editMode={editMode}
+                  onUpdateLine={handleUpdateLine}
                 />
                 <CategoryAccordion
                   label="Internet"
@@ -280,6 +472,8 @@ export function SpRealTimeCart({
                   lines={grouped.internet}
                   expanded={expandedCats.has('internet')}
                   onToggle={() => toggleCat('internet')}
+                  editMode={editMode}
+                  onUpdateLine={handleUpdateLine}
                 />
                 {summary.autresMensuels > 0 && (
                   <CategoryAccordion
@@ -290,15 +484,12 @@ export function SpRealTimeCart({
                     lines={grouped.autresMensuels}
                     expanded={expandedCats.has('autres_m')}
                     onToggle={() => toggleCat('autres_m')}
+                    editMode={editMode}
+                    onUpdateLine={handleUpdateLine}
                   />
                 )}
                 <div className="pt-1 border-t border-gray-100">
-                  <Line
-                    label="Total mensuel"
-                    value={summary.abonnements.totalMensuel}
-                    suffix="/mois"
-                    bold
-                  />
+                  <Line label="Total mensuel" value={summary.abonnements.totalMensuel} suffix="/mois" bold />
                 </div>
               </section>
 
@@ -319,6 +510,8 @@ export function SpRealTimeCart({
                       lines={grouped.equipement}
                       expanded={expandedCats.has('equipement')}
                       onToggle={() => toggleCat('equipement')}
+                      editMode={editMode}
+                      onUpdateLine={handleUpdateLine}
                     />
                   )}
                   {summary.cadeaux > 0 && (
@@ -328,6 +521,8 @@ export function SpRealTimeCart({
                       lines={grouped.cadeau}
                       expanded={expandedCats.has('cadeau')}
                       onToggle={() => toggleCat('cadeau')}
+                      editMode={editMode}
+                      onUpdateLine={handleUpdateLine}
                     />
                   )}
                   {summary.installations > 0 && (
@@ -337,6 +532,8 @@ export function SpRealTimeCart({
                       lines={grouped.installation}
                       expanded={expandedCats.has('installation')}
                       onToggle={() => toggleCat('installation')}
+                      editMode={editMode}
+                      onUpdateLine={handleUpdateLine}
                     />
                   )}
                   {summary.fas > 0 && (
@@ -347,6 +544,8 @@ export function SpRealTimeCart({
                       detailMode="fas"
                       expanded={expandedCats.has('fas')}
                       onToggle={() => toggleCat('fas')}
+                      editMode={editMode}
+                      onUpdateLine={handleUpdateLine}
                     />
                   )}
                   {summary.autresPonctuels > 0 && (
@@ -357,6 +556,8 @@ export function SpRealTimeCart({
                       lines={grouped.autresPonctuels}
                       expanded={expandedCats.has('autres_p')}
                       onToggle={() => toggleCat('autres_p')}
+                      editMode={editMode}
+                      onUpdateLine={handleUpdateLine}
                     />
                   )}
                   <div className="pt-1 border-t border-gray-100">
@@ -374,7 +575,9 @@ export function SpRealTimeCart({
                     className="w-full flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-blue-600 hover:opacity-80"
                   >
                     <span className="flex items-center gap-1">
-                      <ChevronDown className={`h-3 w-3 transition-transform ${expandedCats.has('loyer_detail') ? '' : '-rotate-90'}`} />
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${expandedCats.has('loyer_detail') ? '' : '-rotate-90'}`}
+                      />
                       Loyer ({summary.loyer.duree_mois} mois)
                     </span>
                   </button>
@@ -387,8 +590,8 @@ export function SpRealTimeCart({
                       {summary.indemnites > 0 && (
                         <Line label="Indemnités" value={summary.indemnites} muted />
                       )}
-                      {summary.marge !== 0 && (
-                        summary.codePromo ? (
+                      {summary.marge !== 0 &&
+                        (summary.codePromo ? (
                           <div>
                             <button
                               type="button"
@@ -396,7 +599,9 @@ export function SpRealTimeCart({
                               className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-gray-700"
                             >
                               <span className="flex items-center gap-1">
-                                <ChevronDown className={`h-3 w-3 text-gray-400 transition-transform ${expandedCats.has('marge_promo') ? '' : '-rotate-90'}`} />
+                                <ChevronDown
+                                  className={`h-3 w-3 text-gray-400 transition-transform ${expandedCats.has('marge_promo') ? '' : '-rotate-90'}`}
+                                />
                                 Marge
                               </span>
                               <span className="tabular-nums">{formatEuro(summary.marge)}</span>
@@ -411,9 +616,7 @@ export function SpRealTimeCart({
                                 <div className="flex items-center justify-between text-[11px] text-emerald-700">
                                   <span>
                                     Code promo{' '}
-                                    <span className="font-mono font-medium">
-                                      {summary.codePromo.nom}
-                                    </span>
+                                    <span className="font-mono font-medium">{summary.codePromo.nom}</span>
                                   </span>
                                   <span className="tabular-nums">
                                     {summary.codePromo.mode === 'soustraction' ? '−' : '+'}
@@ -425,18 +628,12 @@ export function SpRealTimeCart({
                           </div>
                         ) : (
                           <Line label="Marge" value={summary.marge} muted />
-                        )
-                      )}
+                        ))}
                       <Line label="Base loyer" value={summary.baseLoyer} bold />
                     </div>
                   )}
                   <Line label="Mensuel" value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
-                  <Line
-                    label="Trimestriel"
-                    value={summary.loyer.loyer_trimestriel}
-                    suffix="/trim"
-                    muted
-                  />
+                  <Line label="Trimestriel" value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />
                 </section>
               )}
             </>

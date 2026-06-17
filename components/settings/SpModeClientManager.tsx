@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   masquer_widgets_par_defaut: true,
   afficher_indicateur_mode_client: true,
   permettre_toggle_depuis_questionnaire: true,
+  permettre_edition_panier_client: false,
 };
 
 function getWordTemplates(templates: PropositionTemplate[]) {
@@ -282,6 +283,12 @@ export function SpModeClientManager({ templates }: Props) {
           description="Affiche des boutons discrets permettant au commercial d'activer/désactiver le mode et de contrôler la visibilité des widgets en cours de session."
           checked={config.permettre_toggle_depuis_questionnaire}
           onChange={(v) => set('permettre_toggle_depuis_questionnaire', v)}
+        />
+        <ToggleRow
+          label="Permettre l'édition des tarifs dans le panier"
+          description="En mode client, le commercial peut modifier les prix, quantités et FAS directement dans le widget panier (non partagé avec le client). Le calcul se met à jour en temps réel."
+          checked={config.permettre_edition_panier_client}
+          onChange={(v) => set('permettre_edition_panier_client', v)}
         />
       </div>
 

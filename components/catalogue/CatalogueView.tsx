@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Package, Pencil, Search, LayoutGrid, List, Filter, ChevronLeft, ChevronRight, ImageIcon, Trash2, X } from 'lucide-react';
+import { Package, Pencil, Search, LayoutGrid, List, Filter, ChevronLeft, ChevronRight, ImageIcon, Trash2, X, Copy } from 'lucide-react';
 import { CatalogueProduit, CatalogueCategorie } from '@/types';
 import { CatalogueHeader } from './CatalogueHeader';
 import { BulkEditModal } from './BulkEditModal';
@@ -43,6 +43,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const showTour = tourParam === 'catalogue';
 
@@ -169,6 +170,47 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
       alert(err instanceof Error ? err.message : 'Erreur lors de la suppression multiple');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDuplicate = async (produit: CatalogueProduit) => {
+    setIsDuplicating(true);
+    try {
+      const res = await fetch('/api/catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categorie: produit.categorie,
+          nom: `${produit.nom} - Copie`,
+          description: produit.description,
+          fournisseur: produit.fournisseur,
+          type_frequence: produit.type_frequence,
+          mode_fas: produit.mode_fas,
+          prix_mensuel: produit.prix_mensuel,
+          remise_type: produit.remise_type,
+          remise_valeur: produit.remise_valeur,
+          prix_vente: produit.prix_vente,
+          prix_installation: produit.prix_installation,
+          engagement_mois: produit.engagement_mois,
+          image_url: produit.image_url,
+          caracteristiques: produit.caracteristiques,
+          tags: produit.tags,
+          options_produits_ids: produit.options_produits_ids,
+          actif: produit.actif,
+          is_global: isAdmin || !showHeader,
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json?.error || 'Erreur lors de la duplication');
+      }
+
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la duplication');
+    } finally {
+      setIsDuplicating(false);
     }
   };
 
@@ -379,6 +421,14 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                         <Pencil className="w-4 h-4 text-gray-700" />
                       </Link>
                       <button
+                        onClick={() => handleDuplicate(p)}
+                        disabled={isDuplicating}
+                        className="p-2 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all"
+                        title="Dupliquer"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleDelete(p.id)}
                         disabled={isDeleting}
                         className="p-2 rounded-lg border border-gray-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all"
@@ -431,6 +481,14 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
                     >
                       <Pencil className="w-4 h-4 text-gray-700" />
                     </Link>
+                    <button
+                      onClick={() => handleDuplicate(p)}
+                      disabled={isDuplicating}
+                      className="p-2 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all"
+                      title="Dupliquer"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleDelete(p.id)}
                       disabled={isDeleting}

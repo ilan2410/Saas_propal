@@ -382,6 +382,7 @@ function matchesSearchTerm(value: string, search: string): boolean {
 
 function CatalogueMultipleChoiceInput({
   products,
+  catalogue = [],
   onSubmit,
   display = 'buttons',
   allowFreeEntry = false,
@@ -389,6 +390,7 @@ function CatalogueMultipleChoiceInput({
   hidePrixEditing = false,
 }: {
   products: CatalogueProduit[];
+  catalogue?: CatalogueProduit[];
   onSubmit: (selectedNames: string[], extraReponses?: SpQuestionReponse[]) => void;
   display?: 'buttons' | 'select';
   allowFreeEntry?: boolean;
@@ -396,6 +398,7 @@ function CatalogueMultipleChoiceInput({
   hidePrixEditing?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
   const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
   const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>({
     label: '',
@@ -600,6 +603,44 @@ function CatalogueMultipleChoiceInput({
                   </div>
                 </div>
               )}
+              {(() => {
+                const optionIds = p.options_produits_ids ?? [];
+                if (optionIds.length === 0) return null;
+                const optionProducts = optionIds
+                  .map((oid) => catalogue.find((c) => c.id === oid))
+                  .filter((c): c is CatalogueProduit => !!c);
+                if (optionProducts.length === 0) return null;
+                const selectedForP = selectedOptions[p.nom] ?? [];
+                return (
+                  <div className="space-y-1.5 rounded-md border border-gray-200 bg-gray-50/60 p-2">
+                    <p className="text-xs font-medium text-gray-700">Options disponibles</p>
+                    {optionProducts.map((opt) => {
+                      const checked = selectedForP.includes(opt.id);
+                      const prix = !hidePrice ? formatPrixProduit(opt) : null;
+                      return (
+                        <label key={opt.id} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSelectedOptions((prev) => {
+                              const cur = prev[p.nom] ?? [];
+                              return {
+                                ...prev,
+                                [p.nom]: cur.includes(opt.id)
+                                  ? cur.filter((x) => x !== opt.id)
+                                  : [...cur, opt.id],
+                              };
+                            })}
+                            className="h-4 w-4"
+                          />
+                          <span className="flex-1 min-w-0 truncate">{opt.nom}</span>
+                          {prix && <span className="text-xs text-gray-400">{prix}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           {allowFreeEntry && freeEntryEnabled && (
@@ -628,9 +669,18 @@ function CatalogueMultipleChoiceInput({
                 prixMap[p.nom] = String((Number(prixValues[p.nom]) || 0) * quantite);
               }
             });
+            const optionIds: string[] = [];
+            selectedProducts.forEach((p) => {
+              (selectedOptions[p.nom] ?? []).forEach((oid) => {
+                if (!optionIds.includes(oid)) optionIds.push(oid);
+              });
+            });
             const extraReponses: SpQuestionReponse[] = [];
             if (Object.keys(fasMap).length > 0) {
               extraReponses.push({ question_id: '__fas_placeholder__', valeur: JSON.stringify(fasMap) });
+            }
+            if (optionIds.length > 0) {
+              extraReponses.push({ question_id: '__options_placeholder__', valeur: JSON.stringify(optionIds) });
             }
             if (Object.keys(prixMap).length > 0) {
               extraReponses.push({ question_id: '__prix_placeholder__', valeur: JSON.stringify(prixMap) });
@@ -808,6 +858,7 @@ export function SpQuestionnaireUI({
     prixValue: string;
     quantityValue: string;
     prixEditing: boolean;
+    selectedOptions: string[];
   } | null>(null);
   const [pendingFreeEntry, setPendingFreeEntry] = useState<{
     instanceId: string;
@@ -1264,7 +1315,7 @@ export function SpQuestionnaireUI({
 
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
-    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`];
     // Build updated reponses synchronously
     const nextReps = [
       ...reponses.filter((r) =>
@@ -1888,6 +1939,7 @@ export function SpQuestionnaireUI({
                           prixValue: getProduitPrixValue(p),
                           quantityValue: '1',
                           prixEditing: false,
+                          selectedOptions: [],
                         })}
                         className={`text-left px-3 py-2 rounded-md border transition-colors ${
                           isPending ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
@@ -1973,6 +2025,7 @@ export function SpQuestionnaireUI({
                         prixValue: getProduitPrixValue(p),
                         quantityValue: '1',
                         prixEditing: false,
+                        selectedOptions: [],
                       });
                     } else {
                       recordAnswer(currentExpanded.instanceId, e.target.value);
@@ -2001,6 +2054,7 @@ export function SpQuestionnaireUI({
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
+                catalogue={catalogue}
                 allowFreeEntry={!!currentQuestion.options_libres}
                 hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
                 hidePrixEditing={modeClientActif && (spConfigModeClient?.masquer_bouton_modifier_prix ?? true)}
@@ -2014,6 +2068,9 @@ export function SpQuestionnaireUI({
                     }
                     if (r.question_id === '__quantite_placeholder__') {
                       return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__options_placeholder__') {
+                      return { ...r, question_id: 'options_' + currentExpanded.instanceId };
                     }
                     if (r.question_id === '__libre_placeholder__') {
                       return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
@@ -2035,6 +2092,7 @@ export function SpQuestionnaireUI({
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
                 products={currentCatalogueOptions}
+                catalogue={catalogue}
                 display="select"
                 allowFreeEntry={!!currentQuestion.options_libres}
                 hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
@@ -2049,6 +2107,9 @@ export function SpQuestionnaireUI({
                     }
                     if (r.question_id === '__quantite_placeholder__') {
                       return { ...r, question_id: 'quantite_' + currentExpanded.instanceId };
+                    }
+                    if (r.question_id === '__options_placeholder__') {
+                      return { ...r, question_id: 'options_' + currentExpanded.instanceId };
                     }
                     if (r.question_id === '__libre_placeholder__') {
                       return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
@@ -2725,6 +2786,42 @@ export function SpQuestionnaireUI({
                   </div>
                 </div>
               )}
+              {(() => {
+                const optionIds = pendingCatalogueSelection.product.options_produits_ids ?? [];
+                if (optionIds.length === 0) return null;
+                const optionProducts = optionIds
+                  .map((oid) => catalogue.find((c) => c.id === oid))
+                  .filter((c): c is CatalogueProduit => !!c);
+                if (optionProducts.length === 0) return null;
+                return (
+                  <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50/60 p-2">
+                    <p className="text-xs font-medium text-gray-700">Options disponibles</p>
+                    {optionProducts.map((opt) => {
+                      const checked = pendingCatalogueSelection.selectedOptions.includes(opt.id);
+                      const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits)
+                        ? formatPrixProduit(opt)
+                        : null;
+                      return (
+                        <label key={opt.id} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setPendingCatalogueSelection((prev) => prev ? {
+                              ...prev,
+                              selectedOptions: prev.selectedOptions.includes(opt.id)
+                                ? prev.selectedOptions.filter((x) => x !== opt.id)
+                                : [...prev.selectedOptions, opt.id],
+                            } : null)}
+                            className="h-4 w-4"
+                          />
+                          <span className="flex-1 min-w-0 truncate">{opt.nom}</span>
+                          {prix && <span className="text-xs text-gray-400">{prix}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <Button size="sm" onClick={() => {
                 const fasVal = pendingCatalogueSelection.fasValue.trim();
                 const prixVal = pendingCatalogueSelection.prixValue.trim();
@@ -2746,6 +2843,10 @@ export function SpQuestionnaireUI({
                 extras.push({
                   question_id: 'quantite_' + pendingCatalogueSelection.instanceId,
                   valeur: quantiteVal,
+                });
+                if (pendingCatalogueSelection.selectedOptions.length > 0) extras.push({
+                  question_id: 'options_' + pendingCatalogueSelection.instanceId,
+                  valeur: JSON.stringify(pendingCatalogueSelection.selectedOptions),
                 });
                 recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, extras.length > 0 ? extras : undefined);
                 setPendingCatalogueSelection(null);
@@ -2809,7 +2910,7 @@ export function SpQuestionnaireUI({
               <p className="text-sm text-green-700">Résumé de la simulation :</p>
               <ul className="text-sm text-gray-700 space-y-1 max-h-40 overflow-y-auto">
                 {reponses
-                  .filter((r) => !r.question_id.startsWith('prix_') && !r.question_id.startsWith('fas_') && !r.question_id.startsWith('quantite_'))
+                  .filter((r) => !r.question_id.startsWith('prix_') && !r.question_id.startsWith('fas_') && !r.question_id.startsWith('quantite_') && !r.question_id.startsWith('options_'))
                   .map((r) => {
                     const q = expandedQuestions.find((eq) => eq.instanceId === r.question_id);
                     const isRemiseQuestion = q?.question.affichage === 'remise_produits';
@@ -2962,6 +3063,9 @@ export function SpQuestionnaireUI({
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
                 spPreferencesProduits={spPreferencesProduits}
+                modeClientActif={modeClientActif}
+                spConfigModeClient={spConfigModeClient}
+                onUpdateReponses={(nextReponses) => setReponses(nextReponses)}
               />
             </div>
           </div>

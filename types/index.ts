@@ -310,6 +310,7 @@ export interface CatalogueProduit {
   actif: boolean;
   prix_par_tranche?: CatalogueProduitTranche[];
   destinations?: ProduitDestinations;
+  options_produits_ids?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -832,6 +833,7 @@ export interface SpConfigModeClient {
   // Groupe 4 : UX commercial
   afficher_indicateur_mode_client: boolean;
   permettre_toggle_depuis_questionnaire: boolean;
+  permettre_edition_panier_client: boolean;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

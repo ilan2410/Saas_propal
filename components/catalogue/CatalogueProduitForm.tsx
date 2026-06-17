@@ -1,9 +1,9 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, X, ImageIcon, Trash2, Plus } from 'lucide-react';
+import { Upload, X, ImageIcon, Trash2, Plus, Search } from 'lucide-react';
 import type { CatalogueCategorie, CatalogueProduit, CatalogueProduitTranche, ProduitDestinations } from '@/types';
 
 type FormState = {
@@ -24,6 +24,7 @@ type FormState = {
   destinations: ProduitDestinations;
   tranches_actives: boolean;
   tranches: CatalogueProduitTranche[];
+  options_produits_ids: string[];
 };
 
 export function CatalogueProduitForm({
@@ -79,10 +80,50 @@ export function CatalogueProduitForm({
       destinations: initialProduit?.destinations ?? { proposition: true, bdc_operateur: true, bdc_materiel: true },
       tranches_actives: tranches.length > 0,
       tranches,
+      options_produits_ids: initialProduit?.options_produits_ids ?? [],
     };
   }, [initialProduit]);
 
   const [form, setForm] = useState<FormState>(initialState);
+  const [catalogueProduits, setCatalogueProduits] = useState<CatalogueProduit[]>([]);
+  const [optionsSearch, setOptionsSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/catalogue');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && Array.isArray(json?.produits)) {
+          setCatalogueProduits(json.produits as CatalogueProduit[]);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const optionCandidates = useMemo(
+    () => catalogueProduits.filter((p) => p.id !== initialProduit?.id),
+    [catalogueProduits, initialProduit?.id],
+  );
+  const filteredOptionCandidates = useMemo(() => {
+    const term = optionsSearch.trim().toLowerCase();
+    if (!term) return optionCandidates;
+    return optionCandidates.filter((p) =>
+      [p.nom, p.fournisseur, p.categorie].filter(Boolean).some((v) => String(v).toLowerCase().includes(term)),
+    );
+  }, [optionCandidates, optionsSearch]);
+
+  const toggleOption = (id: string) =>
+    setForm((p) => ({
+      ...p,
+      options_produits_ids: p.options_produits_ids.includes(id)
+        ? p.options_produits_ids.filter((x) => x !== id)
+        : [...p.options_produits_ids, id],
+    }));
   const hasInstallationFee = form.prix_installation.trim() !== '' && Number.isFinite(Number(form.prix_installation));
 
   const categorieOptions: Array<{ value: CatalogueCategorie; label: string }> = [
@@ -219,6 +260,7 @@ export function CatalogueProduitForm({
         actif: form.actif,
         destinations: form.destinations,
         prix_par_tranche: form.tranches_actives && form.tranches.length > 0 ? form.tranches : null,
+        options_produits_ids: form.options_produits_ids.length > 0 ? form.options_produits_ids : null,
         is_global: isAdmin,
       };
 
@@ -679,6 +721,78 @@ export function CatalogueProduitForm({
             </p>
           </div>
         )}
+      </div>
+
+      {/* Options liées */}
+      <div className="rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-1">Options liées</h3>
+        <p className="text-xs text-gray-500 mb-3">
+          Sélectionnez d&apos;autres produits du catalogue à proposer en option lorsque ce produit
+          est choisi dans le questionnaire SP.
+        </p>
+
+        {form.options_produits_ids.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {form.options_produits_ids.map((id) => {
+              const p = catalogueProduits.find((c) => c.id === id);
+              return (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs text-blue-800"
+                >
+                  {p?.nom ?? id}
+                  <button
+                    type="button"
+                    onClick={() => toggleOption(id)}
+                    className="text-blue-400 hover:text-red-600"
+                    title="Retirer l'option"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={optionsSearch}
+            onChange={(e) => setOptionsSearch(e.target.value)}
+            placeholder="Rechercher un produit à ajouter en option..."
+            className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+
+        <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {filteredOptionCandidates.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-gray-400">Aucun produit disponible</p>
+          ) : (
+            filteredOptionCandidates.map((p) => {
+              const checked = form.options_produits_ids.includes(p.id);
+              return (
+                <label
+                  key={p.id}
+                  className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleOption(p.id)}
+                    className="h-4 w-4"
+                  />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-gray-800 truncate">{p.nom}</span>
+                    <span className="block text-xs text-gray-400 truncate">
+                      {[p.categorie, p.fournisseur].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-200">
