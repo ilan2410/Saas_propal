@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, Database, X, Play, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
@@ -8,6 +8,7 @@ import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
+import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -266,6 +267,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
           <FloatingModal
             defaultWidth={900}
             defaultHeight={640}
+            backdrop={buildQuestionnaireBgBackdrop(preferences.sp_customization)}
             header={
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <div className="flex items-center gap-2">
@@ -364,6 +366,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigModeClient={spConfigModeClient}
                   spCodesPromo={preferences.sp_codes_promo ?? []}
                   spCodesPromoMode={preferences.sp_codes_promo_mode ?? 'addition'}
+                  spCodesPromoMasquerSaisie={preferences.sp_codes_promo_masquer_saisie ?? false}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
                   templateId={templateId}
                 />

@@ -7,6 +7,7 @@ export type PropositionStatus = 'processing' | 'ready' | 'exported' | 'error';
 export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
 export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre' | 'cadeau' | 'installation';
 export type CatalogueSecteur = 'telephonie' | 'bureautique';
+export type UpdateMode = 'skip' | 'upsert';
 
 // Organization (Client de la plateforme)
 export interface Organization {
@@ -76,6 +77,7 @@ export interface OrganizationPreferences {
   sp_regles_remise?: SpRegleRemise[];
   sp_codes_promo?: SpCodePromo[];
   sp_codes_promo_mode?: 'addition' | 'soustraction';
+  sp_codes_promo_masquer_saisie?: boolean;
   sp_objectifs_config?: SpObjectifConfig[];
 }
 
@@ -105,6 +107,17 @@ export interface SpCustomization {
   subtitle_size?: number; // en points
   subtitle_color?: string; // hex #RRGGBB
   subtitle_alignment?: SpTextAlignment; // alignement horizontal du sous-titre
+  // Fond d'écran du questionnaire SP (plein écran derrière la FloatingModal)
+  questionnaire_bg_type?: 'none' | 'color' | 'gradient' | 'image';
+  questionnaire_bg_url?: string;
+  questionnaire_bg_color?: string;
+  questionnaire_bg_gradient?: { from: string; to: string; direction: string };
+  questionnaire_bg_opacity?: number; // 0-100
+  questionnaire_bg_blur?: number; // 0-20 px
+  questionnaire_bg_overlay?: number; // 0-70 %
+  questionnaire_bg_position?: string; // 'center', 'top left', etc.
+  questionnaire_bg_size?: 'cover' | 'contain' | 'auto' | '100% 100%';
+  questionnaire_bg_repeat?: 'no-repeat' | 'repeat' | 'repeat-x' | 'repeat-y';
 }
 
 // Template de proposition

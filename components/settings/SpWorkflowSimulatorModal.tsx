@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, WordConfig, SpCustomization } from '@/types';
+import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 
@@ -23,12 +24,14 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>([]);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>('addition');
+  const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(false);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [objectifsConfig, setObjectifsConfig] = useState<SpObjectifConfig[]>([]);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
   const [spConfigModeClient, setSpConfigModeClient] = useState<SpConfigModeClient | undefined>(undefined);
+  const [spCustomization, setSpCustomization] = useState<SpCustomization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [noProposition, setNoProposition] = useState(false);
   const [propositionId, setPropositionId] = useState<string | null>(null);
@@ -64,6 +67,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
       setCodesPromo(prefsData?.preferences?.sp_codes_promo ?? []);
       setCodesPromoMode(prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
+      setCodesPromoMasquerSaisie(prefsData?.preferences?.sp_codes_promo_masquer_saisie ?? false);
       const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
       setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
       setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
@@ -71,6 +75,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       setObjectifsConfig(prefsData?.preferences?.sp_objectifs_config ?? []);
       setSpConfigResumeRef(fileConfig?.sp_config_resume_ref);
       setSpConfigModeClient(fileConfig?.sp_config_mode_client);
+      setSpCustomization(prefsData?.preferences?.sp_customization);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [templateId]);
@@ -162,6 +167,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       <FloatingModal
         defaultWidth={700}
         defaultHeight={600}
+        backdrop={buildQuestionnaireBgBackdrop(spCustomization)}
         header={
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2">
@@ -255,6 +261,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spConfigModeClient={spConfigModeClient}
               spCodesPromo={codesPromo}
               spCodesPromoMode={codesPromoMode}
+              spCodesPromoMasquerSaisie={codesPromoMasquerSaisie}
               objectifsConfig={objectifsConfig}
               templateId={templateId}
             />

@@ -66,7 +66,7 @@ type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees'
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client';
+type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -322,6 +322,36 @@ export default function SettingsPage({
   });
   const [isSpSaving, setIsSpSaving] = useState(false);
 
+  const [spBg, setSpBg] = useState<{
+    type: 'none' | 'color' | 'gradient' | 'image';
+    url: string;
+    color: string;
+    gradientFrom: string;
+    gradientTo: string;
+    gradientDirection: string;
+    opacity: number;
+    blur: number;
+    overlay: number;
+    position: string;
+    size: 'cover' | 'contain' | 'auto' | '100% 100%';
+    repeat: 'no-repeat' | 'repeat' | 'repeat-x' | 'repeat-y';
+  }>({
+    type: initialSp.questionnaire_bg_type ?? 'none',
+    url: initialSp.questionnaire_bg_url ?? '',
+    color: initialSp.questionnaire_bg_color ?? '#1e3a5f',
+    gradientFrom: initialSp.questionnaire_bg_gradient?.from ?? '#1e3a5f',
+    gradientTo: initialSp.questionnaire_bg_gradient?.to ?? '#0d4073',
+    gradientDirection: initialSp.questionnaire_bg_gradient?.direction ?? '135deg',
+    opacity: initialSp.questionnaire_bg_opacity ?? 100,
+    blur: initialSp.questionnaire_bg_blur ?? 0,
+    overlay: initialSp.questionnaire_bg_overlay ?? 0,
+    position: initialSp.questionnaire_bg_position ?? 'center',
+    size: initialSp.questionnaire_bg_size ?? 'cover',
+    repeat: initialSp.questionnaire_bg_repeat ?? 'no-repeat',
+  });
+  const [isSpBgSaving, setIsSpBgSaving] = useState(false);
+  const [isSpBgUploading, setIsSpBgUploading] = useState(false);
+
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>(organization.preferences?.sp_regles_remise ?? []);
   const [discountProducts, setDiscountProducts] = useState<CatalogueProduit[]>([]);
   const [discountQuestions, setDiscountQuestions] = useState<SpQuestion[]>([]);
@@ -330,6 +360,7 @@ export default function SettingsPage({
   );
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>(organization.preferences?.sp_codes_promo ?? []);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>(organization.preferences?.sp_codes_promo_mode ?? 'addition');
+  const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(organization.preferences?.sp_codes_promo_masquer_saisie ?? false);
   const [isDiscountSaving, setIsDiscountSaving] = useState(false);
 
   useEffect(() => {
@@ -838,6 +869,71 @@ export default function SettingsPage({
     }
   };
 
+  const handleUploadSpBackground = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Le fichier est trop volumineux (max 5MB)');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const toastId = toast.loading('Téléchargement du fond d\'écran...');
+    setIsSpBgUploading(true);
+    try {
+      const res = await fetch('/api/settings/upload-sp-background', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Erreur upload');
+      }
+      const data = await res.json();
+      setSpBg((prev) => ({ ...prev, url: data.bg_url, type: 'image' }));
+      toast.success('Fond d\'écran mis à jour', { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur upload fond SP', { id: toastId });
+    } finally {
+      setIsSpBgUploading(false);
+    }
+  };
+
+  const handleSaveSpBackground = async () => {
+    if (isSpBgSaving) return;
+    setIsSpBgSaving(true);
+    try {
+      const currentSp = organization.preferences?.sp_customization || {};
+      const payload: SpCustomization = {
+        ...currentSp,
+        questionnaire_bg_type: spBg.type,
+        questionnaire_bg_url: spBg.url || undefined,
+        questionnaire_bg_color: spBg.type === 'color' ? spBg.color : undefined,
+        questionnaire_bg_gradient: spBg.type === 'gradient'
+          ? { from: spBg.gradientFrom, to: spBg.gradientTo, direction: spBg.gradientDirection }
+          : undefined,
+        questionnaire_bg_opacity: spBg.opacity,
+        questionnaire_bg_blur: spBg.blur,
+        questionnaire_bg_overlay: spBg.overlay,
+        questionnaire_bg_position: spBg.position,
+        questionnaire_bg_size: spBg.size,
+        questionnaire_bg_repeat: spBg.repeat,
+      };
+      const res = await fetch('/api/settings/update-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sp_customization: payload }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      toast.success('Fond d\'écran SP enregistré');
+      router.refresh();
+    } catch {
+      toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSpBgSaving(false);
+    }
+  };
+
   const handleSaveSpCustomization = async () => {
     if (isSpSaving) return;
     // Validation couleur hex
@@ -952,7 +1048,7 @@ export default function SettingsPage({
       const res = await fetch('/api/settings/update-preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sp_codes_promo: codesPromo, sp_codes_promo_mode: codesPromoMode }),
+        body: JSON.stringify({ sp_codes_promo: codesPromo, sp_codes_promo_mode: codesPromoMode, sp_codes_promo_masquer_saisie: codesPromoMasquerSaisie }),
       });
       if (!res.ok) throw new Error('Erreur');
       toast.success('Codes promo enregistrés');
@@ -2238,12 +2334,339 @@ export default function SettingsPage({
                 <EyeOff className="w-3.5 h-3.5" />
                 Mode Client
               </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('apparence')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'apparence'
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                Apparence
+              </button>
             </div>
 
             {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
             {questionsSpSubTab === 'objectifs' && <SpObjectifsManager templates={templates} />}
             {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
+            {questionsSpSubTab === 'apparence' && (
+              <div className="space-y-6">
+                <div className="border border-gray-100 rounded-xl p-5 space-y-5">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">Fond d&apos;écran du questionnaire</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">S&apos;affiche en plein écran derrière la fenêtre du questionnaire quand il est lancé.</p>
+                  </div>
+
+                  {/* Type de fond */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Type de fond</label>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        { value: 'none', label: 'Aucun' },
+                        { value: 'color', label: 'Couleur unie' },
+                        { value: 'gradient', label: 'Dégradé' },
+                        { value: 'image', label: 'Image' },
+                      ] as const).map(({ value, label }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setSpBg((p) => ({ ...p, type: value }))}
+                          className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                            spBg.type === value
+                              ? 'bg-purple-50 text-purple-700 border-purple-300'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Couleur unie */}
+                  {spBg.type === 'color' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-700">Couleur</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={spBg.color}
+                          onChange={(e) => setSpBg((p) => ({ ...p, color: e.target.value }))}
+                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={spBg.color}
+                          onChange={(e) => setSpBg((p) => ({ ...p, color: e.target.value }))}
+                          className="w-28 px-2 py-1.5 text-sm border border-gray-200 rounded-lg font-mono"
+                          placeholder="#1e3a5f"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dégradé */}
+                  {spBg.type === 'gradient' && (
+                    <div className="space-y-3">
+                      <div className="flex gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-gray-700">Couleur de départ</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={spBg.gradientFrom}
+                              onChange={(e) => setSpBg((p) => ({ ...p, gradientFrom: e.target.value }))}
+                              className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer p-0.5"
+                            />
+                            <input
+                              type="text"
+                              value={spBg.gradientFrom}
+                              onChange={(e) => setSpBg((p) => ({ ...p, gradientFrom: e.target.value }))}
+                              className="w-24 px-2 py-1.5 text-sm border border-gray-200 rounded-lg font-mono"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-gray-700">Couleur d&apos;arrivée</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={spBg.gradientTo}
+                              onChange={(e) => setSpBg((p) => ({ ...p, gradientTo: e.target.value }))}
+                              className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer p-0.5"
+                            />
+                            <input
+                              type="text"
+                              value={spBg.gradientTo}
+                              onChange={(e) => setSpBg((p) => ({ ...p, gradientTo: e.target.value }))}
+                              className="w-24 px-2 py-1.5 text-sm border border-gray-200 rounded-lg font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Direction</label>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { value: '0deg', label: 'Haut → Bas' },
+                            { value: '90deg', label: 'Gauche → Droite' },
+                            { value: '135deg', label: 'Diagonale ↘' },
+                            { value: '45deg', label: 'Diagonale ↗' },
+                          ] as const).map(({ value, label }) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setSpBg((p) => ({ ...p, gradientDirection: value }))}
+                              className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                                spBg.gradientDirection === value
+                                  ? 'bg-purple-50 text-purple-700 border-purple-300'
+                                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Image */}
+                  {spBg.type === 'image' && (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Image de fond</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            id="sp-bg-upload"
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.webp"
+                            className="hidden"
+                            onChange={handleUploadSpBackground}
+                          />
+                          <label
+                            htmlFor="sp-bg-upload"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                          >
+                            {isSpBgUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            {isSpBgUploading ? 'Envoi...' : 'Choisir une image'}
+                          </label>
+                          {spBg.url && (
+                            <button
+                              type="button"
+                              onClick={() => setSpBg((p) => ({ ...p, url: '', type: 'none' }))}
+                              className="text-xs text-red-500 hover:text-red-700"
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">PNG, JPG, WEBP — max 5 MB</p>
+                      </div>
+
+                      {/* Position */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Position</label>
+                        <div className="grid grid-cols-3 gap-1 w-24">
+                          {[
+                            { value: 'top left', label: '↖' },
+                            { value: 'top center', label: '↑' },
+                            { value: 'top right', label: '↗' },
+                            { value: 'center left', label: '←' },
+                            { value: 'center', label: '⊙' },
+                            { value: 'center right', label: '→' },
+                            { value: 'bottom left', label: '↙' },
+                            { value: 'bottom center', label: '↓' },
+                            { value: 'bottom right', label: '↘' },
+                          ].map(({ value, label }) => (
+                            <button
+                              key={value}
+                              type="button"
+                              title={value}
+                              onClick={() => setSpBg((p) => ({ ...p, position: value }))}
+                              className={`w-8 h-8 flex items-center justify-center rounded text-sm border transition-colors ${
+                                spBg.position === value
+                                  ? 'bg-purple-100 text-purple-700 border-purple-300'
+                                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Taille */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Taille</label>
+                        <select
+                          value={spBg.size}
+                          onChange={(e) => setSpBg((p) => ({ ...p, size: e.target.value as typeof p.size }))}
+                          className="px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg bg-white"
+                        >
+                          <option value="cover">Remplir l&apos;écran (peut rogner)</option>
+                          <option value="contain">Adapter à l&apos;écran (image entière visible)</option>
+                          <option value="auto">Taille originale</option>
+                          <option value="100% 100%">Étirer</option>
+                        </select>
+                      </div>
+
+                      {/* Répétition */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Répétition</label>
+                        <select
+                          value={spBg.repeat}
+                          onChange={(e) => setSpBg((p) => ({ ...p, repeat: e.target.value as typeof p.repeat }))}
+                          className="px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg bg-white"
+                        >
+                          <option value="no-repeat">Ne pas répéter</option>
+                          <option value="repeat">Répéter dans tous les sens</option>
+                          <option value="repeat-x">Répéter à l&apos;horizontal seulement</option>
+                          <option value="repeat-y">Répéter à la verticale seulement</option>
+                        </select>
+                      </div>
+
+                      {/* Flou */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-gray-700">Flou — {spBg.blur} px</label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={20}
+                          value={spBg.blur}
+                          onChange={(e) => setSpBg((p) => ({ ...p, blur: Number(e.target.value) }))}
+                          className="w-full"
+                        />
+                        <p className="text-xs text-gray-400">Flou gaussien pour améliorer la lisibilité du questionnaire</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Opacité (tous types sauf aucun) */}
+                  {spBg.type !== 'none' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-700">Opacité — {spBg.opacity} %</label>
+                      <input
+                        type="range"
+                        min={10}
+                        max={100}
+                        value={spBg.opacity}
+                        onChange={(e) => setSpBg((p) => ({ ...p, opacity: Number(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  {/* Overlay sombre (tous types sauf aucun) */}
+                  {spBg.type !== 'none' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-700">Assombrissement — {spBg.overlay} %</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={70}
+                        value={spBg.overlay}
+                        onChange={(e) => setSpBg((p) => ({ ...p, overlay: Number(e.target.value) }))}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-gray-400">Couche sombre par-dessus le fond pour améliorer la lisibilité du texte</p>
+                    </div>
+                  )}
+
+                  {/* Aperçu live */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">Aperçu</label>
+                    <div
+                      className="relative w-full h-32 rounded-xl overflow-hidden border border-gray-200"
+                      style={{
+                        ...(spBg.type === 'color' && { backgroundColor: spBg.color }),
+                        ...(spBg.type === 'gradient' && {
+                          background: `linear-gradient(${spBg.gradientDirection}, ${spBg.gradientFrom}, ${spBg.gradientTo})`,
+                        }),
+                        ...(spBg.type === 'image' && spBg.url && {
+                          backgroundImage: `url(${spBg.url})`,
+                          backgroundPosition: spBg.position,
+                          backgroundSize: spBg.size,
+                          backgroundRepeat: spBg.repeat,
+                          filter: spBg.blur > 0 ? `blur(${spBg.blur}px)` : undefined,
+                        }),
+                        opacity: spBg.type !== 'none' ? spBg.opacity / 100 : 1,
+                      }}
+                    >
+                      {spBg.type === 'none' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                          <span className="text-xs text-gray-400">Aucun fond (page normale)</span>
+                        </div>
+                      )}
+                      {spBg.type !== 'none' && spBg.overlay > 0 && (
+                        <div
+                          className="absolute inset-0"
+                          style={{ backgroundColor: `rgba(0,0,0,${spBg.overlay / 100})` }}
+                        />
+                      )}
+                      {spBg.type === 'image' && !spBg.url && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                          <span className="text-xs text-gray-400">Aucune image sélectionnée</span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-2 right-2 bg-white/80 rounded-md px-2 py-0.5 text-xs text-gray-600">
+                        Aperçu
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveSpBackground} disabled={isSpBgSaving}>
+                    {isSpBgSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Enregistrer le fond d&apos;écran
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2371,6 +2794,8 @@ export default function SettingsPage({
                 onChange={setCodesPromo}
                 mode={codesPromoMode}
                 onModeChange={setCodesPromoMode}
+                masquerSaisie={codesPromoMasquerSaisie}
+                onMasquerSaisieChange={setCodesPromoMasquerSaisie}
               />
             )}
 

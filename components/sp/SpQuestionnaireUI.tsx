@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, Loader2, GripHorizontal, Eye, EyeOff } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
@@ -39,6 +39,7 @@ export interface SpQuestionnaireUIProps {
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spCodesPromo?: SpCodePromo[];
   spCodesPromoMode?: 'addition' | 'soustraction';
+  spCodesPromoMasquerSaisie?: boolean;
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
   spConfigResumeRef?: SpConfigResumeRef;
@@ -354,6 +355,30 @@ function buildFreeEntryReponses(
   return [{ question_id: 'libre_' + instanceId, valeur: JSON.stringify(produit) }];
 }
 
+/**
+ * Recherche stricte : le terme doit apparaître dans la valeur, mais si le terme
+ * commence/finit par un chiffre, il ne doit pas être collé à un autre chiffre.
+ * Ainsi "10" ne matche pas "100", et "50" ne matche pas "500" ni "150".
+ */
+function matchesSearchTerm(value: string, search: string): boolean {
+  const haystack = value.toLowerCase();
+  const needle = search.toLowerCase();
+  if (!needle) return true;
+  const startsWithDigit = /\d/.test(needle[0]);
+  const endsWithDigit = /\d/.test(needle[needle.length - 1]);
+  let fromIndex = 0;
+  for (;;) {
+    const idx = haystack.indexOf(needle, fromIndex);
+    if (idx === -1) return false;
+    const before = idx > 0 ? haystack[idx - 1] : '';
+    const after = idx + needle.length < haystack.length ? haystack[idx + needle.length] : '';
+    const beforeOk = !startsWithDigit || !/\d/.test(before);
+    const afterOk = !endsWithDigit || !/\d/.test(after);
+    if (beforeOk && afterOk) return true;
+    fromIndex = idx + 1;
+  }
+}
+
 function CatalogueMultipleChoiceInput({
   products,
   onSubmit,
@@ -411,7 +436,7 @@ function CatalogueMultipleChoiceInput({
       p.categorie,
       p.description,
       ...(p.tags ?? []),
-    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalizedSearch)))
+    ].filter(Boolean).some((value) => matchesSearchTerm(String(value), normalizedSearch)))
     : products;
 
   return (
@@ -422,36 +447,40 @@ function CatalogueMultipleChoiceInput({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un produit..."
+            placeholder="Rechercher un produit (min. 2 caractères)..."
             className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
           />
-          <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
-            {filteredProducts.map((p) => {
-              const prix = formatPrixProduit(p);
-              const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
-              const isSelected = selected.has(p.nom);
-              return (
-                <button
-                  key={p.nom}
-                  type="button"
-                  onClick={() => toggle(p.nom)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                    isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
-                  }`}
-                >
-                  <div className="font-medium">{p.nom}</div>
-                  {!hidePrice && (prix || fas) && (
-                    <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
-                      {[prix, fas].filter(Boolean).join(' · ')}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-            {filteredProducts.length === 0 && (
-              <div className="px-3 py-2 text-sm text-gray-400">Aucun produit trouvé</div>
-            )}
-          </div>
+          {search.trim().length < 2 ? (
+            <p className="text-sm text-gray-500">Saisissez au moins 2 caractères pour afficher les produits</p>
+          ) : (
+            <div className="max-h-56 overflow-y-auto rounded border border-gray-300 bg-white p-1 space-y-1">
+              {filteredProducts.map((p) => {
+                const prix = formatPrixProduit(p);
+                const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                const isSelected = selected.has(p.nom);
+                return (
+                  <button
+                    key={p.nom}
+                    type="button"
+                    onClick={() => toggle(p.nom)}
+                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                      isSelected ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    <div className="font-medium">{p.nom}</div>
+                    {!hidePrice && (prix || fas) && (
+                      <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                        {[prix, fas].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {filteredProducts.length === 0 && (
+                <div className="px-3 py-2 text-sm text-gray-400">Aucun produit trouvé</div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -494,6 +523,15 @@ function CatalogueMultipleChoiceInput({
             <div key={p.nom} className="space-y-2 rounded-md border border-gray-100 px-2 py-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{p.nom}</span>
+                <button
+                  type="button"
+                  onClick={() => toggle(p.nom)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 transition-colors"
+                  aria-label={`Retirer ${p.nom}`}
+                  title={`Retirer ${p.nom}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                   Qté {getQuantityValue(quantityValues[p.nom])}
                 </span>
@@ -739,6 +777,7 @@ export function SpQuestionnaireUI({
   spConfigMoisOfferts,
   spCodesPromo = [],
   spCodesPromoMode = 'addition',
+  spCodesPromoMasquerSaisie = false,
   objectifsConfig = [],
   templateId,
   spConfigResumeRef,
@@ -775,6 +814,12 @@ export function SpQuestionnaireUI({
   const [catalogueSearch, setCatalogueSearch] = useState('');
   const [editingDiscountFor, setEditingDiscountFor] = useState<string | null>(null);
   const [discountPrixOverrides, setDiscountPrixOverrides] = useState<Record<string, string>>({});
+  const [editingLoopLabel, setEditingLoopLabel] = useState<{
+    instanceId: string;
+    groupId: string;
+    iterIndex: number;
+    value: string;
+  } | null>(null);
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
@@ -916,7 +961,15 @@ export function SpQuestionnaireUI({
         }
 
         for (let iter = 0; iter < iterationCount; iter++) {
-          const iterLabel = labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
+          const editedLabelRep = reponses.find(
+            (r) => r.question_id === `loop_label__${groupId}__iter_${iter}`,
+          );
+          const editedLabel =
+            editedLabelRep && typeof editedLabelRep.valeur === 'string'
+              ? editedLabelRep.valeur.trim()
+              : '';
+          const iterLabel =
+            editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
           for (const lq of loopQuestions) {
             result.push({
               question: lq,
@@ -1329,7 +1382,7 @@ export function SpQuestionnaireUI({
       p.categorie,
       p.description,
       ...(p.tags ?? []),
-    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalizedCatalogueSearch)))
+    ].filter(Boolean).some((value) => matchesSearchTerm(String(value), normalizedCatalogueSearch)))
     : currentCatalogueOptions;
 
   const allObligatoryAnswered = expandedQuestions
@@ -1643,10 +1696,53 @@ export function SpQuestionnaireUI({
               {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
             </p>
           )}
-          {currentExpanded.iterationLabel && (
-            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-              {currentExpanded.iterationLabel}
-            </span>
+          {currentExpanded.iterationLabel !== undefined && currentExpanded.question.groupe_boucle_id && (
+            editingLoopLabel?.instanceId === currentExpanded.instanceId ? (
+              <input
+                autoFocus
+                value={editingLoopLabel.value}
+                onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: e.target.value })}
+                onBlur={() => {
+                  if (!editingLoopLabel) return;
+                  const { groupId, iterIndex, value } = editingLoopLabel;
+                  const qId = `loop_label__${groupId}__iter_${iterIndex}`;
+                  setReponses((prev) => [
+                    ...prev.filter((r) => r.question_id !== qId),
+                    { question_id: qId, valeur: value.trim() },
+                  ]);
+                  setEditingLoopLabel(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!editingLoopLabel) return;
+                    const { groupId, iterIndex, value } = editingLoopLabel;
+                    const qId = `loop_label__${groupId}__iter_${iterIndex}`;
+                    setReponses((prev) => [
+                      ...prev.filter((r) => r.question_id !== qId),
+                      { question_id: qId, valeur: value.trim() },
+                    ]);
+                    setEditingLoopLabel(null);
+                  }
+                  if (e.key === 'Escape') setEditingLoopLabel(null);
+                }}
+                className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium border border-purple-400 outline-none w-44"
+              />
+            ) : (
+              <span
+                className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium cursor-pointer hover:bg-purple-200 transition-colors"
+                title="Cliquer pour modifier le numéro"
+                onClick={() =>
+                  setEditingLoopLabel({
+                    instanceId: currentExpanded.instanceId,
+                    groupId: currentExpanded.question.groupe_boucle_id!,
+                    iterIndex: currentExpanded.iterationIndex,
+                    value: currentExpanded.iterationLabel!,
+                  })
+                }
+              >
+                {currentExpanded.iterationLabel}
+              </span>
+            )
           )}
 
           {currentQuestion.affichage === 'oui_non' && (
@@ -1844,54 +1940,58 @@ export function SpQuestionnaireUI({
                   type="search"
                   value={catalogueSearch}
                   onChange={(e) => setCatalogueSearch(e.target.value)}
-                  placeholder="Rechercher un produit..."
+                  placeholder="Rechercher un produit (min. 2 caractères)..."
                   className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
                 />
               )}
-              <select
-                value={(() => {
-                  if (pendingCatalogueSelection?.instanceId === currentExpanded.instanceId) return pendingCatalogueSelection.product.nom;
-                  if (pendingFreeEntry?.instanceId === currentExpanded.instanceId) return FREE_ENTRY_MARKER;
-                  return '';
-                })()}
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  if (e.target.value === FREE_ENTRY_MARKER) {
-                    setPendingFreeEntry({
-                      instanceId: currentExpanded.instanceId,
-                      draft: { label: '', prix: '', categorie: 'equipement' },
-                    });
-                    return;
-                  }
-                  if (currentCatalogueOptions.length > 0) {
-                    const p = currentCatalogueOptions.find((prod) => prod.nom === e.target.value);
-                    if (p) setPendingCatalogueSelection({
-                      instanceId: currentExpanded.instanceId,
-                      product: p,
-                      fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
-                      prixValue: getProduitPrixValue(p),
-                      quantityValue: '1',
-                      prixEditing: false,
-                    });
-                  } else {
-                    recordAnswer(currentExpanded.instanceId, e.target.value);
-                  }
-                }}
-                className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white">
-                <option value="">Sélectionnez...</option>
-                {currentCatalogueOptions.length > 0
-                  ? filteredCatalogueOptions.map((p) => {
-                    const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
-                    const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
-                    return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
-                  })
-                  : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                {currentQuestion.options_libres && (
-                  <option value={FREE_ENTRY_MARKER}>{FREE_ENTRY_LABEL}</option>
-                )}
-              </select>
+              {currentCatalogueOptions.length > 0 && catalogueSearch.trim().length < 2 ? (
+                <p className="text-sm text-gray-500">Saisissez au moins 2 caractères pour afficher les produits</p>
+              ) : (
+                <select
+                  value={(() => {
+                    if (pendingCatalogueSelection?.instanceId === currentExpanded.instanceId) return pendingCatalogueSelection.product.nom;
+                    if (pendingFreeEntry?.instanceId === currentExpanded.instanceId) return FREE_ENTRY_MARKER;
+                    return '';
+                  })()}
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    if (e.target.value === FREE_ENTRY_MARKER) {
+                      setPendingFreeEntry({
+                        instanceId: currentExpanded.instanceId,
+                        draft: { label: '', prix: '', categorie: 'equipement' },
+                      });
+                      return;
+                    }
+                    if (currentCatalogueOptions.length > 0) {
+                      const p = currentCatalogueOptions.find((prod) => prod.nom === e.target.value);
+                      if (p) setPendingCatalogueSelection({
+                        instanceId: currentExpanded.instanceId,
+                        product: p,
+                        fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
+                        prixValue: getProduitPrixValue(p),
+                        quantityValue: '1',
+                        prixEditing: false,
+                      });
+                    } else {
+                      recordAnswer(currentExpanded.instanceId, e.target.value);
+                    }
+                  }}
+                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white">
+                  <option value="">Sélectionnez...</option>
+                  {currentCatalogueOptions.length > 0
+                    ? filteredCatalogueOptions.map((p) => {
+                      const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
+                      const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                      return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
+                    })
+                    : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  {currentQuestion.options_libres && (
+                    <option value={FREE_ENTRY_MARKER}>{FREE_ENTRY_LABEL}</option>
+                  )}
+                </select>
+              )}
             </div>
           )}
 
@@ -2448,17 +2548,19 @@ export function SpQuestionnaireUI({
               <div className="space-y-3">
                 {promoApplied ? (
                   <p className="text-sm font-medium text-green-700">
-                    ✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué
+                    {spCodesPromoMasquerSaisie
+                      ? '✓ Code promo appliqué'
+                      : <>✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué</>}
                   </p>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
                       <input
-                        type="text"
+                        type={spCodesPromoMasquerSaisie ? 'password' : 'text'}
                         value={inputValue}
                         onChange={(e) => { setInputValue(e.target.value); setPromoError(''); }}
                         placeholder="Entrez votre code promo"
-                        className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono uppercase"
+                        className={`h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono${spCodesPromoMasquerSaisie ? '' : ' uppercase'}`}
                         onKeyDown={(e) => { if (e.key === 'Enter') applyPromo(inputValue); }}
                       />
                       <Button

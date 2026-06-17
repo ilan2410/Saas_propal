@@ -69,6 +69,9 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_codes_promo_mode !== undefined
         ? { sp_codes_promo_mode: newPreferences.sp_codes_promo_mode }
         : {}),
+      ...(newPreferences.sp_codes_promo_masquer_saisie !== undefined
+        ? { sp_codes_promo_masquer_saisie: newPreferences.sp_codes_promo_masquer_saisie }
+        : {}),
       ...(newPreferences.sp_objectifs_config !== undefined
         ? { sp_objectifs_config: newPreferences.sp_objectifs_config }
         : {}),

@@ -29,7 +29,7 @@ function getFasModeLabel(produit: CatalogueProduit): string {
     : 'FAS fixe';
 }
 
-const ITEMS_PER_PAGE = 9;
+const PAGE_SIZE_OPTIONS = [10, 50, 100, 200];
 
 export function CatalogueView({ initialProducts, showHeader = true, isAdmin = false }: CatalogueViewProps) {
   const router = useRouter();
@@ -39,6 +39,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CatalogueCategorie | 'all'>('all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
@@ -86,17 +87,17 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
   }, [initialProducts, searchQuery, selectedCategory, selectedSupplier]);
 
   // Pagination Logic
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const paginatedProducts = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredProducts.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(start, start + itemsPerPage);
+  }, [filteredProducts, currentPage, itemsPerPage]);
 
-  // Reset page when filters change
+  // Reset page when filters or page size change
   useMemo(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [searchQuery, selectedCategory, selectedSupplier]);
+  }, [searchQuery, selectedCategory, selectedSupplier, itemsPerPage]);
 
   const toggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -246,8 +247,8 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
       </div>
 
       {/* Results Count */}
-      <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between text-sm text-gray-500 px-1 flex-wrap gap-2">
+        <div className="flex items-center gap-4 flex-wrap">
           <label className="flex items-center gap-2 cursor-pointer hover:text-gray-700 transition-colors select-none">
             <input
               type="checkbox"
@@ -263,9 +264,24 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
             {searchQuery && ` pour "${searchQuery}"`}
           </p>
         </div>
-        {totalPages > 1 && (
-          <p>Page {currentPage} sur {totalPages}</p>
-        )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 hidden sm:inline">Afficher</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              className="px-2 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              {PAGE_SIZE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            <span className="text-gray-500 hidden sm:inline">par page</span>
+          </div>
+          {totalPages > 1 && (
+            <p>Page {currentPage} sur {totalPages}</p>
+          )}
+        </div>
       </div>
 
       {/* Products Grid/List */}
