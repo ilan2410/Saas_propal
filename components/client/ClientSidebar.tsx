@@ -16,6 +16,7 @@ interface ClientSidebarProps {
     nom: string;
     credits: number;
     tarif_par_proposition: number;
+    logo_url?: string | null;
   };
 }
 
@@ -55,7 +56,12 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
         md:translate-x-0
       `}>
         <div className="p-6">
-          <h1 className="text-2xl font-bold text-blue-600">Propositions</h1>
+          {organization.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={organization.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
+          ) : (
+            <h1 className="text-2xl font-bold text-blue-600">Propositions</h1>
+          )}
           <p className="text-sm text-gray-500 mt-1 truncate" title={organization.nom}>{organization.nom}</p>
         </div>
 

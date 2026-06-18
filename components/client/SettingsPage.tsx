@@ -1241,6 +1241,17 @@ export default function SettingsPage({
                       >
                         Changer le logo
                       </label>
+                      {profileData.logo_url && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProfileData(prev => ({ ...prev, logo_url: '' }));
+                          }}
+                          className="ml-2 text-xs text-red-600 hover:underline"
+                        >
+                          Supprimer le logo
+                        </button>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">PNG, JPG ou SVG. Max 2MB.</p>
                     </div>
                   </div>

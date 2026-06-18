@@ -1046,7 +1046,7 @@ export default async function PropositionDetailPage({
             </summary>
 
             <div className="p-6">
-              <SaResumeRenderer text={resume} donneesExtraites={extractedDataRecord} />
+              <SaResumeRenderer text={resume} donneesExtraites={donneesExtraitesForCalc} />
             </div>
           </details>
         )}

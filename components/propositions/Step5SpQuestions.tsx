@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, Database, X, Play, GripHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
@@ -107,7 +107,52 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     setShowSaResume(false);
   }, [templateId, propositionData.proposition_id, siteLabel]);
 
+  // Persistance (debouncée) des éditions du panier SA dans `filled_data`.
+  const saPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saPendingData = useRef<Record<string, unknown> | null>(null);
+  useEffect(() => () => {
+    if (saPersistTimer.current) clearTimeout(saPersistTimer.current);
+  }, []);
+
+  const persistSaFilledData = (data: Record<string, unknown>) => {
+    const propId = propositionData.proposition_id;
+    if (!propId) return;
+    fetch(`/api/propositions/${propId}/update`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filled_data: data }),
+    }).catch((e) => console.error('Erreur persistance panier SA:', e));
+  };
+
+  // Flush immédiat d'une sauvegarde SA en attente (avant génération / démontage).
+  const flushSaPersist = () => {
+    if (saPersistTimer.current) {
+      clearTimeout(saPersistTimer.current);
+      saPersistTimer.current = null;
+    }
+    if (saPendingData.current) {
+      persistSaFilledData(saPendingData.current);
+      saPendingData.current = null;
+    }
+  };
+
+  const handleUpdateDonneesExtraites = (next: Record<string, unknown>) => {
+    updatePropositionData({ donnees_extraites: next });
+    if (!propositionData.proposition_id) return; // simulation / brouillon → session only
+    saPendingData.current = next;
+    if (saPersistTimer.current) clearTimeout(saPersistTimer.current);
+    saPersistTimer.current = setTimeout(() => {
+      saPersistTimer.current = null;
+      const data = saPendingData.current;
+      saPendingData.current = null;
+      if (data) persistSaFilledData(data);
+    }, 600);
+  };
+
   const handleComplete = async (reponses: SpQuestionReponse[]) => {
+    // S'assurer que les dernières éditions du panier SA sont persistées avant la suite.
+    flushSaPersist();
+
     // In multisite mode, bypass generer-suggestions — parent handles the clone flow
     if (onMultisiteComplete) {
       onMultisiteComplete(reponses);
@@ -360,6 +405,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   fournisseurs={fournisseurs}
                   initialReponses={propositionData.sp_reponses}
                   onComplete={handleComplete}
+                  onUpdateDonneesExtraites={handleUpdateDonneesExtraites}
                   siteLabel={siteLabel}
                   spConfigLoyer={spConfigLoyer}
                   spConfigResiliation={spConfigResiliation}

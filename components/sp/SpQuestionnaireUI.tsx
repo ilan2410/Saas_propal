@@ -27,6 +27,8 @@ export interface SpQuestionnaireUIProps {
   discountRules?: SpRegleRemise[];
   fournisseurs: string[];
   onComplete: (reponses: SpQuestionReponse[]) => void;
+  /** Édition du panier SA : reçoit les `donneesExtraites` mis à jour pour persistance. */
+  onUpdateDonneesExtraites?: (donneesExtraites: Record<string, unknown>) => void;
   initialReponses?: SpQuestionReponse[];
   isSimulation?: boolean;
   simulationPropositionId?: string;
@@ -839,11 +841,12 @@ function hasVisibilityConditions(question: SpQuestion): boolean {
 
 export function SpQuestionnaireUI({
   questions,
-  donneesExtraites,
+  donneesExtraites: donneesExtraitesProp,
   catalogue,
   discountRules = [],
   fournisseurs,
   onComplete,
+  onUpdateDonneesExtraites,
   initialReponses,
   isSimulation = false,
   simulationPropositionId,
@@ -864,6 +867,37 @@ export function SpQuestionnaireUI({
   spPreferencesProduits,
 }: SpQuestionnaireUIProps) {
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
+  // Données SA éditables (panier SA). Initialisées depuis la prop, resynchronisées
+  // si la prop change (ex : changement de site/proposition).
+  const [donneesExtraites, setDonneesExtraites] = useState<Record<string, unknown>>(
+    donneesExtraitesProp ?? {},
+  );
+  // Snapshot de `situation_actuelle` à l'ouverture, pour réinitialiser le panier SA.
+  const saBaselineRef = useRef<unknown>(
+    JSON.parse(JSON.stringify((donneesExtraitesProp ?? {}).situation_actuelle ?? {})),
+  );
+  // Dernière valeur émise vers le parent : permet d'ignorer l'echo de nos propres
+  // éditions (qui reviennent via la prop) pour ne pas écraser le snapshot baseline.
+  const lastEmittedRef = useRef<unknown>(null);
+  useEffect(() => {
+    const fresh = donneesExtraitesProp ?? {};
+    if (fresh === lastEmittedRef.current) return; // echo d'une édition locale → ignorer
+    setDonneesExtraites(fresh);
+    saBaselineRef.current = JSON.parse(JSON.stringify(fresh.situation_actuelle ?? {}));
+  }, [donneesExtraitesProp]);
+  const handleUpdateSaData = useCallback(
+    (situationActuelle: Record<string, unknown>) => {
+      const next = { ...donneesExtraites, situation_actuelle: situationActuelle };
+      lastEmittedRef.current = next;
+      setDonneesExtraites(next);
+      onUpdateDonneesExtraites?.(next);
+    },
+    [donneesExtraites, onUpdateDonneesExtraites],
+  );
+  const handleResetSaData = useCallback(() => {
+    const restored = JSON.parse(JSON.stringify(saBaselineRef.current ?? {}));
+    handleUpdateSaData(restored as Record<string, unknown>);
+  }, [handleUpdateSaData]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [messages, setMessages] = useState<MessageBubble[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -3082,6 +3116,8 @@ export function SpQuestionnaireUI({
               <SaRealTimeCart
                 donneesExtraites={donneesExtraites}
                 spTotalMensuel={spReference}
+                onUpdateSaData={handleUpdateSaData}
+                onResetSaData={handleResetSaData}
               />
               <SpRealTimeCart
                 reponses={reponses}
