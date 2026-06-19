@@ -835,6 +835,14 @@ export interface SpConfigModeClient {
   afficher_indicateur_mode_client: boolean;
   permettre_toggle_depuis_questionnaire: boolean;
   permettre_edition_panier_client: boolean;
+
+  // Réglage widget — Marge
+  garde_fou_marge_actif?: boolean;
+  garde_fou_marge_seuil_question_id?: string;
+
+  // Réglage widget — Indemnité
+  garde_fou_indemnite_actif?: boolean;
+  garde_fou_indemnite_seuil_question_id?: string;
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

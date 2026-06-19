@@ -5,7 +5,7 @@ import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
-import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
+import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -387,7 +387,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
 
     return {
       sp_nom_ligne: existing?.sp_nom_ligne ?? cartLine.produitNom,
-      sp_numero: existing?.sp_numero,
+      sp_numero: cartLine.numero || existing?.sp_numero,
       sp_quantite: String(cartLine.quantite),
       sp_produit: cartLine.produitNom,
       sp_produit_id: cartLine.produitId ?? existing?.sp_produit_id,
@@ -494,8 +494,12 @@ function buildSpCompletes(
     for (const p of catalogueProduits) catalogueMap.set(p.id, p);
   }
 
+  const donneesCart = isPlainObject(raw.situation_actuelle)
+    ? { situation_actuelle: raw.situation_actuelle }
+    : {};
+
   if (templateQuestions.length > 0 && catalogueProduits && catalogueProduits.length > 0) {
-    const questionnaireCart = calculateCartSummary(reponses, templateQuestions, catalogueProduits, {}, undefined, undefined, wordCfg.sp_preferences_produits);
+    const questionnaireCart = calculateCartSummary(reponses, templateQuestions, catalogueProduits, donneesCart, undefined, undefined, wordCfg.sp_preferences_produits);
     const mobileCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'mobile');
     const fixeCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'fixe');
     const internetCartLines = questionnaireCart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'internet');
@@ -507,6 +511,28 @@ function buildSpCompletes(
       sp_internet.splice(0, sp_internet.length, ...(internetCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp_internet, internetCartLines, 'Internet', catalogueMap) : []));
     }
 
+    // Produits non-télécom ajoutés manuellement depuis le panier (matériel / cadeau / installation)
+    // → injectés dans sp_materiel pour qu'ils apparaissent aussi dans la proposition Word.
+    const manualMaterielLines = questionnaireCart.lines.filter(
+      (line) =>
+        line.instanceId.startsWith(MANUAL_PRODUCT_PREFIX) &&
+        line.type_frequence === 'unique' &&
+        (line.categorie === 'equipement' || line.categorie === 'cadeau' || line.categorie === 'installation'),
+    );
+    for (const line of manualMaterielLines) {
+      const catItem = line.produitId ? catalogueMap.get(line.produitId) : undefined;
+      sp_materiel.push({
+        sp_materiel_nom: line.produitNom,
+        sp_materiel_ref: line.numero || undefined,
+        sp_materiel_prix_mensuel: formatEuro(line.prixTotal),
+        sp_materiel_duree_engagement: catItem?.engagement_mois ? `${catItem.engagement_mois} mois` : '',
+        sp_materiel_commentaire: '',
+        sp_materiel_produit_id: line.produitId,
+        sp_materiel_fournisseur: catItem?.fournisseur,
+        sp_type_ligne: 'Materiel',
+        _prix_mensuel_raw: line.prixTotal,
+      });
+    }
   }
 
   // ── Inject saisies libres ("Autre valeur") ────────────────────────────
@@ -1009,10 +1035,16 @@ export async function POST(request: NextRequest) {
       ?? resiliationEstimation.montant_source
       ?? resiliationEstimation.montant_estime;
 
+    const donneesForCart =
+      isPlainObject(situation_actuelle) && isPlainObject(situation_actuelle.situation_actuelle)
+        ? situation_actuelle
+        : { situation_actuelle };
+
     const buildRaw = {
       ...rawResult,
       ...questionVariableValues,
       sp_questions_reponses: spReponses,
+      situation_actuelle: donneesForCart.situation_actuelle,
     };
 
     const suggestionsSpCompletes = buildSpCompletes(

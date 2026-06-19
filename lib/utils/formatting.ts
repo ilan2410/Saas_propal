@@ -144,6 +144,53 @@ export function toSnakeCaseKey(text: string): string {
 }
 
 /**
+ * Normalise un numéro de téléphone français pour un affichage homogène.
+ * - 10 chiffres (ex : "0612345678", "06.12.34.56.78") → "06 12 34 56 78"
+ * - Format international "+33 6 12 34 56 78" (11 chiffres, indicatif 33) → "06 12 34 56 78"
+ * - Toute autre valeur (référence atypique, n° court/long, label non téléphonique)
+ *   est conservée telle quelle (espaces multiples simplement réduits).
+ * @param raw - Numéro saisi
+ * @returns Numéro normalisé
+ */
+export function normalizePhoneNumber(raw: string): string {
+  const value = raw.trim();
+  if (!value) return '';
+  const hasPlus = value.startsWith('+');
+  const digits = value.replace(/\D/g, '');
+
+  // Numéro français standard : 10 chiffres commençant par 0
+  if (!hasPlus && digits.length === 10 && digits.startsWith('0')) {
+    return digits.replace(/(\d{2})(?=\d)/g, '$1 ').trim();
+  }
+  // Format international +33 X XX XX XX XX
+  if (hasPlus && digits.length === 11 && digits.startsWith('33')) {
+    const national = '0' + digits.slice(2);
+    return national.replace(/(\d{2})(?=\d)/g, '$1 ').trim();
+  }
+  // Sinon : on ne reformate pas, on se contente de réduire les espaces multiples.
+  return value.replace(/\s+/g, ' ');
+}
+
+/**
+ * Masque de saisie « temps réel » pour un champ numéro de téléphone.
+ * Pensé pour être appelé dans un onChange : reformate au fur et à mesure de la
+ * frappe, en insérant un espace toutes les 2 décimales (max 10 chiffres).
+ * - Tolérant : si la valeur contient des lettres (libellé non téléphonique) ou
+ *   un « + » (international saisi à la main), elle n'est pas masquée durement.
+ * - Le formatage final (ex : +33 → 0…) est assuré par {@link normalizePhoneNumber} au blur.
+ * @param value - Valeur courante du champ
+ * @returns Valeur masquée
+ */
+export function maskPhoneInput(value: string): string {
+  // Libellé texte → on laisse l'utilisateur saisir librement.
+  if (/[A-Za-zÀ-ÿ]/.test(value)) return value;
+  // International saisi à la main → on garde chiffres / + / espaces.
+  if (value.includes('+')) return value.replace(/[^\d+\s]/g, '').replace(/\s+/g, ' ');
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+  return digits.replace(/(\d{2})(?=\d)/g, '$1 ');
+}
+
+/**
  * Formate un secteur
  * @param secteur - Secteur à formater
  * @returns Secteur formaté

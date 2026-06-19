@@ -16,6 +16,7 @@ import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
+import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
@@ -1816,14 +1817,14 @@ export function SpQuestionnaireUI({
               <input
                 autoFocus
                 value={editingLoopLabel.value}
-                onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: e.target.value })}
+                onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: maskPhoneInput(e.target.value) })}
                 onBlur={() => {
                   if (!editingLoopLabel) return;
                   const { groupId, iterIndex, value } = editingLoopLabel;
                   const qId = `loop_label__${groupId}__iter_${iterIndex}`;
                   setReponses((prev) => [
                     ...prev.filter((r) => r.question_id !== qId),
-                    { question_id: qId, valeur: value.trim() },
+                    { question_id: qId, valeur: normalizePhoneNumber(value) },
                   ]);
                   setEditingLoopLabel(null);
                 }}
@@ -1834,7 +1835,7 @@ export function SpQuestionnaireUI({
                     const qId = `loop_label__${groupId}__iter_${iterIndex}`;
                     setReponses((prev) => [
                       ...prev.filter((r) => r.question_id !== qId),
-                      { question_id: qId, valeur: value.trim() },
+                      { question_id: qId, valeur: normalizePhoneNumber(value) },
                     ]);
                     setEditingLoopLabel(null);
                   }
@@ -3092,27 +3093,62 @@ export function SpQuestionnaireUI({
             </div>
 
             <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
-              <SpMargeWidget
-                reponses={reponses}
-                questions={questions}
-                catalogue={catalogue}
-                donneesExtraites={donneesExtraites}
-                spConfigLoyer={spConfigLoyer}
-                spConfigMoisOfferts={spConfigMoisOfferts}
-                spPreferencesProduits={spPreferencesProduits}
-                onUpdateReponses={(nextReponses) => {
-                  setReponses(nextReponses);
-                }}
-              />
-              <SpIndemniteWidget
-                reponses={reponses}
-                questions={questions}
-                donneesExtraites={donneesExtraites}
-                spConfigResiliation={spConfigResiliation}
-                onUpdateReponses={(nextReponses) => {
-                  setReponses(nextReponses);
-                }}
-              />
+              {(() => {
+                const margeRemplie = reponses.some(
+                  (r) => r.question_id === 'sp_marge_calculee' && Number(r.valeur) > 0,
+                );
+                const seuilId = spConfigModeClient?.garde_fou_marge_seuil_question_id;
+                const seuilIdx = seuilId
+                  ? expandedQuestions.findIndex((eq) => eq.question.id === seuilId)
+                  : -1;
+                const gardeFouVisible =
+                  !margeRemplie && seuilIdx >= 0 && currentIdx >= seuilIdx;
+                return (
+                  <SpMargeWidget
+                    reponses={reponses}
+                    questions={questions}
+                    catalogue={catalogue}
+                    donneesExtraites={donneesExtraites}
+                    spConfigLoyer={spConfigLoyer}
+                    spConfigMoisOfferts={spConfigMoisOfferts}
+                    spPreferencesProduits={spPreferencesProduits}
+                    onUpdateReponses={(nextReponses) => {
+                      setReponses(nextReponses);
+                    }}
+                    gardeFouActif={spConfigModeClient?.garde_fou_marge_actif ?? false}
+                    gardeFouVisible={gardeFouVisible}
+                  />
+                );
+              })()}
+              {(() => {
+                const indemQuestion = questions.find(
+                  (q) =>
+                    q.affichage === 'nombre' &&
+                    q.nombre_config?.suggestion_source === 'indemnite_resiliation',
+                );
+                const indemRemplie = indemQuestion
+                  ? reponses.some((r) => r.question_id === indemQuestion.id && Number(r.valeur) > 0)
+                  : true;
+                const seuilIndemId = spConfigModeClient?.garde_fou_indemnite_seuil_question_id;
+                const seuilIndemIdx = seuilIndemId
+                  ? expandedQuestions.findIndex((eq) => eq.question.id === seuilIndemId)
+                  : -1;
+                const gardeFouIndemVisible =
+                  !indemRemplie && seuilIndemIdx >= 0 && currentIdx >= seuilIndemIdx;
+                return (
+                  <SpIndemniteWidget
+                    reponses={reponses}
+                    questions={questions}
+                    donneesExtraites={donneesExtraites}
+                    spConfigResiliation={spConfigResiliation}
+                    onUpdateReponses={(nextReponses) => {
+                      setReponses(nextReponses);
+                    }}
+                    gardeFouActif={spConfigModeClient?.garde_fou_indemnite_actif ?? false}
+                    gardeFouVisible={gardeFouIndemVisible}
+                  />
+                );
+              })()}
               <SaRealTimeCart
                 donneesExtraites={donneesExtraites}
                 spTotalMensuel={spReference}

@@ -26,6 +26,8 @@ export interface CartLine {
   prixTotal: number;
   fasTotal: number;
   instanceId: string;
+  /** Numéro de ligne rattaché (override panier, ou label de boucle). */
+  numero?: string;
 }
 
 export interface SpCartSummary {
@@ -124,6 +126,29 @@ function getPrixOverride(
   return Number.isFinite(v) ? v : undefined;
 }
 
+function getNumeroOverride(
+  reponses: SpQuestionReponse[],
+  instanceId: string,
+  produitNom: string,
+  produitId?: string,
+): string | undefined {
+  const rep = reponses.find((r) => r.question_id === `numero_${instanceId}`);
+  if (!rep) return undefined;
+  const asMap = parseJsonRecord(rep.valeur);
+  if (asMap) {
+    const candidates = [produitId, produitNom].filter((k): k is string => !!k);
+    for (const k of candidates) {
+      if (k in asMap) {
+        const v = asMap[k];
+        if (typeof v === 'string' && v.trim()) return v.trim();
+      }
+    }
+    return undefined;
+  }
+  if (typeof rep.valeur === 'string' && rep.valeur.trim()) return rep.valeur.trim();
+  return undefined;
+}
+
 function defaultPrixUnitaire(p: CatalogueProduit): number {
   if (p.type_frequence === 'mensuel') return p.prix_mensuel ?? 0;
   return p.prix_vente ?? 0;
@@ -153,6 +178,131 @@ function parseLibreReponse(
 }
 
 const FREE_ENTRY_MARKER = '__libre__';
+
+/** Préfixe des réponses correspondant à un produit ajouté manuellement depuis le panier. */
+export const MANUAL_PRODUCT_PREFIX = 'manual_';
+
+// ── Numéros de boucle (labels par itération) ─────────────────────────
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+/**
+ * Reproduit la logique de SpQuestionnaireUI : pour chaque groupe de boucle,
+ * calcule la liste des labels d'itération (ex : numéros de ligne capturés en SA).
+ * Retourne une Map<groupe_boucle_id, string[]> avec les labels par itération.
+ */
+export function buildLoopLabelsByGroup(
+  questions: SpQuestion[],
+  reponses: SpQuestionReponse[],
+  donneesExtraites: Record<string, unknown>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const seenGroups = new Set<string>();
+
+  for (const q of questions) {
+    if (!q.boucle || !q.groupe_boucle_id) continue;
+    if (seenGroups.has(q.groupe_boucle_id)) continue;
+    seenGroups.add(q.groupe_boucle_id);
+
+    let iterationCount = q.boucle.nombre_fixe ?? 1;
+    const labels: string[] = [];
+
+    let loopItemsFromSa: Record<string, unknown>[] = [];
+    if (q.boucle.source_sa_array) {
+      const value = getNestedValue(donneesExtraites, q.boucle.source_sa_array);
+      if (Array.isArray(value)) {
+        loopItemsFromSa = value.filter(
+          (item): item is Record<string, unknown> => isRecord(item),
+        );
+        if (q.boucle.source_sa_filtre_champ && q.boucle.source_sa_filtre_valeur) {
+          const expected = q.boucle.source_sa_filtre_valeur.trim().toLowerCase();
+          loopItemsFromSa = loopItemsFromSa.filter(
+            (item) =>
+              String(item[q.boucle!.source_sa_filtre_champ!] ?? '')
+                .trim()
+                .toLowerCase() === expected,
+          );
+        }
+      }
+    }
+
+    if (q.boucle.source_nombre_question_id) {
+      const rep = reponses.find((r) => r.question_id === q.boucle!.source_nombre_question_id);
+      if (rep) {
+        const n = Number(rep.valeur);
+        if (Number.isFinite(n) && n > 0) iterationCount = n;
+      }
+    } else if (loopItemsFromSa.length > 0) {
+      iterationCount = loopItemsFromSa.length;
+    }
+
+    if (q.boucle.source_labels_question_id) {
+      const rep = reponses.find((r) => r.question_id === q.boucle!.source_labels_question_id);
+      if (rep && Array.isArray(rep.valeur)) {
+        labels.push(...rep.valeur.map(String));
+      } else if (rep && typeof rep.valeur === 'string') {
+        labels.push(...rep.valeur.split(',').map((s) => s.trim()).filter(Boolean));
+      }
+    } else if (q.boucle.source_sa_label_champ && loopItemsFromSa.length > 0) {
+      labels.push(
+        ...loopItemsFromSa.map((item, index) => {
+          const value = item[q.boucle!.source_sa_label_champ!];
+          return value != null && String(value).trim()
+            ? String(value).trim()
+            : `${q.boucle?.label_prefix || 'Item'} ${index + 1}`;
+        }),
+      );
+    }
+
+    const finalLabels: string[] = [];
+    for (let iter = 0; iter < iterationCount; iter++) {
+      const editedRep = reponses.find(
+        (r) => r.question_id === `loop_label__${q.groupe_boucle_id}__iter_${iter}`,
+      );
+      const editedLabel =
+        editedRep && typeof editedRep.valeur === 'string' ? editedRep.valeur.trim() : '';
+      finalLabels.push(
+        editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`,
+      );
+    }
+    out.set(q.groupe_boucle_id, finalLabels);
+  }
+
+  return out;
+}
+
+/**
+ * Pour un CartLine, retourne le label d'itération (numéro de ligne) si la
+ * question d'origine est dans une boucle, sinon ''.
+ */
+export function resolveCartLineNumero(
+  line: CartLine,
+  questions: SpQuestion[],
+  loopLabels: Map<string, string[]>,
+): string {
+  const instanceId = line.instanceId;
+  const iterMatch = instanceId.match(/__iter_(\d+)$/);
+  if (!iterMatch) return '';
+  const iterIndex = Number(iterMatch[1]);
+  const baseQId = instanceId.replace(/__iter_\d+$/, '');
+  const question = questions.find((q) => q.id === baseQId);
+  if (!question || !question.groupe_boucle_id) return '';
+  const labels = loopLabels.get(question.groupe_boucle_id);
+  if (!labels) return '';
+  return labels[iterIndex] || '';
+}
 
 // ── Core ─────────────────────────────────────────────────────────────
 
@@ -282,6 +432,36 @@ export function calculateCartSummary(
     }
   }
 
+  // 1c. Produits ajoutés manuellement depuis le panier (question_id = manual_<uid>)
+  for (const rep of reponses) {
+    if (!rep.question_id.startsWith(MANUAL_PRODUCT_PREFIX)) continue;
+    const key = Array.isArray(rep.valeur)
+      ? String(rep.valeur[0] ?? '')
+      : typeof rep.valeur === 'string'
+        ? rep.valeur
+        : '';
+    const produit = findProduct(catalogue, key);
+    if (!produit) continue;
+
+    const quantite = getQuantite(reponses, rep.question_id, produit.nom);
+    const prixOverride = getPrixOverride(reponses, rep.question_id, produit.nom, produit.id);
+    const prixTotal = prixOverride != null
+      ? prixOverride
+      : defaultPrixUnitaire(produit) * quantite;
+    const fasTotal = getFas(reponses, rep.question_id, produit.nom);
+
+    lines.push({
+      produitNom: produit.nom,
+      produitId: produit.id,
+      categorie: produit.categorie,
+      type_frequence: produit.type_frequence,
+      quantite,
+      prixTotal,
+      fasTotal,
+      instanceId: rep.question_id,
+    });
+  }
+
   // 2. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
   for (const rep of reponses) {
     if (rep.question_id.startsWith('fas_')) continue;
@@ -317,12 +497,25 @@ export function calculateCartSummary(
   if (spPreferencesProduits) {
     const alreadyAutoIds = new Set<string>();
 
+    // Lignes auto supprimées manuellement depuis le panier (réponse auto_exclu)
+    const excludedAuto = new Set<string>();
+    const exclRep = reponses.find((r) => r.question_id === 'auto_exclu');
+    if (exclRep && typeof exclRep.valeur === 'string') {
+      try {
+        const parsed = JSON.parse(exclRep.valeur);
+        if (Array.isArray(parsed)) for (const id of parsed) excludedAuto.add(String(id));
+      } catch {
+        /* ignore */
+      }
+    }
+
     for (const produitId of spPreferencesProduits.produits_fixes_ids) {
       if (alreadyAutoIds.has(produitId)) continue;
       const p = catalogue.find((c) => c.id === produitId);
       if (!p || !p.actif) continue;
       alreadyAutoIds.add(produitId);
       const instanceId = `auto_fixed_${p.id}`;
+      if (excludedAuto.has(instanceId)) continue;
       const quantite = getQuantite(reponses, instanceId, p.nom);
       const prixOverride = getPrixOverride(reponses, instanceId, p.nom, p.id);
       const prixTotal = prixOverride != null
@@ -358,6 +551,7 @@ export function calculateCartSummary(
         if (!p || !p.actif) continue;
         alreadyAutoIds.add(`cond_${regle.id}_${produitId}`);
         const instanceId = `auto_cond_${regle.id}_${p.id}`;
+        if (excludedAuto.has(instanceId)) continue;
         const quantite = getQuantite(reponses, instanceId, p.nom);
         const prixOverride = getPrixOverride(reponses, instanceId, p.nom, p.id);
         const prixTotal = prixOverride != null
@@ -376,6 +570,14 @@ export function calculateCartSummary(
         });
       }
     }
+  }
+
+  // 2c. Résoudre le numéro de chaque ligne : override panier > label de boucle.
+  const loopLabels = buildLoopLabelsByGroup(questions, reponses, donneesExtraites);
+  for (const line of lines) {
+    const override = getNumeroOverride(reponses, line.instanceId, line.produitNom, line.produitId);
+    line.numero = override ?? resolveCartLineNumero(line, questions, loopLabels) ?? '';
+    if (!line.numero) delete line.numero;
   }
 
   // 3. Aggregate by category

@@ -544,7 +544,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
 
   const previousQuestionVariables: SpVariableOption[] = [];
   const currentQuestionOrdre = initial?.ordre;
-  const orderedQuestions = [...otherQuestions].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+  const orderedQuestions = [...otherQuestions].filter((q) => q.actif).sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
   for (const question of orderedQuestions) {
     if (currentQuestionOrdre != null && question.ordre != null && question.ordre >= currentQuestionOrdre) continue;
     for (const consequence of question.consequences ?? []) {
@@ -1491,11 +1491,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                     className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
                   >
                     <option value="">-- Sélectionner une question --</option>
-                    {otherQuestions.map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {q.libelle.length > 50 ? q.libelle.slice(0, 50) + '…' : q.libelle}
-                      </option>
-                    ))}
+                    {otherQuestions
+                      .filter((q) => q.actif || q.id === cons.question_id)
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.libelle.length > 50 ? q.libelle.slice(0, 50) + '…' : q.libelle}
+                          {!q.actif ? ' (inactive)' : ''}
+                        </option>
+                      ))}
                   </select>
                 )}
 
@@ -1626,11 +1629,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                       >
                         <option value="__fixe__">Nombre fixe</option>
                         <option value="__sa_array__">Tableau SA</option>
-                        {otherQuestions.filter((q) => q.affichage === 'nombre').map((q) => (
-                          <option key={q.id} value={q.id}>
-                            Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
-                          </option>
-                        ))}
+                        {otherQuestions
+                          .filter((q) => q.affichage === 'nombre' && (q.actif || q.id === boucle.source_nombre_question_id))
+                          .map((q) => (
+                            <option key={q.id} value={q.id}>
+                              Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
+                              {!q.actif ? ' (inactive)' : ''}
+                            </option>
+                          ))}
                       </select>
                     </div>
 
@@ -1757,11 +1763,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                         className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
                       >
                         <option value="">Aucune (utiliser le préfixe)</option>
-                        {otherQuestions.map((q) => (
-                          <option key={q.id} value={q.id}>
-                            Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
-                          </option>
-                        ))}
+                        {otherQuestions
+                          .filter((q) => q.actif || q.id === boucle.source_labels_question_id)
+                          .map((q) => (
+                            <option key={q.id} value={q.id}>
+                              Réponse à : {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
+                              {!q.actif ? ' (inactive)' : ''}
+                            </option>
+                          ))}
                       </select>
                     </div>
 

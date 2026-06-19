@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, X } from 'lucide-react';
 import type {
   SpConfigResiliation,
   SpQuestion,
@@ -16,6 +16,8 @@ interface SpIndemniteWidgetProps {
   donneesExtraites?: Record<string, unknown>;
   spConfigResiliation?: SpConfigResiliation;
   onUpdateReponses: (nextReponses: SpQuestionReponse[]) => void;
+  gardeFouActif?: boolean;
+  gardeFouVisible?: boolean;
 }
 
 function formatResiliationMoney(value: number | null | undefined): string {
@@ -60,9 +62,18 @@ export function SpIndemniteWidget({
   donneesExtraites,
   spConfigResiliation,
   onUpdateReponses,
+  gardeFouActif,
+  gardeFouVisible,
 }: SpIndemniteWidgetProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const prevVisible = useRef(false);
+
+  useEffect(() => {
+    if (gardeFouVisible && !prevVisible.current) setDismissed(false);
+    prevVisible.current = gardeFouVisible ?? false;
+  }, [gardeFouVisible]);
 
   const indemQuestion = useMemo(
     () =>
@@ -98,9 +109,35 @@ export function SpIndemniteWidget({
   const groupedCalculation = estimation ? hasGroupedResiliationCalculation(estimation) : false;
   const groupedCount = estimation ? estimation.groupes_calcul.filter((g) => g.sous_total !== null).length : 0;
 
+  const showGardeFou = gardeFouActif && gardeFouVisible && !dismissed;
+
   return (
     <>
-      <div className="w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-xl">
+      {showGardeFou && (
+        <style>{`
+          @keyframes gf-i-glow {
+            0%, 100% { box-shadow: 0 0 0 3px #f97316, 0 0 18px 6px rgba(249,115,22,0.55); }
+            50%       { box-shadow: 0 0 0 5px #dc2626, 0 0 32px 12px rgba(220,38,38,0.35); }
+          }
+          @keyframes gf-i-blink {
+            0%, 49% { background: #f97316; }
+            50%, 100% { background: #dc2626; }
+          }
+          @keyframes gf-i-shake {
+            0%,100% { transform: translateX(0); }
+            15%     { transform: translateX(-4px); }
+            30%     { transform: translateX(4px); }
+            45%     { transform: translateX(-3px); }
+            60%     { transform: translateX(3px); }
+            75%     { transform: translateX(-1px); }
+          }
+          .gf-i-widget { animation: gf-i-glow 1s ease-in-out infinite, gf-i-shake 2.5s ease-in-out infinite; }
+          .gf-i-header { animation: gf-i-blink 0.6s step-start infinite; }
+          .gf-i-icon   { animation: bounce 0.4s ease-in-out infinite alternate; }
+        `}</style>
+      )}
+
+      <div className={`relative w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showGardeFou ? 'gf-i-widget border-orange-400' : 'border-gray-200'}`}>
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
@@ -112,6 +149,37 @@ export function SpIndemniteWidget({
           </span>
           {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
+
+        {showGardeFou && (
+          <div className="absolute inset-0 z-10 flex flex-col rounded-xl overflow-hidden">
+            <div className="gf-i-header flex items-center justify-between px-3 py-2">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-white">
+                <AlertTriangle className="gf-i-icon w-4 h-4" />
+                Indemnité non saisie
+              </span>
+              <button
+                type="button"
+                onClick={() => setDismissed(true)}
+                className="text-white/80 hover:text-white transition-colors"
+                aria-label="Fermer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-amber-50 px-4 py-4">
+              <p className="text-[11px] text-amber-800 text-center leading-snug">
+                Pensez à renseigner l'indemnité de résiliation avant de continuer.
+              </p>
+              <button
+                type="button"
+                onClick={() => setDismissed(true)}
+                className="px-5 py-1.5 rounded-md bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
 
         {!collapsed && (
           <div className="px-3 py-3 space-y-3">

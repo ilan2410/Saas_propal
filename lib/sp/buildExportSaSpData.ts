@@ -7,23 +7,13 @@ import type {
   SpQuestion,
   SpQuestionReponse,
 } from '@/types';
-import type { SpCartSummary, CartLine } from './calculateCart';
+import type { SpCartSummary } from './calculateCart';
 import { calculateSaCartSummary, type SaCartLine } from './calculateSaCart';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.');
-  let current: unknown = obj;
-  for (const part of parts) {
-    if (current == null || typeof current !== 'object' || Array.isArray(current)) return undefined;
-    current = (current as Record<string, unknown>)[part];
-  }
-  return current;
 }
 
 function toNumber(value: unknown): number {
@@ -290,114 +280,6 @@ export function buildSituationActuelleLines(
   return { lines, totalPrixHt, totalIndemnites };
 }
 
-// ── 3. Numéros de boucle (labels par itération) ─────────────────────
-
-/**
- * Reproduit la logique de SpQuestionnaireUI : pour chaque groupe de boucle,
- * calcule la liste des labels d'itération (ex : numéros de ligne capturés en SA).
- * Retourne une Map<groupe_boucle_id, string[]> avec les labels par itération.
- */
-function buildLoopLabelsByGroup(
-  questions: SpQuestion[],
-  reponses: SpQuestionReponse[],
-  donneesExtraites: Record<string, unknown>,
-): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  const seenGroups = new Set<string>();
-
-  for (const q of questions) {
-    if (!q.boucle || !q.groupe_boucle_id) continue;
-    if (seenGroups.has(q.groupe_boucle_id)) continue;
-    seenGroups.add(q.groupe_boucle_id);
-
-    let iterationCount = q.boucle.nombre_fixe ?? 1;
-    const labels: string[] = [];
-
-    let loopItemsFromSa: Record<string, unknown>[] = [];
-    if (q.boucle.source_sa_array) {
-      const value = getNestedValue(donneesExtraites, q.boucle.source_sa_array);
-      if (Array.isArray(value)) {
-        loopItemsFromSa = value.filter(
-          (item): item is Record<string, unknown> => isRecord(item),
-        );
-        if (q.boucle.source_sa_filtre_champ && q.boucle.source_sa_filtre_valeur) {
-          const expected = q.boucle.source_sa_filtre_valeur.trim().toLowerCase();
-          loopItemsFromSa = loopItemsFromSa.filter(
-            (item) =>
-              String(item[q.boucle!.source_sa_filtre_champ!] ?? '')
-                .trim()
-                .toLowerCase() === expected,
-          );
-        }
-      }
-    }
-
-    if (q.boucle.source_nombre_question_id) {
-      const rep = reponses.find((r) => r.question_id === q.boucle!.source_nombre_question_id);
-      if (rep) {
-        const n = Number(rep.valeur);
-        if (Number.isFinite(n) && n > 0) iterationCount = n;
-      }
-    } else if (loopItemsFromSa.length > 0) {
-      iterationCount = loopItemsFromSa.length;
-    }
-
-    if (q.boucle.source_labels_question_id) {
-      const rep = reponses.find((r) => r.question_id === q.boucle!.source_labels_question_id);
-      if (rep && Array.isArray(rep.valeur)) {
-        labels.push(...rep.valeur.map(String));
-      } else if (rep && typeof rep.valeur === 'string') {
-        labels.push(...rep.valeur.split(',').map((s) => s.trim()).filter(Boolean));
-      }
-    } else if (q.boucle.source_sa_label_champ && loopItemsFromSa.length > 0) {
-      labels.push(
-        ...loopItemsFromSa.map((item, index) => {
-          const value = item[q.boucle!.source_sa_label_champ!];
-          return value != null && String(value).trim()
-            ? String(value).trim()
-            : `${q.boucle?.label_prefix || 'Item'} ${index + 1}`;
-        }),
-      );
-    }
-
-    const finalLabels: string[] = [];
-    for (let iter = 0; iter < iterationCount; iter++) {
-      const editedRep = reponses.find(
-        (r) => r.question_id === `loop_label__${q.groupe_boucle_id}__iter_${iter}`,
-      );
-      const editedLabel =
-        editedRep && typeof editedRep.valeur === 'string' ? editedRep.valeur.trim() : '';
-      finalLabels.push(
-        editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`,
-      );
-    }
-    out.set(q.groupe_boucle_id, finalLabels);
-  }
-
-  return out;
-}
-
-/**
- * Pour un CartLine, retourne le label d'itération (numéro de ligne) si la
- * question d'origine est dans une boucle, sinon undefined.
- */
-function resolveCartLineNumero(
-  line: CartLine,
-  questions: SpQuestion[],
-  loopLabels: Map<string, string[]>,
-): string {
-  const instanceId = line.instanceId;
-  const iterMatch = instanceId.match(/__iter_(\d+)$/);
-  if (!iterMatch) return '';
-  const iterIndex = Number(iterMatch[1]);
-  const baseQId = instanceId.replace(/__iter_\d+$/, '');
-  const question = questions.find((q) => q.id === baseQId);
-  if (!question || !question.groupe_boucle_id) return '';
-  const labels = loopLabels.get(question.groupe_boucle_id);
-  if (!labels) return '';
-  return labels[iterIndex] || '';
-}
-
 // ── 4. Tableau Solution Proposée ────────────────────────────────────
 
 function getOriginalPrixUnitaire(p: CatalogueProduit): number {
@@ -408,17 +290,12 @@ function getOriginalPrixUnitaire(p: CatalogueProduit): number {
 export function buildSolutionProposeeLines(
   cart: SpCartSummary,
   catalogue: CatalogueProduit[],
-  questions: SpQuestion[],
-  reponses: SpQuestionReponse[],
-  donneesExtraites: Record<string, unknown>,
 ): { lines: SpExportLine[]; total: number } {
   const catalogueMap = new Map<string, CatalogueProduit>();
   for (const p of catalogue) {
     catalogueMap.set(p.id, p);
     catalogueMap.set(p.nom, p);
   }
-
-  const loopLabels = buildLoopLabelsByGroup(questions, reponses, donneesExtraites);
 
   const lines: SpExportLine[] = [];
   let totalRemise = 0;
@@ -430,7 +307,6 @@ export function buildSolutionProposeeLines(
       || catalogueMap.get(l.produitNom);
     const operateur = produit?.fournisseur ?? '';
     const quantite = Math.max(1, l.quantite || 1);
-    const numeroBoucle = resolveCartLineNumero(l, questions, loopLabels);
 
     const prixOriginalUnitaire = produit ? getOriginalPrixUnitaire(produit) : l.prixTotal / quantite;
     const prixOriginalTotal = prixOriginalUnitaire * quantite;
@@ -440,7 +316,7 @@ export function buildSolutionProposeeLines(
       operateur,
       quantite,
       offre: l.produitNom,
-      numero: numeroBoucle || l.produitNom,
+      numero: l.numero || l.produitNom,
       prixUnitaire: prixOriginalUnitaire,
       prixTotal: prixOriginalTotal,
     });
@@ -534,8 +410,6 @@ export interface BuildExportSaSpDataInput {
 export function buildExportSaSpData(input: BuildExportSaSpDataInput): ExportSaSpInput {
   const {
     cart,
-    questions,
-    reponses,
     catalogue,
     donneesExtraites,
     companyName,
@@ -547,7 +421,7 @@ export function buildExportSaSpData(input: BuildExportSaSpDataInput): ExportSaSp
 
   const indemTotal = cart.indemnites; // déjà résolu par calculateCartSummary
   const sa = buildSituationActuelleLines(donneesExtraites, indemTotal);
-  const sp = buildSolutionProposeeLines(cart, catalogue, questions, reponses, donneesExtraites);
+  const sp = buildSolutionProposeeLines(cart, catalogue);
   const recap = buildRecapMaterielLines(cart);
 
   // Total ponctuel = somme du tableau RECAPITULATIF (matériel + install + cadeaux + FAS + marge)

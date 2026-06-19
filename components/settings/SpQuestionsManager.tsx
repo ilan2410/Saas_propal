@@ -528,6 +528,7 @@ export function SpQuestionsManager({ templates }: Props) {
   const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
   const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
+  const [hideInactive, setHideInactive] = useState(false);
   const [niveauOverrides, setNiveauOverrides] = useState<Record<string, 0 | 1>>(() => {
     if (typeof window === 'undefined') return {};
     try { return JSON.parse(localStorage.getItem('sp-question-niveaux') ?? '{}'); } catch { return {}; }
@@ -807,7 +808,10 @@ export function SpQuestionsManager({ templates }: Props) {
         const conditionalCount = questions.filter((q) => (q.groupes_conditions?.length ?? 0) > 0).length;
         const treeItems = buildTreeOrder(questions, niveauOverrides);
         const visibleItemsWithIdx = treeItems.map((treeItem, i) => ({ treeItem, idx: i }));
-        const renderGroups = groupTreeItemsForRender(visibleItemsWithIdx);
+        const filteredVisibleItems = hideInactive
+          ? visibleItemsWithIdx.filter(({ treeItem }) => treeItem.q.actif)
+          : visibleItemsWithIdx;
+        const renderGroups = groupTreeItemsForRender(filteredVisibleItems);
 
         const LEVEL_THRESHOLD = 40;
 
@@ -924,6 +928,12 @@ export function SpQuestionsManager({ templates }: Props) {
                     </span>
                   </Tooltip>
                 )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setHideInactive((v) => !v); }}
+                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${hideInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
+                >
+                  {hideInactive ? 'Afficher inactives' : 'Masquer inactives'}
+                </button>
               </div>
             </button>
 

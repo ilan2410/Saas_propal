@@ -296,11 +296,14 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                   className="px-2 py-1 border border-gray-300 rounded bg-white max-w-48 truncate"
                 >
                   <option value="">-- Question --</option>
-                  {otherQuestions.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
-                    </option>
-                  ))}
+                  {otherQuestions
+                    .filter((q) => q.actif || q.id === cond.question_id)
+                    .map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.libelle.length > 40 ? q.libelle.slice(0, 40) + '…' : q.libelle}
+                        {!q.actif ? ' (inactive)' : ''}
+                      </option>
+                    ))}
                 </select>
               )}
 

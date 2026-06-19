@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { EyeOff, Eye, Info } from 'lucide-react';
-import type { PropositionTemplate, SpConfigModeClient, WordConfig } from '@/types';
+import { EyeOff, Eye, Info, AlertTriangle } from 'lucide-react';
+import type { PropositionTemplate, SpConfigModeClient, SpQuestion, WordConfig } from '@/types';
 
 export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   actif: false,
@@ -22,6 +22,10 @@ export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   afficher_indicateur_mode_client: true,
   permettre_toggle_depuis_questionnaire: true,
   permettre_edition_panier_client: false,
+  garde_fou_marge_actif: false,
+  garde_fou_marge_seuil_question_id: undefined,
+  garde_fou_indemnite_actif: false,
+  garde_fou_indemnite_seuil_question_id: undefined,
 };
 
 function getWordTemplates(templates: PropositionTemplate[]) {
@@ -77,11 +81,25 @@ export function SpModeClientManager({ templates }: Props) {
   const wordTemplates = getWordTemplates(templates);
   const [templateId, setTemplateId] = useState<string>(wordTemplates[0]?.id ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [questions, setQuestions] = useState<SpQuestion[]>([]);
 
   const selectedTemplate = wordTemplates.find((t) => t.id === templateId);
   const [config, setConfig] = useState<SpConfigModeClient>(() =>
     getModeClientConfig(selectedTemplate),
   );
+
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`/api/templates/${templateId}/sp-questions`)
+      .then((r) => r.json())
+      .then((d) => {
+        const qs: SpQuestion[] = (d.questions ?? []).sort(
+          (a: SpQuestion, b: SpQuestion) => a.ordre - b.ordre,
+        );
+        setQuestions(qs);
+      })
+      .catch(() => setQuestions([]));
+  }, [templateId]);
 
   const handleTemplateChange = (id: string) => {
     setTemplateId(id);
@@ -266,6 +284,111 @@ export function SpModeClientManager({ templates }: Props) {
           checked={config.masquer_widgets_par_defaut}
           onChange={(v) => set('masquer_widgets_par_defaut', v)}
         />
+      </div>
+
+      {/* Réglage widget */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-1">Réglage widget — Marge</h3>
+          <p className="text-xs text-gray-500">Configure les comportements du widget Marge pendant le questionnaire.</p>
+        </div>
+
+        <div className="rounded-lg border border-gray-100 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-800">Garde-fou — marge non saisie</p>
+              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s'affiche sur le widget Marge si elle n'a pas encore été saisie quand l'utilisateur dépasse l'étape configurée.</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.garde_fou_marge_actif ?? false}
+              onClick={() => set('garde_fou_marge_actif', !(config.garde_fou_marge_actif ?? false))}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                (config.garde_fou_marge_actif ?? false) ? 'bg-blue-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                  (config.garde_fou_marge_actif ?? false) ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {(config.garde_fou_marge_actif ?? false) && (
+            <div className="flex items-start gap-3 pt-2 border-t border-gray-100">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-1" />
+              <div className="flex-1 space-y-1">
+                <label className="text-xs text-gray-600">Afficher le garde-fou à partir de cette question :</label>
+                <select
+                  value={config.garde_fou_marge_seuil_question_id ?? ''}
+                  onChange={(e) => set('garde_fou_marge_seuil_question_id', e.target.value || undefined)}
+                  className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
+                >
+                  <option value="">— Choisir une question —</option>
+                  {questions.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.ordre}. {q.libelle}
+                    </option>
+                  ))}
+                </select>
+                {questions.length === 0 && (
+                  <p className="text-[11px] text-gray-400">Aucune question trouvée pour ce template.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Card indemnité */}
+        <div className="rounded-lg border border-gray-100 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-800">Garde-fou — indemnité non saisie</p>
+              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s'affiche sur le widget Indemnité si elle n'a pas encore été saisie quand l'utilisateur dépasse l'étape configurée.</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.garde_fou_indemnite_actif ?? false}
+              onClick={() => set('garde_fou_indemnite_actif', !(config.garde_fou_indemnite_actif ?? false))}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                (config.garde_fou_indemnite_actif ?? false) ? 'bg-blue-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                  (config.garde_fou_indemnite_actif ?? false) ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {(config.garde_fou_indemnite_actif ?? false) && (
+            <div className="flex items-start gap-3 pt-2 border-t border-gray-100">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-1" />
+              <div className="flex-1 space-y-1">
+                <label className="text-xs text-gray-600">Afficher le garde-fou à partir de cette question :</label>
+                <select
+                  value={config.garde_fou_indemnite_seuil_question_id ?? ''}
+                  onChange={(e) => set('garde_fou_indemnite_seuil_question_id', e.target.value || undefined)}
+                  className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white"
+                >
+                  <option value="">— Choisir une question —</option>
+                  {questions.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.ordre}. {q.libelle}
+                    </option>
+                  ))}
+                </select>
+                {questions.length === 0 && (
+                  <p className="text-[11px] text-gray-400">Aucune question trouvée pour ce template.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Groupe 4 : UX */}
