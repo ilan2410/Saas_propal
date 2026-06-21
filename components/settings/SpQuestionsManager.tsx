@@ -928,12 +928,15 @@ export function SpQuestionsManager({ templates }: Props) {
                     </span>
                   </Tooltip>
                 )}
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={(e) => { e.stopPropagation(); setHideInactive((v) => !v); }}
-                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${hideInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setHideInactive((v) => !v); } }}
+                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors cursor-pointer select-none ${hideInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
                 >
                   {hideInactive ? 'Afficher inactives' : 'Masquer inactives'}
-                </button>
+                </div>
               </div>
             </button>
 

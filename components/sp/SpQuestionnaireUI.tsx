@@ -2063,10 +2063,59 @@ export function SpQuestionnaireUI({
               )}
               {currentCatalogueOptions.length > 0 && catalogueSearch.trim().length < 2 ? (
                 <p className="text-sm text-gray-500">Saisissez au moins 2 caractères pour afficher les produits</p>
+              ) : currentCatalogueOptions.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded border border-gray-200 divide-y divide-gray-100">
+                  {filteredCatalogueOptions.map((p) => {
+                    const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
+                    const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                    const isPending = pendingCatalogueSelection?.product.nom === p.nom
+                      && pendingCatalogueSelection?.instanceId === currentExpanded.instanceId;
+                    return (
+                      <button
+                        key={p.nom}
+                        type="button"
+                        onClick={() => setPendingCatalogueSelection({
+                          instanceId: currentExpanded.instanceId,
+                          product: p,
+                          fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
+                          prixValue: getProduitPrixValue(p),
+                          quantityValue: '1',
+                          prixEditing: false,
+                          selectedOptions: [],
+                        })}
+                        className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                          isPending ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-800'
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{p.nom}</span>
+                          {(prix || fas) && (
+                            <span className="block truncate text-xs text-gray-400">{[prix, fas].filter(Boolean).join(' · ')}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {currentQuestion.options_libres && (
+                    <button
+                      type="button"
+                      onClick={() => setPendingFreeEntry({
+                        instanceId: currentExpanded.instanceId,
+                        draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
+                      })}
+                      className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors ${
+                        pendingFreeEntry?.instanceId === currentExpanded.instanceId
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'hover:bg-gray-50 text-blue-600'
+                      }`}
+                    >
+                      {FREE_ENTRY_LABEL}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <select
                   value={(() => {
-                    if (pendingCatalogueSelection?.instanceId === currentExpanded.instanceId) return pendingCatalogueSelection.product.nom;
                     if (pendingFreeEntry?.instanceId === currentExpanded.instanceId) return FREE_ENTRY_MARKER;
                     return '';
                   })()}
@@ -2079,32 +2128,13 @@ export function SpQuestionnaireUI({
                       });
                       return;
                     }
-                    if (currentCatalogueOptions.length > 0) {
-                      const p = currentCatalogueOptions.find((prod) => prod.nom === e.target.value);
-                      if (p) setPendingCatalogueSelection({
-                        instanceId: currentExpanded.instanceId,
-                        product: p,
-                        fasValue: p.prix_installation != null ? p.prix_installation.toString() : '0',
-                        prixValue: getProduitPrixValue(p),
-                        quantityValue: '1',
-                        prixEditing: false,
-                        selectedOptions: [],
-                      });
-                    } else {
-                      recordAnswer(currentExpanded.instanceId, e.target.value);
-                    }
+                    recordAnswer(currentExpanded.instanceId, e.target.value);
                   }}
                   className="h-8 text-sm border border-gray-300 rounded px-2 flex-1 bg-white">
                   <option value="">Sélectionnez...</option>
-                  {currentCatalogueOptions.length > 0
-                    ? filteredCatalogueOptions.map((p) => {
-                      const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
-                      const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
-                      return <option key={p.nom} value={p.nom}>{[p.nom, prix, fas].filter(Boolean).join(' · ')}</option>;
-                    })
-                    : (currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
+                  {(currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)).map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
                   {currentQuestion.options_libres && (
                     <option value={FREE_ENTRY_MARKER}>{FREE_ENTRY_LABEL}</option>
                   )}

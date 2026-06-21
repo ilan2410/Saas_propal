@@ -11,7 +11,7 @@ import type {
   SpQuestionReponse,
   SpPreferencesProduits,
 } from '@/types';
-import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
+import { calculateCartSummary, buildLoopLabelsByGroup, type CartLine } from '@/lib/sp/calculateCart';
 import { formatEuro } from '@/lib/sp/calculLoyer';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 
@@ -433,7 +433,26 @@ export function SpRealTimeCart({
   // en mode client, uniquement si l'édition du panier est autorisée.
   const editMode = !modeClientActif || clientEditMode;
 
-  const saNumeros = useMemo(() => getSaNumeros(donneesExtraites), [donneesExtraites]);
+  const saNumeros = useMemo(() => {
+    const fromSa = getSaNumeros(donneesExtraites);
+    const reponsesWithoutEdits = reponses.filter((r) => !r.question_id.startsWith('loop_label__'));
+    const originalLabels = buildLoopLabelsByGroup(questions, reponsesWithoutEdits, donneesExtraites ?? {});
+    const finalLabels = buildLoopLabelsByGroup(questions, reponses, donneesExtraites ?? {});
+    const out = new Set<string>(fromSa);
+    // Retire les labels originaux des boucles (ils viennent déjà des données SA)
+    for (const labels of originalLabels.values()) {
+      for (const label of labels) {
+        if (label.trim()) out.delete(label.trim());
+      }
+    }
+    // Ajoute les labels finaux (intègre les modifications utilisateur)
+    for (const labels of finalLabels.values()) {
+      for (const label of labels) {
+        if (label.trim()) out.add(label.trim());
+      }
+    }
+    return [...out].map(normalizePhoneNumber);
+  }, [donneesExtraites, questions, reponses]);
 
   const toggleCat = (key: string) =>
     setExpandedCats((prev) => {
