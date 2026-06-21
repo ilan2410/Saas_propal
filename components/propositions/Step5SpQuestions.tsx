@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, Database, X, Play, GripHorizontal } from 'lucide-react';
+import { Loader2, Database, X, Play, GripHorizontal, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
+import { FloatingClientCoordonnees } from '@/components/propositions/FloatingClientCoordonnees';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 
 interface Props {
@@ -71,6 +72,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [generateError, setGenerateError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSaResume, setShowSaResume] = useState(false);
+  const [showCoordonnees, setShowCoordonnees] = useState(false);
   const [isQuestionnaireOpen, setIsQuestionnaireOpen] = useState(true);
 
   const templateId = propositionData.template_id;
@@ -105,6 +107,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   useEffect(() => {
     setIsQuestionnaireOpen(true);
     setShowSaResume(false);
+    setShowCoordonnees(false);
   }, [templateId, propositionData.proposition_id, siteLabel]);
 
   // Persistance (debouncée) des éditions du panier SA dans `filled_data`.
@@ -330,6 +333,18 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowCoordonnees((v) => !v);
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    Coordonnées client
+                  </button>
                   {saResumeText && (
                     <button
                       type="button"
@@ -430,6 +445,15 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
               donneesExtraites={saResume}
               text={saResumeText}
               title="Resume SA"
+            />
+          )}
+
+          {showCoordonnees && (
+            <FloatingClientCoordonnees
+              open={showCoordonnees}
+              onClose={() => setShowCoordonnees(false)}
+              donneesExtraites={propositionData.donnees_extraites ?? {}}
+              onSave={(next) => handleUpdateDonneesExtraites(next)}
             />
           )}
         </>

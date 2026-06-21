@@ -100,6 +100,79 @@ function arrayLength(value: unknown): number {
   return 0;
 }
 
+function parseQuantiteRecord(value: SpQuestionReponse['valeur']): Record<string, string> | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
+}
+
+const TECHNICAL_REPONSE_PREFIXES = ['prix_', 'fas_', 'quantite_', 'numero_', 'options_', '__'];
+
+function isTechnicalReponseId(questionId: string): boolean {
+  return TECHNICAL_REPONSE_PREFIXES.some((prefix) => questionId.startsWith(prefix));
+}
+
+/**
+ * Sum the total quantity of the selected SP products that match a catalogue filter.
+ * Quantities live in `quantite_<instanceId>` responses, stored either as a JSON map
+ * keyed by product name/id, or as a plain number for single-product instances.
+ */
+function getSelectedCatalogueQuantity(
+  reponses: SpQuestionReponse[],
+  catalogue: CatalogueProduit[],
+  filtre: SpFiltresCatalogue,
+): number {
+  const matchingProducts = filterCatalogueByFiltre(catalogue, filtre);
+  const matchById = new Map(matchingProducts.map((p) => [p.id.trim().toLowerCase(), p]));
+  const matchByName = new Map(matchingProducts.map((p) => [p.nom.trim().toLowerCase(), p]));
+
+  const resolveProduct = (value: unknown): CatalogueProduit | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return undefined;
+    return matchById.get(normalized) ?? matchByName.get(normalized);
+  };
+
+  let total = 0;
+
+  for (const reponse of reponses) {
+    if (isTechnicalReponseId(reponse.question_id)) continue;
+
+    const values: unknown[] = Array.isArray(reponse.valeur) ? reponse.valeur : [reponse.valeur];
+    const quantiteRep = reponses.find((r) => r.question_id === `quantite_${reponse.question_id}`);
+    const quantiteMap = quantiteRep ? parseQuantiteRecord(quantiteRep.valeur) : null;
+    const quantitePlain = quantiteRep && !quantiteMap ? toNumber(quantiteRep.valeur) : null;
+
+    for (const value of values) {
+      const product = resolveProduct(value);
+      if (!product) continue;
+      let qty = 1;
+      if (quantiteMap) {
+        const byNom = Number(quantiteMap[product.nom]);
+        const byId = Number(quantiteMap[product.id]);
+        if (Number.isFinite(byNom) && byNom > 0) qty = byNom;
+        else if (Number.isFinite(byId) && byId > 0) qty = byId;
+      } else if (quantitePlain != null && quantitePlain > 0) {
+        qty = quantitePlain;
+      }
+      total += qty;
+    }
+  }
+
+  return total;
+}
+
 function getSelectedCatalogueProducts(
   reponses: SpQuestionReponse[],
   catalogue: CatalogueProduit[],
@@ -182,10 +255,32 @@ function evaluateSingleCondition(
   // Catalogue conditions are evaluated against the products actually selected
   // in SP answers, not against raw catalogue availability.
   if (condition.source === 'catalogue' && catalogue && condition.filtre_catalogue) {
+    const target = toNumber(condition.valeur) ?? 0;
+
+    // Quantity-based operators: compare the total selected quantity of the product(s).
+    if (
+      condition.operateur === 'quantite_superieure' ||
+      condition.operateur === 'quantite_inferieure' ||
+      condition.operateur === 'quantite_egale' ||
+      condition.operateur === 'quantite_entre'
+    ) {
+      const quantite = getSelectedCatalogueQuantity(reponses, catalogue, condition.filtre_catalogue);
+      switch (condition.operateur) {
+        case 'quantite_superieure': return quantite > target;
+        case 'quantite_inferieure': return quantite < target;
+        case 'quantite_egale': return quantite === target;
+        case 'quantite_entre': {
+          const max = toNumber(condition.valeur_max) ?? target;
+          const min = Math.min(target, max);
+          const borneMax = Math.max(target, max);
+          return quantite >= min && quantite <= borneMax;
+        }
+      }
+    }
+
     const selectedProducts = getSelectedCatalogueProducts(reponses, catalogue);
     const filtered = filterCatalogueByFiltre(selectedProducts, condition.filtre_catalogue);
     const count = filtered.length;
-    const target = toNumber(condition.valeur) ?? 0;
     switch (condition.operateur) {
       case 'plus_de_elements': return count > target;
       case 'moins_de_elements': return count < target;

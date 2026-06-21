@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Play, RotateCcw, Loader2, Database, GripHorizontal } from 'lucide-react';
+import { X, Play, RotateCcw, Loader2, Database, GripHorizontal, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
+import { FloatingClientCoordonnees } from '@/components/propositions/FloatingClientCoordonnees';
 
 interface Props {
   questions: SpQuestion[];
@@ -42,6 +43,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [isPreparingExport, setIsPreparingExport] = useState(false);
   const [exportError, setExportError] = useState('');
   const [showSaInspector, setShowSaInspector] = useState(false);
+  const [showCoordonnees, setShowCoordonnees] = useState(false);
 
   const activeQuestions = useMemo(
     () => questions.filter((q) => q.actif).sort((a, b) => a.ordre - b.ordre),
@@ -191,6 +193,20 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    setShowCoordonnees((v) => !v);
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  Coordonnées client
+                </button>
+              )}
+              {Object.keys(donneesExtraites).length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setShowSaInspector((v) => !v);
                   }}
                   className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
@@ -279,6 +295,15 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
           donneesExtraites={donneesExtraites}
           text={(donneesExtraites.resume as string) || (donneesExtraites['résumé'] as string) || 'Aucun résumé disponible.'}
           title="Resume SA"
+        />
+      )}
+
+      {!loading && !noProposition && showCoordonnees && (
+        <FloatingClientCoordonnees
+          open={showCoordonnees}
+          onClose={() => setShowCoordonnees(false)}
+          donneesExtraites={donneesExtraites}
+          onSave={(next) => setDonneesExtraites(next)}
         />
       )}
     </>

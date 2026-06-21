@@ -600,7 +600,9 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
   const [produitsLoaded, setProduitsLoaded] = useState(false);
 
   useEffect(() => {
-    if (source === 'catalogue' && !produitsLoaded) {
+    // Charger le catalogue dès l'ouverture : nécessaire pour la source 'catalogue'
+    // ET pour les conditions d'affichage basées sur les produits sélectionnés (Bloc 2).
+    if (!produitsLoaded) {
       fetch('/api/catalogue')
         .then((r) => r.json())
         .then((d: { produits?: CatalogueProduit[] }) => {
@@ -609,7 +611,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         })
         .catch(() => setProduitsLoaded(true));
     }
-  }, [source, produitsLoaded]);
+  }, [produitsLoaded]);
 
   // Boucle state
   const [groupeBoucleId, setGroupeBoucleId] = useState<string>(initial?.groupe_boucle_id ?? '');
@@ -854,6 +856,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
               setLogiqueDeclencheur(l);
             }}
             otherQuestions={otherQuestions}
+            catalogueProduits={allProduits}
           />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setActiveBlock(1)}>← Précédent</Button>

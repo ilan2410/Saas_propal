@@ -62,6 +62,23 @@ const SUGGESTIONS_FIELDS: { value: string; label: string }[] = [
 const CATALOGUE_OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
   { value: 'non_vide', label: 'Est sélectionné dans les réponses SP' },
   { value: 'vide', label: 'N\'est pas sélectionné dans les réponses SP' },
+  { value: 'quantite_superieure', label: 'Quantité totale >' },
+  { value: 'quantite_inferieure', label: 'Quantité totale <' },
+  { value: 'quantite_egale', label: 'Quantité totale =' },
+  { value: 'quantite_entre', label: 'Quantité totale comprise entre' },
+];
+
+// Catalogue operators that require a numeric quantity threshold stored in `valeur`.
+const CATALOGUE_QUANTITE_OPERATEURS: SpConditionOperateur[] = [
+  'quantite_superieure',
+  'quantite_inferieure',
+  'quantite_egale',
+  'quantite_entre',
+];
+const CATALOGUE_OPERATEUR_VALUES: SpConditionOperateur[] = [
+  'non_vide',
+  'vide',
+  ...CATALOGUE_QUANTITE_OPERATEURS,
 ];
 
 const NEEDS_VALUE: SpConditionOperateur[] = [
@@ -307,42 +324,36 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 </select>
               )}
 
-              {/* Produit catalogue (for catalogue) */}
-              {cond.source === 'catalogue' && catalogueProduits && catalogueProduits.length > 0 ? (
-                <select
-                  value={cond.valeur != null ? String(cond.valeur) : ''}
-                  onChange={(e) => {
-                    const nom = e.target.value;
-                    updateCondition(groupe.id, cond.id, {
-                      valeur: nom,
-                      // Build filtre_catalogue so the evaluator can match the selected product
-                      filtre_catalogue: nom ? { produits_ids: [nom] } : undefined,
-                      // Default to "selected" when switching catalogue product
-                      operateur: ['non_vide', 'vide'].includes(cond.operateur) ? cond.operateur : 'non_vide',
-                    });
-                  }}
-                  className="px-2 py-1 border border-gray-300 rounded bg-white max-w-56 truncate"
-                >
-                  <option value="">-- Produit --</option>
-                  {catalogueProduits.map((p) => (
-                    <option key={p.id} value={p.nom}>
-                      {p.nom}{p.fournisseur ? ` (${p.fournisseur})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : cond.source === 'catalogue' ? (
-                <input
-                  value={cond.valeur != null ? String(cond.valeur) : ''}
-                  onChange={(e) => {
-                    const nom = e.target.value;
-                    updateCondition(groupe.id, cond.id, {
-                      valeur: nom,
-                      filtre_catalogue: nom ? { produits_ids: [nom] } : undefined,
-                    });
-                  }}
-                  placeholder="Nom du produit"
-                  className="px-2 py-1 border border-gray-300 rounded bg-white w-40"
-                />
+              {/* Produit catalogue (for catalogue) — searchable input with datalist */}
+              {cond.source === 'catalogue' ? (
+                <>
+                  <input
+                    list={catalogueProduits && catalogueProduits.length > 0 ? `catalogue-produits-${cond.id}` : undefined}
+                    value={cond.filtre_catalogue?.produits_ids?.[0] ?? (cond.valeur != null ? String(cond.valeur) : '')}
+                    onChange={(e) => {
+                      const nom = e.target.value;
+                      updateCondition(groupe.id, cond.id, {
+                        // Product is the source of truth for matching; store it in filtre_catalogue
+                        // so `valeur` is free to hold a numeric quantity threshold.
+                        filtre_catalogue: nom ? { produits_ids: [nom] } : undefined,
+                        // Keep the threshold only for quantity operators
+                        valeur: CATALOGUE_QUANTITE_OPERATEURS.includes(cond.operateur) ? cond.valeur : undefined,
+                        operateur: CATALOGUE_OPERATEUR_VALUES.includes(cond.operateur) ? cond.operateur : 'non_vide',
+                      });
+                    }}
+                    placeholder="Rechercher un produit…"
+                    className="px-2 py-1 border border-gray-300 rounded bg-white w-48"
+                  />
+                  {catalogueProduits && catalogueProduits.length > 0 && (
+                    <datalist id={`catalogue-produits-${cond.id}`}>
+                      {catalogueProduits.map((p) => (
+                        <option key={p.id} value={p.nom}>
+                          {p.fournisseur ? p.fournisseur : ''}
+                        </option>
+                      ))}
+                    </datalist>
+                  )}
+                </>
               ) : null}
 
               {/* Operator — limited set for catalogue source */}
@@ -357,6 +368,37 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+
+              {/* Numeric quantity threshold for catalogue quantity operators */}
+              {cond.source === 'catalogue' && CATALOGUE_QUANTITE_OPERATEURS.includes(cond.operateur) && (
+                <>
+                  <input
+                    type="number"
+                    min={0}
+                    value={cond.valeur != null ? String(cond.valeur) : ''}
+                    onChange={(e) =>
+                      updateCondition(groupe.id, cond.id, { valeur: e.target.value })
+                    }
+                    placeholder={cond.operateur === 'quantite_entre' ? 'Min' : 'Quantité'}
+                    className="px-2 py-1 border border-gray-300 rounded bg-white w-24"
+                  />
+                  {cond.operateur === 'quantite_entre' && (
+                    <>
+                      <span className="text-gray-500">et</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={cond.valeur_max != null ? String(cond.valeur_max) : ''}
+                        onChange={(e) =>
+                          updateCondition(groupe.id, cond.id, { valeur_max: e.target.value })
+                        }
+                        placeholder="Max"
+                        className="px-2 py-1 border border-gray-300 rounded bg-white w-24"
+                      />
+                    </>
+                  )}
+                </>
+              )}
 
               {/* Value input for 'suggestions' source */}
               {NEEDS_VALUE.includes(cond.operateur) && cond.source === 'suggestions' && (

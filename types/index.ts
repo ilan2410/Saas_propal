@@ -401,7 +401,11 @@ export type SpConditionOperateur =
   | 'inferieur'
   | 'plus_de_elements'
   | 'moins_de_elements'
-  | 'element_ou';
+  | 'element_ou'
+  | 'quantite_superieure'
+  | 'quantite_inferieure'
+  | 'quantite_egale'
+  | 'quantite_entre';
 
 export type SpConditionLogique = 'ET' | 'OU';
 
@@ -414,6 +418,8 @@ export interface SpCondition {
   question_id?: string;
   operateur: SpConditionOperateur;
   valeur?: string | number;
+  /** Borne supérieure pour l'opérateur "quantite_entre" (valeur = borne inférieure). */
+  valeur_max?: string | number;
   logique?: SpConditionLogique;
 }
 

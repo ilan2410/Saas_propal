@@ -163,6 +163,7 @@ export function SpDiscountRulesManager({ rules, products, questions, onChange }:
                       logique_declencheur: logique,
                     })}
                     otherQuestions={questions}
+                    catalogueProduits={products}
                   />
                 </div>
 
