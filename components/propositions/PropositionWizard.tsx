@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Step1SelectTemplate } from './Step1SelectTemplate';
 import { Step2UploadDocuments } from './Step2UploadDocuments';
 import { Step3ExtractData } from './Step3ExtractData';
-import { Step4EditData } from './Step4EditData';
 import { Step5Generate } from './Step5Generate';
 import { Step5SpQuestions } from './Step5SpQuestions';
 import { Step5EditSp } from './Step5EditSp';
@@ -18,9 +17,8 @@ const STEPS = [
   { id: 1, name: 'Template', description: 'Sélection' },
   { id: 2, name: 'Documents', description: 'Upload' },
   { id: 3, name: 'Extraction', description: 'IA' },
-  { id: 4, name: 'Édition SA', description: 'Vérification' },
-  { id: 5, name: 'Situation Proposée', description: 'IA + Validation' },
-  { id: 6, name: 'Génération', description: 'Finalisation' },
+  { id: 4, name: 'Situation Proposée', description: 'IA + Validation' },
+  { id: 5, name: 'Génération', description: 'Finalisation' },
 ];
 
 export interface MultisitePropositionEntry {
@@ -130,7 +128,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
   };
 
   const nextStep = () => {
-    if (currentStep < 6) {
+    if (currentStep < 5) {
       const next = currentStep + 1;
       setCurrentStep(next);
       persistProgress({ current_step: next, statut: 'draft' });
@@ -377,8 +375,8 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
         </nav>
       </div>
 
-      {/* Multisite site navigation (Step 5, par_site mode) */}
-      {currentStep === 5 && isMultisiteParSite && multisiteProps.length > 0 && (
+      {/* Multisite site navigation (Step 4 — SP, par_site mode) */}
+      {currentStep === 4 && isMultisiteParSite && multisiteProps.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <p className="text-xs text-gray-500 mb-2">Progression des sites</p>
           <div className="flex items-center gap-2 flex-wrap">
@@ -444,17 +442,6 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
           </div>
         )}
         {currentStep === 4 && (
-          <div id="step4-ai-suggestions">
-            <Step4EditData
-              secteur={secteur}
-              propositionData={propositionData}
-              updatePropositionData={updatePropositionData}
-              onNext={nextStep}
-              onPrev={prevStep}
-            />
-          </div>
-        )}
-        {currentStep === 5 && (
           <div id="step5-sp-questions">
             {(() => {
               const tpl = templates.find((t) => t.id === propositionData.template_id);
@@ -516,7 +503,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
             })()}
           </div>
         )}
-        {currentStep === 6 && (
+        {currentStep === 5 && (
           <div id="btn-generate-proposition">
             <Step5Generate
               propositionData={propositionData}

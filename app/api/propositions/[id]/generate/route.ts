@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
-import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpCadeauLigne, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
+import { renderClauses } from '@/lib/sp/renderClauses';
+import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpCadeauLigne, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -69,12 +70,12 @@ function repairMaterialDetailFromQuestionnaire(
   }) : [];
 
   const sp_cadeaux_table: SpCadeauLigne[] = hasCadeaux ? cadeauCartLines.map((line) => {
-    const cat = line.produitId ? catalogueMap.get(line.produitId) : undefined;
     return {
       sp_cadeau_nom: line.produitNom,
       sp_cadeau_ref: undefined,
       sp_cadeau_valeur_ht: formatEuro(line.prixTotal),
       _valeur_raw: line.prixTotal,
+      _libre: !line.produitId,
     };
   }) : [];
 
@@ -177,6 +178,18 @@ export async function POST(
       spPreferencesProduits,
     );
 
+    // Clauses conditionnelles → variables Word {{sp_clause_<cle>}}
+    const clauses = Array.isArray(templateFileCfg.spClausesConditionnelles)
+      ? templateFileCfg.spClausesConditionnelles as unknown as SpClauseConditionnelle[]
+      : [];
+    const sp_clauses_rendered = renderClauses(
+      clauses,
+      suggestionsSpCompletes,
+      spReponses,
+      donnees as UnknownRecord,
+      catalogue,
+    );
+
     // Générer le fichier
     const fileUrl = await generatePropositionFile({
       template,
@@ -184,6 +197,7 @@ export async function POST(
       organization_id: user.id,
       proposition_id: id,
       suggestions_sp_completes: suggestionsSpCompletes,
+      sp_clauses_rendered,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes

@@ -13,7 +13,8 @@ import {
 } from '@/lib/generators/word-data-utils';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
-import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail, SpPreferencesProduits } from '@/types';
+import { renderClauses } from '@/lib/sp/renderClauses';
+import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail, SpPreferencesProduits, SpClauseConditionnelle } from '@/types';
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
@@ -420,9 +421,14 @@ export async function POST(request: NextRequest) {
     const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
     // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
     const saData = buildSaWordData(baseData);
-    // Ordre de priorité : données extraites (flat) < SA < SP calculées < mapping utilisateur.
+    // Clauses conditionnelles rendues → {{sp_clause_<cle>}} (même logique que la génération).
+    const clauses = Array.isArray(wordCfg.spClausesConditionnelles)
+      ? wordCfg.spClausesConditionnelles as SpClauseConditionnelle[]
+      : [];
+    const clausesData = renderClauses(clauses, spCompletes, spReponses, baseData, catalogue);
+    // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < mapping utilisateur.
     // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
-    const finalData = { ...flatData, ...saData, ...spData, ...mappedData };
+    const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...mappedData };
 
     // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
     let uint8Array: Uint8Array;

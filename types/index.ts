@@ -159,6 +159,7 @@ export interface WordConfig {
   spVariablesActives?: string[];
   spTableauxFusionnes?: SpTableauFusionne[];
   spVariablesCustom?: SpVariableCustom[];
+  spClausesConditionnelles?: SpClauseConditionnelle[];
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
   sp_config_resume_ref?: SpConfigResumeRef;
@@ -569,6 +570,37 @@ export interface SpObjectifConfig {
   messages: SpObjectifMessage[];
 }
 
+// ── Clauses conditionnelles (phrases injectées dans le Word) ──────────
+
+export type SpClausePortee = 'global' | 'par_element';
+export type SpClauseCollection = 'cadeaux_tous' | 'cadeaux_produits' | 'cadeaux_libres' | 'materiel';
+
+/**
+ * Phrase conditionnelle paramétrable, injectée dans le template Word via la
+ * variable `{{sp_clause_<cle_variable>}}`. Le texte supporte des jetons `{nom}`
+ * résolus à la génération (cf. lib/sp/renderClauses.ts). Stockée sur le template
+ * dans `WordConfig.spClausesConditionnelles`.
+ */
+export interface SpClauseConditionnelle {
+  id: string;
+  actif: boolean;
+  ordre: number;
+  libelle: string;          // nom admin, ex: "Geste commercial"
+  cle_variable: string;     // → {{sp_clause_<cle_variable>}}, ex: "geste"
+
+  // Conditions (réutilise le moteur SpGroupeConditions / evaluateGroupes)
+  groupes_conditions: SpGroupeConditions[];
+  logique_conditions: SpConditionLogique;
+
+  // Portée du rendu
+  portee: SpClausePortee;
+  collection?: SpClauseCollection;   // requis si portee = 'par_element'
+
+  // Texte avec jetons {nom}, {montant}, {total_cadeaux}…
+  texte: string;
+  separateur?: string;      // séparateur entre éléments (par_element), défaut "\n"
+}
+
 /**
  * Saisie libre (option "Autre valeur") associée à une question SP catalogue
  * lorsque `options_libres === true`.
@@ -700,6 +732,8 @@ export interface SpCadeauLigne {
   sp_cadeau_ref?: string;
   sp_cadeau_valeur_ht: string;
   _valeur_raw: number;
+  /** true = saisie libre (« autre valeur »), false/absent = produit du catalogue */
+  _libre?: boolean;
 }
 
 export interface SuggestionsSpCompletes extends SuggestionsGenerees {

@@ -33,7 +33,7 @@ export function getPropositionTourSteps(secteur: Secteur = 'telephonie'): TourSt
       align: 'start',
     },
     {
-      element: '#step4-ai-suggestions',
+      element: '#step5-sp-questions',
       title: 'Les suggestions IA',
       description:
         `PropoBoost compare la situation actuelle du client (${ex.offreActuelle}) avec votre catalogue et suggère les meilleures solutions avec une comparaison de coûts.`,

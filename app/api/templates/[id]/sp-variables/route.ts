@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { WordConfig, SpVariableCustom, SpQuestion } from '@/types';
+import type { WordConfig, SpVariableCustom, SpQuestion, SpClauseConditionnelle } from '@/types';
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -63,6 +63,30 @@ function buildQuestionDerivedVariables(
   return Array.from(derived.values());
 }
 
+/** Variables Word dérivées des clauses conditionnelles : {{sp_clause_<cle>}}. */
+function buildClauseDerivedVariables(
+  clauses: SpClauseConditionnelle[],
+  existingCustom: SpVariableCustom[],
+): SpVariableCustom[] {
+  const existingKeys = new Set(existingCustom.map((variable) => variable.key));
+  const derived = new Map<string, SpVariableCustom>();
+
+  for (const clause of clauses) {
+    const cle = (clause.cle_variable ?? '').trim();
+    if (!cle) continue;
+    const key = `sp_clause_${cle}`;
+    if (existingKeys.has(key) || SP_STANDARD_VARIABLES.includes(key) || derived.has(key)) continue;
+    derived.set(key, {
+      key,
+      label: clause.libelle?.trim() || `Clause ${cle}`,
+      description: 'Phrase conditionnelle injectée selon les conditions configurées.',
+      type: 'string',
+    });
+  }
+
+  return Array.from(derived.values());
+}
+
 export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const supabase = await createClient();
@@ -86,7 +110,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const storedCustom = cfg.spVariablesCustom ?? [];
   const templateQuestions = ((org?.sp_questions ?? []) as SpQuestion[]).filter((question) => question.template_id === id);
   const derivedCustom = buildQuestionDerivedVariables(templateQuestions, storedCustom);
-  const custom = [...storedCustom, ...derivedCustom];
+  const clauseCustom = buildClauseDerivedVariables(cfg.spClausesConditionnelles ?? [], [...storedCustom, ...derivedCustom]);
+  const custom = [...storedCustom, ...derivedCustom, ...clauseCustom];
 
   return NextResponse.json({ standard: SP_STANDARD_VARIABLES, custom });
 }

@@ -812,6 +812,7 @@ function buildSpCompletes(
       sp_cadeau_ref: m.sp_materiel_ref,
       sp_cadeau_valeur_ht: m.sp_materiel_prix_mensuel,
       _valeur_raw: m._prix_mensuel_raw,
+      _libre: m.sp_materiel_produit_id === FREE_ENTRY_MARKER,
     }));
 
   result.sp_bdc_operateur_table = sp_bdc_operateur_table;

@@ -6,6 +6,7 @@ import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 import { SpCustomVariablesEditor } from './SpCustomVariablesEditor';
+import { SpClausesManager } from './SpClausesManager';
 
 interface SheetMapping {
   sheetName: string;
@@ -2128,6 +2129,15 @@ export function Step2UploadTemplate({
               {/* Variables SP custom */}
               {templateData?.id && (
                 <SpCustomVariablesEditor
+                  templateId={templateData.id}
+                  fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
+                  onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}
+                />
+              )}
+
+              {/* Clauses conditionnelles */}
+              {templateData?.id && (
+                <SpClausesManager
                   templateId={templateData.id}
                   fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
                   onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}

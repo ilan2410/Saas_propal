@@ -111,6 +111,8 @@ interface GenerateOptions {
   organization_id: string;
   proposition_id: string;
   suggestions_sp_completes?: SuggestionsSpCompletes | null;
+  /** Clauses conditionnelles déjà rendues : { sp_clause_<cle>: "texte" } */
+  sp_clauses_rendered?: Record<string, string>;
 }
 
 /**
@@ -420,8 +422,10 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
   const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
   // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
   const saData = buildSaWordData(baseData);
-  // Ordre de priorité : données extraites (flat) < SA < SP calculées < mapping utilisateur.
-  const finalData = { ...flatData, ...saData, ...spData, ...mappedData };
+  // Clauses conditionnelles rendues (texte libre, NON soumis au title-case).
+  const clausesData = options.sp_clauses_rendered ?? {};
+  // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < mapping utilisateur.
+  const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...mappedData };
 
   let uint8Array: Uint8Array;
   try {

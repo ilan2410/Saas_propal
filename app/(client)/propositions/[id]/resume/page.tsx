@@ -80,10 +80,8 @@ export default async function ResumePropositionPage({
 
   let inferredStep = 1;
   if (hasSpCompletes) {
-    inferredStep = 6;
-  } else if (hasSuggestions) {
     inferredStep = 5;
-  } else if (hasExtractedData || hasFilledData) {
+  } else if (hasSuggestions || hasExtractedData || hasFilledData) {
     inferredStep = 4;
   } else if (hasDocuments) {
     inferredStep = 3;
@@ -101,7 +99,7 @@ export default async function ResumePropositionPage({
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
   const initialStep = Math.max(
     1,
-    Math.min(6, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
+    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
   );
 
   return (
