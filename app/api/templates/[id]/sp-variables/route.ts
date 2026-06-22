@@ -8,6 +8,8 @@ const SP_STANDARD_VARIABLES = [
   // Économies & totaux principaux
   'sp_economie_mensuelle', 'sp_economie_annuelle', 'sp_total_actuel', 'sp_total_propose',
   'sp_ameliorations', 'sp_fournisseur_propose', 'sp_nb_lignes', 'sp_est_economie',
+  // Référence proposition (partie fixe + loyer final, cf. config Référence du template)
+  'sp_reference',
   // Adresses
   'sp_adresse_facturation', 'sp_adresse_facturation_rue', 'sp_adresse_facturation_cp',
   'sp_adresse_facturation_ville', 'sp_adresse_livraison', 'sp_adresse_livraison_rue',

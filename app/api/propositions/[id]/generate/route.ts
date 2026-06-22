@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { renderClauses } from '@/lib/sp/renderClauses';
-import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpCadeauLigne, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
+import { buildSpReference } from '@/lib/sp/buildReference';
+import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpCadeauLigne, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -73,6 +74,7 @@ function repairMaterialDetailFromQuestionnaire(
     return {
       sp_cadeau_nom: line.produitNom,
       sp_cadeau_ref: undefined,
+      sp_cadeau_quantite: String(line.quantite ?? 1),
       sp_cadeau_valeur_ht: formatEuro(line.prixTotal),
       _valeur_raw: line.prixTotal,
       _libre: !line.produitId,
@@ -151,7 +153,7 @@ export async function POST(
 
     const { data: organization } = await supabase
       .from('organizations')
-      .select('sp_questions, credits, tarif_par_proposition')
+      .select('sp_questions, credits, tarif_par_proposition, preferences')
       .eq('id', user.id)
       .single();
 
@@ -190,6 +192,27 @@ export async function POST(
       catalogue,
     );
 
+    // Référence proposition → variable Word {{sp_reference}}
+    // Loyer évalué sur l'état FINAL des réponses (cf. config résumé/réf du template).
+    const orgPreferences = (typeof organization?.preferences === 'object' && organization.preferences !== null
+      ? organization.preferences
+      : {}) as OrganizationPreferences;
+    const spConfigLoyer = (templateFileCfg.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
+      ? (templateFileCfg.sp_config_loyer as SpConfigLoyer)
+      : undefined;
+    const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
+    const spConfigResumeRef = templateFileCfg.sp_config_resume_ref as SpConfigResumeRef | undefined;
+    const sp_reference = buildSpReference(
+      spConfigResumeRef,
+      spReponses,
+      templateQuestions,
+      catalogue,
+      donnees as UnknownRecord,
+      spConfigLoyer,
+      spConfigMoisOfferts,
+      spPreferencesProduits,
+    );
+
     // Générer le fichier
     const fileUrl = await generatePropositionFile({
       template,
@@ -198,6 +221,7 @@ export async function POST(
       proposition_id: id,
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,
+      sp_reference,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes
@@ -212,15 +236,8 @@ export async function POST(
 
     if (updateError) throw updateError;
 
-    // Déduire les crédits
-    if (organization) {
-      await supabase
-        .from('organizations')
-        .update({
-          credits: Math.max(0, organization.credits - organization.tarif_par_proposition),
-        })
-        .eq('id', user.id);
-    }
+    // Note: les crédits sont débités lors de l'extraction (extract/route.ts),
+    // pas ici. On ne déduit donc pas une seconde fois au téléchargement/génération.
 
     return NextResponse.json({ success: true, file_url: fileUrl });
   } catch (error) {

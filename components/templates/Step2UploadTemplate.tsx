@@ -82,6 +82,7 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_fournisseur_propose', label: 'Fournisseur retenu' },
   { key: 'sp_nb_lignes', label: 'Nombre de lignes analysées' },
   { key: 'sp_est_economie', label: '"Oui" ou "Non"' },
+  { key: 'sp_reference', label: 'Référence proposition (partie fixe + loyer final)' },
   { key: 'sp_adresse_facturation', label: 'Adresse facturation complète' },
   { key: 'sp_adresse_facturation_rue', label: 'Rue facturation' },
   { key: 'sp_adresse_facturation_cp', label: 'Code postal facturation' },
@@ -158,22 +159,22 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_bdc_operateur_table',
     label: 'Tableau BDC opérateur',
-    fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
+    fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
   },
   {
     arrayId: 'sp_bdc_internet_table',
     label: 'Tableau internet BDC',
-    fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,
+    fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,
   },
   {
     arrayId: 'sp_bdc_materiel_table',
     label: 'Tableau matériel BDC',
-    fullBlock: `{{#sp_bdc_materiel_table}}\n{{sp_bdc_mat_nom}}  {{sp_bdc_mat_ref}}  {{sp_bdc_mat_fournisseur}}  {{sp_bdc_mat_prix_ht}}  {{sp_bdc_mat_frequence}}\n{{/sp_bdc_materiel_table}}`,
+    fullBlock: `{{#sp_bdc_materiel_table}}\n{{sp_bdc_mat_nom}}  {{sp_bdc_mat_ref}}  {{sp_bdc_mat_fournisseur}}  {{sp_bdc_mat_quantite}}  {{sp_bdc_mat_prix_ht}}  {{sp_bdc_mat_frequence}}\n{{/sp_bdc_materiel_table}}`,
   },
   {
     arrayId: 'sp_cadeaux_table',
     label: 'Tableau cadeaux',
-    fullBlock: `{{#sp_cadeaux_table}}\n{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_valeur_ht}}\n{{/sp_cadeaux_table}}`,
+    fullBlock: `{{#sp_cadeaux_table}}\n{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_quantite}}  {{sp_cadeau_valeur_ht}}\n{{/sp_cadeaux_table}}`,
   },
 ];
 

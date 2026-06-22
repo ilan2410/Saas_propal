@@ -703,6 +703,7 @@ export interface SpBdcOperateurLigne {
   sp_bdc_op_nom: string;
   sp_bdc_op_produit?: string;
   sp_bdc_op_fournisseur?: string;
+  sp_bdc_op_quantite: string;
   sp_bdc_op_prix_mensuel_ht: string;
   sp_bdc_op_prix_actuel?: string;
   sp_bdc_op_economie?: string;
@@ -713,6 +714,7 @@ export interface SpBdcInternetLigne {
   sp_bdc_int_nom: string;
   sp_bdc_int_produit?: string;
   sp_bdc_int_fournisseur?: string;
+  sp_bdc_int_quantite: string;
   sp_bdc_int_prix_mensuel_ht: string;
   sp_bdc_int_prix_actuel?: string;
   _prix_mensuel_raw: number;
@@ -722,6 +724,7 @@ export interface SpBdcMaterielLigne {
   sp_bdc_mat_nom: string;
   sp_bdc_mat_ref?: string;
   sp_bdc_mat_fournisseur?: string;
+  sp_bdc_mat_quantite: string;
   sp_bdc_mat_prix_ht: string;
   sp_bdc_mat_frequence: string;
   _prix_raw: number;
@@ -730,6 +733,7 @@ export interface SpBdcMaterielLigne {
 export interface SpCadeauLigne {
   sp_cadeau_nom: string;
   sp_cadeau_ref?: string;
+  sp_cadeau_quantite: string;
   sp_cadeau_valeur_ht: string;
   _valeur_raw: number;
   /** true = saisie libre (« autre valeur »), false/absent = produit du catalogue */

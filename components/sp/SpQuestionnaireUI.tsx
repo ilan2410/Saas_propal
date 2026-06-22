@@ -429,11 +429,18 @@ function CatalogueMultipleChoiceInput({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
   const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
-  const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>({
-    label: '',
-    prix: '',
-    categorie: 'equipement',
-    type_frequence: 'unique',
+  const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>(() => {
+    // Par défaut, la saisie libre hérite de la catégorie de la question : si tous
+    // les produits proposés partagent la même catégorie (ex. une question filtrée
+    // sur "cadeau"), on l'utilise pour éviter qu'une saisie libre cadeau ne soit
+    // catégorisée par erreur en "equipement".
+    const allSameCat = products.length > 0 && products.every((p) => p.categorie === products[0].categorie);
+    return {
+      label: '',
+      prix: '',
+      categorie: allSameCat ? products[0].categorie : 'equipement',
+      type_frequence: 'unique',
+    };
   });
   const [search, setSearch] = useState('');
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {

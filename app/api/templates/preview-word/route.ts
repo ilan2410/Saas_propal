@@ -14,7 +14,8 @@ import {
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 import { renderClauses } from '@/lib/sp/renderClauses';
-import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail, SpPreferencesProduits, SpClauseConditionnelle } from '@/types';
+import { buildSpReference } from '@/lib/sp/buildReference';
+import type { SuggestionsSpCompletes, WordConfig, SpQuestion, SpQuestionReponse, CatalogueProduit, SpLigneMobile, SpLigneFixe, SpInternet, SpSituationProposeeLigne, SpMateriel, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpPreferencesProduits, SpClauseConditionnelle, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
@@ -222,6 +223,75 @@ function repairSpCompletesFromQuestionnaire(
   const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
   const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
 
+  // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
+  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = [...mobiles, ...fixes]
+    .filter((l) => {
+      if (!l.sp_produit_id) return true;
+      return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
+    })
+    .map((l): SpBdcOperateurLigne => ({
+      sp_bdc_op_type: l.sp_type_ligne,
+      sp_bdc_op_nom: l.sp_nom_ligne,
+      sp_bdc_op_produit: l.sp_produit,
+      sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
+      sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
+      sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_op_prix_actuel: l.sp_prix_actuel,
+      sp_bdc_op_economie: l.sp_economie,
+      _prix_mensuel_raw: l._prix_propose_raw,
+    }));
+
+  const sp_bdc_internet_table: SpBdcInternetLigne[] = internet
+    .filter((l) => {
+      if (!l.sp_produit_id) return true;
+      return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
+    })
+    .map((l): SpBdcInternetLigne => ({
+      sp_bdc_int_nom: l.sp_nom_ligne,
+      sp_bdc_int_produit: l.sp_produit,
+      sp_bdc_int_fournisseur: l.sp_produit_fournisseur,
+      sp_bdc_int_quantite: l.sp_quantite?.trim() || '1',
+      sp_bdc_int_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_int_prix_actuel: l.sp_prix_actuel,
+      _prix_mensuel_raw: l._prix_propose_raw,
+    }));
+
+  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = sp_materiel
+    .filter((m) => {
+      if (!m.sp_materiel_produit_id) return true;
+      return catalogueMap.get(m.sp_materiel_produit_id)?.destinations?.bdc_materiel !== false;
+    })
+    .map((m): SpBdcMaterielLigne => {
+      const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
+      const freq = cat?.type_frequence ?? 'mensuel';
+      return {
+        sp_bdc_mat_nom: m.sp_materiel_nom,
+        sp_bdc_mat_ref: m.sp_materiel_ref,
+        sp_bdc_mat_fournisseur: m.sp_materiel_fournisseur,
+        sp_bdc_mat_quantite: '1',
+        sp_bdc_mat_prix_ht: m.sp_materiel_prix_mensuel,
+        sp_bdc_mat_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
+        _prix_raw: m._prix_mensuel_raw,
+      };
+    });
+
+  const cadeauCartLines = cart.lines.filter((line) => line.categorie === 'cadeau');
+  const sp_cadeaux_table: SpCadeauLigne[] = cadeauCartLines.length > 0
+    ? cadeauCartLines.map((line): SpCadeauLigne => ({
+        sp_cadeau_nom: line.produitNom,
+        sp_cadeau_ref: undefined,
+        sp_cadeau_quantite: String(line.quantite ?? 1),
+        sp_cadeau_valeur_ht: formatEuro(line.prixTotal),
+        _valeur_raw: line.prixTotal,
+        _libre: !line.produitId,
+      }))
+    : (sp.sp_cadeaux_table ?? []);
+
+  const totalBdcOp = sp_bdc_operateur_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
+  const totalBdcInt = sp_bdc_internet_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
+  const totalBdcMat = sp_bdc_materiel_table.reduce((s, l) => s + l._prix_raw, 0);
+  const totalCadeaux = sp_cadeaux_table.reduce((s, l) => s + l._valeur_raw, 0);
+
   const repaired: SuggestionsSpCompletes = {
     ...sp,
     sp_lignes_mobiles: mobiles,
@@ -238,9 +308,17 @@ function repairSpCompletesFromQuestionnaire(
       ...toutes.map(toSituationLigne),
       ...sp_materiel.map(toSituationMateriel),
     ],
+    sp_bdc_operateur_table,
+    sp_bdc_internet_table,
+    sp_bdc_materiel_table,
+    sp_cadeaux_table,
     sp_total_forfaits_mensuel_ht: formatEuro(totalForfaits),
     sp_total_materiel_ht: formatEuro(totalMateriel),
     sp_total_complet: formatEuro(totalForfaits + totalMateriel),
+    sp_total_bdc_operateur_ht: formatEuro(totalBdcOp),
+    sp_total_bdc_internet_ht: formatEuro(totalBdcInt),
+    sp_total_bdc_materiel_ht: formatEuro(totalBdcMat),
+    sp_total_cadeaux_ht: formatEuro(totalCadeaux),
     sp_total_recurrent: formatEuro(cart.abonnements.totalMensuel),
     sp_total_ponctuel: formatEuro(cart.totalPonctuel),
     sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : sp.sp_total_indemnites,
@@ -315,7 +393,7 @@ export async function POST(request: NextRequest) {
     //    Priorité : la plus récente proposition AYANT des données SP
     //    (suggestions_sp_completes non nul). À défaut, la plus récente tout
     //    court (les variables SA seront remplies, les tableaux SP resteront vides).
-    const baseSelect = 'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(sp_questions)';
+    const baseSelect = 'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(sp_questions, preferences)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -426,9 +504,25 @@ export async function POST(request: NextRequest) {
       ? wordCfg.spClausesConditionnelles as SpClauseConditionnelle[]
       : [];
     const clausesData = renderClauses(clauses, spCompletes, spReponses, baseData, catalogue);
-    // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < mapping utilisateur.
+    // Référence proposition → {{sp_reference}} (même logique que la génération).
+    const orgPreferences = (isPlainObject(org.preferences) ? org.preferences : {}) as OrganizationPreferences;
+    const spConfigLoyer = (fileConfig.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
+      ? (fileConfig.sp_config_loyer as SpConfigLoyer)
+      : undefined;
+    const sp_reference = buildSpReference(
+      fileConfig.sp_config_resume_ref as SpConfigResumeRef | undefined,
+      spReponses,
+      templateQuestions,
+      catalogue,
+      baseData,
+      spConfigLoyer,
+      orgPreferences.sp_config_mois_offerts,
+      spPreferencesProduits,
+    );
+    const referenceData: Record<string, string> = { sp_reference: sp_reference ?? '' };
+    // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < référence < mapping utilisateur.
     // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
-    const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...mappedData };
+    const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData, ...mappedData };
 
     // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
     let uint8Array: Uint8Array;

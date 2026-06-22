@@ -94,8 +94,15 @@ export function SpClausesManager({ templateId, fileConfig, onSaved }: Props) {
     });
   }, [templateId]);
 
-  const persist = async (updated: SpClauseConditionnelle[]) => {
+  const persist = async (raw: SpClauseConditionnelle[]) => {
     if (!templateId) return;
+    // Toujours matérialiser la clé dérivée : sans ça, une sauvegarde globale ou
+    // un réordonnancement enregistrerait cle_variable='' et la variable
+    // {{sp_clause_<clé>}} ne serait plus injectée dans le Word.
+    const updated = raw.map((c) => ({
+      ...c,
+      cle_variable: (c.cle_variable || slugify(c.libelle)).trim(),
+    }));
     setIsSaving(true);
     setSaveError('');
     try {

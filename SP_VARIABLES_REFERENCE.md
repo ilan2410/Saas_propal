@@ -351,7 +351,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_bdc_operateur_table}}
-{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}
+{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}
 {{/sp_bdc_operateur_table}}
 ```
 > **Explication** : Tableau BDC (Bon De Commande) opérateur : liste les lignes mobiles et fixes pour le bon de commande avec type, nom, produit, fournisseur, prix mensuel HT, prix actuel et économie.
@@ -364,6 +364,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_bdc_op_nom` | Nom de la ligne / offre | `{{sp_bdc_op_nom}}` |
 | `sp_bdc_op_produit` | Nom du produit | `{{sp_bdc_op_produit}}` |
 | `sp_bdc_op_fournisseur` | Fournisseur | `{{sp_bdc_op_fournisseur}}` |
+| `sp_bdc_op_quantite` | Quantité | `{{sp_bdc_op_quantite}}` |
 | `sp_bdc_op_prix_mensuel_ht` | Prix mensuel HT (texte formaté) | `{{sp_bdc_op_prix_mensuel_ht}}` |
 | `sp_bdc_op_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_bdc_op_prix_actuel}}` |
 | `sp_bdc_op_economie` | Économie (texte formaté, optionnel) | `{{sp_bdc_op_economie}}` |
@@ -375,7 +376,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_bdc_internet_table}}
-{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}
+{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}
 {{/sp_bdc_internet_table}}
 ```
 > **Explication** : Tableau BDC internet : liste les offres internet pour le bon de commande avec nom, produit, fournisseur, prix mensuel HT et prix actuel.
@@ -387,6 +388,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_bdc_int_nom` | Nom de l'offre internet | `{{sp_bdc_int_nom}}` |
 | `sp_bdc_int_produit` | Nom du produit | `{{sp_bdc_int_produit}}` |
 | `sp_bdc_int_fournisseur` | Fournisseur | `{{sp_bdc_int_fournisseur}}` |
+| `sp_bdc_int_quantite` | Quantité | `{{sp_bdc_int_quantite}}` |
 | `sp_bdc_int_prix_mensuel_ht` | Prix mensuel HT (texte formaté) | `{{sp_bdc_int_prix_mensuel_ht}}` |
 | `sp_bdc_int_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_bdc_int_prix_actuel}}` |
 
@@ -397,7 +399,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_bdc_materiel_table}}
-{{sp_bdc_mat_nom}}  {{sp_bdc_mat_ref}}  {{sp_bdc_mat_fournisseur}}  {{sp_bdc_mat_prix_ht}}  {{sp_bdc_mat_frequence}}
+{{sp_bdc_mat_nom}}  {{sp_bdc_mat_ref}}  {{sp_bdc_mat_fournisseur}}  {{sp_bdc_mat_quantite}}  {{sp_bdc_mat_prix_ht}}  {{sp_bdc_mat_frequence}}
 {{/sp_bdc_materiel_table}}
 ```
 > **Explication** : Tableau BDC matériel : liste le matériel pour le bon de commande avec nom, référence, fournisseur, prix HT et fréquence (Mensuel ou Unique).
@@ -409,6 +411,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_bdc_mat_nom` | Nom du matériel | `{{sp_bdc_mat_nom}}` |
 | `sp_bdc_mat_ref` | Référence du matériel | `{{sp_bdc_mat_ref}}` |
 | `sp_bdc_mat_fournisseur` | Fournisseur | `{{sp_bdc_mat_fournisseur}}` |
+| `sp_bdc_mat_quantite` | Quantité | `{{sp_bdc_mat_quantite}}` |
 | `sp_bdc_mat_prix_ht` | Prix HT (texte formaté) | `{{sp_bdc_mat_prix_ht}}` |
 | `sp_bdc_mat_frequence` | Fréquence (Mensuel / Unique) | `{{sp_bdc_mat_frequence}}` |
 
@@ -419,7 +422,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_cadeaux_table}}
-{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_valeur_ht}}
+{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_quantite}}  {{sp_cadeau_valeur_ht}}
 {{/sp_cadeaux_table}}
 ```
 > **Explication** : Tableau des cadeaux offerts dans la proposition avec nom, référence et valeur HT.
@@ -430,6 +433,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 |---------------|-------------|---------|
 | `sp_cadeau_nom` | Nom du cadeau | `{{sp_cadeau_nom}}` |
 | `sp_cadeau_ref` | Référence du cadeau | `{{sp_cadeau_ref}}` |
+| `sp_cadeau_quantite` | Quantité | `{{sp_cadeau_quantite}}` |
 | `sp_cadeau_valeur_ht` | Valeur HT (texte formaté) | `{{sp_cadeau_valeur_ht}}` |
 
 ---
