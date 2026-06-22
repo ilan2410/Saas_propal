@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
-import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
+import type { CatalogueProduit, SpMateriel, SpMaterielDetail, SpCadeauLigne, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -26,10 +26,12 @@ function repairMaterialDetailFromQuestionnaire(
   const materielCartLines = cart.lines.filter((line) =>
     !['mobile', 'fixe', 'internet', 'cadeau'].includes(line.categorie)
   );
+  const cadeauCartLines = cart.lines.filter((line) => line.categorie === 'cadeau');
 
   const hasMaterial = materielCartLines.length > 0;
+  const hasCadeaux = cadeauCartLines.length > 0;
   const hasIndemnites = cart.indemnites > 0;
-  if (!hasMaterial && !hasIndemnites) return sp;
+  if (!hasMaterial && !hasCadeaux && !hasIndemnites) return sp;
 
   const sp_materiel: SpMateriel[] = hasMaterial ? materielCartLines.map((line) => {
     const cat = line.produitId ? catalogueMap.get(line.produitId) : undefined;
@@ -66,13 +68,28 @@ function repairMaterialDetailFromQuestionnaire(
     };
   }) : [];
 
+  const sp_cadeaux_table: SpCadeauLigne[] = hasCadeaux ? cadeauCartLines.map((line) => {
+    const cat = line.produitId ? catalogueMap.get(line.produitId) : undefined;
+    return {
+      sp_cadeau_nom: line.produitNom,
+      sp_cadeau_ref: undefined,
+      sp_cadeau_valeur_ht: formatEuro(line.prixTotal),
+      _valeur_raw: line.prixTotal,
+    };
+  }) : [];
+
   const totalMateriel = hasMaterial ? sp_materiel.reduce((sum, item) => sum + item._prix_mensuel_raw, 0) : 0;
+  const totalCadeaux = hasCadeaux ? sp_cadeaux_table.reduce((sum, item) => sum + item._valeur_raw, 0) : 0;
 
   const result: SuggestionsSpCompletes = { ...sp };
   if (hasMaterial) {
     result.sp_materiel = sp_materiel;
     result.sp_materiel_detail = sp_materiel_detail;
     result.sp_total_materiel_ht = formatEuro(totalMateriel);
+  }
+  if (hasCadeaux) {
+    result.sp_cadeaux_table = sp_cadeaux_table;
+    result.sp_total_cadeaux_ht = formatEuro(totalCadeaux);
   }
   if (hasIndemnites) {
     result.sp_total_indemnites = formatEuro(cart.indemnites);

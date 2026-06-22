@@ -42,6 +42,15 @@ const OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
 const SOURCES: { value: SpCondition['source']; label: string }[] = [
   { value: 'reponse_question', label: 'Réponse à une question' },
   { value: 'catalogue', label: 'Catalogue produits' },
+  { value: 'panier_mot', label: 'Mot dans le panier SP' },
+];
+
+// Operators available for the "panier_mot" source (count of word occurrences).
+const PANIER_MOT_OPERATEURS: { value: SpConditionOperateur; label: string }[] = [
+  { value: 'superieur', label: 'Apparaît plus de' },
+  { value: 'inferieur', label: 'Apparaît moins de' },
+  { value: 'egal', label: 'Apparaît exactement' },
+  { value: 'quantite_entre', label: 'Apparaît entre' },
 ];
 
 const SOURCES_WITH_SUGGESTIONS: { value: SpCondition['source']; label: string }[] = [
@@ -135,6 +144,9 @@ function getQuestionSelectableValues(question?: SpQuestion): string[] {
 
 export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuestions, catalogueProduits, enableSuggestionsSource }: Props) {
   const availableSources = enableSuggestionsSource ? SOURCES_WITH_SUGGESTIONS : SOURCES;
+  const catalogueCategories = Array.from(
+    new Set((catalogueProduits ?? []).map((p) => p.categorie).filter(Boolean)),
+  ).sort();
   const [localGroupes, setLocalGroupes] = useState<SpGroupeConditions[]>(
     groupes.length > 0 ? groupes : [],
   );
@@ -273,13 +285,24 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
               {/* Source */}
               <select
                 value={cond.source}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const newSource = e.target.value as SpCondition['source'];
                   updateCondition(groupe.id, cond.id, {
-                    source: e.target.value as SpCondition['source'],
+                    source: newSource,
                     question_id: undefined,
                     variable_sa: undefined,
-                  })
-                }
+                    filtre_catalogue: undefined,
+                    mot_cle: undefined,
+                    valeur: undefined,
+                    valeur_max: undefined,
+                    // Pick a valid default operator for the new source
+                    operateur: newSource === 'panier_mot'
+                      ? 'superieur'
+                      : newSource === 'catalogue'
+                        ? 'non_vide'
+                        : 'egal',
+                  });
+                }}
                 className="px-2 py-1 border border-gray-300 rounded bg-white"
               >
                 {availableSources.map((s) => (
@@ -356,7 +379,38 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 </>
               ) : null}
 
-              {/* Operator — limited set for catalogue source */}
+              {/* Mot + catégorie (for panier_mot) */}
+              {cond.source === 'panier_mot' && (
+                <>
+                  <span className="text-gray-500">le mot</span>
+                  <input
+                    value={cond.mot_cle ?? ''}
+                    onChange={(e) =>
+                      updateCondition(groupe.id, cond.id, { mot_cle: e.target.value || undefined })
+                    }
+                    placeholder="ex: poste"
+                    className="px-2 py-1 border border-gray-300 rounded bg-white w-32"
+                  />
+                  <span className="text-gray-500">dans</span>
+                  <select
+                    value={cond.filtre_catalogue?.categories?.[0] ?? ''}
+                    onChange={(e) => {
+                      const cat = e.target.value;
+                      updateCondition(groupe.id, cond.id, {
+                        filtre_catalogue: cat ? { categories: [cat as never] } : undefined,
+                      });
+                    }}
+                    className="px-2 py-1 border border-gray-300 rounded bg-white max-w-44"
+                  >
+                    <option value="">Toutes catégories</option>
+                    {catalogueCategories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+
+              {/* Operator — limited set for catalogue / panier_mot sources */}
               <select
                 value={cond.operateur}
                 onChange={(e) =>
@@ -364,13 +418,19 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                 }
                 className="px-2 py-1 border border-gray-300 rounded bg-white"
               >
-                {(cond.source === 'catalogue' ? CATALOGUE_OPERATEURS : OPERATEURS).map((o) => (
+                {(cond.source === 'catalogue'
+                  ? CATALOGUE_OPERATEURS
+                  : cond.source === 'panier_mot'
+                    ? PANIER_MOT_OPERATEURS
+                    : OPERATEURS
+                ).map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
 
-              {/* Numeric quantity threshold for catalogue quantity operators */}
-              {cond.source === 'catalogue' && CATALOGUE_QUANTITE_OPERATEURS.includes(cond.operateur) && (
+              {/* Numeric threshold for catalogue quantity operators and panier_mot occurrences */}
+              {((cond.source === 'catalogue' && CATALOGUE_QUANTITE_OPERATEURS.includes(cond.operateur)) ||
+                cond.source === 'panier_mot') && (
                 <>
                   <input
                     type="number"
@@ -379,9 +439,12 @@ export function SpConditionEditor({ groupes, logiqueRacine, onChange, otherQuest
                     onChange={(e) =>
                       updateCondition(groupe.id, cond.id, { valeur: e.target.value })
                     }
-                    placeholder={cond.operateur === 'quantite_entre' ? 'Min' : 'Quantité'}
+                    placeholder={cond.operateur === 'quantite_entre' ? 'Min' : cond.source === 'panier_mot' ? 'Fois' : 'Quantité'}
                     className="px-2 py-1 border border-gray-300 rounded bg-white w-24"
                   />
+                  {cond.source === 'panier_mot' && cond.operateur !== 'quantite_entre' && (
+                    <span className="text-gray-500">fois</span>
+                  )}
                   {cond.operateur === 'quantite_entre' && (
                     <>
                       <span className="text-gray-500">et</span>

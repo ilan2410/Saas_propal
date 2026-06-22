@@ -128,12 +128,10 @@ function isTechnicalReponseId(questionId: string): boolean {
  * Quantities live in `quantite_<instanceId>` responses, stored either as a JSON map
  * keyed by product name/id, or as a plain number for single-product instances.
  */
-function getSelectedCatalogueQuantity(
+function sumSelectedQuantities(
   reponses: SpQuestionReponse[],
-  catalogue: CatalogueProduit[],
-  filtre: SpFiltresCatalogue,
+  matchingProducts: CatalogueProduit[],
 ): number {
-  const matchingProducts = filterCatalogueByFiltre(catalogue, filtre);
   const matchById = new Map(matchingProducts.map((p) => [p.id.trim().toLowerCase(), p]));
   const matchByName = new Map(matchingProducts.map((p) => [p.nom.trim().toLowerCase(), p]));
 
@@ -171,6 +169,36 @@ function getSelectedCatalogueQuantity(
   }
 
   return total;
+}
+
+function getSelectedCatalogueQuantity(
+  reponses: SpQuestionReponse[],
+  catalogue: CatalogueProduit[],
+  filtre: SpFiltresCatalogue,
+): number {
+  return sumSelectedQuantities(reponses, filterCatalogueByFiltre(catalogue, filtre));
+}
+
+/**
+ * Total quantity of selected SP products whose name contains a keyword,
+ * optionally restricted to one or more catalogue categories.
+ * Used by the "panier_mot" condition source (e.g. word "poste" in category "matériel").
+ */
+function getSelectedCartWordQuantity(
+  reponses: SpQuestionReponse[],
+  catalogue: CatalogueProduit[],
+  mot: string,
+  categories?: string[],
+): number {
+  const motLower = mot.trim().toLowerCase();
+  if (!motLower) return 0;
+
+  const candidates = catalogue.filter((p) => {
+    if (categories && categories.length > 0 && !categories.includes(p.categorie)) return false;
+    return p.nom.toLowerCase().includes(motLower);
+  });
+
+  return sumSelectedQuantities(reponses, candidates);
 }
 
 function getSelectedCatalogueProducts(
@@ -252,6 +280,33 @@ function evaluateSingleCondition(
   catalogue?: CatalogueProduit[],
   suggestionsSpCompletes?: SuggestionsSpCompletes | null,
 ): boolean {
+  // "Mot dans le panier SP" : compte la quantité totale des produits sélectionnés
+  // dont le nom contient un mot-clé, éventuellement restreint à des catégories.
+  if (condition.source === 'panier_mot') {
+    if (!catalogue) return false;
+    const mot = (condition.mot_cle ?? '').trim();
+    if (!mot) return false;
+    const count = getSelectedCartWordQuantity(
+      reponses,
+      catalogue,
+      mot,
+      condition.filtre_catalogue?.categories,
+    );
+    const target = toNumber(condition.valeur) ?? 0;
+    switch (condition.operateur) {
+      case 'inferieur': return count < target;
+      case 'egal': return count === target;
+      case 'quantite_entre': {
+        const max = toNumber(condition.valeur_max) ?? target;
+        const min = Math.min(target, max);
+        const borneMax = Math.max(target, max);
+        return count >= min && count <= borneMax;
+      }
+      case 'superieur':
+      default: return count > target;
+    }
+  }
+
   // Catalogue conditions are evaluated against the products actually selected
   // in SP answers, not against raw catalogue availability.
   if (condition.source === 'catalogue' && catalogue && condition.filtre_catalogue) {

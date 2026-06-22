@@ -411,11 +411,13 @@ export type SpConditionLogique = 'ET' | 'OU';
 
 export interface SpCondition {
   id: string;
-  source: 'sa' | 'catalogue' | 'reponse_question' | 'suggestions';
+  source: 'sa' | 'catalogue' | 'reponse_question' | 'suggestions' | 'panier_mot';
   variable_sa?: string;
   sous_champ_sa?: string;
   filtre_catalogue?: SpFiltresCatalogue;
   question_id?: string;
+  /** Mot-clé recherché dans les noms de produits du panier SP (source "panier_mot"). */
+  mot_cle?: string;
   operateur: SpConditionOperateur;
   valeur?: string | number;
   /** Borne supérieure pour l'opérateur "quantite_entre" (valeur = borne inférieure). */
