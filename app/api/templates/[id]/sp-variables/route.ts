@@ -17,6 +17,7 @@ const SP_STANDARD_VARIABLES = [
   // Récurrent / Ponctuel
   'sp_fas_total', 'sp_total_recurrent', 'sp_total_ponctuel', 'sp_total_indemnites',
   'sp_remise_mois_offert', 'sp_total_installation', 'sp_total_materiel_achat',
+  'sp_total_remise', 'sp_remise_fixe', 'sp_remise_mobile', 'sp_remise_abonnement', 'sp_remise_internet',
   // Loyer / Marge
   'sp_loyer_mensuel', 'sp_loyer_trimestriel', 'sp_marge',
   'sp_duree_mois', 'sp_trimestres', 'sp_mois_offerts',

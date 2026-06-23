@@ -43,6 +43,11 @@ Ces variables s'utilisent avec la syntaxe simple `{{nom_variable}}`.
 | `sp_total_ponctuel` | Total des charges ponctuelles (HT) | `{{sp_total_ponctuel}}` |
 | `sp_total_indemnites` | Total des indemnités de résiliation (HT) | `{{sp_total_indemnites}}` |
 | `sp_remise_mois_offert` | Montant de la remise "mois offert" (HT) | `{{sp_remise_mois_offert}}` |
+| `sp_total_remise` | Montant total des remises produits mensuelles (HT) | `{{sp_total_remise}}` |
+| `sp_remise_fixe` | Total des remises sur les lignes fixes (HT) | `{{sp_remise_fixe}}` |
+| `sp_remise_mobile` | Total des remises sur les lignes mobiles (HT) | `{{sp_remise_mobile}}` |
+| `sp_remise_abonnement` | Total des remises abonnement = fixe + mobile (HT) | `{{sp_remise_abonnement}}` |
+| `sp_remise_internet` | Total des remises sur les offres internet (HT) | `{{sp_remise_internet}}` |
 | `sp_total_installation` | Total des frais d'installation (HT) | `{{sp_total_installation}}` |
 | `sp_total_materiel_achat` | Total du matériel en achat (HT) | `{{sp_total_materiel_achat}}` |
 | `sp_fas_total` | Total des frais d'accès au service (FAS) (HT) | `{{sp_fas_total}}` |
@@ -351,7 +356,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_bdc_operateur_table}}
-{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}
+{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_mensuel_ht_sans_remise}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}
 {{/sp_bdc_operateur_table}}
 ```
 > **Explication** : Tableau BDC (Bon De Commande) opérateur : liste les lignes mobiles et fixes pour le bon de commande avec type, nom, produit, fournisseur, prix mensuel HT, prix actuel et économie.
@@ -365,7 +370,8 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_bdc_op_produit` | Nom du produit | `{{sp_bdc_op_produit}}` |
 | `sp_bdc_op_fournisseur` | Fournisseur | `{{sp_bdc_op_fournisseur}}` |
 | `sp_bdc_op_quantite` | Quantité | `{{sp_bdc_op_quantite}}` |
-| `sp_bdc_op_prix_mensuel_ht` | Prix mensuel HT (texte formaté) | `{{sp_bdc_op_prix_mensuel_ht}}` |
+| `sp_bdc_op_prix_mensuel_ht` | Prix mensuel HT remisé (texte formaté) | `{{sp_bdc_op_prix_mensuel_ht}}` |
+| `sp_bdc_op_prix_mensuel_ht_sans_remise` | Prix mensuel HT avant remise (texte formaté) | `{{sp_bdc_op_prix_mensuel_ht_sans_remise}}` |
 | `sp_bdc_op_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_bdc_op_prix_actuel}}` |
 | `sp_bdc_op_economie` | Économie (texte formaté, optionnel) | `{{sp_bdc_op_economie}}` |
 
@@ -376,7 +382,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_bdc_internet_table}}
-{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}
+{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_mensuel_ht_sans_remise}}  {{sp_bdc_int_prix_actuel}}
 {{/sp_bdc_internet_table}}
 ```
 > **Explication** : Tableau BDC internet : liste les offres internet pour le bon de commande avec nom, produit, fournisseur, prix mensuel HT et prix actuel.
@@ -389,7 +395,8 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_bdc_int_produit` | Nom du produit | `{{sp_bdc_int_produit}}` |
 | `sp_bdc_int_fournisseur` | Fournisseur | `{{sp_bdc_int_fournisseur}}` |
 | `sp_bdc_int_quantite` | Quantité | `{{sp_bdc_int_quantite}}` |
-| `sp_bdc_int_prix_mensuel_ht` | Prix mensuel HT (texte formaté) | `{{sp_bdc_int_prix_mensuel_ht}}` |
+| `sp_bdc_int_prix_mensuel_ht` | Prix mensuel HT remisé (texte formaté) | `{{sp_bdc_int_prix_mensuel_ht}}` |
+| `sp_bdc_int_prix_mensuel_ht_sans_remise` | Prix mensuel HT avant remise (texte formaté) | `{{sp_bdc_int_prix_mensuel_ht_sans_remise}}` |
 | `sp_bdc_int_prix_actuel` | Prix actuel (texte formaté, optionnel) | `{{sp_bdc_int_prix_actuel}}` |
 
 ---

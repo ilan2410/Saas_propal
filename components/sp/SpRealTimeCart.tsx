@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ShoppingCart, ChevronDown, ChevronUp, Pencil, Trash2, Plus, Search, X } from 'lucide-react';
 import type {
   CatalogueProduit,
@@ -515,14 +515,6 @@ export function SpRealTimeCart({
     return s;
   }, [summary.lines]);
 
-  // Auto-expand all categories when client edit mode activates so pencil icons are visible
-  useEffect(() => {
-    if (!clientEditMode) return;
-    setExpandedCats(
-      new Set(['fixe', 'mobile', 'internet', 'autres_m', 'equipement', 'cadeau', 'installation', 'fas', 'autres_p']),
-    );
-  }, [clientEditMode]);
-
   const handleUpdateLine = (
     instanceId: string,
     produitNom: string,
@@ -770,7 +762,7 @@ export function SpRealTimeCart({
                   onUpdateNumero={handleUpdateNumero}
                   onDeleteLine={handleDeleteLine}
                 />
-                {summary.autresMensuels > 0 && (
+                {grouped.autresMensuels.length > 0 && (
                   <CategoryAccordion
                     label="Autres"
                     total={summary.autresMensuels}
@@ -793,16 +785,16 @@ export function SpRealTimeCart({
               </section>
 
               {/* Ponctuels */}
-              {(summary.materiel > 0 ||
-                summary.cadeaux > 0 ||
-                summary.installations > 0 ||
-                summary.fas > 0 ||
-                summary.autresPonctuels > 0) && (
+              {(grouped.equipement.length > 0 ||
+                grouped.cadeau.length > 0 ||
+                grouped.installation.length > 0 ||
+                grouped.fas.length > 0 ||
+                grouped.autresPonctuels.length > 0) && (
                 <section className="space-y-1">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                     Ponctuel
                   </p>
-                  {summary.materiel > 0 && (
+                  {grouped.equipement.length > 0 && (
                     <CategoryAccordion
                       label="Matériel"
                       total={summary.materiel}
@@ -817,7 +809,7 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  {summary.cadeaux > 0 && (
+                  {grouped.cadeau.length > 0 && (
                     <CategoryAccordion
                       label="Cadeaux"
                       total={summary.cadeaux}
@@ -832,7 +824,7 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  {summary.installations > 0 && (
+                  {grouped.installation.length > 0 && (
                     <CategoryAccordion
                       label="Installations"
                       total={summary.installations}
@@ -847,7 +839,7 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  {summary.fas > 0 && (
+                  {grouped.fas.length > 0 && (
                     <CategoryAccordion
                       label="FAS"
                       total={summary.fas}
@@ -863,7 +855,7 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  {summary.autresPonctuels > 0 && (
+                  {grouped.autresPonctuels.length > 0 && (
                     <CategoryAccordion
                       label="Autres"
                       total={summary.autresPonctuels}

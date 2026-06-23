@@ -90,6 +90,29 @@ function buildForfaitsSansRemiseTable(
   return rows;
 }
 
+function buildRemiseBreakdown(
+  lignes: Array<SpLigneMobile | SpLigneFixe | SpInternet>,
+  catalogueMap: Map<string, CatalogueProduit>,
+): { total: number; fixe: number; mobile: number; internet: number } {
+  let fixe = 0;
+  let mobile = 0;
+  let internet = 0;
+
+  for (const ligne of lignes) {
+    const quantite = parsePositiveQuantity(ligne.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, ligne.sp_produit_id, ligne.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (ligne._prix_propose_raw / quantite);
+    const remiseLigne = originalUnitPrice * quantite - ligne._prix_propose_raw;
+    if (remiseLigne <= 0.005) continue;
+
+    if (ligne.sp_type_ligne === 'Mobile') mobile += remiseLigne;
+    else if (ligne.sp_type_ligne === 'Fixe') fixe += remiseLigne;
+    else if (ligne.sp_type_ligne === 'Internet') internet += remiseLigne;
+  }
+
+  return { total: fixe + mobile + internet, fixe, mobile, internet };
+}
+
 function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneFixe | SpInternet>(
   existingLines: T[],
   cartLines: CartLine[],
@@ -223,6 +246,14 @@ function repairSpCompletesFromQuestionnaire(
   const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
   const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
 
+  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
+  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
+    const quantite = parsePositiveQuantity(l.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
+    return originalUnitPrice * quantite;
+  };
+
   // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
   const sp_bdc_operateur_table: SpBdcOperateurLigne[] = [...mobiles, ...fixes]
     .filter((l) => {
@@ -236,6 +267,7 @@ function repairSpCompletesFromQuestionnaire(
       sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
       sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
       sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_op_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
       sp_bdc_op_prix_actuel: l.sp_prix_actuel,
       sp_bdc_op_economie: l.sp_economie,
       _prix_mensuel_raw: l._prix_propose_raw,
@@ -252,6 +284,7 @@ function repairSpCompletesFromQuestionnaire(
       sp_bdc_int_fournisseur: l.sp_produit_fournisseur,
       sp_bdc_int_quantite: l.sp_quantite?.trim() || '1',
       sp_bdc_int_prix_mensuel_ht: l.sp_prix_propose,
+      sp_bdc_int_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
       sp_bdc_int_prix_actuel: l.sp_prix_actuel,
       _prix_mensuel_raw: l._prix_propose_raw,
     }));
@@ -291,6 +324,7 @@ function repairSpCompletesFromQuestionnaire(
   const totalBdcInt = sp_bdc_internet_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
   const totalBdcMat = sp_bdc_materiel_table.reduce((s, l) => s + l._prix_raw, 0);
   const totalCadeaux = sp_cadeaux_table.reduce((s, l) => s + l._valeur_raw, 0);
+  const remiseBreakdown = buildRemiseBreakdown(toutes, catalogueMap);
 
   const repaired: SuggestionsSpCompletes = {
     ...sp,
@@ -323,6 +357,11 @@ function repairSpCompletesFromQuestionnaire(
     sp_total_ponctuel: formatEuro(cart.totalPonctuel),
     sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : sp.sp_total_indemnites,
     sp_remise_mois_offert: cart.remiseMoisOffert > 0 ? formatEuro(cart.remiseMoisOffert) : sp.sp_remise_mois_offert,
+    sp_total_remise: remiseBreakdown.total > 0.005 ? formatEuro(-remiseBreakdown.total) : sp.sp_total_remise,
+    sp_remise_fixe: remiseBreakdown.fixe > 0.005 ? formatEuro(-remiseBreakdown.fixe) : sp.sp_remise_fixe,
+    sp_remise_mobile: remiseBreakdown.mobile > 0.005 ? formatEuro(-remiseBreakdown.mobile) : sp.sp_remise_mobile,
+    sp_remise_abonnement: (remiseBreakdown.fixe + remiseBreakdown.mobile) > 0.005 ? formatEuro(-(remiseBreakdown.fixe + remiseBreakdown.mobile)) : sp.sp_remise_abonnement,
+    sp_remise_internet: remiseBreakdown.internet > 0.005 ? formatEuro(-remiseBreakdown.internet) : sp.sp_remise_internet,
     sp_marge: cart.marge > 0 ? formatEuro(cart.marge) : sp.sp_marge,
     ...(cart.loyer ? {
       sp_loyer_mensuel: formatEuro(cart.loyer.loyer_mensuel),

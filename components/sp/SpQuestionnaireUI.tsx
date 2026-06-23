@@ -9,13 +9,14 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
@@ -435,11 +436,13 @@ function CatalogueMultipleChoiceInput({
     // sur "cadeau"), on l'utilise pour éviter qu'une saisie libre cadeau ne soit
     // catégorisée par erreur en "equipement".
     const allSameCat = products.length > 0 && products.every((p) => p.categorie === products[0].categorie);
+    const categorie = allSameCat ? products[0].categorie : 'equipement';
+    const canBeMensuel = ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie);
     return {
       label: '',
       prix: '',
-      categorie: allSameCat ? products[0].categorie : 'equipement',
-      type_frequence: 'unique',
+      categorie,
+      type_frequence: canBeMensuel ? 'mensuel' : 'unique',
     };
   });
   const [search, setSearch] = useState('');
@@ -1232,6 +1235,32 @@ export function SpQuestionnaireUI({
       autoSkipQuestion(eq, '0', [{ question_id: 'sp_marge_calculee', valeur: '0' }]);
     } else if (spConfigModeClient?.passer_question_code_promo && aff === 'code_promo') {
       autoSkipQuestion(eq, '');
+    } else if (spConfigModeClient?.passer_question_remises && aff === 'remise_produits') {
+      const eligibles = getEligibleDiscountProducts({
+        rules: discountRules,
+        products: catalogue,
+        reponses,
+        donneesExtraites,
+      });
+      if (eligibles.length === 0) {
+        autoSkipQuestion(eq, false);
+      } else {
+        const priceMap: Record<string, string> = {};
+        for (const p of eligibles) {
+          const prix = !p.prix_mensuel || !p.remise_valeur ? null
+            : p.remise_type === 'fixe' ? p.prix_mensuel - p.remise_valeur
+            : p.remise_type === 'pourcentage' ? p.prix_mensuel * (1 - p.remise_valeur / 100)
+            : null;
+          if (prix != null && Number.isFinite(prix)) {
+            priceMap[p.nom] = String(prix);
+            priceMap[p.id] = String(prix);
+          }
+        }
+        autoSkipQuestion(eq, true, [{
+          question_id: 'prix_' + eq.instanceId,
+          valeur: JSON.stringify(priceMap),
+        }]);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, modeClientActif]);
@@ -1540,7 +1569,24 @@ export function SpQuestionnaireUI({
     }
     if (objectifsConfig.length === 0 || !templateId) return;
 
-    const resolved = evaluateObjectifsForRender(objectifsConfig, templateId, reponses, null, catalogue);
+    const totalActuelSa = calculateSaCartSummary(donneesExtraites).totalMensuel;
+    const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+    const totalPropose =
+      cart.loyer?.loyer_mensuel && cart.loyer.loyer_mensuel > 0
+        ? cart.loyer.loyer_mensuel
+        : cart.abonnements.totalMensuel;
+    const economieMensuelle = totalActuelSa - totalPropose;
+    const partialSp = {
+      sp_est_economie: economieMensuelle > 0 ? 'Oui' : 'Non',
+      sp_taux_economie_pct: totalActuelSa > 0 ? Math.round((economieMensuelle / totalActuelSa) * 100 * 10) / 10 : 0,
+      sp_economie_mensuelle: economieMensuelle > 0 ? `${economieMensuelle.toFixed(2).replace('.', ',')} €` : '',
+      sp_economie_annuelle: economieMensuelle > 0 ? `${(economieMensuelle * 12).toFixed(2).replace('.', ',')} €` : '',
+      sp_total_actuel: `${totalActuelSa.toFixed(2).replace('.', ',')} €`,
+      sp_total_propose: `${totalPropose.toFixed(2).replace('.', ',')} €`,
+      sp_lignes_mobiles: [], sp_lignes_fixes: [], sp_internet: [], sp_materiel: [],
+    } as unknown as SuggestionsSpCompletes;
+
+    const resolved = evaluateObjectifsForRender(objectifsConfig, templateId, reponses, partialSp, catalogue);
     if (resolved.length === 0) return;
 
     setObjectifsResolved(resolved);
@@ -1548,7 +1594,7 @@ export function SpQuestionnaireUI({
 
     const timer = setTimeout(() => setObjectifsOverlayState('visible'), 2000);
     return () => clearTimeout(timer);
-  }, [isDone, objectifsConfig, templateId, reponses]);
+  }, [isDone, objectifsConfig, templateId, reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits]);
 
   return (
     <div className="space-y-4">
@@ -3005,7 +3051,9 @@ export function SpQuestionnaireUI({
           <p className="font-medium text-green-900">
             ✓ Toutes les questions obligatoires ont été répondues.
           </p>
-          {isSimulation ? (
+          {isSimulation && modeClientActif && (spConfigModeClient?.masquer_resume_final ?? false) ? (
+            <p className="text-sm text-green-700">Simulation terminée.</p>
+          ) : isSimulation ? (
             <div className="space-y-2">
               <p className="text-sm text-green-700">Résumé de la simulation :</p>
               <ul className="text-sm text-gray-700 space-y-1 max-h-40 overflow-y-auto">
@@ -3163,9 +3211,13 @@ export function SpQuestionnaireUI({
                     q.affichage === 'nombre' &&
                     q.nombre_config?.suggestion_source === 'indemnite_resiliation',
                 );
-                const indemRemplie = indemQuestion
-                  ? reponses.some((r) => r.question_id === indemQuestion.id && Number(r.valeur) > 0)
-                  : true;
+                // Id de repli `sp_total_indemnites` quand aucune question
+                // d'indemnité n'existe (aligné sur le widget Indemnité), afin
+                // que le garde-fou fonctionne comme celui de la marge.
+                const indemTargetId = indemQuestion?.id ?? 'sp_total_indemnites';
+                const indemRemplie = reponses.some(
+                  (r) => r.question_id === indemTargetId && Number(r.valeur) > 0,
+                );
                 const seuilIndemId = spConfigModeClient?.garde_fou_indemnite_seuil_question_id;
                 const seuilIndemIdx = seuilIndemId
                   ? expandedQuestions.findIndex((eq) => eq.question.id === seuilIndemId)

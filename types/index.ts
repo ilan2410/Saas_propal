@@ -705,6 +705,7 @@ export interface SpBdcOperateurLigne {
   sp_bdc_op_fournisseur?: string;
   sp_bdc_op_quantite: string;
   sp_bdc_op_prix_mensuel_ht: string;
+  sp_bdc_op_prix_mensuel_ht_sans_remise: string;
   sp_bdc_op_prix_actuel?: string;
   sp_bdc_op_economie?: string;
   _prix_mensuel_raw: number;
@@ -716,6 +717,7 @@ export interface SpBdcInternetLigne {
   sp_bdc_int_fournisseur?: string;
   sp_bdc_int_quantite: string;
   sp_bdc_int_prix_mensuel_ht: string;
+  sp_bdc_int_prix_mensuel_ht_sans_remise: string;
   sp_bdc_int_prix_actuel?: string;
   _prix_mensuel_raw: number;
 }
@@ -770,6 +772,11 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_total_ponctuel?: string;
   sp_total_indemnites?: string;
   sp_remise_mois_offert?: string;
+  sp_total_remise?: string;
+  sp_remise_fixe?: string;
+  sp_remise_mobile?: string;
+  sp_remise_abonnement?: string;
+  sp_remise_internet?: string;
   sp_total_fas?: string;
   sp_total_installation?: string;
   sp_total_materiel_achat?: string;
@@ -872,7 +879,9 @@ export interface SpConfigModeClient {
   masquer_details_marge: boolean;
   passer_question_marge: boolean;
   passer_question_code_promo: boolean;
+  passer_question_remises: boolean;
   masquer_estimation_resiliation: boolean;
+  masquer_resume_final: boolean;
 
   // Groupe 3 : Widgets
   masquer_widgets_par_defaut: boolean;

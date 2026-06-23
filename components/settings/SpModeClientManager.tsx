@@ -17,7 +17,9 @@ export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   masquer_details_marge: true,
   passer_question_marge: false,
   passer_question_code_promo: false,
+  passer_question_remises: false,
   masquer_estimation_resiliation: true,
+  masquer_resume_final: false,
   masquer_widgets_par_defaut: true,
   afficher_indicateur_mode_client: true,
   permettre_toggle_depuis_questionnaire: true,
@@ -267,10 +269,22 @@ export function SpModeClientManager({ templates }: Props) {
           onChange={(v) => set('passer_question_code_promo', v)}
         />
         <ToggleRow
+          label="Appliquer automatiquement les remises produits"
+          description="La question 'Remises produits' est passée silencieusement et les remises éligibles sont appliquées au tarif remisé calculé."
+          checked={config.passer_question_remises}
+          onChange={(v) => set('passer_question_remises', v)}
+        />
+        <ToggleRow
           label="Masquer l'estimation d'indemnité de résiliation"
           description="Dans la question d'indemnité, cache le bloc d'estimation du montant et de la fiabilité."
           checked={config.masquer_estimation_resiliation}
           onChange={(v) => set('masquer_estimation_resiliation', v)}
+        />
+        <ToggleRow
+          label="Masquer le résumé final et les exports SA/SP"
+          description="En fin de questionnaire, cache le récapitulatif complet des réponses ainsi que les boutons de téléchargement du comparatif SA/SP."
+          checked={config.masquer_resume_final}
+          onChange={(v) => set('masquer_resume_final', v)}
         />
       </div>
 

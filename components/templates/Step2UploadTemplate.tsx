@@ -97,6 +97,11 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_total_ponctuel', label: 'Total ponctuel HT' },
   { key: 'sp_total_indemnites', label: 'Total des indemnités HT' },
   { key: 'sp_remise_mois_offert', label: 'Remise mois offert HT' },
+  { key: 'sp_total_remise', label: 'Total des remises produits HT' },
+  { key: 'sp_remise_fixe', label: 'Remise lignes fixes HT' },
+  { key: 'sp_remise_mobile', label: 'Remise lignes mobiles HT' },
+  { key: 'sp_remise_abonnement', label: 'Remise abonnement (fixe + mobile) HT' },
+  { key: 'sp_remise_internet', label: 'Remise internet HT' },
   { key: 'sp_total_installation', label: 'Total installation HT' },
   { key: 'sp_total_materiel_achat', label: 'Total matériel achat HT' },
   { key: 'sp_loyer_mensuel', label: 'Loyer mensuel HT' },
@@ -159,12 +164,12 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_bdc_operateur_table',
     label: 'Tableau BDC opérateur',
-    fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
+    fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_mensuel_ht_sans_remise}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
   },
   {
     arrayId: 'sp_bdc_internet_table',
     label: 'Tableau internet BDC',
-    fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,
+    fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_mensuel_ht_sans_remise}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,
   },
   {
     arrayId: 'sp_bdc_materiel_table',

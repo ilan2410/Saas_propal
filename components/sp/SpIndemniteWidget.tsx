@@ -86,24 +86,26 @@ export function SpIndemniteWidget({
   );
 
   const estimation = useMemo(() => {
-    if (!indemQuestion) return null;
     return estimateResiliationFromSA(
       donneesExtraites?.situation_actuelle
         ? donneesExtraites
         : { situation_actuelle: donneesExtraites },
       spConfigResiliation,
     );
-  }, [indemQuestion, donneesExtraites, spConfigResiliation]);
+  }, [donneesExtraites, spConfigResiliation]);
 
-  if (!indemQuestion) return null;
+  // Quand aucune question d'indemnité n'existe dans le template, on stocke la
+  // valeur sous l'id synthétique `sp_total_indemnites`, repris par
+  // `resolveIndemnites` (chemin #1).
+  const targetQuestionId = indemQuestion?.id ?? 'sp_total_indemnites';
 
-  const currentRep = reponses.find((r) => r.question_id === indemQuestion.id);
+  const currentRep = reponses.find((r) => r.question_id === targetQuestionId);
   const inputValue = currentRep ? (Number(currentRep.valeur) > 0 ? String(Number(currentRep.valeur)) : '') : '';
 
   const handleChange = (value: string) => {
     const num = Number(value) || 0;
-    const filtered = reponses.filter((r) => r.question_id !== indemQuestion.id);
-    onUpdateReponses([...filtered, { question_id: indemQuestion.id, valeur: String(num) }]);
+    const filtered = reponses.filter((r) => r.question_id !== targetQuestionId);
+    onUpdateReponses([...filtered, { question_id: targetQuestionId, valeur: String(num) }]);
   };
 
   const groupedCalculation = estimation ? hasGroupedResiliationCalculation(estimation) : false;
