@@ -14,7 +14,7 @@ import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/ev
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculerLoyer, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
@@ -52,7 +52,7 @@ export interface SpQuestionnaireUIProps {
 }
 
 type MessageBubble =
-  | { from: 'bot'; text: string }
+  | { from: 'bot'; text: string; variant?: 'default' | 'success' }
   | { from: 'user'; text: string };
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
@@ -1256,10 +1256,26 @@ export function SpQuestionnaireUI({
             priceMap[p.id] = String(prix);
           }
         }
-        autoSkipQuestion(eq, true, [{
-          question_id: 'prix_' + eq.instanceId,
-          valeur: JSON.stringify(priceMap),
-        }]);
+        const remiseRep = { question_id: 'prix_' + eq.instanceId, valeur: JSON.stringify(priceMap) };
+
+        // Valoriser la remise dans le chat : on compare le total mensuel avec/sans
+        // remise (quantités comprises) pour annoncer l'économie réelle au client.
+        const cartArgs = [questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits] as const;
+        const sansRemise = calculateCartSummary(reponses, ...cartArgs);
+        const avecRemise = calculateCartSummary(
+          [...reponses.filter((r) => r.question_id !== remiseRep.question_id), remiseRep],
+          ...cartArgs,
+        );
+        const economieMensuelle = sansRemise.abonnements.totalMensuel - avecRemise.abonnements.totalMensuel;
+        if (economieMensuelle > 0.005) {
+          setMessages((prev) => [...prev, {
+            from: 'bot',
+            variant: 'success',
+            text: `🎉 Bonne nouvelle ! Vous bénéficiez de ${formatEuro(economieMensuelle)} de remise mensuelle sur votre offre.`,
+          }]);
+        }
+
+        autoSkipQuestion(eq, true, [remiseRep]);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1346,17 +1362,29 @@ export function SpQuestionnaireUI({
 
   const goBack = () => {
     if (history.length === 0) return;
-    const snapshot = history[history.length - 1];
     if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
-    
+
+    // Dépiler l'historique en sautant les questions popup (resume_ref / affichage_loyer),
+    // qui se ré-affichent automatiquement et ne sont pas répondables manuellement.
+    const stack = [...history];
+    let snapshot = stack.pop()!;
+    while (stack.length > 0) {
+      const aff = expandedQuestions[snapshot.currentIdx]?.question.affichage;
+      if (aff === 'resume_ref' || aff === 'affichage_loyer') {
+        snapshot = stack.pop()!;
+      } else {
+        break;
+      }
+    }
+
     // Nettoyer les réponses auxiliaires prix_* si on revient sur une question de type remise_produits
     const eq = expandedQuestions[currentIdx];
     if (eq && eq.question.affichage === 'remise_produits') {
       const nextReponses = reponses.filter((r) => !r.question_id.startsWith('prix_' + eq.instanceId));
       setReponses(nextReponses);
     }
-    
-    setHistory((prev) => prev.slice(0, -1));
+
+    setHistory(stack);
     setReponses(snapshot.reponses);
     setMessages(snapshot.messages);
     setHiddenByConsequence(snapshot.hiddenByConsequence);
@@ -1808,7 +1836,9 @@ export function SpQuestionnaireUI({
             )}
             <div className={`max-w-xs md:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
               msg.from === 'bot'
-                ? 'bg-white border border-gray-200 text-gray-800'
+                ? msg.variant === 'success'
+                  ? 'bg-green-50 border border-green-300 text-green-800 font-medium'
+                  : 'bg-white border border-gray-200 text-gray-800'
                 : 'bg-blue-600 text-white'
             }`}>
               {msg.text}
