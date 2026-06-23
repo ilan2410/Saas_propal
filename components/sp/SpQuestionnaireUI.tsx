@@ -1129,6 +1129,18 @@ export function SpQuestionnaireUI({
       ? remapReponsesForIteration(reps, questions, eq.question.groupe_boucle_id!, eq.iterationIndex)
       : reps;
 
+    // Une question "remise produits" sans produit éligible n'a rien à afficher :
+    // on la masque entièrement (pas d'intitulé ni d'UI), dans tous les modes.
+    if (eq.question.affichage === 'remise_produits') {
+      const eligibles = getEligibleDiscountProducts({
+        rules: discountRules,
+        products: catalogue,
+        reponses: effectiveReponses,
+        donneesExtraites,
+      });
+      if (eligibles.length === 0) return false;
+    }
+
     const visibleByConditions = evaluateQuestionVisibility(
       eq.question,
       effectiveReponses,
@@ -1147,7 +1159,7 @@ export function SpQuestionnaireUI({
     if (shown.has(eq.question.id) || shown.has(eq.instanceId)) return true;
 
     return visibleByConditions;
-  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue]);
+  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules]);
 
   const isQuestionVisible = (eq: ExpandedQuestion): boolean => isQuestionVisibleWith(eq, reponses);
 

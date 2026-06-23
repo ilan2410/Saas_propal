@@ -28,6 +28,8 @@ export interface CartLine {
   instanceId: string;
   /** Numéro de ligne rattaché (override panier, ou label de boucle). */
   numero?: string;
+  /** Total avant remise produit, présent uniquement si une remise_produits a été appliquée sur cette ligne. */
+  prixOriginalTotal?: number;
 }
 
 export interface SpCartSummary {
@@ -487,7 +489,10 @@ export function calculateCartSummary(
       for (const line of lines) {
         if (line.type_frequence !== 'mensuel') continue;
         if (line.produitId === target.id || line.produitNom === target.nom) {
-          line.prixTotal = unitPrix * line.quantite;
+          const newTotal = unitPrix * line.quantite;
+          // Mémorise le prix d'origine seulement s'il y a réellement une remise.
+          if (newTotal < line.prixTotal - 0.005) line.prixOriginalTotal = line.prixTotal;
+          line.prixTotal = newTotal;
         }
       }
     }

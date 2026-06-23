@@ -183,6 +183,9 @@ function DetailRow({
   const qty = line.quantite > 0 ? line.quantite : 1;
   const prixUnitaire = line.prixTotal / qty;
   const headerAmount = mode === 'fas' ? line.fasTotal : line.prixTotal;
+  // Remise produit appliquée : on dispose du prix d'origine pour l'afficher barré.
+  const hasRemise = mode !== 'fas' && line.prixOriginalTotal != null && line.prixOriginalTotal > line.prixTotal + 0.005;
+  const prixUnitaireOriginal = hasRemise && line.prixOriginalTotal != null ? line.prixOriginalTotal / qty : null;
   const headerSuffix = mode === 'fas' ? undefined : suffix;
   const canEdit = editMode && mode !== 'fas';
   const isTelecom = TELECOM_CATEGORIES.has(line.categorie);
@@ -300,6 +303,9 @@ function DetailRow({
       ) : (
         <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
           <span className="tabular-nums">
+            {hasRemise && prixUnitaireOriginal != null && (
+              <span className="mr-1 text-gray-300 line-through">{formatEuro(prixUnitaireOriginal)}</span>
+            )}
             {formatEuro(prixUnitaire)}
             {suffix && <span className="ml-0.5">{suffix}</span>}
             <span className="mx-1">×</span>
