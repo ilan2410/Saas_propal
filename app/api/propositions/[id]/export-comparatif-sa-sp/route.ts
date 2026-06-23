@@ -70,7 +70,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         : undefined;
 
   const clientName = (proposition as unknown as { nom_client?: string }).nom_client || 'Client';
-  const safeClient = clientName.replace(/[^a-zA-Z0-9-_]/g, '_');
 
   // 2. Construire donneesExtraites (filled_data prioritaire sur extracted_data)
   const extracted = isRecord((proposition as Record<string, unknown>).extracted_data)
@@ -141,6 +140,17 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   if (!exportData.clientRaisonSociale && clientName !== 'Client') {
     exportData.clientRaisonSociale = clientName;
   }
+
+  // Nom de fichier basé sur la raison sociale du client (comme les propositions)
+  const fileClientName = (exportData.clientRaisonSociale && exportData.clientRaisonSociale.trim())
+    || clientName;
+  const safeClient = fileClientName
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // enlever les accents
+    .replace(/[^a-zA-Z0-9-_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    || 'Client';
 
   try {
     if (format === 'word') {
