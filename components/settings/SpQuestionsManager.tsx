@@ -528,7 +528,7 @@ export function SpQuestionsManager({ templates }: Props) {
   const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
   const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
-  const [hideInactive, setHideInactive] = useState(false);
+  const [hideInactive, setHideInactive] = useState(true);
   const [niveauOverrides, setNiveauOverrides] = useState<Record<string, 0 | 1>>(() => {
     if (typeof window === 'undefined') return {};
     try { return JSON.parse(localStorage.getItem('sp-question-niveaux') ?? '{}'); } catch { return {}; }
@@ -682,16 +682,6 @@ export function SpQuestionsManager({ templates }: Props) {
       ...prev,
       [templateId]: [...(prev[templateId] ?? []), ...created].sort((a, b) => a.ordre - b.ordre),
     }));
-  };
-
-  const deleteAllQuestions = async (templateId: string, templateNom: string) => {
-    if (!confirm(`Supprimer tout le workflow de "${templateNom}" ?\n\nCette action supprimera définitivement toutes les questions SP de ce template. Cette action est irréversible.`)) return;
-    await fetch(`/api/templates/${templateId}/sp-questions/replace`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ questions: [] }),
-    });
-    setQuestionsByTemplate((prev) => ({ ...prev, [templateId]: [] }));
   };
 
   const exportWorkflow = (templateId: string, templateNom: string) => {
@@ -984,18 +974,6 @@ export function SpQuestionsManager({ templates }: Props) {
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Ajouter
-                    </Button>
-                  </Tooltip>
-                  <Tooltip text="Supprimer définitivement toutes les questions de ce workflow.">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => deleteAllQuestions(t.id, t.nom)}
-                      disabled={questions.length === 0}
-                      className="border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300 hover:text-red-600 disabled:opacity-40"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Tout supprimer
                     </Button>
                   </Tooltip>
                   <Tooltip text="Télécharge une sauvegarde JSON complète de ce workflow.">
