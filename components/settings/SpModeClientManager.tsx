@@ -13,6 +13,7 @@ export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   masquer_prix_remises: true,
   masquer_bouton_modifier_prix: true,
   masquer_prix_saisie_libre: true,
+  masquer_categorie_saisie_libre: false,
   texte_substitution_prix: '',
   masquer_details_marge: true,
   passer_question_marge: false,
@@ -233,6 +234,12 @@ export function SpModeClientManager({ templates }: Props) {
           description="Dans le formulaire 'Autre valeur', cache le champ de saisie du prix."
           checked={config.masquer_prix_saisie_libre}
           onChange={(v) => set('masquer_prix_saisie_libre', v)}
+        />
+        <ToggleRow
+          label="Masquer le champ catégorie dans la saisie libre"
+          description="Dans le formulaire 'Autre valeur', cache le champ catégorie pour ne laisser que le libellé. Valable pour les 4 types d'affichage."
+          checked={config.masquer_categorie_saisie_libre}
+          onChange={(v) => set('masquer_categorie_saisie_libre', v)}
         />
         <div className="pt-3 flex items-center gap-3">
           <label className="text-xs font-medium text-gray-600 shrink-0">Texte affiché à la place du prix :</label>

@@ -91,6 +91,8 @@ export interface SpCustomization {
   logo_url?: string;
   /** @deprecated conservé pour rétro-compatibilité, plus modifiable depuis l'UI */
   company_name?: string;
+  /** Design du questionnaire SP en réel : assistant guidé (par défaut) ou conversation type chat. */
+  questionnaire_design?: 'wizard' | 'chat';
   primary_color?: string; // format hex #RRGGBB
   footer_text?: string;
   output_format?: SpOutputFormat;
@@ -873,6 +875,7 @@ export interface SpConfigModeClient {
   masquer_prix_remises: boolean;
   masquer_bouton_modifier_prix: boolean;
   masquer_prix_saisie_libre: boolean;
+  masquer_categorie_saisie_libre: boolean;
   texte_substitution_prix?: string;
 
   // Groupe 2 : Étapes sensibles

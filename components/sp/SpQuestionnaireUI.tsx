@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, ChevronLeft, ChevronRight, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, ChevronDown, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
@@ -49,6 +49,8 @@ export interface SpQuestionnaireUIProps {
   spConfigResumeRef?: SpConfigResumeRef;
   spConfigModeClient?: SpConfigModeClient;
   spPreferencesProduits?: SpPreferencesProduits;
+  /** Apparence du questionnaire : 'wizard' (assistant guidé, défaut) ou 'chat' (conversation). */
+  design?: 'wizard' | 'chat';
 }
 
 type MessageBubble =
@@ -297,10 +299,12 @@ function FreeEntryForm({
   draft,
   onChange,
   hidePrix = false,
+  hideCategorie = false,
 }: {
   draft: FreeEntryDraft;
   onChange: (next: FreeEntryDraft) => void;
   hidePrix?: boolean;
+  hideCategorie?: boolean;
 }) {
   const canBeMensuel = ['mobile', 'fixe', 'internet', 'cloud'].includes(draft.categorie);
 
@@ -330,38 +334,40 @@ function FreeEntryForm({
           />
         </div>
       )}
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-600 shrink-0 w-24">Catégorie :</label>
-        <select
-          value={draft.categorie}
-          onChange={(e) => {
-            const categorie = e.target.value as CatalogueCategorie;
-            onChange({
-              ...draft,
-              categorie,
-              type_frequence: ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie)
-                ? draft.type_frequence
-                : 'unique',
-            });
-          }}
-          className="h-7 text-sm border border-gray-300 rounded px-2 bg-white"
-        >
-          {FREE_ENTRY_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-        {canBeMensuel && (
-          <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={draft.type_frequence === 'mensuel'}
-              onChange={(e) => onChange({ ...draft, type_frequence: e.target.checked ? 'mensuel' : 'unique' })}
-              className="h-3.5 w-3.5"
-            />
-            Mensuel
-          </label>
-        )}
-      </div>
+      {!hideCategorie && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600 shrink-0 w-24">Catégorie :</label>
+          <select
+            value={draft.categorie}
+            onChange={(e) => {
+              const categorie = e.target.value as CatalogueCategorie;
+              onChange({
+                ...draft,
+                categorie,
+                type_frequence: ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie)
+                  ? draft.type_frequence
+                  : 'unique',
+              });
+            }}
+            className="h-7 text-sm border border-gray-300 rounded px-2 bg-white"
+          >
+            {FREE_ENTRY_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          {canBeMensuel && (
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.type_frequence === 'mensuel'}
+                onChange={(e) => onChange({ ...draft, type_frequence: e.target.checked ? 'mensuel' : 'unique' })}
+                className="h-3.5 w-3.5"
+              />
+              Mensuel
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -371,6 +377,28 @@ function isValidFreeEntry(draft: FreeEntryDraft | null): draft is FreeEntryDraft
   if (!draft.label.trim()) return false;
   const prix = Number(draft.prix);
   return Number.isFinite(prix) && prix >= 0;
+}
+
+function buildDefaultFreeEntryDraft(products: CatalogueProduit[]): FreeEntryDraft {
+  const allSameCat = products.length > 0 && products.every((p) => p.categorie === products[0].categorie);
+  let categorie: CatalogueCategorie;
+  if (allSameCat) {
+    categorie = products[0].categorie;
+  } else if (products.length > 0) {
+    const counts = new Map<CatalogueCategorie, number>();
+    products.forEach((p) => counts.set(p.categorie, (counts.get(p.categorie) ?? 0) + 1));
+    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    categorie = sorted[0][0];
+  } else {
+    categorie = 'equipement';
+  }
+  const canBeMensuel = ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie);
+  return {
+    label: '',
+    prix: '',
+    categorie,
+    type_frequence: canBeMensuel ? 'mensuel' : 'unique',
+  };
 }
 
 function buildFreeEntryReponses(
@@ -418,6 +446,7 @@ function CatalogueMultipleChoiceInput({
   allowFreeEntry = false,
   hidePrice = false,
   hidePrixEditing = false,
+  hideCategorie = false,
 }: {
   products: CatalogueProduit[];
   catalogue?: CatalogueProduit[];
@@ -426,25 +455,12 @@ function CatalogueMultipleChoiceInput({
   allowFreeEntry?: boolean;
   hidePrice?: boolean;
   hidePrixEditing?: boolean;
+  hideCategorie?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
   const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
-  const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>(() => {
-    // Par défaut, la saisie libre hérite de la catégorie de la question : si tous
-    // les produits proposés partagent la même catégorie (ex. une question filtrée
-    // sur "cadeau"), on l'utilise pour éviter qu'une saisie libre cadeau ne soit
-    // catégorisée par erreur en "equipement".
-    const allSameCat = products.length > 0 && products.every((p) => p.categorie === products[0].categorie);
-    const categorie = allSameCat ? products[0].categorie : 'equipement';
-    const canBeMensuel = ['mobile', 'fixe', 'internet', 'cloud'].includes(categorie);
-    return {
-      label: '',
-      prix: '',
-      categorie,
-      type_frequence: canBeMensuel ? 'mensuel' : 'unique',
-    };
-  });
+  const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>(() => buildDefaultFreeEntryDraft(products));
   const [search, setSearch] = useState('');
   const [fasValues, setFasValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -686,7 +702,7 @@ function CatalogueMultipleChoiceInput({
           {allowFreeEntry && freeEntryEnabled && (
             <div className="rounded-md border border-blue-200 bg-blue-50/40 px-3 py-2">
               <p className="text-xs font-medium text-blue-800 mb-1">{FREE_ENTRY_LABEL}</p>
-              <FreeEntryForm draft={freeEntryDraft} onChange={setFreeEntryDraft} hidePrix={hidePrice} />
+              <FreeEntryForm draft={freeEntryDraft} onChange={setFreeEntryDraft} hidePrix={hidePrice} hideCategorie={hideCategorie} />
             </div>
           )}
           <Button
@@ -850,6 +866,43 @@ function hasVisibilityConditions(question: SpQuestion): boolean {
   return (question.groupes_conditions?.length ?? 0) > 0;
 }
 
+/**
+ * Liste « libellé → réponse » des questions déjà renseignées.
+ * Mutualisée entre le récapitulatif repliable du wizard et la popup resume_ref.
+ */
+function ReponsesRecapList({
+  items,
+  reponses,
+  donneesExtraites,
+}: {
+  items: ExpandedQuestion[];
+  reponses: SpQuestionReponse[];
+  donneesExtraites: Record<string, unknown>;
+}) {
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-400 italic">Aucune réponse pour l’instant.</p>;
+  }
+  return (
+    <div className="space-y-1">
+      {items.map((eq) => {
+        const rep = reponses.find((r) => r.question_id === eq.instanceId);
+        return (
+          <div key={eq.instanceId} className="flex items-start gap-3 py-1.5 border-b border-gray-100 last:border-0">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-gray-500 truncate">
+                {resolveTemplateText(eq.displayLabel, donneesExtraites, reponses, eq.iterationIndex)}
+              </p>
+              <p className="text-sm text-gray-900 mt-0.5">
+                {rep ? formatReponseText(rep.valeur) : '—'}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SpQuestionnaireUI({
   questions,
   donneesExtraites: donneesExtraitesProp,
@@ -876,7 +929,9 @@ export function SpQuestionnaireUI({
   spConfigResumeRef,
   spConfigModeClient,
   spPreferencesProduits,
+  design = 'wizard',
 }: SpQuestionnaireUIProps) {
+  const isChat = design === 'chat';
   const [reponses, setReponses] = useState<SpQuestionReponse[]>(initialReponses ?? []);
   // Données SA éditables (panier SA). Initialisées depuis la prop, resynchronisées
   // si la prop change (ex : changement de site/proposition).
@@ -912,6 +967,7 @@ export function SpQuestionnaireUI({
   const [currentIdx, setCurrentIdx] = useState(0);
   const [messages, setMessages] = useState<MessageBubble[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [showRecap, setShowRecap] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const EMPTY_ADRESSE: SpAdresse = { societe: '', adresse: '', code_postal: '', ville: '', contact: '', ligne_fixe: '', ligne_mobile: '', email: '', siret: '' };
   const [adresseEdit, setAdresseEdit] = useState<SpAdresse>(EMPTY_ADRESSE);
@@ -996,6 +1052,7 @@ export function SpQuestionnaireUI({
     setCurrentIdx(0);
     setMessages([]);
     setIsTyping(false);
+    setShowRecap(false);
     setInputValue('');
     setAdresseEdit(EMPTY_ADRESSE);
     setHiddenByConsequence(new Set());
@@ -1197,13 +1254,14 @@ export function SpQuestionnaireUI({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions, expandedQuestions.length]);
 
+  // Mode chat : auto-scroll vers le bas du fil de discussion.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    if (isChat) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping, isChat]);
 
   // Auto-advance when the displayed question becomes invisible (consequence or condition-based).
-  // currentIdx is included so the effect also fires after the 500ms typing timer updates the
-  // index — without it, a condition-based invisible last question is never skipped over.
+  // currentIdx is included so the effect also fires after the index updates — without it, a
+  // condition-based invisible last question is never skipped over.
   useEffect(() => {
     const eq = expandedQuestions[currentIdx];
     if (eq && !isTyping && !isQuestionVisibleWith(eq, reponses)) {
@@ -1293,16 +1351,20 @@ export function SpQuestionnaireUI({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, modeClientActif]);
 
-  const showQuestion = (idx: number, activeReponses = reponses) => {
+  // Affiche la question demandée.
+  // - Mode wizard : affichage immédiat dans la carte active.
+  // - Mode chat : simulation de « frappe » (délai 500 ms) puis ajout d'une bulle bot.
+  const showQuestion = (idx: number, activeReponses: SpQuestionReponse[] = reponses) => {
     if (idx >= expandedQuestions.length) return;
-    const eq = expandedQuestions[idx];
-
-    // Cancel any previous pending animation to avoid stale/duplicate messages
     if (showTimerRef.current) {
       clearTimeout(showTimerRef.current);
       showTimerRef.current = null;
     }
-
+    if (!isChat) {
+      setCurrentIdx(idx);
+      return;
+    }
+    const eq = expandedQuestions[idx];
     setIsTyping(true);
     showTimerRef.current = setTimeout(() => {
       showTimerRef.current = null;
@@ -1583,6 +1645,27 @@ export function SpQuestionnaireUI({
 
   const isDone = allObligatoryAnswered && !currentQuestion && !isTyping;
 
+  // ── Wizard : progression, récapitulatif et notices ───────────────────────────
+  // Questions « répondables » visibles (on exclut les écrans auto resume_ref / loyer).
+  const progressQuestions = expandedQuestions.filter((eq) =>
+    eq.question.affichage !== 'resume_ref' &&
+    eq.question.affichage !== 'affichage_loyer' &&
+    isQuestionVisible(eq),
+  );
+  const progressTotal = progressQuestions.length;
+  const progressAnswered = progressQuestions.filter((eq) =>
+    reponses.some((r) => r.question_id === eq.instanceId),
+  ).length;
+  const progressStep = currentQuestion ? Math.min(progressAnswered + 1, progressTotal) : progressTotal;
+  const progressPct = progressTotal > 0 ? Math.round((progressAnswered / progressTotal) * 100) : 0;
+  // Réponses déjà données (récap repliable) — dérivées des réponses, pas du fil de chat.
+  const recapItems = expandedQuestions.slice(0, currentIdx).filter((eq) =>
+    eq.question.affichage !== 'resume_ref' &&
+    reponses.some((r) => r.question_id === eq.instanceId),
+  );
+  // Messages déclenchés par les conséquences (afficher_message) + valorisation remise mode client.
+  const notices = messages.filter((m) => m.from === 'bot');
+
   useEffect(() => {
     if (!isSimulation || !isDone || hasReportedCompletion.current) return;
     hasReportedCompletion.current = true;
@@ -1712,34 +1795,8 @@ export function SpQuestionnaireUI({
             </div>
 
             {/* Corps — liste des réponses précédentes */}
-            <div className="px-6 py-4 max-h-72 overflow-y-auto space-y-2">
-              {expandedQuestions.slice(0, currentIdx).filter((eq) =>
-                eq.question.affichage !== 'resume_ref' &&
-                reponses.some((r) => r.question_id === eq.instanceId)
-              ).length === 0 ? (
-                <p className="text-sm text-gray-400 italic">Aucune réponse précédente.</p>
-              ) : (
-                expandedQuestions.slice(0, currentIdx)
-                  .filter((eq) =>
-                    eq.question.affichage !== 'resume_ref' &&
-                    reponses.some((r) => r.question_id === eq.instanceId)
-                  )
-                  .map((eq) => {
-                    const rep = reponses.find((r) => r.question_id === eq.instanceId);
-                    return (
-                      <div key={eq.instanceId} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-500 truncate">
-                            {resolveTemplateText(eq.displayLabel, donneesExtraites, reponses, eq.iterationIndex)}
-                          </p>
-                          <p className="text-sm text-gray-900 mt-0.5">
-                            {rep ? formatReponseText(rep.valeur) : '—'}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })
-              )}
+            <div className="px-6 py-4 max-h-72 overflow-y-auto">
+              <ReponsesRecapList items={recapItems} reponses={reponses} donneesExtraites={donneesExtraites} />
             </div>
 
             {/* Section référence */}
@@ -1837,73 +1894,142 @@ export function SpQuestionnaireUI({
         </div>
       )}
 
-      {/* Chat history */}
-      <div className="border border-gray-200 rounded-lg bg-gray-50 p-4 min-h-48 max-h-80 overflow-y-auto space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-2 ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.from === 'bot' && (
-              <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+      {/* ── Mode chat : fil de discussion (bulles bot/user + indicateur de frappe) ── */}
+      {isChat && (
+        <div className="border border-gray-200 rounded-lg bg-gray-50 p-4 min-h-48 max-h-80 overflow-y-auto space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex gap-2 ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.from === 'bot' && (
+                <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-4 h-4 text-blue-600" />
+                </div>
+              )}
+              <div className={`max-w-xs md:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
+                msg.from === 'bot'
+                  ? msg.variant === 'success'
+                    ? 'bg-green-50 border border-green-300 text-green-800 font-medium'
+                    : 'bg-white border border-gray-200 text-gray-800'
+                  : 'bg-blue-600 text-white'
+              }`}>
+                {msg.text}
+              </div>
+              {msg.from === 'user' && (
+                <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-4 h-4 text-green-600" />
+                </div>
+              )}
+            </div>
+          ))}
+          {isTyping && (
+            <div className="flex gap-2 justify-start">
+              <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-blue-600" />
               </div>
-            )}
-            <div className={`max-w-xs md:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
-              msg.from === 'bot'
-                ? msg.variant === 'success'
-                  ? 'bg-green-50 border border-green-300 text-green-800 font-medium'
-                  : 'bg-white border border-gray-200 text-gray-800'
-                : 'bg-blue-600 text-white'
-            }`}>
-              {msg.text}
-            </div>
-            {msg.from === 'user' && (
-              <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-4 h-4 text-green-600" />
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                <span className="flex gap-1 items-center">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }}
+                    />
+                  ))}
+                </span>
               </div>
-            )}
-          </div>
-        ))}
-        {isTyping && (
-          <div className="flex gap-2 justify-start">
-            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4 text-blue-600" />
             </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
-              <span className="flex gap-1 items-center">
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
-                    style={{ animationDelay: `${i * 0.15}s` }}
-                  />
-                ))}
-              </span>
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
 
-      {/* Back button */}
+      {/* ── Mode wizard : progression + récapitulatif + bandeaux d'information ── */}
+      {!isChat && (
+        <>
+          {/* Progression */}
+          {progressTotal > 0 && !isDone && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span className="font-medium text-gray-600">Question {progressStep} sur {progressTotal}</span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-300"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Récapitulatif repliable des réponses déjà données */}
+          {recapItems.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowRecap((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-gray-700">
+                  Réponses précédentes ({recapItems.length})
+                </span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showRecap ? 'rotate-180' : ''}`} />
+              </button>
+              {showRecap && (
+                <div className="px-4 pb-3 pt-1 max-h-64 overflow-y-auto border-t border-gray-100">
+                  <ReponsesRecapList items={recapItems} reponses={reponses} donneesExtraites={donneesExtraites} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Messages déclenchés par une conséquence (afficher_message) ou la valorisation des remises */}
+          {notices.length > 0 && (
+            <div className="space-y-2">
+              {notices.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm ${
+                    msg.from === 'bot' && msg.variant === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
+                      : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}
+                >
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{msg.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Bouton retour */}
       {history.length > 0 && !isTyping && (
         <div className="flex">
           <button
             onClick={goBack}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-0.5"
+            className={isChat
+              ? 'flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-0.5'
+              : 'inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors py-0.5'
+            }
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <ChevronLeft className={isChat ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
             Revenir à la question précédente
           </button>
         </div>
       )}
 
-      {/* Current question input */}
+      {/* Question active */}
       {currentQuestion && currentExpanded && !isTyping && currentQuestion.affichage !== 'resume_ref' && currentQuestion.affichage !== 'affichage_loyer' && (
-        <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-blue-900">
+        <div className={isChat
+          ? 'border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3'
+          : 'rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm space-y-4'
+        }>
+          <p className={isChat ? 'text-sm font-medium text-blue-900' : 'text-lg font-semibold text-gray-900 leading-snug'}>
             {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
           </p>
           {currentQuestion.description && (
-            <p className="text-xs text-blue-600">
+            <p className={isChat ? 'text-xs text-blue-600' : 'text-sm text-gray-500 -mt-2'}>
               {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
             </p>
           )}
@@ -2131,7 +2257,7 @@ export function SpQuestionnaireUI({
                   type="button"
                   onClick={() => setPendingFreeEntry({
                     instanceId: currentExpanded.instanceId,
-                    draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
+                    draft: buildDefaultFreeEntryDraft(currentCatalogueOptions),
                   })}
                   className={`text-left px-3 py-2 rounded-md border border-dashed transition-colors ${
                     pendingFreeEntry?.instanceId === currentExpanded.instanceId
@@ -2191,22 +2317,6 @@ export function SpQuestionnaireUI({
                       </button>
                     );
                   })}
-                  {currentQuestion.options_libres && (
-                    <button
-                      type="button"
-                      onClick={() => setPendingFreeEntry({
-                        instanceId: currentExpanded.instanceId,
-                        draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
-                      })}
-                      className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors ${
-                        pendingFreeEntry?.instanceId === currentExpanded.instanceId
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'hover:bg-gray-50 text-blue-600'
-                      }`}
-                    >
-                      {FREE_ENTRY_LABEL}
-                    </button>
-                  )}
                 </div>
               ) : (
                 <select
@@ -2219,7 +2329,7 @@ export function SpQuestionnaireUI({
                     if (e.target.value === FREE_ENTRY_MARKER) {
                       setPendingFreeEntry({
                         instanceId: currentExpanded.instanceId,
-                        draft: { label: '', prix: '', categorie: 'equipement', type_frequence: 'unique' },
+                        draft: buildDefaultFreeEntryDraft(currentCatalogueOptions),
                       });
                       return;
                     }
@@ -2235,6 +2345,19 @@ export function SpQuestionnaireUI({
                   )}
                 </select>
               )}
+              {currentCatalogueOptions.length > 0 && currentQuestion.options_libres && (
+                <label className="flex items-center gap-2 text-sm font-medium text-blue-800 cursor-pointer px-1">
+                  <input
+                    type="checkbox"
+                    checked={pendingFreeEntry?.instanceId === currentExpanded.instanceId}
+                    onChange={(e) => setPendingFreeEntry(e.target.checked ? {
+                      instanceId: currentExpanded.instanceId,
+                      draft: buildDefaultFreeEntryDraft(currentCatalogueOptions),
+                    } : null)}
+                  />
+                  {FREE_ENTRY_LABEL} (saisie libre)
+                </label>
+              )}
             </div>
           )}
 
@@ -2246,6 +2369,7 @@ export function SpQuestionnaireUI({
                 allowFreeEntry={!!currentQuestion.options_libres}
                 hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
                 hidePrixEditing={modeClientActif && (spConfigModeClient?.masquer_bouton_modifier_prix ?? true)}
+                hideCategorie={modeClientActif && (spConfigModeClient?.masquer_categorie_saisie_libre ?? false)}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -2285,6 +2409,7 @@ export function SpQuestionnaireUI({
                 allowFreeEntry={!!currentQuestion.options_libres}
                 hidePrice={modeClientActif && (spConfigModeClient?.masquer_prix_produits ?? true)}
                 hidePrixEditing={modeClientActif && (spConfigModeClient?.masquer_bouton_modifier_prix ?? true)}
+                hideCategorie={modeClientActif && (spConfigModeClient?.masquer_categorie_saisie_libre ?? false)}
                 onSubmit={(selectedNames, extraReponses) => {
                   const nextExtras = (extraReponses ?? []).map((r) => {
                     if (r.question_id === '__fas_placeholder__') {
@@ -3053,6 +3178,7 @@ export function SpQuestionnaireUI({
                 draft={pendingFreeEntry.draft}
                 onChange={(next) => setPendingFreeEntry((prev) => prev ? { ...prev, draft: next } : null)}
                 hidePrix={modeClientActif && (spConfigModeClient?.masquer_prix_saisie_libre ?? true)}
+                hideCategorie={modeClientActif && (spConfigModeClient?.masquer_categorie_saisie_libre ?? false)}
               />
               <div className="flex gap-2">
                 <Button

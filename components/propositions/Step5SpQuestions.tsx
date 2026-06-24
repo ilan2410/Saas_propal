@@ -326,9 +326,9 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                     <Play className="w-4 h-4 text-green-600" />
                   </div>
                   <div>
-                    <h2 className="text-sm font-semibold text-gray-900">Questions SP en réel</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">Construction de la proposition</h2>
                     <p className="text-xs text-gray-400">
-                      {siteLabel || 'Questionnaire de situation proposée'}
+                      {siteLabel || 'Renseignez la situation proposée du client'}
                     </p>
                   </div>
                 </div>
@@ -433,6 +433,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spCodesPromoMasquerSaisie={preferences.sp_codes_promo_masquer_saisie ?? false}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
                   templateId={templateId}
+                  design={preferences.sp_customization?.questionnaire_design ?? 'wizard'}
                 />
               )}
             </div>

@@ -351,6 +351,7 @@ export default function SettingsPage({
     size: initialSp.questionnaire_bg_size ?? 'cover',
     repeat: initialSp.questionnaire_bg_repeat ?? 'no-repeat',
   });
+  const [spDesign, setSpDesign] = useState<'wizard' | 'chat'>(initialSp.questionnaire_design ?? 'wizard');
   const [isSpBgSaving, setIsSpBgSaving] = useState(false);
   const [isSpBgUploading, setIsSpBgUploading] = useState(false);
 
@@ -908,6 +909,7 @@ export default function SettingsPage({
       const currentSp = organization.preferences?.sp_customization || {};
       const payload: SpCustomization = {
         ...currentSp,
+        questionnaire_design: spDesign,
         questionnaire_bg_type: spBg.type,
         questionnaire_bg_url: spBg.url || undefined,
         questionnaire_bg_color: spBg.type === 'color' ? spBg.color : undefined,
@@ -927,7 +929,7 @@ export default function SettingsPage({
         body: JSON.stringify({ sp_customization: payload }),
       });
       if (!res.ok) throw new Error('Erreur');
-      toast.success('Fond d\'écran SP enregistré');
+      toast.success('Apparence du questionnaire enregistrée');
       router.refresh();
     } catch {
       toast.error('Erreur lors de la sauvegarde');
@@ -2380,6 +2382,48 @@ export default function SettingsPage({
             {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
             {questionsSpSubTab === 'apparence' && (
               <div className="space-y-6">
+                <div className="border border-gray-100 rounded-xl p-5 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">Design du questionnaire</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Choisissez l&apos;apparence du questionnaire SP en réel lors de la création d&apos;une proposition.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {([
+                      {
+                        value: 'wizard' as const,
+                        title: 'Assistant guidé',
+                        desc: 'Une question à la fois, barre de progression et récapitulatif. Épuré et professionnel.',
+                      },
+                      {
+                        value: 'chat' as const,
+                        title: 'Conversation',
+                        desc: 'Fil de discussion type messagerie, avec questions et réponses en bulles.',
+                      },
+                    ]).map(({ value, title, desc }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSpDesign(value)}
+                        className={`text-left rounded-lg border p-3 transition-colors ${
+                          spDesign === value
+                            ? 'bg-purple-50 border-purple-300 ring-1 ring-purple-200'
+                            : 'bg-white border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
+                            spDesign === value ? 'border-purple-500' : 'border-gray-300'
+                          }`}>
+                            {spDesign === value && <span className="h-2 w-2 rounded-full bg-purple-500" />}
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">{title}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1.5 ml-6">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="border border-gray-100 rounded-xl p-5 space-y-5">
                   <div>
                     <h3 className="text-sm font-semibold text-gray-800">Fond d&apos;écran du questionnaire</h3>
@@ -2688,7 +2732,7 @@ export default function SettingsPage({
                 <div className="flex justify-end">
                   <Button onClick={handleSaveSpBackground} disabled={isSpBgSaving}>
                     {isSpBgSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Enregistrer le fond d&apos;écran
+                    Enregistrer l&apos;apparence
                   </Button>
                 </div>
               </div>

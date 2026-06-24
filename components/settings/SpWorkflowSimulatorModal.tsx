@@ -283,6 +283,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spCodesPromoMasquerSaisie={codesPromoMasquerSaisie}
               objectifsConfig={objectifsConfig}
               templateId={templateId}
+              design={spCustomization?.questionnaire_design ?? 'wizard'}
             />
           )}
         </div>
