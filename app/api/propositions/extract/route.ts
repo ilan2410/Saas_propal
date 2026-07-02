@@ -261,11 +261,14 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Récupérer le template
+    // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter
+    // qu'un utilisateur authentifié puisse déclencher une extraction sur un
+    // template appartenant à une autre organisation).
     const { data: template, error: templateError } = await supabase
       .from('proposition_templates')
       .select('*')
       .eq('id', template_id)
+      .eq('organization_id', user.id)
       .single();
 
     if (templateError || !template) {
