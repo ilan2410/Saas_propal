@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+
+// Types réellement supportés en aval : envoyés tels quels à Claude
+// (extractDataFromDocuments) comme document PDF ou image.
+const ALLOWED_DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+];
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,17 +31,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
+    // Valider tous les fichiers AVANT tout upload : on rejette la requête
+    // entière si un seul fichier échoue la validation.
+    const validations = await Promise.all(files.map((file) => validateUploadedFile(file, ALLOWED_DOCUMENT_MIME_TYPES)));
+    const firstInvalid = validations.find((v) => !v.ok);
+    if (firstInvalid && !firstInvalid.ok) {
+      return NextResponse.json({ error: firstInvalid.error }, { status: 400 });
+    }
+
     const urls: string[] = [];
 
     // Upload chaque fichier vers Supabase Storage
-    for (const file of files) {
-      const timestamp = Date.now();
-      const fileName = `${user.id}/${timestamp}-${file.name}`;
+    for (const validation of validations) {
+      if (!validation.ok) continue; // garde de type (déjà vérifié ci-dessus)
+
+      // Nom de stockage généré côté serveur : jamais le nom fourni par le client.
+      const fileName = `${user.id}/${randomStorageFileName(validation.extension)}`;
 
       const { error } = await supabase.storage
         .from('documents')
-        .upload(fileName, file, {
-          contentType: file.type,
+        .upload(fileName, validation.buffer, {
+          contentType: validation.mime,
           upsert: false,
         });
 
