@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import ExcelJS from 'exceljs';
 
 // POST /api/templates/parse-excel
@@ -26,6 +27,10 @@ export async function POST(request: NextRequest) {
 
       if (!fileUrl) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
+      }
+
+      if (!isAllowedFetchUrl(fileUrl)) {
+        return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
       }
 
       // Télécharger le fichier depuis l'URL

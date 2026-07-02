@@ -2,6 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import { ExtractionResult } from '@/types';
+import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -129,24 +130,11 @@ export async function extractDataFromDocuments(options: {
 }): Promise<Record<string, unknown>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
 
-  // Construire l'allowlist depuis l'URL Supabase du projet
-  const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL
-    ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
-    : null;
-
   // Télécharger les documents depuis les URLs
   const documentContents = await Promise.all(
     documents_urls.map(async (url, index) => {
       // Valider l'URL avant tout fetch côté serveur (protection SSRF)
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        throw new Error(`URL invalide: ${url}`);
-      }
-      if (parsed.protocol !== 'https:' || !supabaseHost || parsed.hostname !== supabaseHost) {
-        throw new Error(`URL non autorisée: seuls les documents hébergés sur ${supabaseHost} sont acceptés`);
-      }
+      assertAllowedFetchUrl(url);
 
       console.log(`📥 Téléchargement document ${index + 1}:`, url);
 

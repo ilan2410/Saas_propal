@@ -17,6 +17,7 @@
 //   (hors boucle, seules dans leur run) ; le module image les rend sans crash.
 import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 
 type ImageModuleOptions = {
   centered?: boolean;
@@ -99,7 +100,7 @@ export type RenderWordOptions = {
 };
 
 async function defaultFetchImage(url: string): Promise<Buffer> {
-  if (!url || !/^https?:\/\//.test(url)) return PLACEHOLDER_PNG;
+  if (!url || !isAllowedFetchUrl(url)) return PLACEHOLDER_PNG;
   try {
     const res = await fetch(url);
     return Buffer.from(await res.arrayBuffer());

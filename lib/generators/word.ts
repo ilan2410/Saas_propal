@@ -3,6 +3,7 @@ import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import { createClient } from '@/lib/supabase/server';
 import { WordConfig } from '@/types';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ImageModule = require('docxtemplater-image-module') as new (opts: {
   centered?: boolean;
@@ -51,7 +52,7 @@ export async function fillWordTemplate(
       centered: false,
       fileType: 'docx',
       getImage: async (tagValue: string) => {
-        if (!tagValue || !/^https?:\/\//.test(tagValue)) return PLACEHOLDER_PNG;
+        if (!tagValue || !isAllowedFetchUrl(tagValue)) return PLACEHOLDER_PNG;
         if (imageCache.has(tagValue)) return imageCache.get(tagValue)!;
         try {
           const imgRes = await fetch(tagValue);

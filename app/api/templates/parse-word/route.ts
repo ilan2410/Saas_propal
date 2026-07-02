@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import mammoth from 'mammoth';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,6 +33,10 @@ export async function POST(request: NextRequest) {
 
       if (!fileUrl) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
+      }
+
+      if (!isAllowedFetchUrl(fileUrl)) {
+        return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
       }
 
       const response = await fetch(fileUrl);
