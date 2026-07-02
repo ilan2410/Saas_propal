@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
@@ -8,10 +9,20 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authClient = await createClient();
+
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
+
+    if (!user || user.user_metadata?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
     const { id } = await params;
 
     // Utiliser le client admin avec service_role_key
-    const supabaseAdmin = createClient(
+    const supabaseAdmin = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       {

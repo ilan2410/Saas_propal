@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments } from '@/lib/ai/claude';
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user || user.user_metadata?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { documents_urls, champs_actifs, claude_model, prompt_template, secteur } = body;
 

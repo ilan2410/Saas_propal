@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
 
 export async function PATCH(
@@ -7,13 +8,23 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authClient = await createClient();
+
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
+
+    if (!user || user.user_metadata?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await request.json();
-    
+
     console.log('Admin template update - body reçu:', JSON.stringify(body, null, 2));
 
     // Utiliser le service role pour mettre à jour le template
-    const supabase = createClient(
+    const supabase = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } }
