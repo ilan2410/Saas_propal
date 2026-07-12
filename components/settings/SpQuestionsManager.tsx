@@ -7,6 +7,7 @@ import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
 import { SpAiGeneratorModal } from './SpAiGeneratorModal';
 import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Template { id: string; nom: string; file_type: string; }
 type SpAiWorkflowMode = 'create' | 'modify' | 'append';
@@ -520,7 +521,7 @@ function QuestionCard({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 export function SpQuestionsManager({ templates }: Props) {
-  const wordTemplates = templates.filter((t) => t.file_type === 'word');
+  const wordTemplates = templates.filter((t) => supportsSp(t.file_type));
   const [expanded, setExpanded] = useState<string | null>(wordTemplates[0]?.id ?? null);
   const [questionsByTemplate, setQuestionsByTemplate] = useState<Record<string, SpQuestion[]>>({});
   const [buildingForTemplate, setBuildingForTemplate] = useState<string | null>(null);

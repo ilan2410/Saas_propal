@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, X, Grid3x3, ChevronRight } from 'lucide-react';
 import {
   getCategoryLabelForSecteur,
@@ -29,8 +29,10 @@ interface Props {
   sheet: SheetInfo;
   fields: string[]; // Champs à mapper
   secteur: string;
+  spFields?: string[]; // Sous-ensemble de `fields` à regrouper dans la catégorie SP
   initialMapping?: CellMapping; // Mappings existants à restaurer
   onMappingComplete: (mapping: CellMapping, fileConfig: MappingContext) => void;
+  onMappingChange?: (mapping: CellMapping) => void; // Notifie le parent en continu
   onBack: () => void;
 }
 
@@ -45,11 +47,19 @@ function getColumnName(colIndex: number): string {
   return name;
 }
 
-export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMappingComplete, onBack }: Props) {
+export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMapping, onMappingComplete, onMappingChange, onBack }: Props) {
   const [mapping, setMapping] = useState<CellMapping>(initialMapping || {});
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedField, setExpandedField] = useState<string | null>(fields[0] || null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  const spFieldsSet = useMemo(() => new Set(spFields ?? []), [spFields]);
+
+  // Notifie le parent à chaque changement (pour pouvoir basculer de feuille sans perdre le mapping).
+  useEffect(() => {
+    onMappingChange?.(mapping);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapping]);
 
   const fieldsByCategoryRef = useMemo(() => {
     return getFieldsByCategoryForSecteur(secteur);
@@ -70,6 +80,14 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
     
     // Ajouter les champs connus à leurs catégories
     fields.forEach(field => {
+      // Les variables SP forment leur propre catégorie dédiée.
+      if (spFieldsSet.has(field)) {
+        if (!grouped['sp']) {
+          grouped['sp'] = [];
+        }
+        grouped['sp'].push(field);
+        return;
+      }
       let found = false;
       Object.entries(fieldsByCategoryRef).forEach(([cat, catFields]) => {
         if (catFields.includes(field)) {
@@ -94,7 +112,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
     });
     
     return grouped;
-  }, [fields, fieldsByCategoryRef]);
+  }, [fields, fieldsByCategoryRef, spFieldsSet]);
 
   const toggleCategory = (category: string) => {
     const newExpanded = new Set(expandedCategories);
@@ -257,7 +275,9 @@ export function ExcelCellMapper({ sheet, fields, secteur, initialMapping, onMapp
                       }`}
                     />
                     <span className="font-semibold text-gray-900">
-                      {category === 'custom'
+                      {category === 'sp'
+                        ? '🎯 Situation Proposée (SP)'
+                        : category === 'custom'
                         ? 'Personnalisés'
                         : getCategoryLabelForSecteur(secteur, category)}
                     </span>

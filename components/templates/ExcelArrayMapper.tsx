@@ -25,6 +25,7 @@ export interface ArrayMapping {
 interface Props {
   sheets: SheetInfo[];
   arrayFields: ArrayFieldDefinition[];
+  spArrayIds?: string[]; // Sous-ensemble d'arrayFields à regrouper sous la section SP
   initialMappings?: ArrayMapping[];
   onMappingsChange: (mappings: ArrayMapping[]) => void;
 }
@@ -45,7 +46,7 @@ function getColumnFromRef(ref: string): string {
   return ref.replace(/[0-9]/g, '');
 }
 
-export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappingsChange }: Props) {
+export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappings, onMappingsChange }: Props) {
   const [mappings, setMappings] = useState<ArrayMapping[]>(initialMappings || []);
   const [expandedArray, setExpandedArray] = useState<string | null>(null);
   const [editingArray, setEditingArray] = useState<ArrayFieldDefinition | null>(null);
@@ -461,13 +462,24 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
       </p>
 
       <div className="space-y-2">
-        {arrayFields.map(arrayField => {
+        {arrayFields
+          .map((af) => ({ af, isSp: (spArrayIds ?? []).includes(af.id) }))
+          .sort((x, y) => Number(x.isSp) - Number(y.isSp))
+          .map(({ af: arrayField, isSp }, idx, arr) => {
           const mapping = getMappingForArray(arrayField.id);
           const isConfigured = !!mapping;
+          const showSaHeader = idx === 0 && !isSp;
+          const showSpHeader = isSp && (idx === 0 || !arr[idx - 1].isSp);
 
           return (
+            <div key={arrayField.id}>
+              {showSaHeader && (
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tableaux Situation Actuelle (SA)</p>
+              )}
+              {showSpHeader && (
+                <p className={`text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2 ${idx > 0 ? 'mt-4' : ''}`}>🎯 Tableaux Situation Proposée (SP)</p>
+              )}
             <div
-              key={arrayField.id}
               className={`border rounded-lg overflow-hidden ${
                 isConfigured ? 'border-green-300 bg-green-50' : 'border-gray-200'
               }`}
@@ -545,6 +557,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, initialMappings, onMappi
                   )}
                 </button>
               )}
+            </div>
             </div>
           );
         })}

@@ -5,13 +5,14 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { PropositionTemplate, SpConfigResiliation, WordConfig } from '@/types';
 import { DEFAULT_SP_CONFIG_RESILIATION } from '@/lib/sp/resiliation';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Props {
   templates: PropositionTemplate[];
 }
 
 function getWordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((template) => template.file_type === 'word');
+  return templates.filter((template) => supportsSp(template.file_type));
 }
 
 function getResiliationConfig(template: PropositionTemplate | undefined): SpConfigResiliation {

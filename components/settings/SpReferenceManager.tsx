@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { PropositionTemplate, SpConfigResumeRef, WordConfig } from '@/types';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Props {
   templates: PropositionTemplate[];
 }
 
 function getWordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((t) => t.file_type === 'word');
+  return templates.filter((t) => supportsSp(t.file_type));
 }
 
 function getResumeRefConfig(template: PropositionTemplate | undefined): SpConfigResumeRef {

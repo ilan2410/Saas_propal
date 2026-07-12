@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { EyeOff, Eye, Info, AlertTriangle } from 'lucide-react';
 import type { PropositionTemplate, SpConfigModeClient, SpQuestion, WordConfig } from '@/types';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
   actif: false,
@@ -32,7 +33,7 @@ export const DEFAULT_CONFIG_MODE_CLIENT: SpConfigModeClient = {
 };
 
 function getWordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((t) => t.file_type === 'word');
+  return templates.filter((t) => supportsSp(t.file_type));
 }
 
 function getModeClientConfig(template: PropositionTemplate | undefined): SpConfigModeClient {

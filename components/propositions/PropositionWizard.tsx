@@ -11,6 +11,7 @@ import { Step5Generate } from './Step5Generate';
 import { Step5SpQuestions } from './Step5SpQuestions';
 import { Step5EditSp } from './Step5EditSp';
 import { MultisiteChoiceModal } from './MultisiteChoiceModal';
+import { supportsSp } from '@/lib/templates/supportsSp';
 import type { SuggestionsGenerees, SuggestionsSpCompletes, SpQuestionReponse } from '@/types';
 
 const STEPS = [
@@ -445,10 +446,10 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
           <div id="step5-sp-questions">
             {(() => {
               const tpl = templates.find((t) => t.id === propositionData.template_id);
-              if (tpl?.file_type !== 'word') {
+              if (!supportsSp(tpl?.file_type)) {
                 return (
                   <div className="space-y-4">
-                    <p className="text-gray-500">L&apos;étape SP est disponible uniquement pour les templates Word.</p>
+                    <p className="text-gray-500">L&apos;étape SP est disponible uniquement pour les templates Word et Excel.</p>
                     <div className="flex gap-3">
                       <button onClick={prevStep} className="px-4 py-2 border rounded">Précédent</button>
                       <button onClick={nextStep} className="px-4 py-2 bg-green-600 text-white rounded">Continuer</button>

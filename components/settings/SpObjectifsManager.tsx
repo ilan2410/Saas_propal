@@ -14,6 +14,7 @@ import type {
   SpQuestion,
   CatalogueProduit,
 } from '@/types';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Props {
   templates: PropositionTemplate[];
@@ -37,7 +38,7 @@ function generateId() {
 }
 
 function wordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((t) => t.file_type === 'word');
+  return templates.filter((t) => supportsSp(t.file_type));
 }
 
 function emptyMessage(): SpObjectifMessage {

@@ -17,13 +17,14 @@ import type {
 } from '@/types';
 import { SpConditionEditor } from './SpConditionEditor';
 import { DEFAULT_BAREME, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Props {
   templates: PropositionTemplate[];
 }
 
 function getWordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((t) => t.file_type === 'word');
+  return templates.filter((t) => supportsSp(t.file_type));
 }
 
 function getLoyerConfig(template: PropositionTemplate | undefined): SpConfigLoyer {

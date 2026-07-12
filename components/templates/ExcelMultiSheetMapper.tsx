@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Trash2, FileSpreadsheet, Check, Table2 } from 'lucide-react';
 import { ExcelCellMapper } from './ExcelCellMapper';
 import { ExcelArrayMapper, ArrayMapping } from './ExcelArrayMapper';
@@ -30,6 +30,8 @@ interface Props {
   sheets: SheetInfo[];
   fields: string[];
   secteur: string;
+  spFields?: string[]; // Sous-ensemble de `fields` à regrouper sous la catégorie SP
+  spArrayIds?: string[]; // Sous-ensemble d'arrayFields à regrouper sous la section SP
   arrayFields?: ArrayFieldDefinition[]; // Champs de type tableau
   initialMappings?: SheetMapping[];
   initialArrayMappings?: ArrayMapping[];
@@ -39,20 +41,41 @@ interface Props {
   onSave?: () => void;
 }
 
-export function ExcelMultiSheetMapper({ 
-  sheets, 
-  fields, 
+export function ExcelMultiSheetMapper({
+  sheets,
+  fields,
   secteur,
+  spFields,
+  spArrayIds,
   arrayFields = [],
-  initialMappings, 
+  initialMappings,
   initialArrayMappings,
-  onComplete, 
+  onComplete,
   onBack,
   onArrayMappingsChange,
   onSave
 }: Props) {
   const [sheetMappings, setSheetMappings] = useState<SheetMapping[]>(initialMappings || []);
   const [arrayMappings, setArrayMappings] = useState<ArrayMapping[]>(initialArrayMappings || []);
+  // Mapping en cours d'édition (mis à jour en continu par ExcelCellMapper) pour
+  // pouvoir basculer de feuille sans perdre les associations.
+  const editMappingRef = useRef<{ [fieldName: string]: string | string[] }>({});
+
+  const upsertSheetMapping = (sheetName: string, mapping: { [fieldName: string]: string | string[] }) => {
+    setSheetMappings((prev) => {
+      const idx = prev.findIndex((sm) => sm.sheetName === sheetName);
+      if (Object.keys(mapping).length === 0) {
+        return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
+      }
+      const next: SheetMapping = { sheetName, mapping };
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = next;
+        return updated;
+      }
+      return [...prev, next];
+    });
+  };
   
   // Sauvegarder les arrayMappings dans l'état parent quand ils changent
   const handleArrayMappingsChange = (newMappings: ArrayMapping[]) => {
@@ -106,25 +129,20 @@ export function ExcelMultiSheetMapper({
 
   const handleMappingComplete = (mapping: { [fieldName: string]: string | string[] }) => {
     if (!editingSheet) return;
-
-    const newMapping: SheetMapping = {
-      sheetName: editingSheet.name,
-      mapping,
-    };
-
-    setSheetMappings(prev => {
-      if (activeSheetIndex !== null && activeSheetIndex < prev.length) {
-        // Modifier un mapping existant
-        const updated = [...prev];
-        updated[activeSheetIndex] = newMapping;
-        return updated;
-      } else {
-        // Ajouter un nouveau mapping
-        return [...prev, newMapping];
-      }
-    });
-
+    upsertSheetMapping(editingSheet.name, mapping);
+    editMappingRef.current = {};
     setEditingSheet(null);
+    setActiveSheetIndex(null);
+  };
+
+  // Bascule vers une autre feuille sans quitter le mapping : on enregistre d'abord
+  // les associations en cours de la feuille active.
+  const switchEditingSheet = (sheet: SheetInfo) => {
+    if (editingSheet) {
+      upsertSheetMapping(editingSheet.name, editMappingRef.current);
+    }
+    editMappingRef.current = {};
+    setEditingSheet(sheet);
     setActiveSheetIndex(null);
   };
 
@@ -150,29 +168,54 @@ export function ExcelMultiSheetMapper({
 
   // Si on est en train d'éditer une feuille, afficher le mapper
   if (editingSheet) {
-    // Récupérer les mappings existants pour cette feuille
-    const currentSheetMapping = activeSheetIndex !== null && activeSheetIndex < sheetMappings.length
-      ? sheetMappings[activeSheetIndex].mapping
-      : {};
-    
+    // Récupérer les mappings existants pour cette feuille (par nom)
+    const currentSheetMapping =
+      sheetMappings.find((sm) => sm.sheetName === editingSheet.name)?.mapping ?? {};
+
     // Filtrer les champs : ceux non mappés + ceux déjà mappés sur cette feuille
-    const availableFields = fields.filter(f => 
+    const availableFields = fields.filter(f =>
       !mappedFields.has(f) || Object.keys(currentSheetMapping).includes(f)
     );
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>Feuille : <strong>{editingSheet.name}</strong></span>
+        {/* Onglets de feuilles : basculer sans quitter le mapping */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-3">
+          <span className="text-sm text-gray-500 mr-1">Feuilles :</span>
+          {sheets.map((s) => {
+            const isActive = s.name === editingSheet.name;
+            const configured = sheetMappings.some((sm) => sm.sheetName === s.name);
+            return (
+              <button
+                key={s.name}
+                type="button"
+                onClick={() => { if (!isActive) switchEditingSheet(s); }}
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  isActive
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 inline-block mr-1.5 -mt-0.5" />
+                {s.name}
+                {configured && <span className="ml-1.5 text-green-600">✓</span>}
+              </button>
+            );
+          })}
         </div>
+
         <ExcelCellMapper
+          key={editingSheet.name}
           sheet={editingSheet}
           fields={availableFields}
           secteur={secteur}
+          spFields={spFields}
           initialMapping={currentSheetMapping}
           onMappingComplete={handleMappingComplete}
+          onMappingChange={(m) => { editMappingRef.current = m; }}
           onBack={() => {
+            upsertSheetMapping(editingSheet.name, editMappingRef.current);
+            editMappingRef.current = {};
             setEditingSheet(null);
             setActiveSheetIndex(null);
           }}
@@ -232,6 +275,7 @@ export function ExcelMultiSheetMapper({
         <ExcelArrayMapper
           sheets={sheets}
           arrayFields={arrayFields}
+          spArrayIds={spArrayIds}
           initialMappings={arrayMappings}
           onMappingsChange={handleArrayMappingsChange}
         />

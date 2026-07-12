@@ -7,6 +7,8 @@ import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 import { SpCustomVariablesEditor } from './SpCustomVariablesEditor';
 import { SpClausesManager } from './SpClausesManager';
+import type { SpVariableCustom, SpTableauFusionne } from '@/types';
+import '@js-preview/excel/lib/index.css';
 
 interface SheetMapping {
   sheetName: string;
@@ -181,6 +183,38 @@ const SP_TABLE_BLOCKS = [
     label: 'Tableau cadeaux',
     fullBlock: `{{#sp_cadeaux_table}}\n{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_quantite}}  {{sp_cadeau_valeur_ht}}\n{{/sp_cadeaux_table}}`,
   },
+];
+
+// Colonnes mappables d'un bloc SP : les tokens {{...}} hors ouverture {{#..}},
+// fermeture {{/..}} et image {{%..}}. Utilisé pour proposer les tableaux SP au
+// mapping Excel (zone → tableau, colonne → champ).
+function spBlockColumns(fullBlock: string): ArrayFieldDefinition['rowFields'] {
+  const ids: string[] = [];
+  const re = /\{\{([^#/%][^}]*)\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(fullBlock)) !== null) {
+    const id = m[1].trim();
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids.map((id) => ({ id, label: id, type: 'string' as const }));
+}
+
+// Tableaux SP standard exposés au mapping de cellules Excel.
+const SP_TABLE_DEFS: ArrayFieldDefinition[] = SP_TABLE_BLOCKS.map((b) => ({
+  id: b.arrayId,
+  label: b.label,
+  description: 'hint' in b && b.hint ? (b.hint as string) : '',
+  rowFields: spBlockColumns(b.fullBlock),
+}));
+
+// Colonnes télécom communes pour les tableaux fusionnés (mobiles/fixes/internet).
+const SP_MERGED_TABLE_ROWFIELDS: ArrayFieldDefinition['rowFields'] = [
+  { id: 'sp_nom_ligne', label: 'sp_nom_ligne', type: 'string' },
+  { id: 'sp_produit', label: 'sp_produit', type: 'string' },
+  { id: 'sp_prix_actuel', label: 'sp_prix_actuel', type: 'string' },
+  { id: 'sp_prix_propose', label: 'sp_prix_propose', type: 'string' },
+  { id: 'sp_economie', label: 'sp_economie', type: 'string' },
+  { id: 'sp_analyse', label: 'sp_analyse', type: 'string' },
 ];
 
 const VARIABLE_HELP: Record<string, { label: string; description: string; example: string }> = {
@@ -387,7 +421,44 @@ export function Step2UploadTemplate({
       rowFields: [...arr.rowFields, ...extraRowFields],
     };
   });
-  
+
+  // ── Variables et tableaux SP exposés au mapping Excel (parité avec Word) ──
+  // Toujours disponibles : l'utilisateur mappe sur des cellules ce dont il a besoin.
+  const spFileConfig = (templateData?.file_config ?? {}) as {
+    spVariablesCustom?: SpVariableCustom[];
+    spTableauxFusionnes?: SpTableauFusionne[];
+  };
+  const spCustomVars = Array.isArray(spFileConfig.spVariablesCustom) ? spFileConfig.spVariablesCustom : [];
+  const spMergedTables = Array.isArray(spFileConfig.spTableauxFusionnes) ? spFileConfig.spTableauxFusionnes : [];
+
+  const spSimpleFieldKeys = [
+    ...SP_SIMPLE_VARS.map((v) => v.key),
+    ...spCustomVars.filter((v) => v.type !== 'tableau').map((v) => v.key),
+  ];
+
+  const spArrayDefs: ArrayFieldDefinition[] = [
+    ...SP_TABLE_DEFS,
+    ...spMergedTables.map((t) => ({
+      id: t.id,
+      label: `Tableau fusionné — ${t.label}`,
+      description: '',
+      rowFields: SP_MERGED_TABLE_ROWFIELDS,
+    })),
+    ...spCustomVars
+      .filter((v) => v.type === 'tableau')
+      .map((v) => ({
+        id: v.key,
+        label: v.label || v.key,
+        description: v.description || '',
+        rowFields: (v.rowFields ?? []).map((rf) => ({ id: rf.id, label: rf.label, type: rf.type })),
+      })),
+  ];
+
+  const excelMapperFields = Array.from(
+    new Set([...((templateData.champs_actifs ?? []) as string[]), ...spSimpleFieldKeys])
+  );
+  const excelMapperArrayFields: ArrayFieldDefinition[] = [...arrayFields, ...spArrayDefs];
+
   const [parseError, setParseError] = useState<string | null>(null);
   const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null);
   const [wordParseError, setWordParseError] = useState<string | null>(null);
@@ -400,6 +471,15 @@ export function Step2UploadTemplate({
   const [isLoadingFilledPreview, setIsLoadingFilledPreview] = useState(false);
   const [filledPreviewError, setFilledPreviewError] = useState<string | null>(null);
   const [noPropositionData, setNoPropositionData] = useState(false);
+  // Aperçu Excel (parité avec l'aperçu Word) : toggle template brut / valeurs remplies.
+  const excelPreviewRef = useRef<HTMLDivElement>(null);
+  const [excelPreviewMode, setExcelPreviewMode] = useState<'raw' | 'filled'>('raw');
+  const [excelFilledBuffer, setExcelFilledBuffer] = useState<ArrayBuffer | null>(null);
+  const [isLoadingExcelFilled, setIsLoadingExcelFilled] = useState(false);
+  const [excelFilledError, setExcelFilledError] = useState<string | null>(null);
+  const [excelNoProposition, setExcelNoProposition] = useState(false);
+  const [isRenderingExcel, setIsRenderingExcel] = useState(false);
+  const [excelRenderError, setExcelRenderError] = useState<string | null>(null);
   const [copiedKeys, setCopiedKeys] = useState<Record<string, true>>({});
   const [showHelp, setShowHelp] = useState(false);
   const [currentHelpStep, setCurrentHelpStep] = useState(0);
@@ -491,6 +571,46 @@ export function Step2UploadTemplate({
     return () => { cancelled = true; };
   }, [file, step, hasWordPreviewSource, templateData.file_url, previewMode, filledPreviewBuffer]);
 
+  // Render Excel preview (template brut ou valeurs remplies) via @js-preview/excel
+  useEffect(() => {
+    if (effectiveFileType !== 'excel' || step !== 'map-sheets') return;
+    const rawSource: File | string | null = file ?? (templateData.file_url ?? null);
+    if (excelPreviewMode === 'raw' && !rawSource) return;
+    if (excelPreviewMode === 'filled' && !excelFilledBuffer) return;
+
+    let cancelled = false;
+    let previewer: {
+      preview: (src: string | ArrayBuffer | Blob) => Promise<unknown>;
+      destroy: () => void;
+    } | null = null;
+    setIsRenderingExcel(true);
+    setExcelRenderError(null);
+
+    (async () => {
+      try {
+        const mod = await import('@js-preview/excel');
+        if (cancelled || !excelPreviewRef.current) return;
+        const jsPreviewExcel = mod.default;
+        excelPreviewRef.current.innerHTML = '';
+        previewer = jsPreviewExcel.init(excelPreviewRef.current);
+        const src: ArrayBuffer | File | string =
+          excelPreviewMode === 'filled' && excelFilledBuffer
+            ? excelFilledBuffer.slice(0)
+            : (rawSource as File | string);
+        await previewer.preview(src);
+      } catch (e) {
+        if (!cancelled) setExcelRenderError(e instanceof Error ? e.message : "Impossible de générer l'aperçu Excel.");
+      } finally {
+        if (!cancelled) setIsRenderingExcel(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { previewer?.destroy(); } catch { /* ignore */ }
+    };
+  }, [effectiveFileType, step, file, templateData.file_url, excelPreviewMode, excelFilledBuffer]);
+
   // Charge l'aperçu rempli avec les valeurs de la dernière proposition
   async function loadFilledPreview() {
     if (!templateData.id) {
@@ -550,6 +670,49 @@ export function Step2UploadTemplate({
     setFilledPreviewError(null);
     if (mode === 'filled' && !filledPreviewBuffer) {
       void loadFilledPreview();
+    }
+  }
+
+  async function loadFilledExcelPreview() {
+    if (!templateData?.id) {
+      setExcelFilledError('Enregistrez le template pour afficher les valeurs de la dernière proposition.');
+      setExcelPreviewMode('raw');
+      return;
+    }
+    try {
+      setIsLoadingExcelFilled(true);
+      setExcelFilledError(null);
+      setExcelNoProposition(false);
+      const fd = new FormData();
+      fd.append('templateId', templateData.id);
+      if (file) fd.append('file', file);
+      const res = await fetch('/api/templates/preview-excel', { method: 'POST', body: fd });
+      const contentType = res.headers.get('Content-Type') ?? '';
+      if (res.ok && contentType.includes('spreadsheet')) {
+        const buf = await res.arrayBuffer();
+        setExcelFilledBuffer(buf);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (data?.hasData === false) {
+          setExcelNoProposition(true);
+        } else {
+          setExcelFilledError(data?.error ?? "Impossible de générer l'aperçu rempli.");
+        }
+        setExcelPreviewMode('raw');
+      }
+    } catch (e) {
+      setExcelFilledError(e instanceof Error ? e.message : 'Erreur réseau');
+      setExcelPreviewMode('raw');
+    } finally {
+      setIsLoadingExcelFilled(false);
+    }
+  }
+
+  function handleSelectExcelPreviewMode(mode: 'raw' | 'filled') {
+    setExcelPreviewMode(mode);
+    setExcelFilledError(null);
+    if (mode === 'filled' && !excelFilledBuffer) {
+      void loadFilledExcelPreview();
     }
   }
 
@@ -2071,12 +2234,13 @@ export function Step2UploadTemplate({
             </div>
           )}
 
-          {/* Section Variables SP - Word uniquement */}
+          {/* Section Variables SP - balises {{}} à copier dans le document Word.
+              (Pour Excel, ces mêmes variables se mappent sur des cellules.) */}
           {effectiveFileType === 'word' && (
             <div className="mt-6 border-t border-gray-200 pt-6">
               <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 Variables Situation Proposée (SP)
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Word uniquement</span>
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Balises à copier dans Word</span>
               </h3>
 
               <div className="space-y-2 mb-6">
@@ -2297,13 +2461,81 @@ export function Step2UploadTemplate({
       {/* Étape 3 : Mapping multi-feuilles */}
       {step === 'map-sheets' && (
         <>
+          {/* Aperçu du fichier Excel (template brut / valeurs de la dernière proposition) */}
+          {(file || templateData.file_url) && (
+            <div className="mb-6 bg-white border border-gray-200 rounded-xl p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h4 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+                  <span className="text-2xl">👁️</span>
+                  Aperçu du fichier Excel
+                </h4>
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectExcelPreviewMode('raw')}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                      excelPreviewMode === 'raw'
+                        ? 'bg-white text-gray-900 shadow-sm font-medium'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Template brut
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectExcelPreviewMode('filled')}
+                    disabled={isLoadingExcelFilled}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors inline-flex items-center gap-1.5 ${
+                      excelPreviewMode === 'filled'
+                        ? 'bg-white text-gray-900 shadow-sm font-medium'
+                        : 'text-gray-500 hover:text-gray-700'
+                    } ${isLoadingExcelFilled ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    {isLoadingExcelFilled && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Valeurs de la dernière proposition
+                  </button>
+                </div>
+              </div>
+              {excelFilledError && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                  <p className="text-sm text-red-700">{excelFilledError}</p>
+                </div>
+              )}
+              {excelNoProposition && (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-sm text-amber-800">
+                    Aucune proposition générée pour ce template : l&apos;aperçu affiche le template brut.
+                  </p>
+                </div>
+              )}
+              <div className="relative border-2 border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white" style={{ height: 600 }}>
+                {/* Le conteneur du viewer doit rester monté et dimensionné : @js-preview/excel
+                    mesure sa taille à l'initialisation et gère son propre défilement interne. */}
+                <div ref={excelPreviewRef} style={{ height: '100%', width: '100%' }} />
+                {(isRenderingExcel || isLoadingExcelFilled) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/75">
+                    <Loader2 className="h-8 w-8 text-blue-600 animate-spin mr-3" />
+                    <span className="text-gray-600">Génération de l&apos;aperçu...</span>
+                  </div>
+                )}
+                {excelRenderError && !isRenderingExcel && !isLoadingExcelFilled && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white p-8 text-center">
+                    <p className="text-sm text-red-500">{excelRenderError}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {excelSheets.length > 0 && templateData.champs_actifs && templateData.champs_actifs.length > 0 ? (
             <div id="excel-mapping-panel">
             <ExcelMultiSheetMapper
               sheets={excelSheets}
-              fields={templateData.champs_actifs}
+              fields={excelMapperFields}
               secteur={secteur}
-              arrayFields={arrayFields}
+              spFields={spSimpleFieldKeys}
+              spArrayIds={spArrayDefs.map((d) => d.id)}
+              arrayFields={excelMapperArrayFields}
               initialMappings={savedMappings}
               initialArrayMappings={savedArrayMappings}
               onComplete={handleMultiSheetMappingComplete}
@@ -2311,6 +2543,33 @@ export function Step2UploadTemplate({
               onArrayMappingsChange={(arrayMappings) => updateExcelState({ arrayMappings })}
               onSave={onSave}
             />
+
+            {/* Configuration SP (Situation Proposée) — parité avec les templates Word.
+                Les variables/tableaux SP sont mappables sur des cellules dans le mapping
+                ci-dessus, comme les champs SA. */}
+            {templateData?.id && (
+              <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                  <p className="text-sm text-blue-900 font-medium">Variables Situation Proposée (SP)</p>
+                  <p className="text-xs text-blue-800 mt-1">
+                    Les variables simples SP (ex. <code>sp_economie_mensuelle</code>) et les tableaux SP
+                    (ex. <code>sp_lignes_mobiles</code>) sont disponibles dans le mapping ci-dessus :
+                    associez-les à une cellule ou à une zone de votre fichier Excel.
+                  </p>
+                </div>
+                <SpCustomVariablesEditor
+                  templateId={templateData.id}
+                  fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
+                  onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}
+                />
+                <SpClausesManager
+                  templateId={templateData.id}
+                  fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
+                  onSaved={(updatedConfig) => updateTemplateData({ file_config: updatedConfig })}
+                />
+              </div>
+            )}
+
             </div>
           ) : (
             <div className="text-center py-12">

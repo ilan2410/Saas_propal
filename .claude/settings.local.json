@@ -14,7 +14,21 @@
       "Bash(mkdir -p \"/c/Users/ilan/CascadeProjects/Saas_propal/app/api/templates/[id]/sp-questions/order\")",
       "Bash(mkdir -p \"/c/Users/ilan/CascadeProjects/Saas_propal/app/api/templates/[id]/sp-variables\")",
       "Bash(mkdir -p \"/c/Users/ilan/CascadeProjects/Saas_propal/app/api/templates/[id]/sa-variables\")",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(git show HEAD:package.json > /tmp/orig_package.json 2>/dev/null || git show HEAD:package.json > /c/tmp_orig_package.json *)",
+      "Bash(cp package.json /c/tmp_package.json.with_both)",
+      "Bash(cp package-lock.json /c/tmp_package-lock.json.with_both)",
+      "Read(//c//**)",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('package.json','utf8'\\)\\); JSON.parse\\(require\\('fs'\\).readFileSync\\('package-lock.json','utf8'\\)\\); console.log\\('valid JSON'\\)\")",
+      "Bash(echo \"exit code package.json: $?\")",
+      "Bash(echo \"exit code package-lock.json: $?\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('package-lock.json','utf8'\\)\\); console.log\\('valid JSON'\\)\")",
+      "Bash(cp \"app/api/propositions/[id]/generate/route.ts\" /tmp/generate_route.with_refactor_and_fix.ts)",
+      "Bash(cp \"app/api/propositions/[id]/generate/route.ts\" /c/tmp_generate_route.with_refactor_and_fix.ts)",
+      "Bash(git show *)",
+      "Bash(cp /tmp/generate_route.with_refactor_and_fix.ts \"app/api/propositions/[id]/generate/route.ts\")",
+      "Bash(cp /c/tmp_generate_route.with_refactor_and_fix.ts \"app/api/propositions/[id]/generate/route.ts\")",
+      "Bash(rm -f /tmp/package.json.with_both /tmp/package-lock.json.with_both /tmp/generate_route.with_refactor_and_fix.ts /tmp/orig_package.json 2>/dev/null *)"
     ]
   }
 }

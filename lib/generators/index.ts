@@ -119,6 +119,37 @@ interface GenerateOptions {
 }
 
 /**
+ * Construit le dictionnaire de données complet partagé entre la génération Word et
+ * Excel : données SA extraites (aplaties), tableaux SA, variables + tableaux SP,
+ * clauses conditionnelles rendues et référence proposition.
+ *
+ * Word y superpose ensuite son `mappedData` (issu de fieldMappings) ; Excel l'utilise
+ * comme source de résolution (fallback) pour le mapping de cellules / tableaux.
+ */
+export function buildPropositionBaseData(options: GenerateOptions): UnknownRecord {
+  const { template, donnees } = options;
+  const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
+  const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
+  const wordCfg = fileConfig as unknown as WordConfig;
+
+  // Données extraites aplaties (clés en pointillé pour le lookup / Docxtemplater).
+  const flatData: UnknownRecord = {};
+  flattenForDocx(baseData, flatData);
+
+  // Tableaux SA remontés à plat (ex: lignes).
+  const saData = buildSaWordData(baseData);
+  // Variables + tableaux SP (incluant les tableaux fusionnés configurés).
+  const spCompletes = (options.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
+  const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
+  // Clauses conditionnelles rendues : { sp_clause_<cle>: "texte" }.
+  const clausesData = options.sp_clauses_rendered ?? {};
+  // Référence proposition → sp_reference (chaîne vide si non configurée).
+  const referenceData: Record<string, string> = { sp_reference: options.sp_reference ?? '' };
+
+  return { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData };
+}
+
+/**
  * Génère un fichier de proposition à partir d'un template et des données extraites
  */
 export async function generatePropositionFile(options: GenerateOptions): Promise<string> {
@@ -180,6 +211,9 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
 
   const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
   const sheetMappings = parseSheetMappings(fileConfig.sheetMappings);
+  // Dictionnaire complet SA + SP + clauses + référence (même base que la génération Word).
+  // Les clés SA restent résolues en priorité via `donnees` ; les clés SP sont un fallback.
+  const baseData = buildPropositionBaseData(options);
 
   console.log(`📋 Configuration du mapping:`, JSON.stringify(fileConfig, null, 2));
   console.log(`📊 Données à insérer:`, JSON.stringify(donnees, null, 2));
@@ -205,8 +239,14 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
     console.log(`🗺️ Mapping de la feuille:`, JSON.stringify(mapping, null, 2));
     
     for (const [fieldName, cellRefs] of Object.entries(mapping)) {
-      // Utiliser la fonction de recherche intelligente
-      const value = findValueInData(donnees, fieldName);
+      // Résolution SA (inchangée) puis fallback SP / clauses / référence via baseData.
+      let value = findValueInData(donnees, fieldName);
+      if (value === undefined || value === null || value === '') {
+        value = baseData[fieldName];
+        if (value === undefined || value === null || value === '') {
+          value = findValueInData(baseData, fieldName);
+        }
+      }
       console.log(`  🔎 Champ "${fieldName}": valeur = ${value !== undefined ? JSON.stringify(value).substring(0, 100) : 'UNDEFINED'}`);
       if (value === undefined || value === null || value === '') {
         console.log(`  ⏭️ Champ "${fieldName}" ignoré (valeur vide)`);
@@ -260,7 +300,13 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
         arrayData = getNestedValue(donnees, path);
       }
     }
-    
+
+    // Fallback SP : tableaux issus du dictionnaire complet (sp_lignes_mobiles,
+    // sp_materiel_detail, sp_situation_proposee_*, tableaux fusionnés…).
+    if (!Array.isArray(arrayData) && Array.isArray(baseData[arrayMapping.arrayId])) {
+      arrayData = baseData[arrayMapping.arrayId];
+    }
+
     if (!Array.isArray(arrayData)) {
       console.warn(`⚠️ Données tableau "${arrayMapping.arrayId}" non trouvées ou pas un tableau`);
       continue;
@@ -421,24 +467,10 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
     }
   }
 
-  // Aplatir les donnees pour Docxtemplater.
-  // Docxtemplater resout {{client.nom}} via la cle plate "client.nom",
-  // pas via l'objet imbrique.
-  const flatData: UnknownRecord = {};
-  flattenForDocx(baseData, flatData);
-
-  // Injecter les données SP (les clés SA ont la priorité sur SP)
-  const spCompletes = (options.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
-  const wordCfg = (isPlainObject(fileConfig) ? fileConfig : {}) as unknown as WordConfig;
-  const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
-  // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
-  const saData = buildSaWordData(baseData);
-  // Clauses conditionnelles rendues (texte libre, NON soumis au title-case).
-  const clausesData = options.sp_clauses_rendered ?? {};
-  // Référence proposition → {{sp_reference}} (chaîne vide si non configurée pour que la balise se résolve).
-  const referenceData: Record<string, string> = { sp_reference: options.sp_reference ?? '' };
-  // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < référence < mapping utilisateur.
-  const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData, ...mappedData };
+  // Dictionnaire complet SA + SP + clauses + référence, partagé avec la génération Excel.
+  // Ordre de priorité : base (flat SA < SA < SP < clauses < référence) < mapping utilisateur.
+  const propositionBase = buildPropositionBaseData(options);
+  const finalData = { ...propositionBase, ...mappedData };
 
   let uint8Array: Uint8Array;
   try {
@@ -500,6 +532,118 @@ async function generatePdfFile(options: GenerateOptions): Promise<string> {
   // TODO: Implémenter la génération PDF
   console.log('📑 Génération PDF (non implémenté)');
   throw new Error('La génération de fichiers PDF n\'est pas encore implémentée');
+}
+
+/**
+ * Remplit un classeur Excel (chargé depuis `templateBuffer`) selon la configuration de
+ * mapping, en injectant les données SA (résolues en priorité via `donnees`) puis SP /
+ * clauses / référence (via `baseData`). Retourne le binaire .xlsx.
+ *
+ * Miroir de la logique inline de `generateExcelFile` (mêmes règles de résolution et de
+ * formatage) — utilisé par la route d'aperçu pour garantir que l'aperçu correspond au
+ * fichier réellement généré.
+ */
+export async function fillExcelWorkbook(
+  templateBuffer: ArrayBuffer,
+  donnees: UnknownRecord,
+  baseData: UnknownRecord,
+  fileConfig: UnknownRecord,
+): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(templateBuffer);
+  } catch (error) {
+    throw new Error(`Le fichier template Excel est corrompu ou invalide: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+  }
+
+  // Résolution SA (via `donnees`) puis fallback SP / clauses / référence via `baseData`.
+  const resolveCellValue = (fieldName: string): unknown => {
+    let value = findValueInData(donnees, fieldName);
+    if (value === undefined || value === null || value === '') {
+      value = baseData[fieldName];
+      if (value === undefined || value === null || value === '') {
+        value = findValueInData(baseData, fieldName);
+      }
+    }
+    return value;
+  };
+
+  const sheetMappings = parseSheetMappings(fileConfig.sheetMappings);
+  for (const sheetMapping of sheetMappings) {
+    const worksheet = workbook.getWorksheet(sheetMapping.sheetName);
+    if (!worksheet) continue;
+    const mapping = sheetMapping.mapping || {};
+    for (const [fieldName, cellRefs] of Object.entries(mapping)) {
+      const value = resolveCellValue(fieldName);
+      if (value === undefined || value === null || value === '') continue;
+      const refs = Array.isArray(cellRefs) ? cellRefs : [cellRefs];
+      for (const cellRef of refs) {
+        try {
+          worksheet.getCell(cellRef as string).value = formatValueForExcel(value);
+        } catch {
+          // référence de cellule invalide ignorée
+        }
+      }
+    }
+  }
+
+  const arrayMappingsLookup: Record<string, string> = {
+    lignes_fixes: 'lignes.fixes',
+    lignes_mobiles: 'lignes.mobiles',
+    lignes_internet: 'lignes.internet',
+    location_materiel: 'location_materiel',
+    forfaits_fixes: 'abonnements.forfaits_fixes',
+    forfaits_mobiles: 'abonnements.forfaits_mobiles',
+    services: 'services',
+    equipements: 'equipements',
+    reductions: 'reductions',
+    internet: 'abonnements.internet',
+  };
+
+  const arrayMappings = parseArrayMappings(fileConfig.arrayMappings);
+  for (const arrayMapping of arrayMappings) {
+    const worksheet = workbook.getWorksheet(arrayMapping.sheetName);
+    if (!worksheet) continue;
+
+    let arrayData: unknown = findValueInData(donnees, arrayMapping.arrayId);
+    if (!Array.isArray(arrayData)) {
+      const path = arrayMappingsLookup[arrayMapping.arrayId];
+      if (path) arrayData = getNestedValue(donnees, path);
+    }
+    // Fallback SP : tableaux issus du dictionnaire complet.
+    if (!Array.isArray(arrayData) && Array.isArray(baseData[arrayMapping.arrayId])) {
+      arrayData = baseData[arrayMapping.arrayId];
+    }
+    if (!Array.isArray(arrayData)) continue;
+
+    const startRow = arrayMapping.startRow || 2;
+    const columnMapping = arrayMapping.columnMapping || {};
+    arrayData.forEach((item: unknown, index: number) => {
+      if (!isPlainObject(item)) return;
+      const rowNumber = startRow + index;
+      for (const [fieldId, column] of Object.entries(columnMapping)) {
+        const value = item[fieldId];
+        if (value === undefined || value === null) continue;
+        try {
+          worksheet.getCell(`${column}${rowNumber}`).value = formatValueForExcel(value);
+        } catch {
+          // référence de cellule invalide ignorée
+        }
+      }
+    });
+  }
+
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await workbook.xlsx.writeBuffer();
+  } catch (error) {
+    throw new Error(`Impossible de générer le fichier Excel: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+  }
+  const uint8Array = new Uint8Array(buffer);
+  if (uint8Array.byteLength === 0) {
+    throw new Error('Le fichier Excel généré est vide');
+  }
+  return uint8Array;
 }
 
 /**

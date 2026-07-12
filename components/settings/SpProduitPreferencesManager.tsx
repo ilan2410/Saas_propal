@@ -15,6 +15,7 @@ import type {
   SpRegleProduitAuto,
   WordConfig,
 } from '@/types';
+import { supportsSp } from '@/lib/templates/supportsSp';
 
 const CATEGORIE_LABELS: Record<CatalogueCategorie, string> = {
   mobile: 'Mobile',
@@ -47,7 +48,7 @@ function defaultConfig(): SpPreferencesProduits {
 }
 
 function getWordTemplates(templates: PropositionTemplate[]) {
-  return templates.filter((t) => t.file_type === 'word');
+  return templates.filter((t) => supportsSp(t.file_type));
 }
 
 function getConfig(template: PropositionTemplate | undefined): SpPreferencesProduits {
