@@ -5,6 +5,7 @@
 
 import ExcelJS from 'exceljs';
 import { createServiceClient } from '@/lib/supabase/server';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { renderWordWithImages } from './word-image';
 import { buildSpWordData } from './sp-word-data';
 import {
@@ -153,6 +154,10 @@ async function generateExcelFile(options: GenerateOptions): Promise<string> {
   // Vérifier que l'URL du template existe
   if (!template.file_url) {
     throw new Error('URL du template manquante. Le fichier template n\'a pas été uploadé correctement.');
+  }
+
+  if (!isAllowedFetchUrl(template.file_url)) {
+    throw new Error('URL du template non autorisée.');
   }
 
   // Télécharger le template Excel
@@ -377,6 +382,10 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
 
   if (!template.file_url) {
     throw new Error('URL du template manquante. Le fichier template n\'a pas été uploadé correctement.');
+  }
+
+  if (!isAllowedFetchUrl(template.file_url)) {
+    throw new Error('URL du template non autorisée.');
   }
 
   const response = await fetch(template.file_url);

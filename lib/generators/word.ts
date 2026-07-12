@@ -37,6 +37,9 @@ export async function fillWordTemplate(
     const supabase = await createClient();
 
     // 1. Télécharger le template master
+    if (!isAllowedFetchUrl(templateUrl)) {
+      throw new Error('URL du template non autorisée');
+    }
     const response = await fetch(templateUrl);
     if (!response.ok) {
       throw new Error('Échec du téléchargement du template');
