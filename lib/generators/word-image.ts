@@ -25,28 +25,17 @@ type ImageModuleOptions = {
   getImage: (tagValue: string) => Buffer;
   getSize: (img: Buffer, tagValue: string) => [number, number];
 };
-type RenderOptions = { scopeManager: { getValue: (tag: string, meta?: unknown) => unknown } };
-interface ImageModuleInstance {
-  render(part: unknown, options: RenderOptions): unknown;
-}
-type ImageModuleCtor = new (opts: ImageModuleOptions) => ImageModuleInstance;
+type ImageModuleCtor = new (opts: ImageModuleOptions) => object;
 type DocxModule = Parameters<Docxtemplater['attachModule']>[0];
+// `docxtemplater-image-module` est déprécié par son auteur (dernière release
+// non maintenue, dépend de `xmldom` — 2 CVE critiques d'injection XML) et son
+// seul successeur gratuit compatible avec `docxtemplater` >= 3.x sans cette
+// dépendance vulnérable est ce fork : dépend de `@xmldom/xmldom` (patché) et
+// corrige nativement le bug `scopeManager.getValue` sans le 2e argument `meta`
+// qui obligeait ce fichier à monkey-patcher le module (`PatchedImageModule`,
+// supprimé ici). Testé avant migration : rendu identique (boucles + images).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const BaseImageModule = require('docxtemplater-image-module') as ImageModuleCtor;
-
-// `docxtemplater-image-module@3.1.0` (version gratuite) est incompatible avec
-// docxtemplater >= 3.x : son `render` appelle `scopeManager.getValue(part.value)`
-// sans le 2e argument `meta`, alors que docxtemplater fait `meta.part.lIndex`
-// (=> « Cannot read properties of undefined (reading 'part') »). On corrige en
-// fournissant un `scopeManager` proxy qui injecte `{ part }` quand il manque.
-class PatchedImageModule extends BaseImageModule {
-  render(part: unknown, options: RenderOptions) {
-    const sm = options.scopeManager;
-    const proxy = Object.create(sm) as typeof sm;
-    proxy.getValue = (tag: string, meta?: unknown) => sm.getValue(tag, meta ?? { part });
-    return super.render(part, { ...options, scopeManager: proxy });
-  }
-}
+const ImageModule = require('docxtemplater-image') as ImageModuleCtor;
 
 // 1×1 transparent PNG — placeholder quand aucune URL d'image n'est fournie.
 export const PLACEHOLDER_PNG = Buffer.from(
@@ -156,7 +145,7 @@ export async function renderWordWithImages(
 
   // --- Passe 2 : rendu des balises image (désormais toutes plates) ---
   const zip2 = new PizZip(intermediate);
-  const imageModule = new PatchedImageModule({
+  const imageModule = new ImageModule({
     centered: false,
     fileType: 'docx',
     getImage,
