@@ -1,5 +1,11 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { validateUploadedFile } from '@/lib/security/validate-upload';
+
+// SVG volontairement exclu : un SVG peut embarquer du JavaScript, ce qui en fait
+// un vecteur de XSS stockée si le fichier est un jour ouvert/rendu autrement qu'en <img>.
+const ALLOWED_LOGO_MIME_TYPES = ['image/png', 'image/jpeg'];
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
 export async function POST(request: Request) {
   try {
@@ -23,26 +29,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: 'La taille du fichier ne doit pas dépasser 2MB' },
-        { status: 400 }
-      );
+    const validation = await validateUploadedFile(file, ALLOWED_LOGO_MIME_TYPES, MAX_LOGO_SIZE_BYTES);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];
-    if (!validTypes.includes(file.type)) {
-      return NextResponse.json(
-        { error: 'Format de fichier non supporté (PNG, JPG, SVG)' },
-        { status: 400 }
-      );
-    }
-
-    // Déterminer l'extension
-    let ext = 'png';
-    if (file.type === 'image/jpeg' || file.type === 'image/jpg') ext = 'jpg';
-    if (file.type === 'image/svg+xml') ext = 'svg';
-
+    const ext = validation.extension === 'jpeg' ? 'jpg' : validation.extension;
     const path = `${user.id}/logo.${ext}`;
     const serviceSupabase = createServiceClient();
 
@@ -51,9 +43,9 @@ export async function POST(request: Request) {
     const { error: uploadError } = await serviceSupabase
       .storage
       .from('logos')
-      .upload(path, file, {
+      .upload(path, validation.buffer, {
         upsert: true,
-        contentType: file.type
+        contentType: validation.mime
       });
 
     if (uploadError) {

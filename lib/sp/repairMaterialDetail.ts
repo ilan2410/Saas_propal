@@ -41,7 +41,7 @@ export function repairMaterialDetailFromQuestionnaire(
 
   const hasMaterial = materielCartLines.length > 0;
   const hasCadeaux = cadeauCartLines.length > 0;
-  const hasIndemnites = cart.indemnites > 0;
+  const hasIndemnites = cart.indemnites > 0 || (typeof sp?.sp_indemnites_calcul?.montant_retenu === 'number' && sp.sp_indemnites_calcul.montant_retenu > 0);
   if (!hasMaterial && !hasCadeaux && !hasIndemnites) return sp;
 
   const sp_materiel: SpMateriel[] = hasMaterial ? materielCartLines.map((line) => {
@@ -104,7 +104,12 @@ export function repairMaterialDetailFromQuestionnaire(
     result.sp_total_cadeaux_ht = formatEuro(totalCadeaux);
   }
   if (hasIndemnites) {
-    result.sp_total_indemnites = formatEuro(cart.indemnites);
+    const snapshotAmount = result.sp_indemnites_calcul?.montant_retenu;
+    result.sp_total_indemnites = formatEuro(
+      typeof snapshotAmount === 'number' && Number.isFinite(snapshotAmount)
+        ? snapshotAmount
+        : cart.indemnites,
+    );
   }
   return result;
 }

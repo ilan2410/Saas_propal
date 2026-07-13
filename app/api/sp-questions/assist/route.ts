@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@/lib/supabase/server';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -81,6 +82,15 @@ Si l'utilisateur demande juste un conseil sans vouloir appliquer, réponds en te
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { messages, currentQuestion, otherQuestions = [], spVariables = [] } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;

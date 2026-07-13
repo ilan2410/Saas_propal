@@ -1,6 +1,5 @@
 'use client';
 
-import { createClient } from '@/lib/supabase/client';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, ImageIcon, Trash2, Plus, Search } from 'lucide-react';
@@ -171,22 +170,18 @@ export function CatalogueProduitForm({
 
     setIsUploading(true);
     try {
-      const supabase = createClient();
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const body = new FormData();
+      body.append('file', file);
 
-      const { error: uploadError } = await supabase.storage
-        .from('catalogue-images')
-        .upload(filePath, file);
+      const res = await fetch('/api/catalogue/upload-image', {
+        method: 'POST',
+        body,
+      });
 
-      if (uploadError) throw uploadError;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Erreur lors de l'upload");
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('catalogue-images')
-        .getPublicUrl(filePath);
-
-      setForm(p => ({ ...p, image_url: publicUrl }));
+      setForm(p => ({ ...p, image_url: data.url }));
     } catch (err) {
       console.error('Upload error:', err);
       alert("Erreur lors de l'upload de l'image");

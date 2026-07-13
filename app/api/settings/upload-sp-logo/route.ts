@@ -1,6 +1,10 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { OrganizationPreferences } from '@/types';
+import { validateUploadedFile } from '@/lib/security/validate-upload';
+
+const ALLOWED_LOGO_MIME_TYPES = ['image/png', 'image/jpeg'];
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
 export async function POST(request: Request) {
   try {
@@ -18,28 +22,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 });
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      return NextResponse.json({ error: 'La taille du fichier ne doit pas dépasser 2MB' }, { status: 400 });
+    const validation = await validateUploadedFile(file, ALLOWED_LOGO_MIME_TYPES, MAX_LOGO_SIZE_BYTES);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
-    if (!validTypes.includes(file.type)) {
-      return NextResponse.json(
-        { error: 'Format non supporté pour le PDF (PNG, JPG uniquement)' },
-        { status: 400 }
-      );
-    }
-
-    let ext = 'png';
-    if (file.type === 'image/jpeg' || file.type === 'image/jpg') ext = 'jpg';
-
+    const ext = validation.extension === 'jpeg' ? 'jpg' : validation.extension;
     const path = `${user.id}/sp-logo.${ext}`;
     const serviceSupabase = createServiceClient();
 
     const { error: uploadError } = await serviceSupabase
       .storage
       .from('logos')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, validation.buffer, { upsert: true, contentType: validation.mime });
 
     if (uploadError) {
       console.error('Erreur upload sp-logo:', uploadError);

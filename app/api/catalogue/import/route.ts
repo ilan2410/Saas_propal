@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const mode: UpdateMode = update_mode === 'upsert' ? 'upsert' : 'skip';
 
     // Vérifier le rôle admin si is_global est demandé
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     const isGlobalImport = is_global === true && role === 'admin';
 
     let created = 0;

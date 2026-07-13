@@ -744,6 +744,64 @@ export interface SpCadeauLigne {
   _libre?: boolean;
 }
 
+export interface SpIndemnitesCalculSnapshot {
+  montant_source: number | null;
+  montant_estime: number | null;
+  montant_retenu: number | null;
+  source_retenue: 'source' | 'estimation' | 'aucune';
+  date_reference: string;
+  preavis_mois: number;
+  mois_restants: number | null;
+  mois_restants_avant_preavis: number | null;
+  base_mensuelle: number | null;
+  mensualites_restantes: number | null;
+  frais_resiliation_fixes: number;
+  penalites: number;
+  frais_materiel: number;
+  services_annexes: number;
+  fiabilite: 'forte' | 'moyenne' | 'faible' | 'insuffisante';
+  calcul_possible: boolean;
+  methode_calcul: string;
+  calcul_resume: string;
+  details: string[];
+  motifs_manquants: string[];
+  composants: Array<{
+    id: string;
+    label: string;
+    montant: number | null;
+    inclus: boolean;
+    disponible: boolean;
+    formule?: string;
+  }>;
+  hypotheses: Array<{ label: string; valeur: string }>;
+  preuves: Array<{
+    id: string;
+    categorie: string;
+    label: string;
+    valeur: string;
+    contexte?: string;
+    groupe_id?: string;
+  }>;
+  groupes_calcul: Array<{
+    id: string;
+    type: 'service' | 'engagement';
+    libelle: string;
+    mois_restants: number | null;
+    mois_avant_preavis: number | null;
+    base_mensuelle: number | null;
+    sous_total: number | null;
+    methode: string;
+    preuves: Array<{
+      id: string;
+      categorie: string;
+      label: string;
+      valeur: string;
+      contexte?: string;
+      groupe_id?: string;
+    }>;
+  }>;
+}
+
 export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_fournisseur_propose?: string;
   sp_adresse_facturation?: SpAdresse;
@@ -773,6 +831,8 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_total_recurrent?: string;
   sp_total_ponctuel?: string;
   sp_total_indemnites?: string;
+  /** Calcul d'indemnité figé à la génération SP, partagé par tous les exports. */
+  sp_indemnites_calcul?: SpIndemnitesCalculSnapshot;
   sp_remise_mois_offert?: string;
   sp_total_remise?: string;
   sp_remise_fixe?: string;

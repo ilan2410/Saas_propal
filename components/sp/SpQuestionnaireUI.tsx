@@ -40,6 +40,8 @@ export interface SpQuestionnaireUIProps {
   startFromQuestionId?: string;
   spConfigLoyer?: SpConfigLoyer;
   spConfigResiliation?: SpConfigResiliation;
+  /** Date de référence figée de la proposition pour le calcul d'indemnité. */
+  spIndemnitesReferenceDate?: string;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spCodesPromo?: SpCodePromo[];
   spCodesPromoMode?: 'addition' | 'soustraction';
@@ -920,6 +922,7 @@ export function SpQuestionnaireUI({
   startFromQuestionId,
   spConfigLoyer,
   spConfigResiliation,
+  spIndemnitesReferenceDate,
   spConfigMoisOfferts,
   spCodesPromo = [],
   spCodesPromoMode = 'addition',
@@ -1606,8 +1609,9 @@ export function SpQuestionnaireUI({
         ? donneesExtraites
         : { situation_actuelle: donneesExtraites },
       spConfigResiliation,
+      spIndemnitesReferenceDate,
     );
-  }, [currentQuestion, donneesExtraites, spConfigResiliation]);
+  }, [currentQuestion, donneesExtraites, spConfigResiliation, spIndemnitesReferenceDate]);
 
   const currentCatalogueOptions: CatalogueProduit[] = (() => {
     if (!currentQuestion || currentQuestion.source !== 'catalogue') return [];
@@ -3398,6 +3402,7 @@ export function SpQuestionnaireUI({
                     questions={questions}
                     donneesExtraites={donneesExtraites}
                     spConfigResiliation={spConfigResiliation}
+                    referenceDate={spIndemnitesReferenceDate}
                     onUpdateReponses={(nextReponses) => {
                       setReponses(nextReponses);
                     }}

@@ -86,17 +86,27 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Mettre à jour la transaction
-        const { error: updateError } = await supabaseAdmin
+        // Mettre à jour la transaction — idempotent : ne matche que si elle n'est pas
+        // déjà marquée "succeeded", pour ne pas re-créditer sur une redélivraison Stripe
+        // du même événement (Stripe garantit une livraison "au moins une fois").
+        const { data: updatedTx, error: updateError } = await supabaseAdmin
           .from('stripe_transactions')
           .update({
             stripe_payment_intent_id: session.payment_intent as string,
             statut: 'succeeded',
           })
-          .eq('stripe_session_id', session.id);
+          .eq('stripe_session_id', session.id)
+          .neq('statut', 'succeeded')
+          .select('id')
+          .maybeSingle();
 
         if (updateError) {
           console.error('Error updating transaction:', updateError);
+          break;
+        }
+
+        if (!updatedTx) {
+          console.log(`Transaction ${session.id} already processed (replay), skipping credit`);
           break;
         }
 

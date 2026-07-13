@@ -29,7 +29,7 @@ export default function LoginPage() {
       if (error) throw error;
 
       // Vérifier le rôle et rediriger
-      const role = data.user?.user_metadata?.role;
+      const role = data.user?.app_metadata?.role;
       
       if (role === 'admin') {
         router.push('/admin/dashboard');

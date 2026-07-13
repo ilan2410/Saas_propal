@@ -424,6 +424,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   siteLabel={siteLabel}
                   spConfigLoyer={spConfigLoyer}
                   spConfigResiliation={spConfigResiliation}
+                  spIndemnitesReferenceDate={propositionData.suggestions_sp_completes?.sp_indemnites_calcul?.date_reference}
                   spConfigMoisOfferts={spConfigMoisOfferts}
                   spConfigResumeRef={spConfigResumeRef}
                   spConfigModeClient={spConfigModeClient}

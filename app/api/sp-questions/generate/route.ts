@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@/lib/supabase/server';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -169,6 +170,15 @@ function buildExistingSummary(existingQuestions: Array<Record<string, unknown>>)
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { messages, templateId, existingQuestions = [], spVariables = [], mode = 'create' } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;

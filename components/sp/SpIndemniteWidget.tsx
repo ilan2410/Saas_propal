@@ -15,6 +15,7 @@ interface SpIndemniteWidgetProps {
   questions: SpQuestion[];
   donneesExtraites?: Record<string, unknown>;
   spConfigResiliation?: SpConfigResiliation;
+  referenceDate?: string;
   onUpdateReponses: (nextReponses: SpQuestionReponse[]) => void;
   gardeFouActif?: boolean;
   gardeFouVisible?: boolean;
@@ -61,6 +62,7 @@ export function SpIndemniteWidget({
   questions,
   donneesExtraites,
   spConfigResiliation,
+  referenceDate,
   onUpdateReponses,
   gardeFouActif,
   gardeFouVisible,
@@ -71,7 +73,11 @@ export function SpIndemniteWidget({
   const prevVisible = useRef(false);
 
   useEffect(() => {
-    if (gardeFouVisible && !prevVisible.current) setDismissed(false);
+    if (gardeFouVisible && !prevVisible.current) {
+      const resetTimer = window.setTimeout(() => setDismissed(false), 0);
+      prevVisible.current = true;
+      return () => window.clearTimeout(resetTimer);
+    }
     prevVisible.current = gardeFouVisible ?? false;
   }, [gardeFouVisible]);
 
@@ -91,8 +97,9 @@ export function SpIndemniteWidget({
         ? donneesExtraites
         : { situation_actuelle: donneesExtraites },
       spConfigResiliation,
+      referenceDate,
     );
-  }, [donneesExtraites, spConfigResiliation]);
+  }, [donneesExtraites, spConfigResiliation, referenceDate]);
 
   // Quand aucune question d'indemnité n'existe dans le template, on stocke la
   // valeur sous l'id synthétique `sp_total_indemnites`, repris par
@@ -170,7 +177,7 @@ export function SpIndemniteWidget({
             </div>
             <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-amber-50 px-4 py-4">
               <p className="text-[11px] text-amber-800 text-center leading-snug">
-                Pensez à renseigner l'indemnité de résiliation avant de continuer.
+                Pensez à renseigner l&apos;indemnité de résiliation avant de continuer.
               </p>
               <button
                 type="button"

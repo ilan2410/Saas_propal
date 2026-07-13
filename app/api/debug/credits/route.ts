@@ -10,10 +10,14 @@ export async function GET() {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Non authentifié',
-        userError: userError?.message 
+        userError: userError?.message
       }, { status: 401 });
+    }
+
+    if (user.app_metadata?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     // Essayer de récupérer l'organisation avec le client normal (RLS)
@@ -45,7 +49,7 @@ export async function GET() {
       user: {
         id: user.id,
         email: user.email,
-        role: user.user_metadata?.role,
+        role: user.app_metadata?.role,
       },
       withRLS: {
         data: orgWithRLS,

@@ -20,7 +20,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     const isGlobalOperation = is_global === true && role === 'admin';
 
     let query = supabase
@@ -73,7 +73,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     const isGlobalOperation = is_global === true && role === 'admin';
 
     let query = supabase

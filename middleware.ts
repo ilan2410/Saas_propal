@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Vérifier le rôle admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     if (role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }

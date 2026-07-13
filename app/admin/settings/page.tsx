@@ -17,7 +17,7 @@ export default async function AdminSettingsPage() {
     redirect('/login');
   }
 
-  if (user.user_metadata?.role !== 'admin') {
+  if (user.app_metadata?.role !== 'admin') {
     redirect('/dashboard');
   }
 

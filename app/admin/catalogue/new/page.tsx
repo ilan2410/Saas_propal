@@ -20,7 +20,7 @@ export default async function NewAdminProductPage({
   }
 
   // Vérifier le rôle admin
-  const role = user.user_metadata?.role;
+  const role = user.app_metadata?.role;
   if (role !== 'admin') {
     redirect('/dashboard');
   }

@@ -8,6 +8,7 @@ import type {
   SpQuestion,
   SpQuestionReponse,
   SpPreferencesProduits,
+  SuggestionsSpCompletes,
 } from '@/types';
 import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-generator';
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       nom_client,
       extracted_data,
       filled_data,
+      suggestions_sp_completes,
       sp_reponses,
       organization_id,
       organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
@@ -123,6 +125,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   // 7. Calculer le panier SP en temps réel
   const spPreferencesProduits = isRecord(templateFileCfg.sp_preferences_produits) ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits) : undefined;
   const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, undefined, spPreferencesProduits);
+  const storedSpCompletes = (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
+  const storedIndemnites = storedSpCompletes?.sp_indemnites_calcul?.montant_retenu;
+  if (typeof storedIndemnites === 'number' && Number.isFinite(storedIndemnites)) {
+    cart.indemnites = storedIndemnites;
+  }
 
   // 8. Construire les données d'export
   const exportData = buildExportSaSpData({

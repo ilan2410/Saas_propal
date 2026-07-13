@@ -1121,6 +1121,7 @@ export async function POST(request: NextRequest) {
     if (montantIndemnites !== null) {
       suggestionsSpCompletes.sp_total_indemnites = formatEuro(montantIndemnites);
     }
+    suggestionsSpCompletes.sp_indemnites_calcul = resiliationEstimation;
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
       const updatePayload: UnknownRecord = { suggestions_sp_completes: suggestionsSpCompletes };

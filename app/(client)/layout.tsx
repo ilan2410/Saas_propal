@@ -21,7 +21,7 @@ export default async function ClientLayout({
   }
 
   // Vérifier que ce n'est pas un admin
-  const role = user.user_metadata?.role;
+  const role = user.app_metadata?.role;
   if (role === 'admin') {
     redirect('/admin/dashboard');
   }

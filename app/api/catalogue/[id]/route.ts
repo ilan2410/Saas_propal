@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { is_global, ...updates } = body ?? {};
 
     // Vérifier si l'utilisateur est admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     // Si is_global est true et que l'utilisateur est admin, on modifie un produit global (organization_id = null)
     // Sinon, on modifie un produit pour l'organisation de l'utilisateur
     const isGlobalProduct = is_global === true && role === 'admin';
@@ -68,7 +68,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({})); // Body optionnel
 
     // Vérifier si l'utilisateur est admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     // Si is_global est true et que l'utilisateur est admin, on supprime un produit global (organization_id = null)
     // Sinon, on supprime un produit pour l'organisation de l'utilisateur
     const isGlobalProduct = body?.is_global === true && role === 'admin';

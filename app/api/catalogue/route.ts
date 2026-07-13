@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Vérifier si l'utilisateur est admin
-    const role = user.user_metadata?.role;
+    const role = user.app_metadata?.role;
     // Si isAdminRequest est true et que l'utilisateur est admin, on crée un produit global (organization_id = null)
     // Sinon, on crée un produit pour l'organisation de l'utilisateur
     const isGlobalProduct = body?.is_global === true && role === 'admin';
