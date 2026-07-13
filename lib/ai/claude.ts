@@ -204,7 +204,6 @@ export async function extractDataFromDocuments(options: {
     const message = await anthropic.messages.create({
       model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
       max_tokens: 8192,
-      temperature: 0,
       messages: [
         {
           role: 'user',
