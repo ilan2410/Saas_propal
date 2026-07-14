@@ -897,6 +897,10 @@ export function estimateResiliationFromSA(
 
   const hypotheses: SpResiliationHypothese[] = [
     { label: 'Date de référence', valeur: referenceDateLabel },
+    ...engagementEvidences.map((engagement) => ({
+      label: `Fin d'engagement — ${engagement.libelle}`,
+      valeur: engagement.endDateLabel,
+    })),
     { label: 'Préavis retenu', valeur: `${preavisMois} mois` },
     {
       label: 'Éléments inclus',
