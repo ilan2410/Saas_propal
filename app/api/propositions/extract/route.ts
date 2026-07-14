@@ -73,6 +73,29 @@ function sumArrayValues(items: unknown, keys: string[]): number | null {
   return total > 0 ? Math.round(total * 100) / 100 : null;
 }
 
+const TVA_RATE = 1.2;
+
+/**
+ * Les totaux "source" doivent toujours être affichés en HT. Le document
+ * source peut ne fournir qu'un montant TTC (precision extraite par l'IA) :
+ * dans ce cas on convertit au taux de TVA standard (20%) pour rester
+ * cohérent avec les montants calculés à partir des lignes (considérés HT).
+ * Si la précision est inconnue ("non_precise"), on ne peut pas garantir
+ * qu'il s'agit de HT mais on l'affiche tel quel faute de mieux.
+ */
+function normalizeTotauxToHT(totaux: Record<string, unknown>): Record<string, unknown> {
+  const precision = typeof totaux.precision === 'string' ? totaux.precision.trim().toUpperCase() : '';
+  if (precision !== 'TTC') return totaux;
+
+  const next = { ...totaux };
+  for (const key of ['total_abonnements_source', 'total_locations_source', 'total_solution_actuelle_source']) {
+    const ttc = toNumber(next[key]);
+    if (ttc > 0) next[key] = Math.round((ttc / TVA_RATE) * 100) / 100;
+  }
+  next.precision = 'HT';
+  return next;
+}
+
 function normalizeAmountText(value: string): number | null {
   const match = value.match(/(-?\d+(?:[\s.,]\d{2})?)/);
   if (!match) return null;
@@ -152,7 +175,7 @@ function enrichSituationActuelle(
   enrichDateArray('lignes');
   enrichDateArray('engagements');
 
-  const totaux = isRecord(situation.totaux) ? { ...situation.totaux } : {};
+  const totaux = normalizeTotauxToHT(isRecord(situation.totaux) ? { ...situation.totaux } : {});
   const totalAbonnementsCalcule = sumArrayValues(situation.abonnements, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
   const totalLocationsCalcule = sumArrayValues(situation.locations, ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif']);
   const totalLignesCalcule = sumArrayValues(situation.lignes, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);

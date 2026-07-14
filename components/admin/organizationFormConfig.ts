@@ -981,6 +981,7 @@ export const SECTEURS = [
 // Modèles Claude disponibles
 export const CLAUDE_MODELS = [
   { value: 'claude-sonnet-4-6', label: 'Claude 4.6 Sonnet (Recommandé)' },
+  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 (Nouveau)' },
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude 4.5 Sonnet' },
   { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
   { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },

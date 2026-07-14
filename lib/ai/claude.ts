@@ -8,6 +8,23 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
+// Modèles qui rejettent un `temperature` non-défaut (400 Bad Request)
+const MODELS_WITHOUT_CUSTOM_TEMPERATURE = new Set([
+  'claude-sonnet-5',
+  'claude-opus-4-8',
+  'claude-opus-4-7',
+]);
+
+// Modèles qui activent le "thinking" adaptatif par défaut quand `thinking` n'est pas précisé.
+// Ce thinking consomme une partie du budget max_tokens et peut tronquer la réponse JSON
+// attendue pour l'extraction ; on le désactive explicitement pour retrouver le comportement
+// déterministe précédent (extraction sans raisonnement).
+const MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT = new Set([
+  'claude-sonnet-5',
+  'claude-fable-5',
+  'claude-mythos-5',
+]);
+
 /**
  * Extrait les données de documents avec Claude AI
  * @param documentPaths - Chemins des documents à analyser
@@ -46,6 +63,9 @@ export async function extractWithClaude(
     const message = await anthropic.messages.create({
       model: claudeModel,
       max_tokens: 8192,
+      ...(MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT.has(claudeModel)
+        ? { thinking: { type: 'disabled' as const } }
+        : {}),
       messages: [
         {
           role: 'user',
@@ -60,9 +80,9 @@ export async function extractWithClaude(
       ],
     });
 
-    // Parser la réponse
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
+    // Parser la réponse (ignore les blocs "thinking" éventuels, ne prend que le texte)
+    const textBlock = message.content.find((block) => block.type === 'text');
+    const responseText = textBlock ? textBlock.text : '';
 
     // Nettoyer et parser le JSON
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -201,10 +221,15 @@ export async function extractDataFromDocuments(options: {
   console.log(`📝 Nombre de champs à extraire: ${champs_actifs.length}`);
   
   try {
+    const modelToUse = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+
     const message = await anthropic.messages.create({
-      model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
+      model: modelToUse,
       max_tokens: 8192,
-      temperature: 0,
+      ...(MODELS_WITHOUT_CUSTOM_TEMPERATURE.has(modelToUse) ? {} : { temperature: 0 }),
+      ...(MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT.has(modelToUse)
+        ? { thinking: { type: 'disabled' as const } }
+        : {}),
       messages: [
         {
           role: 'user',
@@ -222,9 +247,9 @@ export async function extractDataFromDocuments(options: {
     console.log(`✅ Réponse reçue de Claude`);
     console.log(`📊 Tokens utilisés - Input: ${message.usage.input_tokens}, Output: ${message.usage.output_tokens}`);
 
-    // Parser la réponse
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
+    // Parser la réponse (ignore les blocs "thinking" éventuels, ne prend que le texte)
+    const textBlock = message.content.find((block) => block.type === 'text');
+    const responseText = textBlock ? textBlock.text : '';
 
     console.log(`📄 Longueur de la réponse: ${responseText.length} caractères`);
 
