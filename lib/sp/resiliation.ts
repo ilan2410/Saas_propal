@@ -1,4 +1,5 @@
 import type { SpConfigResiliation, SpConfigResiliationElements } from '@/types';
+import { calculateSaCartSummary } from './calculateSaCart';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -103,6 +104,7 @@ interface MonthlyItemEvidence {
   operateur?: string;
   site?: string;
   montant: number;
+  quantite: number;
   endDate: Date | null;
   endDateLabel?: string;
   groupId: string;
@@ -149,6 +151,11 @@ function normalizeInteger(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : null;
+}
+
+function normalizeQuantity(value: unknown): number {
+  const quantity = normalizeMoney(value);
+  return quantity !== null && quantity > 0 ? quantity : 1;
 }
 
 function parseFrenchDate(value: unknown): Date | null {
@@ -231,6 +238,35 @@ function selectMonthlyItemsForResiliation(
   return abonnementPrimary
     ? [...filteredAbonnements, ...locationItems]
     : [...lineItems, ...locationItems];
+}
+
+function reconcileSubscriptionItems(
+  items: MonthlyItemEvidence[],
+  canonicalTotal: number,
+): MonthlyItemEvidence[] {
+  const subscriptionItems = items.filter((item) => item.groupId.startsWith('abonnement:'));
+  if (subscriptionItems.length === 0 || canonicalTotal <= 0) return items;
+
+  const currentTotal = subscriptionItems.reduce((sum, item) => sum + item.montant, 0);
+  if (Math.abs(currentTotal - canonicalTotal) <= 0.005) return items;
+
+  const adjusted = items.map((item) => ({ ...item }));
+  for (const item of subscriptionItems) {
+    if (item.quantite <= 1) continue;
+    const candidateTotal = currentTotal + (item.montant * item.quantite - item.montant);
+    if (Math.abs(candidateTotal - canonicalTotal) <= 0.005) {
+      const target = adjusted[items.indexOf(item)];
+      if (target) target.montant = roundMoney(item.montant * item.quantite);
+      return adjusted;
+    }
+  }
+
+  const residual = roundMoney(canonicalTotal - currentTotal);
+  if (Math.abs(residual) > 0.005) {
+    const target = adjusted.find((item) => item.groupId.startsWith('abonnement:'));
+    if (target) target.montant = roundMoney(target.montant + residual);
+  }
+  return adjusted;
 }
 
 function normalizeComparableText(value: string | null | undefined): string | undefined {
@@ -410,6 +446,12 @@ function collectMonthlyItems(
       .find((value): value is number => value !== null);
     if (amount === undefined) return;
     const contractMeta = getContractMetadata(item);
+    const quantite = normalizeQuantity(
+      item.quantite
+      ?? item.quantite_mensuelle
+      ?? item.nombre
+      ?? item.qte,
+    );
 
     let label = 'Service';
     let contexte = '';
@@ -462,6 +504,7 @@ function collectMonthlyItems(
       operateur: contractMeta.operateur,
       site: contractMeta.site,
       montant: amount,
+      quantite,
       endDate: pickedDate.date,
       endDateLabel: pickedDate.label,
       groupId,
@@ -592,6 +635,7 @@ function buildGroupCalculations(
           label: item.label,
           valeur: `${formatMoney(item.montant)} / mois`,
           contexte: joinLabelParts([
+            item.quantite > 1 ? `quantité x${item.quantite}` : null,
             item.contractLabel,
             item.contexte,
             item.endDateLabel ? `fin d'engagement ${item.endDateLabel}` : null,
@@ -714,14 +758,16 @@ export function estimateResiliationFromSA(
     ? collectMonthlyItems(situation.locations, 'location', ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif'])
     : [];
   const monthlyItems = selectMonthlyItemsForResiliation(lineItems, abonnementItems, locationItems);
+  const saCart = calculateSaCartSummary({ situation_actuelle: situation });
+  const reconciledMonthlyItems = reconcileSubscriptionItems(monthlyItems, saCart.abonnements);
 
   const baseMensuelleSource = normalizeMoney(indemnites.base_mensuelle_source);
-  const baseMensuelleCalculee = monthlyItems.length > 0
-    ? roundMoney(monthlyItems.reduce((sum, item) => sum + item.montant, 0))
+  const baseMensuelleCalculee = reconciledMonthlyItems.length > 0
+    ? roundMoney(reconciledMonthlyItems.reduce((sum, item) => sum + item.montant, 0))
     : null;
   const baseMensuelle = baseMensuelleCalculee ?? baseMensuelleSource;
 
-  const groupesCalcul = buildGroupCalculations(monthlyItems, engagementEvidences, referenceDate, moisRestants, preavisMois);
+  const groupesCalcul = buildGroupCalculations(reconciledMonthlyItems, engagementEvidences, referenceDate, moisRestants, preavisMois);
   const groupedMensualitesAvailable = groupesCalcul.some((group) => group.sous_total !== null);
   const groupedMensualites = groupedMensualitesAvailable
     ? roundMoney(

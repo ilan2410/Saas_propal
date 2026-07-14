@@ -203,7 +203,8 @@ export async function extractDataFromDocuments(options: {
   try {
     const message = await anthropic.messages.create({
       model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
-      max_tokens: 32000,
+      max_tokens: 8192,
+      temperature: 0,
       messages: [
         {
           role: 'user',
@@ -220,14 +221,6 @@ export async function extractDataFromDocuments(options: {
 
     console.log(`✅ Réponse reçue de Claude`);
     console.log(`📊 Tokens utilisés - Input: ${message.usage.input_tokens}, Output: ${message.usage.output_tokens}`);
-    console.log(`🛑 Raison d'arrêt: ${message.stop_reason}`);
-
-    // Détecter une réponse tronquée (limite de tokens atteinte) => JSON incomplet
-    if (message.stop_reason === 'max_tokens') {
-      throw new Error(
-        "La réponse de Claude a été tronquée (limite de tokens atteinte). Le JSON est incomplet. Réduisez le nombre de champs à extraire ou augmentez max_tokens."
-      );
-    }
 
     // Parser la réponse
     const responseText =
