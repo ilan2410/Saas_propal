@@ -132,6 +132,16 @@ export async function POST(request: NextRequest) {
         setup_future_usage: 'off_session',
         description: `Recharge de crédits – ${creditsBase}€${bonus > 0 ? ` + ${bonus}% bonus (${creditsBonus}€)` : ''} (${creditsTotal}€ de crédits ajoutés)`,
       },
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Recharge de crédits – ${creditsBase}€${bonus > 0 ? ` + ${bonus}% bonus (${creditsBonus}€)` : ''} (${creditsTotal}€ de crédits ajoutés)`,
+          metadata: {
+            source: 'saas_propal_credits',
+            organization_id: organization.id,
+          },
+        },
+      },
       metadata: {
         source: 'saas_propal_credits',
         organization_id: organization.id,
