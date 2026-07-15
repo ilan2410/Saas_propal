@@ -67,9 +67,6 @@ export async function POST(request: NextRequest) {
         }
 
         const organizationId = metadata.organization_id;
-        const montant = parseFloat(metadata.montant);
-        const creditsBase = parseFloat(metadata.credits_base);
-        const creditsBonus = parseFloat(metadata.credits_bonus);
         const creditsTotal = parseFloat(metadata.credits_total);
 
         const stripeCustomerId =
@@ -145,54 +142,6 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`Added ${creditsTotal}€ credits to organization ${organizationId}`);
-
-        // Génère et envoie la facture Stripe correspondant à la recharge
-        if (stripeCustomerId) {
-          try {
-            const description = `Recharge de crédits – ${creditsBase}€${
-              creditsBonus > 0 ? ` + ${creditsBonus}€ de bonus` : ''
-            } (${creditsTotal}€ de crédits ajoutés)`;
-
-            const invoice = await stripe.invoices.create({
-              customer: stripeCustomerId,
-              collection_method: 'send_invoice',
-              days_until_due: 0,
-              auto_advance: false,
-              ...(process.env.STRIPE_INVOICE_TEMPLATE_ID
-                ? { rendering: { template: process.env.STRIPE_INVOICE_TEMPLATE_ID } }
-                : {}),
-              metadata: {
-                source: 'saas_propal_credits',
-                organization_id: organizationId,
-                stripe_session_id: session.id,
-              },
-            });
-
-            await stripe.invoiceItems.create({
-              customer: stripeCustomerId,
-              invoice: invoice.id,
-              currency: 'eur',
-              amount: Math.round(montant * 100),
-              description,
-            });
-
-            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
-            await stripe.invoices.pay(finalizedInvoice.id, { paid_out_of_band: true });
-            await stripe.invoices.sendInvoice(finalizedInvoice.id);
-
-            await supabaseAdmin
-              .from('stripe_transactions')
-              .update({ stripe_invoice_id: finalizedInvoice.id })
-              .eq('stripe_session_id', session.id);
-
-            console.log(`Invoice ${finalizedInvoice.id} sent for organization ${organizationId}`);
-          } catch (invoiceError) {
-            // Les crédits ont déjà été ajoutés : une erreur de facturation ne doit
-            // pas faire échouer le webhook (Stripe le rejouerait sinon).
-            console.error('Error creating/sending invoice:', invoiceError);
-          }
-        }
-
         break;
       }
 
