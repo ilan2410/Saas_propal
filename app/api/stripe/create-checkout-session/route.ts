@@ -30,9 +30,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { montant } = body;
 
-    if (!montant || montant < 10 || montant > 10000) {
+    if (!montant || montant < 1 || montant > 10000) { // TODO: remettre min à 10€ après test
       return NextResponse.json(
-        { error: 'Montant invalide (min: 10€, max: 10000€)' },
+        { error: 'Montant invalide (min: 1€, max: 10000€)' },
         { status: 400 }
       );
     }
@@ -131,16 +131,6 @@ export async function POST(request: NextRequest) {
       payment_intent_data: {
         setup_future_usage: 'off_session',
         description: `Recharge de crédits – ${creditsBase}€${bonus > 0 ? ` + ${bonus}% bonus (${creditsBonus}€)` : ''} (${creditsTotal}€ de crédits ajoutés)`,
-      },
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: `Recharge de crédits – ${creditsBase}€${bonus > 0 ? ` + ${bonus}% bonus (${creditsBonus}€)` : ''} (${creditsTotal}€ de crédits ajoutés)`,
-          metadata: {
-            source: 'saas_propal_credits',
-            organization_id: organization.id,
-          },
-        },
       },
       metadata: {
         source: 'saas_propal_credits',

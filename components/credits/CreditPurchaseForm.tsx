@@ -100,8 +100,8 @@ export function CreditPurchaseForm({ organizationId }: Props) {
 
   const handleCustomPurchase = () => {
     const montant = parseFloat(customAmount);
-    if (isNaN(montant) || montant < 10) {
-      alert('Le montant minimum est 10€');
+    if (isNaN(montant) || montant < 1) { // TODO: remettre min à 10€ après test
+      alert('Le montant minimum est 1€');
       return;
     }
     if (montant > 10000) {
@@ -116,8 +116,8 @@ export function CreditPurchaseForm({ organizationId }: Props) {
   };
 
   const customMontantParsed = customAmount ? parseFloat(customAmount) : NaN;
-  const customIsValid =
-    !isNaN(customMontantParsed) && customMontantParsed >= 10 && customMontantParsed <= 10000;
+  const customIsValid = // TODO: remettre min à 10 après test
+    !isNaN(customMontantParsed) && customMontantParsed >= 1 && customMontantParsed <= 10000;
   const customBonus = customIsValid ? calculateBonus(customMontantParsed) : 0;
   const customCreditsTotal =
     customIsValid ? calculateCredits(customMontantParsed, customBonus) : 0;
@@ -256,7 +256,7 @@ export function CreditPurchaseForm({ organizationId }: Props) {
                   value={customAmount}
                   onChange={(e) => setCustomAmount(e.target.value)}
                   placeholder="100"
-                  min="10"
+                  min="1" /* TODO: remettre à 10 après test */
                   max="10000"
                   step="10"
                   className="w-full rounded-xl border-2 border-gray-300 bg-white px-5 py-3.5 pr-12 text-base font-medium outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
