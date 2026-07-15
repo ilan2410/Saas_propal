@@ -52,3 +52,6 @@ prompt.md
 
 # fichier md
 *.md
+
+# MCP config (contient des clés API en clair)
+/.mcp.json

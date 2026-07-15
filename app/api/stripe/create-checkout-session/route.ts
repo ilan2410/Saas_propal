@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
         setup_future_usage: 'off_session',
       },
       metadata: {
+        source: 'saas_propal_credits',
         organization_id: organization.id,
         montant: montant.toString(),
         credits_base: creditsBase.toString(),
