@@ -30,9 +30,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { montant } = body;
 
-    if (!montant || montant < 1 || montant > 10000) { // TODO: remettre min à 10€ après test
+    if (!montant || montant < 10 || montant > 10000) {
       return NextResponse.json(
-        { error: 'Montant invalide (min: 1€, max: 10000€)' },
+        { error: 'Montant invalide (min: 10€, max: 10000€)' },
         { status: 400 }
       );
     }

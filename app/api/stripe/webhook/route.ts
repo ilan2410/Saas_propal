@@ -142,6 +142,26 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`Added ${creditsTotal}€ credits to organization ${organizationId}`);
+
+        // Définit la carte utilisée comme moyen de paiement par défaut du client,
+        // pour que l'auto-recharge cible toujours la dernière carte utilisée de
+        // façon explicite plutôt que de dépendre de l'ordre de la liste Stripe.
+        if (stripeCustomerId && session.payment_intent) {
+          try {
+            const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent as string);
+            const paymentMethodId =
+              typeof paymentIntent.payment_method === 'string' ? paymentIntent.payment_method : null;
+
+            if (paymentMethodId) {
+              await stripe.customers.update(stripeCustomerId, {
+                invoice_settings: { default_payment_method: paymentMethodId },
+              });
+            }
+          } catch (defaultPaymentMethodError) {
+            console.error('Error setting default payment method:', defaultPaymentMethodError);
+          }
+        }
+
         break;
       }
 
