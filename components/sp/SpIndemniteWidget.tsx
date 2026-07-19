@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, X } from 'lucide-react';
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, X, Calculator } from 'lucide-react';
 import type {
   SpConfigResiliation,
   SpQuestion,
@@ -44,6 +44,19 @@ function formatResiliationRemainingMonths(
   return `${moisRestants} mois restants`;
 }
 
+function monthsBetweenNowAnd(dateStr: string): number | null {
+  if (!dateStr) return null;
+  const end = new Date(dateStr);
+  if (!Number.isFinite(end.getTime())) return null;
+  const now = new Date();
+  return (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+}
+
+function parseNum(value: string): number {
+  const n = Number(value.replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
 function getResiliationFiabiliteClasses(fiabilite: string): string {
   switch (fiabilite) {
     case 'forte':
@@ -69,8 +82,17 @@ export function SpIndemniteWidget({
 }: SpIndemniteWidgetProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const prevVisible = useRef(false);
+
+  const [calcDateFin, setCalcDateFin] = useState('');
+  const [calcPreavis, setCalcPreavis] = useState('3');
+  const [calcMontantMensuel, setCalcMontantMensuel] = useState('');
+  const [calcFraisFixes, setCalcFraisFixes] = useState('');
+  const [calcPenalites, setCalcPenalites] = useState('');
+  const [calcFraisMateriel, setCalcFraisMateriel] = useState('');
+  const [calcServicesAnnexes, setCalcServicesAnnexes] = useState('');
 
   useEffect(() => {
     if (gardeFouVisible && !prevVisible.current) {
@@ -119,6 +141,18 @@ export function SpIndemniteWidget({
   const groupedCount = estimation ? estimation.groupes_calcul.filter((g) => g.sous_total !== null).length : 0;
 
   const showGardeFou = gardeFouActif && gardeFouVisible && !dismissed;
+
+  const calcMoisRestants = calcDateFin !== ''
+    ? Math.max(0, (monthsBetweenNowAnd(calcDateFin) ?? 0) - parseNum(calcPreavis))
+    : null;
+  const calcMensualites = calcMoisRestants !== null ? calcMoisRestants * parseNum(calcMontantMensuel) : 0;
+  const calcTotal =
+    calcMensualites + parseNum(calcFraisFixes) + parseNum(calcPenalites) + parseNum(calcFraisMateriel) + parseNum(calcServicesAnnexes);
+
+  const handleReporterMontant = () => {
+    handleChange(String(Math.round(calcTotal)));
+    setShowCalculator(false);
+  };
 
   return (
     <>
@@ -224,16 +258,27 @@ export function SpIndemniteWidget({
               <span className="text-xs text-gray-500">€</span>
             </div>
 
-            {/* Lien détail */}
-            {estimation && (
+            {/* Lien détail + calculette */}
+            <div className="flex items-center justify-between gap-2">
+              {estimation ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDetail(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                >
+                  Plus de détail →
+                </button>
+              ) : <span />}
               <button
                 type="button"
-                onClick={() => setShowDetail(true)}
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                onClick={() => setShowCalculator(true)}
+                title="Calculette indemnité de résiliation"
+                aria-label="Calculette indemnité de résiliation"
+                className="shrink-0 flex items-center justify-center h-6 w-6 rounded border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
               >
-                Plus de détail →
+                <Calculator className="h-3.5 w-3.5" />
               </button>
-            )}
+            </div>
           </div>
         )}
       </div>
@@ -383,6 +428,113 @@ export function SpIndemniteWidget({
             )}
           </div>
         )}
+      </DraggablePanel>
+
+      {/* Popup calculette déplaçable */}
+      <DraggablePanel
+        isOpen={showCalculator}
+        onClose={() => setShowCalculator(false)}
+        title="Calculette — Indemnité de résiliation"
+        defaultWidth={340}
+        defaultHeight={520}
+      >
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Date de fin d&apos;engagement</label>
+            <input
+              type="date"
+              value={calcDateFin}
+              onChange={(e) => setCalcDateFin(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Préavis (mois)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcPreavis}
+              onChange={(e) => setCalcPreavis(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Montant mensuel actuel (€)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcMontantMensuel}
+              onChange={(e) => setCalcMontantMensuel(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Frais fixes de résiliation (€)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcFraisFixes}
+              onChange={(e) => setCalcFraisFixes(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Pénalités (€)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcPenalites}
+              onChange={(e) => setCalcPenalites(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Frais matériel (€)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcFraisMateriel}
+              onChange={(e) => setCalcFraisMateriel(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-gray-500">Services annexes (€)</label>
+            <input
+              type="number"
+              min="0"
+              value={calcServicesAnnexes}
+              onChange={(e) => setCalcServicesAnnexes(e.target.value)}
+              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
+            />
+          </div>
+
+          {calcMoisRestants !== null && (
+            <p className="text-[11px] text-gray-500">
+              Mois restants après préavis : <span className="font-medium text-gray-700">{calcMoisRestants}</span>
+            </p>
+          )}
+
+          <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] text-amber-700">Total calculé</p>
+              <p className="text-lg font-semibold text-amber-950">{calcTotal.toFixed(2)} €</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleReporterMontant}
+              className="shrink-0 px-3 py-1.5 rounded-md bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors"
+            >
+              Reporter le montant
+            </button>
+          </div>
+        </div>
       </DraggablePanel>
     </>
   );

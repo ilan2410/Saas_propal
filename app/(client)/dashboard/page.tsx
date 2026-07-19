@@ -21,6 +21,42 @@ import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding
 
 export const revalidate = 0;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getPropositionClientName(proposition: Record<string, unknown>): string {
+  const data = proposition.extracted_data || proposition.donnees_extraites;
+  if (isRecord(data)) {
+    if (isRecord(data.client)) {
+      if (typeof data.client.nom === 'string' && data.client.nom) return data.client.nom;
+      if (typeof data.client.name === 'string' && data.client.name) return data.client.name;
+    }
+
+    if (typeof data['client.nom'] === 'string' && data['client.nom']) return data['client.nom'];
+
+    const clientPrenom = data['client.prenom'];
+    const clientNom = data['client.nom'];
+    if (typeof clientPrenom === 'string' && clientPrenom && typeof clientNom === 'string' && clientNom) {
+      return `${clientPrenom} ${clientNom}`;
+    }
+
+    if (typeof data.nom_client === 'string' && data.nom_client) return data.nom_client;
+    if (typeof data.client_nom === 'string' && data.client_nom) return data.client_nom;
+
+    for (const [key, value] of Object.entries(data)) {
+      if (key.toLowerCase().includes('client') && isRecord(value)) {
+        if (typeof value.nom === 'string' && value.nom) return value.nom;
+        if (typeof value.name === 'string' && value.name) return value.name;
+      }
+    }
+  }
+
+  return typeof proposition.nom_client === 'string' && proposition.nom_client
+    ? proposition.nom_client
+    : 'Sans nom';
+}
+
 export default async function ClientDashboard() {
   const supabase = await createClient();
 
@@ -427,16 +463,18 @@ export default async function ClientDashboard() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                  {propositions.map((prop) => (
+                  {propositions.map((prop) => {
+                    const clientName = getPropositionClientName(prop as Record<string, unknown>);
+                    return (
                     <tr key={prop.id} className="hover:bg-gray-50 transition-colors group">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-semibold shadow-sm">
-                            {(prop.nom_client || 'SC')[0].toUpperCase()}
+                            {clientName[0].toUpperCase()}
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-900">
-                              {prop.nom_client || 'Sans nom'}
+                              {clientName}
                             </p>
                             <p className="text-xs text-gray-500">
                               {prop.email_client || 'Pas d\'email'}
@@ -482,7 +520,8 @@ export default async function ClientDashboard() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
