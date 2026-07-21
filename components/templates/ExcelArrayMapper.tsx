@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 
@@ -10,6 +10,7 @@ interface SheetInfo {
   cols: number;
   cells: { [key: string]: string };
   preview: { ref: string; value: string }[];
+  merges?: string[];
 }
 
 export interface ArrayMapping {
@@ -44,6 +45,28 @@ function getColumnName(colIndex: number): string {
 // Extraire la colonne d'une référence de cellule (ex: "B5" -> "B")
 function getColumnFromRef(ref: string): string {
   return ref.replace(/[0-9]/g, '');
+}
+
+// Convertir un nom de colonne Excel en index 0-based (ex: "A" -> 0, "B" -> 1)
+function getColumnIndex(colName: string): number {
+  let index = 0;
+  for (let i = 0; i < colName.length; i++) {
+    index = index * 26 + (colName.charCodeAt(i) - 64);
+  }
+  return index - 1;
+}
+
+// Parser une plage de fusion (ex: "A1:E1") en indices de cellules
+function parseMergeRange(range: string) {
+  const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+  if (!match) return null;
+  const [, startColStr, startRowStr, endColStr, endRowStr] = match;
+  return {
+    startCol: getColumnIndex(startColStr),
+    startRow: parseInt(startRowStr, 10),
+    endCol: getColumnIndex(endColStr),
+    endRow: parseInt(endRowStr, 10),
+  };
 }
 
 export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappings, onMappingsChange }: Props) {
@@ -116,8 +139,31 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     : null;
 
   // Dimensions de la grille
-  const maxRows = selectedSheet ? Math.min(selectedSheet.rows || 50, 50) : 30;
+  const maxRows = selectedSheet ? (selectedSheet.rows || 50) : 30;
   const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 26) : 10;
+
+  // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
+  const mergeInfo = useMemo(() => {
+    const spans = new Map<string, { rowSpan: number; colSpan: number }>();
+    const covered = new Set<string>();
+
+    (selectedSheet?.merges || []).forEach((range) => {
+      const parsed = parseMergeRange(range);
+      if (!parsed) return;
+      const { startCol, startRow, endCol, endRow } = parsed;
+      const topLeftRef = `${getColumnName(startCol)}${startRow}`;
+      spans.set(topLeftRef, { rowSpan: endRow - startRow + 1, colSpan: endCol - startCol + 1 });
+
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          const ref = `${getColumnName(c)}${r}`;
+          if (ref !== topLeftRef) covered.add(ref);
+        }
+      }
+    });
+
+    return { spans, covered };
+  }, [selectedSheet]);
 
   // Mapper un champ à une colonne (via clic sur une cellule)
   const handleCellClick = (cellRef: string) => {
@@ -348,7 +394,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: Math.min(maxRows, 20) }, (_, rowIdx) => {
+                    {Array.from({ length: maxRows }, (_, rowIdx) => {
                       const rowNum = rowIdx + 1;
                       const isStartRow = rowNum === (editingMapping.startRow || 2);
 
@@ -363,17 +409,24 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                           {Array.from({ length: maxCols }, (_, colIdx) => {
                             const colName = getColumnName(colIdx);
                             const ref = `${colName}${rowNum}`;
+
+                            // Cellule couverte par une fusion (déjà affichée par la cellule maîtresse) : ne pas rendre
+                            if (mergeInfo.covered.has(ref)) return null;
+
                             const value = selectedSheet.cells[ref] || '';
-                            
+                            const span = mergeInfo.spans.get(ref);
+
                             // Vérifier si cette colonne est mappée
                             const mappedToFieldEntry = Object.entries(editingMapping.columnMapping || {}).find(
                               ([, col]) => col === colName
                             );
                             const mappedToField = mappedToFieldEntry?.[0];
-                            
+
                             return (
                               <td
                                 key={colIdx}
+                                rowSpan={span?.rowSpan}
+                                colSpan={span?.colSpan}
                                 onClick={() => selectedField && handleCellClick(ref)}
                                 className={`border border-gray-300 px-2 py-1 truncate max-w-24 transition-colors text-xs ${
                                   mappedToField

@@ -100,6 +100,12 @@ export async function POST(request: NextRequest) {
           maxCol = Math.max(maxCol, colNumber);
 
           if (cell.value !== null && cell.value !== undefined) {
+            // Les cellules fusionnées renvoient toutes la valeur de la cellule maîtresse
+            // (en haut à gauche) : on ne la stocke qu'une seule fois, sur cette cellule.
+            if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
+              return;
+            }
+
             const cellRef = `${getColumnName(colNumber)}${rowNumber}`;
             let value = '';
             
@@ -137,6 +143,7 @@ export async function POST(request: NextRequest) {
         cols: Math.max(maxCol, worksheet.columnCount || 0, 10),
         cells,
         preview,
+        merges: worksheet.model.merges || [],
       };
     });
 

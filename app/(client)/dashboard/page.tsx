@@ -360,7 +360,7 @@ export default async function ClientDashboard() {
             </div>
 
             {/* Alert crédits faibles */}
-            {(organization?.credits || 0) < 50 && (
+            {(organization?.credits || 0) < 20 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />

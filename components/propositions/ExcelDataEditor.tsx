@@ -14,6 +14,7 @@ interface SheetInfo {
   rows: number;
   cols: number;
   cells: { [key: string]: string };
+  merges?: string[];
 }
 
 interface SheetMapping {
@@ -49,6 +50,28 @@ function getColumnName(colIndex: number): string {
     index = Math.floor(index / 26) - 1;
   }
   return name;
+}
+
+// Convertir un nom de colonne Excel en index 0-based (ex: "A" -> 0, "B" -> 1)
+function getColumnIndex(colName: string): number {
+  let index = 0;
+  for (let i = 0; i < colName.length; i++) {
+    index = index * 26 + (colName.charCodeAt(i) - 64);
+  }
+  return index - 1;
+}
+
+// Parser une plage de fusion (ex: "A1:E1") en indices de cellules
+function parseMergeRange(range: string) {
+  const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+  if (!match) return null;
+  const [, startColStr, startRowStr, endColStr, endRowStr] = match;
+  return {
+    startCol: getColumnIndex(startColStr),
+    startRow: parseInt(startRowStr, 10),
+    endCol: getColumnIndex(endColStr),
+    endRow: parseInt(endRowStr, 10),
+  };
 }
 
 // Formater le nom du champ pour l'affichage
@@ -374,6 +397,29 @@ export function ExcelDataEditor({
   const maxRows = activeSheet ? Math.min(activeSheet.rows || 50, 50) : 30;
   const maxCols = activeSheet ? Math.min(activeSheet.cols || 10, 15) : 10;
 
+  // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
+  const mergeInfo = useMemo(() => {
+    const spans = new Map<string, { rowSpan: number; colSpan: number }>();
+    const covered = new Set<string>();
+
+    (activeSheet?.merges || []).forEach((range) => {
+      const parsed = parseMergeRange(range);
+      if (!parsed) return;
+      const { startCol, startRow, endCol, endRow } = parsed;
+      const topLeftRef = `${getColumnName(startCol)}${startRow}`;
+      spans.set(topLeftRef, { rowSpan: endRow - startRow + 1, colSpan: endCol - startCol + 1 });
+
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          const ref = `${getColumnName(c)}${r}`;
+          if (ref !== topLeftRef) covered.add(ref);
+        }
+      }
+    });
+
+    return { spans, covered };
+  }, [activeSheet]);
+
   // Gérer l'édition d'une cellule
   const handleCellClick = (cellRef: string) => {
     const cellData = cellDataMap[cellRef];
@@ -530,19 +576,26 @@ export function ExcelDataEditor({
                     </td>
                     {Array.from({ length: maxCols }, (_, colIdx) => {
                       const ref = `${getColumnName(colIdx)}${rowIdx + 1}`;
+
+                      // Cellule couverte par une fusion (déjà affichée par la cellule maîtresse) : ne pas rendre
+                      if (mergeInfo.covered.has(ref)) return null;
+
                       const originalValue = activeSheet.cells[ref] || '';
                       const cellData = cellDataMap[ref];
                       const isMapped = !!cellData;
                       const hasValue = cellData?.value !== undefined && cellData?.value !== null && cellData?.value !== '';
                       const isEditing = editingCell === ref;
-                      
-                      const displayValue = isMapped 
+                      const span = mergeInfo.spans.get(ref);
+
+                      const displayValue = isMapped
                         ? (hasValue ? String(cellData.value) : '')
                         : originalValue;
 
                       return (
                         <td
                           key={colIdx}
+                          rowSpan={span?.rowSpan}
+                          colSpan={span?.colSpan}
                           onClick={() => isMapped && handleCellClick(ref)}
                           className={`border border-gray-300 px-2 py-2 transition-colors ${
                             isMapped

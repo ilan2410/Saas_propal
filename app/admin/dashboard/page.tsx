@@ -4,6 +4,34 @@ import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 
 export const revalidate = 0;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getPropositionName(proposition: Record<string, unknown>): string {
+  if (typeof proposition.generated_file_name === 'string' && proposition.generated_file_name.trim()) {
+    return proposition.generated_file_name;
+  }
+
+  if (typeof proposition.nom_client === 'string' && proposition.nom_client.trim()) {
+    return proposition.nom_client;
+  }
+
+  const data = proposition.extracted_data || proposition.donnees_extraites;
+  if (isRecord(data)) {
+    if (isRecord(data.client)) {
+      if (typeof data.client.nom === 'string' && data.client.nom.trim()) return data.client.nom;
+      if (typeof data.client.name === 'string' && data.client.name.trim()) return data.client.name;
+    }
+
+    if (typeof data['client.nom'] === 'string' && data['client.nom'].trim()) {
+      return data['client.nom'];
+    }
+  }
+
+  return 'Sans nom';
+}
+
 export default async function AdminDashboard() {
   // Utiliser le client admin
   const supabaseAdmin = createServiceClient(
@@ -59,6 +87,7 @@ export default async function AdminDashboard() {
   
   // Propositions récentes
   const recentPropositions = allPropositions?.slice(0, 10) || [];
+  const organizationsById = new Map((organizations || []).map((organization) => [organization.id, organization]));
 
   type RecentPropositionRow = { id: string } & Record<string, unknown>;
 
@@ -291,13 +320,15 @@ export default async function AdminDashboard() {
             <tbody className="bg-white divide-y divide-gray-200">
               {recentPropositions?.map((prop) => {
                 const p = prop as RecentPropositionRow;
+                const organization = organizationsById.get(String(p.organization_id ?? ''));
+                const organizationName = organization?.nom || organization?.email || 'Client inconnu';
                 return (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {String(p.organization_id ?? '')}
+                    {organizationName}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {typeof p.nom_client === 'string' && p.nom_client ? p.nom_client : 'Sans nom'}
+                    {getPropositionName(p)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
