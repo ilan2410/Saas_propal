@@ -593,13 +593,18 @@ export function Step2UploadTemplate({
         const jsPreviewExcel = mod.default;
         excelPreviewRef.current.innerHTML = '';
         previewer = jsPreviewExcel.init(excelPreviewRef.current);
-        const src: ArrayBuffer | File | string =
+        const src: Blob | File | string =
           excelPreviewMode === 'filled' && excelFilledBuffer
-            ? excelFilledBuffer.slice(0)
+            ? new Blob([excelFilledBuffer.slice(0)], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              })
             : (rawSource as File | string);
         await previewer.preview(src);
       } catch (e) {
-        if (!cancelled) setExcelRenderError(e instanceof Error ? e.message : "Impossible de générer l'aperçu Excel.");
+        const raw = typeof e === 'string' ? e : e && typeof e === 'object' ? JSON.stringify(e) : undefined;
+        const message = e instanceof Error ? e.message : raw || "Impossible de générer l'aperçu Excel.";
+        console.error('Erreur aperçu Excel:', e);
+        if (!cancelled) setExcelRenderError(message);
       } finally {
         if (!cancelled) setIsRenderingExcel(false);
       }

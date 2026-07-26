@@ -127,7 +127,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, undefined, spPreferencesProduits);
   const storedSpCompletes = (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;
   const storedIndemnites = storedSpCompletes?.sp_indemnites_calcul?.montant_retenu;
-  if (typeof storedIndemnites === 'number' && Number.isFinite(storedIndemnites)) {
+  // Ne retomber sur l'estimation automatique que si aucune valeur n'a été résolue
+  // (réponse SP manuelle absente) : la saisie de l'utilisateur reste prioritaire.
+  if (!(cart.indemnites > 0) && typeof storedIndemnites === 'number' && Number.isFinite(storedIndemnites)) {
     cart.indemnites = storedIndemnites;
   }
 

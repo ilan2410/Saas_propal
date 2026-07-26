@@ -1,0 +1,711 @@
+{
+  "situationActuelle": {
+    "sites": [
+      {
+        "nom": "Site principal - COLLEGE PRIVE SAINTE ANNE",
+        "adresse": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN"
+      }
+    ],
+    "lignes": [
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "fixe",
+        "numero_ligne": "02 96 27 47 21",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": null,
+        "tarif_brut_mensuel": null,
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "fixe",
+        "numero_ligne": "02 96 27 42 06",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": null,
+        "tarif_brut_mensuel": null,
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "fixe",
+        "numero_ligne": "02 96 27 42 08",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": null,
+        "tarif_brut_mensuel": null,
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "fixe",
+        "numero_ligne": "02 96 27 47 55",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": null,
+        "tarif_brut_mensuel": null,
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "fixe",
+        "numero_ligne": "02 96 27 51 25",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": null,
+        "tarif_brut_mensuel": null,
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "internet",
+        "numero_ligne": null,
+        "remise_mensuelle": "10.00",
+        "tarif_net_mensuel": "25.88",
+        "tarif_brut_mensuel": "35.88",
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "mobile",
+        "numero_ligne": "07 56 32 00 97",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "9.95",
+        "tarif_brut_mensuel": "9.95",
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "mobile",
+        "numero_ligne": "07 56 32 54 19",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "9.95",
+        "tarif_brut_mensuel": "9.95",
+        "date_fin_engagement_source": null,
+        "date_limite_resiliation_calculee": null
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "type": "materiel",
+        "numero_ligne": null,
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "138.00",
+        "tarif_brut_mensuel": "138.00",
+        "date_fin_engagement_source": "14/04/2027",
+        "date_limite_resiliation_calculee": "14/01/2027"
+      }
+    ],
+    "totaux": {
+      "devise": "EUR",
+      "precision": "HT pour le détail, TTC pour le total facture (88,94€)",
+      "total_locations_source": "138.00",
+      "total_locations_calcule": 138,
+      "total_abonnements_source": "74.12",
+      "total_abonnements_calcule": 74.12,
+      "total_solution_actuelle_source": "88.94",
+      "total_solution_actuelle_calcule": 395.9
+    },
+    "leasers": [
+      {
+        "nom": "Viatelease"
+      }
+    ],
+    "documents": [
+      {
+        "date_document": "01/12/2024",
+        "type_document": "facture",
+        "numero_document": "BDQNML"
+      },
+      {
+        "date_document": "14/01/2022",
+        "type_document": "autre",
+        "numero_document": "173724 - EDL (Etat des lieux)"
+      },
+      {
+        "date_document": "14/01/2022",
+        "type_document": "autre",
+        "numero_document": "173727 - IPC (Information Précontractuelle)"
+      },
+      {
+        "date_document": "14/01/2022",
+        "type_document": "contrat",
+        "numero_document": "Contrat de location Viatelease (Dossier non renseigné)"
+      }
+    ],
+    "locations": [
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "leaser": "Viatelease",
+        "libelle": "Matériel de communication (contrat location C339664)",
+        "remise_mensuelle": null,
+        "loyer_net_mensuel": "138.00",
+        "loyer_brut_mensuel": "138.00"
+      }
+    ],
+    "indemnites": {
+      "preuves": [
+        {
+          "id": "engagement_0_date",
+          "label": "Fin d'engagement - Engagement 1",
+          "valeur": "14/04/2027",
+          "contexte": "6 mois restants (9 - 3 de preavis)",
+          "categorie": "engagement",
+          "groupe_id": "engagement_0"
+        },
+        {
+          "id": "base_0",
+          "label": "Abonnement SDA par NDI",
+          "valeur": "4.55 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_1",
+          "label": "Option Back up 4G by B",
+          "valeur": "0.00 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_2",
+          "label": "POWERACCESS ADSL - Max 20 Mb/s",
+          "valeur": "25.88 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_3",
+          "label": "FORFAIT ONE (x2)",
+          "valeur": "9.80 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_4",
+          "label": "Nomadeo One",
+          "valeur": "19.90 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_5",
+          "label": "ACCÈS HOTLINE PREMIUM",
+          "valeur": "3.99 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_6",
+          "label": "Contrat support technique télécom et infogérance 24h/24 et 7 jours sur 7",
+          "valeur": "10.00 EUR / mois",
+          "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+        },
+        {
+          "id": "base_7",
+          "label": "Matériel de communication (contrat location C339664)",
+          "valeur": "138.00 EUR / mois",
+          "contexte": "Viatelease - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "categorie": "base_mensuelle",
+          "groupe_id": "location:viatelease:6 rue jean de beaumanoir, 22630 evran"
+        }
+      ],
+      "fiabilite": "moyenne",
+      "penalites": 0,
+      "composants": [
+        {
+          "id": "mensualites_restantes",
+          "label": "Mensualités restantes",
+          "inclus": true,
+          "formule": "Somme des sous-totaux par groupe engage",
+          "montant": 1272.72,
+          "disponible": true
+        },
+        {
+          "id": "frais_resiliation_fixes",
+          "label": "Frais fixes de résiliation",
+          "inclus": true,
+          "montant": 0,
+          "disponible": false
+        },
+        {
+          "id": "penalites",
+          "label": "Pénalités",
+          "inclus": true,
+          "montant": 0,
+          "disponible": false
+        },
+        {
+          "id": "frais_materiel",
+          "label": "Frais matériel",
+          "inclus": true,
+          "montant": 0,
+          "disponible": false
+        },
+        {
+          "id": "services_annexes",
+          "label": "Services annexes",
+          "inclus": true,
+          "montant": 0,
+          "disponible": false
+        },
+        {
+          "id": "total",
+          "label": "Total estimé",
+          "inclus": true,
+          "montant": 1272.72,
+          "disponible": true
+        }
+      ],
+      "hypotheses": [
+        {
+          "label": "Date de référence",
+          "valeur": "22/07/2026"
+        },
+        {
+          "label": "Fin d'engagement — Engagement 1",
+          "valeur": "14/04/2027"
+        },
+        {
+          "label": "Préavis retenu",
+          "valeur": "3 mois"
+        },
+        {
+          "label": "Éléments inclus",
+          "valeur": "lignes, abonnements, locations, frais fixes, pénalités, frais matériel, services annexes"
+        },
+        {
+          "label": "Montant source prioritaire",
+          "valeur": "non"
+        }
+      ],
+      "calcul_resume": "2 groupe(s) engagé(s) + frais complémentaires",
+      "details_calcul": [
+        "Date de référence figée: 22/07/2026",
+        "Source retenue: Estimation automatique",
+        "Mensualités restantes: somme des groupes engagés = 1272.72 EUR",
+        "Frais fixes: 0.00 EUR",
+        "Pénalités: 0.00 EUR",
+        "Frais matériel: 0.00 EUR",
+        "Services annexes: 0.00 EUR"
+      ],
+      "frais_materiel": 0,
+      "groupes_calcul": [
+        {
+          "id": "location:viatelease:6 rue jean de beaumanoir, 22630 evran",
+          "type": "service",
+          "libelle": "Locations - Viatelease - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "methode": "6 mois restants (9 - 3 de preavis) x 138.00 EUR",
+          "preuves": [
+            {
+              "id": "location:viatelease:6 rue jean de beaumanoir, 22630 evran_preuve_0",
+              "label": "Matériel de communication (contrat location C339664)",
+              "valeur": "138.00 EUR / mois",
+              "contexte": "Viatelease - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "location:viatelease:6 rue jean de beaumanoir, 22630 evran"
+            }
+          ],
+          "sous_total": 828,
+          "mois_restants": 6,
+          "base_mensuelle": 138,
+          "mois_avant_preavis": 9
+        },
+        {
+          "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran",
+          "type": "service",
+          "libelle": "Abonnements - Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+          "methode": "6 mois restants (9 - 3 de preavis) x 74.12 EUR",
+          "preuves": [
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_0",
+              "label": "Abonnement SDA par NDI",
+              "valeur": "4.55 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_1",
+              "label": "Option Back up 4G by B",
+              "valeur": "0.00 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_2",
+              "label": "POWERACCESS ADSL - Max 20 Mb/s",
+              "valeur": "25.88 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_3",
+              "label": "FORFAIT ONE (x2)",
+              "valeur": "9.80 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_4",
+              "label": "Nomadeo One",
+              "valeur": "19.90 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_5",
+              "label": "ACCÈS HOTLINE PREMIUM",
+              "valeur": "3.99 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            },
+            {
+              "id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran_preuve_6",
+              "label": "Contrat support technique télécom et infogérance 24h/24 et 7 jours sur 7",
+              "valeur": "10.00 EUR / mois",
+              "contexte": "Paritel - 6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+              "categorie": "base_mensuelle",
+              "groupe_id": "abonnement:paritel:6 rue jean de beaumanoir, 22630 evran"
+            }
+          ],
+          "sous_total": 444.72,
+          "mois_restants": 6,
+          "base_mensuelle": 74.12,
+          "mois_avant_preavis": 9
+        },
+        {
+          "id": "engagement_0",
+          "type": "engagement",
+          "libelle": "Engagement 1",
+          "methode": "Fin d'engagement lue au 14/04/2027",
+          "preuves": [
+            {
+              "id": "engagement_0_fin",
+              "label": "Fin d'engagement",
+              "valeur": "14/04/2027",
+              "contexte": "6 mois restants (9 - 3 de preavis)",
+              "categorie": "engagement",
+              "groupe_id": "engagement_0"
+            }
+          ],
+          "sous_total": null,
+          "mois_restants": 6,
+          "base_mensuelle": null,
+          "mois_avant_preavis": 9
+        }
+      ],
+      "methode_calcul": "Mensualités restantes: Somme des sous-totaux par groupe engage",
+      "montant_estime": 1272.72,
+      "montant_source": null,
+      "source_retenue": "estimation",
+      "calcul_possible": true,
+      "montant_calcule": 1272.72,
+      "motifs_manquants": [
+        "montant contractuel d'indemnité non trouvé",
+        "frais fixes non trouvés",
+        "pénalités non trouvées",
+        "frais matériel non trouvés",
+        "services annexes non trouvés"
+      ],
+      "services_annexes": 0,
+      "preavis_mois_source": 3,
+      "mois_restants_source": 6,
+      "source_retenue_label": "Estimation automatique",
+      "base_mensuelle_source": 212.12,
+      "explication_fiabilite": "Fiabilité moyenne car le montant est calculé automatiquement à partir des engagements et de la base mensuelle détectée.",
+      "mensualites_restantes": 1272.72,
+      "date_reference_calculee": "22/07/2026",
+      "frais_resiliation_fixes": 0
+    },
+    "operateurs": [
+      {
+        "nom": "Paritel"
+      }
+    ],
+    "abonnements": [
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "Abonnement SDA par NDI",
+        "operateur": "Paritel",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "4.55",
+        "tarif_brut_mensuel": "4.55"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "Option Back up 4G by B",
+        "operateur": "Paritel",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "0.00",
+        "tarif_brut_mensuel": "0.00"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "POWERACCESS ADSL - Max 20 Mb/s",
+        "operateur": "Paritel",
+        "remise_mensuelle": "10.00",
+        "tarif_net_mensuel": "25.88",
+        "tarif_brut_mensuel": "35.88"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "FORFAIT ONE (x2)",
+        "operateur": "Paritel",
+        "remise_mensuelle": "10.00",
+        "tarif_net_mensuel": "9.80",
+        "tarif_brut_mensuel": "19.80"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "Nomadeo One",
+        "operateur": "Paritel",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "19.90",
+        "tarif_brut_mensuel": "19.90"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "ACCÈS HOTLINE PREMIUM",
+        "operateur": "Paritel",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "3.99",
+        "tarif_brut_mensuel": "3.99"
+      },
+      {
+        "site": "6 RUE JEAN DE BEAUMANOIR, 22630 EVRAN",
+        "libelle": "Contrat support technique télécom et infogérance 24h/24 et 7 jours sur 7",
+        "operateur": "Paritel",
+        "remise_mensuelle": null,
+        "tarif_net_mensuel": "10.00",
+        "tarif_brut_mensuel": "10.00"
+      }
+    ],
+    "engagements": [
+      {
+        "date_fin_engagement_source": "14/04/2027",
+        "date_limite_resiliation_calculee": "14/01/2027"
+      }
+    ],
+    "total_materiel": 138,
+    "total_abonnements": 119.9,
+    "total_loyer_mensuel": 212.12,
+    "periodes_facturation": [
+      {
+        "date_fin": "30/11/2024",
+        "date_debut": "01/11/2024"
+      },
+      {
+        "date_fin": "31/12/2024",
+        "date_debut": "01/12/2024"
+      }
+    ],
+    "ligne_bon_commande_materiel": {
+      "libelle": "Remboursement de 1272.72 € au titre du solde définitif de vos contrats téléphoniques.",
+      "montant": 1272.72
+    }
+  },
+  "saDataLignes": [
+    {
+      "designation": "Matériel De Communication (contrat Location C339664)",
+      "libelle": "Matériel De Communication (contrat Location C339664)",
+      "numero": "02 96 27 47 21",
+      "numero_ligne": "02 96 27 47 21",
+      "quantite": 1,
+      "prix_mensuel_ht": "138,00 €",
+      "tarif": "138,00 €",
+      "type": ""
+    },
+    {
+      "designation": "Abonnement Sda Par Ndi",
+      "libelle": "Abonnement Sda Par Ndi",
+      "numero": "02 96 27 42 06",
+      "numero_ligne": "02 96 27 42 06",
+      "quantite": 5,
+      "prix_mensuel_ht": "4,55 €",
+      "tarif": "4,55 €",
+      "type": ""
+    },
+    {
+      "designation": "Poweraccess Adsl - Max 20 Mb/s",
+      "libelle": "Poweraccess Adsl - Max 20 Mb/s",
+      "numero": "02 96 27 42 08",
+      "numero_ligne": "02 96 27 42 08",
+      "quantite": 1,
+      "prix_mensuel_ht": "25,88 €",
+      "tarif": "25,88 €",
+      "type": ""
+    },
+    {
+      "designation": "Forfait One (x2)",
+      "libelle": "Forfait One (x2)",
+      "numero": "02 96 27 47 55",
+      "numero_ligne": "02 96 27 47 55",
+      "quantite": 2,
+      "prix_mensuel_ht": "9,80 €",
+      "tarif": "9,80 €",
+      "type": ""
+    },
+    {
+      "designation": "Nomadeo One",
+      "libelle": "Nomadeo One",
+      "numero": "02 96 27 51 25",
+      "numero_ligne": "02 96 27 51 25",
+      "quantite": 1,
+      "prix_mensuel_ht": "19,90 €",
+      "tarif": "19,90 €",
+      "type": ""
+    },
+    {
+      "designation": "Accès Hotline Premium",
+      "libelle": "Accès Hotline Premium",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "3,99 €",
+      "tarif": "3,99 €",
+      "type": ""
+    },
+    {
+      "designation": "Contrat Support Technique Télécom Et Infogérance 24h/24 Et 7 Jours Sur 7",
+      "libelle": "Contrat Support Technique Télécom Et Infogérance 24h/24 Et 7 Jours Sur 7",
+      "numero": "07 56 32 00 97",
+      "numero_ligne": "07 56 32 00 97",
+      "quantite": 1,
+      "prix_mensuel_ht": "10,00 €",
+      "tarif": "10,00 €",
+      "type": ""
+    }
+  ],
+  "saDataAbonnements": [
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Abonnement Sda Par Ndi",
+      "operateur": "Paritel",
+      "remise_mensuelle": null,
+      "tarif_net_mensuel": "4.55",
+      "tarif_brut_mensuel": "4.55",
+      "designation": "Abonnement Sda Par Ndi",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "4,55 €",
+      "tarif": "4,55 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Option Back Up 4g By B",
+      "operateur": "Paritel",
+      "remise_mensuelle": null,
+      "tarif_net_mensuel": "0.00",
+      "tarif_brut_mensuel": "0.00",
+      "designation": "Option Back Up 4g By B",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "0,00 €",
+      "tarif": "0,00 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Poweraccess Adsl - Max 20 Mb/s",
+      "operateur": "Paritel",
+      "remise_mensuelle": "10.00",
+      "tarif_net_mensuel": "25.88",
+      "tarif_brut_mensuel": "35.88",
+      "designation": "Poweraccess Adsl - Max 20 Mb/s",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "25,88 €",
+      "tarif": "25,88 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Forfait One (x2)",
+      "operateur": "Paritel",
+      "remise_mensuelle": "10.00",
+      "tarif_net_mensuel": "9.80",
+      "tarif_brut_mensuel": "19.80",
+      "designation": "Forfait One (x2)",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "9,80 €",
+      "tarif": "9,80 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Nomadeo One",
+      "operateur": "Paritel",
+      "remise_mensuelle": null,
+      "tarif_net_mensuel": "19.90",
+      "tarif_brut_mensuel": "19.90",
+      "designation": "Nomadeo One",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "19,90 €",
+      "tarif": "19,90 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Accès Hotline Premium",
+      "operateur": "Paritel",
+      "remise_mensuelle": null,
+      "tarif_net_mensuel": "3.99",
+      "tarif_brut_mensuel": "3.99",
+      "designation": "Accès Hotline Premium",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "3,99 €",
+      "tarif": "3,99 €"
+    },
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "libelle": "Contrat Support Technique Télécom Et Infogérance 24h/24 Et 7 Jours Sur 7",
+      "operateur": "Paritel",
+      "remise_mensuelle": null,
+      "tarif_net_mensuel": "10.00",
+      "tarif_brut_mensuel": "10.00",
+      "designation": "Contrat Support Technique Télécom Et Infogérance 24h/24 Et 7 Jours Sur 7",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "10,00 €",
+      "tarif": "10,00 €"
+    }
+  ],
+  "saDataLocations": [
+    {
+      "site": "6 Rue Jean De Beaumanoir, 22630 Evran",
+      "leaser": "Viatelease",
+      "libelle": "Matériel De Communication (contrat Location C339664)",
+      "remise_mensuelle": null,
+      "loyer_net_mensuel": "138.00",
+      "loyer_brut_mensuel": "138.00",
+      "designation": "Matériel De Communication (contrat Location C339664)",
+      "numero": "",
+      "numero_ligne": "",
+      "quantite": 1,
+      "prix_mensuel_ht": "138,00 €",
+      "tarif": "138,00 €"
+    }
+  ]
+}

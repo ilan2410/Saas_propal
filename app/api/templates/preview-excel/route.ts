@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ExcelJS from 'exceljs';
 import { createClient } from '@/lib/supabase/server';
 import { buildPropositionBaseData, fillExcelWorkbook } from '@/lib/generators';
 import { repairMaterialDetailFromQuestionnaire } from '@/lib/sp/repairMaterialDetail';
@@ -205,7 +206,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return new NextResponse(Buffer.from(uint8Array), {
+    try {
+      const validationWorkbook = new ExcelJS.Workbook();
+      await (validationWorkbook.xlsx.load as (buffer: unknown) => Promise<unknown>)(Buffer.from(uint8Array));
+    } catch (validationError) {
+      console.error('Aperçu Excel : le fichier généré est invalide:', validationError);
+      return NextResponse.json(
+        { error: `Le fichier Excel généré est invalide : ${validationError instanceof Error ? validationError.message : 'Erreur inconnue'}` },
+        { status: 422 }
+      );
+    }
+
+    return new NextResponse(new Blob([uint8Array.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

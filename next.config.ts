@@ -17,7 +17,7 @@ const csp = [
   `style-src 'self' 'unsafe-inline'`,
   `img-src 'self' data: blob:${supabaseUrl ? ` ${supabaseUrl}` : ''}`,
   `font-src 'self' data:`,
-  `connect-src 'self'${supabaseUrl ? ` ${supabaseUrl}` : ''}${supabaseWsUrl ? ` ${supabaseWsUrl}` : ''}`,
+  `connect-src 'self' blob:${supabaseUrl ? ` ${supabaseUrl}` : ''}${supabaseWsUrl ? ` ${supabaseWsUrl}` : ''}`,
   `frame-ancestors 'none'`,
   `object-src 'none'`,
   `base-uri 'self'`,

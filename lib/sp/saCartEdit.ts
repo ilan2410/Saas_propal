@@ -36,6 +36,8 @@ export interface SaEditableLine {
   quantite: number;
   montant: number;
   isResidual: boolean;
+  /** Remise mensuelle appliquée à cette ligne (source `remise_mensuelle`), si présente. */
+  remise?: number;
 }
 
 export interface SaAddInput {
@@ -148,6 +150,7 @@ function readLine(
     section === 'location'
       ? getStr(item, 'libelle') || getStr(item, 'materiel') || getStr(item, 'libelle_contrat')
       : getStr(item, 'libelle') || getStr(item, 'forfait') || getStr(item, 'libelle_contrat');
+  const remise = toNumber(item.remise_mensuelle);
   return {
     id,
     section,
@@ -156,6 +159,7 @@ function readLine(
     quantite: Math.max(1, toNumber(item.quantite) || 1),
     montant,
     isResidual: item._sa_residual === true,
+    remise: remise > 0 ? remise : undefined,
   };
 }
 

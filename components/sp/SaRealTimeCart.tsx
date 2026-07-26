@@ -232,6 +232,11 @@ function EditableLineRow({
           </button>
         </div>
       </div>
+      {line.remise != null && (
+        <p className="text-[10px] text-emerald-600">
+          Réduction de {formatEuro(line.remise)}/mois appliquée
+        </p>
+      )}
 
       {editing && (
         <div className="mt-1 flex flex-col gap-1 border-l-2 border-amber-200 pl-2">
