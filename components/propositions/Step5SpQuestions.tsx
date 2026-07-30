@@ -173,6 +173,10 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     }, 600);
   };
 
+  const handleReponsesChange = useCallback((nextReponses: SpQuestionReponse[]) => {
+    updatePropositionData({ sp_reponses: nextReponses });
+  }, [updatePropositionData]);
+
   const disarmBrowserGuard = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (browserGuardArmedRef.current && window.history.state?.__sp_questionnaire_guard) {

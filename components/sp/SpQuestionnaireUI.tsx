@@ -950,6 +950,8 @@ export function SpQuestionnaireUI({
   // Dernière valeur émise vers le parent : permet d'ignorer l'echo de nos propres
   // éditions (qui reviennent via la prop) pour ne pas écraser le snapshot baseline.
   const lastEmittedRef = useRef<unknown>(null);
+  const lastReportedReponsesRef = useRef<SpQuestionReponse[] | null>(null);
+  const onReponsesChangeRef = useRef(onReponsesChange);
   useEffect(() => {
     const fresh = donneesExtraitesProp ?? {};
     if (fresh === lastEmittedRef.current) return; // echo d'une édition locale → ignorer
@@ -957,8 +959,13 @@ export function SpQuestionnaireUI({
     saBaselineRef.current = JSON.parse(JSON.stringify(fresh.situation_actuelle ?? {}));
   }, [donneesExtraitesProp]);
   useEffect(() => {
-    onReponsesChange?.(reponses);
-  }, [onReponsesChange, reponses]);
+    onReponsesChangeRef.current = onReponsesChange;
+  }, [onReponsesChange]);
+  useEffect(() => {
+    if (lastReportedReponsesRef.current === reponses) return;
+    lastReportedReponsesRef.current = reponses;
+    onReponsesChangeRef.current?.(reponses);
+  }, [reponses]);
   const handleUpdateSaData = useCallback(
     (situationActuelle: Record<string, unknown>) => {
       const next = { ...donneesExtraites, situation_actuelle: situationActuelle };

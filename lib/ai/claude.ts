@@ -264,7 +264,10 @@ export async function extractDataFromDocuments(options: {
 
     const message = await anthropic.messages.create({
       model: modelToUse,
-      max_tokens: 8192,
+      // Le JSON de situation_actuelle (lignes + abonnements + locations + engagements)
+      // dépasse régulièrement 8192 tokens sur les dossiers multi-sites. Une troncature
+      // se manifeste ici par un JSON.parse en erreur plus bas, sans message explicite.
+      max_tokens: 16000,
       ...(MODELS_WITHOUT_CUSTOM_TEMPERATURE.has(modelToUse) ? {} : { temperature: 0 }),
       ...(MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT.has(modelToUse)
         ? { thinking: { type: 'disabled' as const } }
