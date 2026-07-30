@@ -29,6 +29,7 @@ export interface SpQuestionnaireUIProps {
   discountRules?: SpRegleRemise[];
   fournisseurs: string[];
   onComplete: (reponses: SpQuestionReponse[]) => void;
+  onReponsesChange?: (reponses: SpQuestionReponse[]) => void;
   /** Édition du panier SA : reçoit les `donneesExtraites` mis à jour pour persistance. */
   onUpdateDonneesExtraites?: (donneesExtraites: Record<string, unknown>) => void;
   initialReponses?: SpQuestionReponse[];
@@ -912,6 +913,7 @@ export function SpQuestionnaireUI({
   discountRules = [],
   fournisseurs,
   onComplete,
+  onReponsesChange,
   onUpdateDonneesExtraites,
   initialReponses,
   isSimulation = false,
@@ -954,6 +956,9 @@ export function SpQuestionnaireUI({
     setDonneesExtraites(fresh);
     saBaselineRef.current = JSON.parse(JSON.stringify(fresh.situation_actuelle ?? {}));
   }, [donneesExtraitesProp]);
+  useEffect(() => {
+    onReponsesChange?.(reponses);
+  }, [onReponsesChange, reponses]);
   const handleUpdateSaData = useCallback(
     (situationActuelle: Record<string, unknown>) => {
       const next = { ...donneesExtraites, situation_actuelle: situationActuelle };
@@ -1040,7 +1045,6 @@ export function SpQuestionnaireUI({
       rotate: Math.random() * 360,
       isCircle: Math.random() > 0.5,
     }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reset when questions change (e.g. switching sites in multisite)

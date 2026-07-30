@@ -1,9 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, Database, X, Play, GripHorizontal, User } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, Database, X, Play, GripHorizontal, User, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { PropositionData } from './PropositionWizard';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
@@ -25,6 +33,7 @@ interface Props {
 
 type SiteActuelle = { nom: string; [key: string]: unknown };
 type LigneActuelle = { site?: string; [key: string]: unknown };
+type ExitIntent = 'close-modal' | 'browser-back';
 
 function filterExtractedDataForSite(
   extractedData: Record<string, unknown>,
@@ -74,8 +83,15 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [showSaResume, setShowSaResume] = useState(false);
   const [showCoordonnees, setShowCoordonnees] = useState(false);
   const [isQuestionnaireOpen, setIsQuestionnaireOpen] = useState(true);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [pendingExitIntent, setPendingExitIntent] = useState<ExitIntent | null>(null);
+  const browserGuardArmedRef = useRef(false);
+  const browserBackInterceptedRef = useRef(false);
+  const allowBrowserNavigationRef = useRef(false);
 
   const templateId = propositionData.template_id;
+  const hasQuestionnaireProgress = (propositionData.sp_reponses?.length ?? 0) > 0;
+  const shouldGuardQuestionnaireExit = isQuestionnaireOpen && hasQuestionnaireProgress && !isGenerating;
 
   useEffect(() => {
     if (!templateId) return;
@@ -139,6 +155,11 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     }
   };
 
+  const handleReponsesChange = useCallback(
+    (nextReponses: SpQuestionReponse[]) => updatePropositionData({ sp_reponses: nextReponses }),
+    [updatePropositionData],
+  );
+
   const handleUpdateDonneesExtraites = (next: Record<string, unknown>) => {
     updatePropositionData({ donnees_extraites: next });
     if (!propositionData.proposition_id) return; // simulation / brouillon → session only
@@ -151,6 +172,104 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       if (data) persistSaFilledData(data);
     }, 600);
   };
+
+  const disarmBrowserGuard = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (browserGuardArmedRef.current && window.history.state?.__sp_questionnaire_guard) {
+      allowBrowserNavigationRef.current = true;
+      window.history.back();
+      window.setTimeout(() => {
+        allowBrowserNavigationRef.current = false;
+      }, 0);
+    }
+    browserGuardArmedRef.current = false;
+  }, []);
+
+  const closeQuestionnaire = useCallback(() => {
+    disarmBrowserGuard();
+    setIsQuestionnaireOpen(false);
+    setShowSaResume(false);
+    setShowCoordonnees(false);
+  }, [disarmBrowserGuard]);
+
+  const requestQuestionnaireExit = useCallback((intent: ExitIntent) => {
+    if (!hasQuestionnaireProgress || isGenerating) {
+      if (intent === 'close-modal') closeQuestionnaire();
+      return;
+    }
+    setPendingExitIntent(intent);
+    setShowExitConfirm(true);
+  }, [closeQuestionnaire, hasQuestionnaireProgress, isGenerating]);
+
+  const handleExitCancel = useCallback(() => {
+    setShowExitConfirm(false);
+    if (pendingExitIntent === 'browser-back' && browserBackInterceptedRef.current && typeof window !== 'undefined') {
+      window.history.pushState(
+        { ...(window.history.state ?? {}), __sp_questionnaire_guard: true },
+        '',
+        window.location.href,
+      );
+      browserGuardArmedRef.current = true;
+    }
+    browserBackInterceptedRef.current = false;
+    setPendingExitIntent(null);
+  }, [pendingExitIntent]);
+
+  const handleExitConfirm = useCallback(() => {
+    const intent = pendingExitIntent;
+    setShowExitConfirm(false);
+    setPendingExitIntent(null);
+    browserBackInterceptedRef.current = false;
+
+    if (intent === 'browser-back' && typeof window !== 'undefined') {
+      allowBrowserNavigationRef.current = true;
+      closeQuestionnaire();
+      window.history.back();
+      return;
+    }
+
+    closeQuestionnaire();
+  }, [closeQuestionnaire, pendingExitIntent]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !shouldGuardQuestionnaireExit) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [shouldGuardQuestionnaireExit]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (shouldGuardQuestionnaireExit && !browserGuardArmedRef.current) {
+      window.history.pushState(
+        { ...(window.history.state ?? {}), __sp_questionnaire_guard: true },
+        '',
+        window.location.href,
+      );
+      browserGuardArmedRef.current = true;
+      allowBrowserNavigationRef.current = false;
+    }
+
+    const handlePopState = () => {
+      if (!shouldGuardQuestionnaireExit || allowBrowserNavigationRef.current) {
+        browserGuardArmedRef.current = false;
+        return;
+      }
+      browserBackInterceptedRef.current = true;
+      browserGuardArmedRef.current = false;
+      setPendingExitIntent('browser-back');
+      setShowExitConfirm(true);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [shouldGuardQuestionnaireExit]);
 
   const handleComplete = async (reponses: SpQuestionReponse[]) => {
     // S'assurer que les dernières éditions du panier SA sont persistées avant la suite.
@@ -362,10 +481,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
-                      setIsQuestionnaireOpen(false);
-                      setShowSaResume(false);
-                    }}
+                    onClick={() => requestQuestionnaireExit('close-modal')}
                     className="h-7 w-7 p-0"
                     disabled={isGenerating}
                   >
@@ -386,10 +502,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      setIsQuestionnaireOpen(false);
-                      setShowSaResume(false);
-                    }}
+                    onClick={() => requestQuestionnaireExit('close-modal')}
                     disabled={isGenerating}
                   >
                     Fermer
@@ -419,6 +532,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   discountRules={preferences.sp_regles_remise ?? []}
                   fournisseurs={fournisseurs}
                   initialReponses={propositionData.sp_reponses}
+                  onReponsesChange={handleReponsesChange}
                   onComplete={handleComplete}
                   onUpdateDonneesExtraites={handleUpdateDonneesExtraites}
                   siteLabel={siteLabel}
@@ -458,6 +572,35 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
               onSave={(next) => handleUpdateDonneesExtraites(next)}
             />
           )}
+
+          <Dialog open={showExitConfirm} onOpenChange={(open) => !open && handleExitCancel()}>
+            <DialogContent className="sm:max-w-[460px]">
+              <DialogHeader>
+                <div className="mb-2 flex items-center gap-3 text-amber-600">
+                  <AlertTriangle className="h-6 w-6" />
+                  <DialogTitle>Quitter le questionnaire ?</DialogTitle>
+                </div>
+                <DialogDescription>
+                  Vous avez un questionnaire SP en cours. Si vous quittez maintenant, vous risquez de perdre votre progression sur cette page.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {pendingExitIntent === 'browser-back'
+                  ? 'Le navigateur a détecté une navigation arrière. Voulez-vous vraiment quitter le formulaire ?'
+                  : 'Voulez-vous vraiment fermer le formulaire maintenant ?'}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="secondary" onClick={handleExitCancel}>
+                  Rester sur le formulaire
+                </Button>
+                <Button type="button" variant="destructive" onClick={handleExitConfirm}>
+                  Quitter quand même
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

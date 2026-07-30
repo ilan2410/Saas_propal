@@ -137,6 +137,45 @@ export function validateClaudeApiKey(): boolean {
 }
 
 /**
+ * Échappe les caractères de contrôle bruts (retours à la ligne, tabulations, etc.)
+ * trouvés à l'intérieur des chaînes JSON. Claude produit parfois des champs texte
+ * multi-lignes (ex: "resume") avec de vrais sauts de ligne au lieu de `\n` échappé,
+ * ce qui fait échouer `JSON.parse` avec "Bad control character in string literal".
+ */
+function sanitizeJsonControlCharacters(jsonStr: string): string {
+  let result = '';
+  let insideString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < jsonStr.length; i += 1) {
+    const char = jsonStr[i];
+    const code = jsonStr.charCodeAt(i);
+
+    if (insideString && !isEscaped && code < 0x20) {
+      switch (char) {
+        case '\n': result += '\\n'; break;
+        case '\r': result += '\\r'; break;
+        case '\t': result += '\\t'; break;
+        default: result += '\\u' + code.toString(16).padStart(4, '0');
+      }
+      continue;
+    }
+
+    result += char;
+
+    if (isEscaped) {
+      isEscaped = false;
+    } else if (char === '\\' && insideString) {
+      isEscaped = true;
+    } else if (char === '"') {
+      insideString = !insideString;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Extrait les données de documents avec Claude AI (version simplifiée)
  * Cette fonction prend des URLs de documents et les télécharge avant extraction
  * @param options - Options d'extraction
@@ -256,8 +295,8 @@ export async function extractDataFromDocuments(options: {
     // Nettoyer et parser le JSON
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
-    
-    const parsedData = JSON.parse(jsonStr) as unknown;
+
+    const parsedData = JSON.parse(sanitizeJsonControlCharacters(jsonStr)) as unknown;
     const isPlainObject = (v: unknown): v is Record<string, unknown> =>
       typeof v === 'object' && v !== null && !Array.isArray(v);
     if (!isPlainObject(parsedData)) {

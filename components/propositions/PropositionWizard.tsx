@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -111,9 +111,9 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
   const [tarifCloneSite, setTarifCloneSite] = useState(1);
   const [reEditSiteIndex, setReEditSiteIndex] = useState<number | null>(null);
 
-  const updatePropositionData = (data: Partial<PropositionData>) => {
+  const updatePropositionData = useCallback((data: Partial<PropositionData>) => {
     setPropositionData((prev) => ({ ...prev, ...data }));
-  };
+  }, []);
 
   const persistProgress = async (data: Record<string, unknown>) => {
     if (!propositionData.proposition_id) return;
