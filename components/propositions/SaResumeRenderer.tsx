@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Wallet, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatting';
-import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { calculateSaCartSummary, type SaCartLine, type SaCartSummary } from '@/lib/sp/calculateSaCart';
 
 interface Props {
   text: string;
@@ -27,8 +27,49 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
+/** Une composante du loyer mensuel (poste de coût + lignes qui le composent). */
+interface MonthlyRow {
+  key: string;
+  label: string;
+  amount: number;
+  lines: SaCartLine[];
+}
+
+/** Décompose le total mensuel en postes de coût, dans l'ordre du panier SA. */
+function buildBreakdown(summary: SaCartSummary): MonthlyRow[] {
+  const byCat = (cat: SaCartLine['categorie']) => summary.details.filter((l) => l.categorie === cat);
+  const rows: MonthlyRow[] = [];
+
+  // Les lignes ne sont comptées que si les abonnements ne les englobent pas déjà
+  // (cf. `totalFromOfficiel` dans calculateSaCartSummary).
+  if (!summary.totalFromOfficiel) {
+    rows.push({ key: 'fixe', label: 'Lignes fixes', amount: summary.lignesFixes, lines: byCat('fixe') });
+    rows.push({ key: 'mobile', label: 'Lignes mobiles', amount: summary.lignesMobiles, lines: byCat('mobile') });
+    rows.push({ key: 'internet', label: 'Internet', amount: summary.lignesInternet, lines: byCat('internet') });
+  }
+
+  rows.push({
+    key: 'abonnement',
+    label: 'Abonnements',
+    amount: summary.abonnements,
+    lines: summary.totalFromOfficiel
+      ? byCat('abonnement')
+      : [...byCat('abonnement'), ...byCat('autre')],
+  });
+  rows.push({
+    key: 'location',
+    label: 'Locations matériel',
+    amount: summary.locations,
+    lines: byCat('location'),
+  });
+
+  return rows.filter((r) => r.amount > 0.005);
+}
+
 /** Resolve the monthly amount the client currently pays, with HT/TTC precision. */
-function resolveMonthlyTotal(donnees: unknown): { amount: number; precision?: string } | null {
+function resolveMonthlyTotal(
+  donnees: unknown
+): { amount: number; precision?: string; rows: MonthlyRow[] } | null {
   if (donnees == null) return null;
   const root = isRecord(donnees) ? donnees : {};
   const sa = isRecord(root.situation_actuelle) ? root.situation_actuelle : root;
@@ -39,18 +80,21 @@ function resolveMonthlyTotal(donnees: unknown): { amount: number; precision?: st
   // les montants « source » réellement facturés). On retombe sur les totaux
   // extraits uniquement si le panier ne contient aucune donnée, en privilégiant
   // toujours la SOURCE (montant réellement payé par le client).
-  let amount = calculateSaCartSummary(donnees).totalMensuel;
-  if (!(amount > 0)) {
-    amount =
-      toNumber(totaux.total_solution_actuelle_source) ||
-      toNumber(totaux.total_solution_actuelle_calcule);
+  const summary = calculateSaCartSummary(donnees);
+  if (summary.totalMensuel > 0) {
+    // Le panier SA ramène toujours les montants en HT (cf. normalizeSaAmountsToHT).
+    return { amount: summary.totalMensuel, precision: 'HT', rows: buildBreakdown(summary) };
   }
+
+  const amount =
+    toNumber(totaux.total_solution_actuelle_source) ||
+    toNumber(totaux.total_solution_actuelle_calcule);
   if (!(amount > 0)) return null;
 
   const precisionRaw = typeof totaux.precision === 'string' ? totaux.precision : undefined;
   const precision =
     precisionRaw === 'HT' || precisionRaw === 'TTC' ? precisionRaw : undefined;
-  return { amount, precision };
+  return { amount, precision, rows: [] };
 }
 
 type Block =
@@ -290,6 +334,114 @@ function CollapsibleSection({
   );
 }
 
+/** Détail du loyer mensuel : postes de coût dépliables affichés à côté du total. */
+function MonthlyBreakdown({
+  rows,
+  total,
+  compact,
+}: {
+  rows: MonthlyRow[];
+  total: number;
+  compact: boolean;
+}) {
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  // Une seule composante ⇒ elle vaut 100 % du total, la part n'apporte rien.
+  const showShare = rows.length > 1;
+
+  return (
+    <div
+      className={`min-w-0 border-t border-indigo-200/70 pt-3 sm:border-t-0 sm:border-l sm:pt-0 ${
+        compact ? 'sm:pl-3' : 'sm:pl-5'
+      } sm:flex-1 sm:max-w-sm`}
+    >
+      <p
+        className={`mb-1.5 font-medium uppercase tracking-wide text-indigo-700/60 ${
+          compact ? 'text-[9px]' : 'text-[10px]'
+        }`}
+      >
+        Détail du calcul
+      </p>
+      <div className="divide-y divide-indigo-200/50">
+        {rows.map((row) => {
+          const open = openKey === row.key;
+          const expandable = row.lines.length > 0;
+          const share = total > 0 ? Math.round((row.amount / total) * 100) : 0;
+
+          return (
+            <div key={row.key} className="py-1">
+              <button
+                type="button"
+                onClick={() => expandable && setOpenKey(open ? null : row.key)}
+                disabled={!expandable}
+                aria-expanded={expandable ? open : undefined}
+                className={`flex w-full items-baseline gap-2 rounded text-left transition-colors ${
+                  expandable ? 'hover:bg-white/60' : 'cursor-default'
+                } ${compact ? 'px-1 py-0.5' : 'px-1.5 py-1'}`}
+              >
+                {expandable ? (
+                  <ChevronRight
+                    className={`h-3 w-3 shrink-0 self-center text-indigo-400 transition-transform ${
+                      open ? 'rotate-90' : ''
+                    }`}
+                  />
+                ) : (
+                  <span className="h-3 w-3 shrink-0" />
+                )}
+                <span className={`min-w-0 flex-1 truncate text-indigo-900/80 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+                  {row.label}
+                </span>
+                <span
+                  className={`shrink-0 font-semibold tabular-nums text-indigo-900 ${
+                    compact ? 'text-[11px]' : 'text-xs'
+                  }`}
+                >
+                  {formatCurrency(row.amount)}
+                </span>
+                {showShare && (
+                  <span
+                    className={`w-8 shrink-0 text-right tabular-nums text-indigo-500/70 ${
+                      compact ? 'text-[9px]' : 'text-[10px]'
+                    }`}
+                  >
+                    {share}%
+                  </span>
+                )}
+              </button>
+
+              {open && (
+                <ul className={`space-y-0.5 pb-1 pl-5 pr-1 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+                  {row.lines.map((line, i) => (
+                    <li key={`${row.key}-${i}`} className="flex items-baseline gap-2 text-indigo-900/70">
+                      <span className="min-w-0 flex-1 truncate" title={line.libelle}>
+                        {line.libelle}
+                        {line.operateur ? (
+                          <span className="text-indigo-500/70"> · {line.operateur}</span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 tabular-nums">{formatCurrency(line.montant)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {rows.length > 1 && (
+        <div
+          className={`mt-1 flex items-baseline gap-2 border-t border-indigo-300/60 px-1.5 pt-1.5 font-semibold text-indigo-900 ${
+            compact ? 'text-[11px]' : 'text-xs'
+          }`}
+        >
+          <span className="flex-1 pl-5">Total</span>
+          <span className="tabular-nums">{formatCurrency(total)}</span>
+          <span className="w-8" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, className = '' }: Props) {
   const blocks = useMemo(() => parseResume(text), [text]);
   const monthly = useMemo(() => resolveMonthlyTotal(donneesExtraites), [donneesExtraites]);
@@ -299,24 +451,30 @@ export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, 
     <div className={`${compact ? 'space-y-3' : 'space-y-5'} ${className}`}>
       {monthly && (
         <div
-          className={`flex items-center gap-3 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 ${
+          className={`flex flex-col gap-3 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 sm:flex-row sm:items-center sm:gap-5 ${
             compact ? 'px-3 py-2.5' : 'px-5 py-4'
           }`}
         >
-          <div className={`flex items-center justify-center rounded-lg bg-indigo-600 text-white ${compact ? 'h-8 w-8' : 'h-11 w-11'}`}>
-            <Wallet className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
+          <div className="flex shrink-0 items-center gap-3">
+            <div className={`flex items-center justify-center rounded-lg bg-indigo-600 text-white ${compact ? 'h-8 w-8' : 'h-11 w-11'}`}>
+              <Wallet className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
+            </div>
+            <div className="min-w-0">
+              <p className={`font-medium uppercase tracking-wide text-indigo-700/80 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+                Loyer mensuel actuel du client
+              </p>
+              <p className={`font-bold leading-tight text-indigo-900 ${compact ? 'text-lg' : 'text-2xl'}`}>
+                {formatCurrency(monthly.amount)}
+                <span className={`ml-1 font-semibold text-indigo-500 ${compact ? 'text-xs' : 'text-sm'}`}>
+                  {monthly.precision ? `${monthly.precision} /mois` : '/mois'}
+                </span>
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className={`font-medium uppercase tracking-wide text-indigo-700/80 ${compact ? 'text-[10px]' : 'text-xs'}`}>
-              Loyer mensuel actuel du client
-            </p>
-            <p className={`font-bold leading-tight text-indigo-900 ${compact ? 'text-lg' : 'text-2xl'}`}>
-              {formatCurrency(monthly.amount)}
-              <span className={`ml-1 font-semibold text-indigo-500 ${compact ? 'text-xs' : 'text-sm'}`}>
-                {monthly.precision ? `${monthly.precision} /mois` : '/mois'}
-              </span>
-            </p>
-          </div>
+
+          {monthly.rows.length > 0 && (
+            <MonthlyBreakdown rows={monthly.rows} total={monthly.amount} compact={compact} />
+          )}
         </div>
       )}
       {blocks.map((block, i) => {
