@@ -44,6 +44,74 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const TVA_RATE = 1.2;
+
+function normalizeItemsToHT(items: unknown, amountKeys: string[]): unknown {
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (!isRecord(item)) return item;
+    const precision = typeof item.precision_montant === 'string'
+      ? item.precision_montant.trim().toUpperCase()
+      : '';
+    if (precision !== 'TTC') return item;
+
+    const next = { ...item };
+    for (const key of amountKeys) {
+      const ttc = toNumber(next[key]);
+      if (ttc > 0) next[key] = round2(ttc / TVA_RATE);
+    }
+    next.precision_montant = 'HT';
+    return next;
+  });
+}
+
+/**
+ * Les montants de la SA doivent toujours être affichés en HT. Le document
+ * source peut ne fournir qu'un montant TTC (précision extraite par l'IA) :
+ * dans ce cas on convertit au taux de TVA standard (20 %) pour rester
+ * cohérent avec les montants calculés à partir des lignes.
+ */
+export function normalizeSaAmountsToHT(situationActuelle: unknown): Record<string, unknown> {
+  const sa = isRecord(situationActuelle) ? { ...situationActuelle } : {};
+  sa.abonnements = normalizeItemsToHT(sa.abonnements, [
+    'tarif_net_mensuel',
+    'tarif_brut_mensuel',
+    'remise_mensuelle',
+    'tarif',
+  ]);
+  sa.locations = normalizeItemsToHT(sa.locations, [
+    'loyer_net_mensuel',
+    'loyer_brut_mensuel',
+    'remise_mensuelle',
+    'tarif',
+  ]);
+  sa.lignes = normalizeItemsToHT(sa.lignes, [
+    'tarif_net_mensuel',
+    'tarif_brut_mensuel',
+    'remise_mensuelle',
+    'tarif',
+  ]);
+
+  const totaux = isRecord(sa.totaux) ? { ...sa.totaux } : {};
+  const precision = typeof totaux.precision === 'string' ? totaux.precision.trim().toUpperCase() : '';
+  if (precision === 'TTC') {
+    for (const key of [
+      'total_abonnements_source',
+      'total_abonnements_calcule',
+      'total_locations_source',
+      'total_locations_calcule',
+      'total_solution_actuelle_source',
+      'total_solution_actuelle_calcule',
+    ]) {
+      const ttc = toNumber(totaux[key]);
+      if (ttc > 0) totaux[key] = round2(ttc / TVA_RATE);
+    }
+    totaux.precision = 'HT';
+  }
+  sa.totaux = totaux;
+  return sa;
+}
+
 function pickMontant(item: Record<string, unknown>, keys: string[]): number {
   for (const key of keys) {
     const v = toNumber(item[key]);
@@ -87,7 +155,8 @@ function isOverlap(
 
 export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary {
   const root = isRecord(donneesExtraites) ? donneesExtraites : {};
-  const sa = isRecord(root.situation_actuelle) ? root.situation_actuelle : root;
+  const rawSa = isRecord(root.situation_actuelle) ? root.situation_actuelle : root;
+  const sa = normalizeSaAmountsToHT(rawSa);
 
   const details: SaCartLine[] = [];
 

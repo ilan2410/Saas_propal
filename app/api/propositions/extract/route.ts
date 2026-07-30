@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
-import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,29 +73,6 @@ function sumArrayValues(items: unknown, keys: string[]): number | null {
   return total > 0 ? Math.round(total * 100) / 100 : null;
 }
 
-const TVA_RATE = 1.2;
-
-/**
- * Les totaux "source" doivent toujours être affichés en HT. Le document
- * source peut ne fournir qu'un montant TTC (precision extraite par l'IA) :
- * dans ce cas on convertit au taux de TVA standard (20%) pour rester
- * cohérent avec les montants calculés à partir des lignes (considérés HT).
- * Si la précision est inconnue ("non_precise"), on ne peut pas garantir
- * qu'il s'agit de HT mais on l'affiche tel quel faute de mieux.
- */
-function normalizeTotauxToHT(totaux: Record<string, unknown>): Record<string, unknown> {
-  const precision = typeof totaux.precision === 'string' ? totaux.precision.trim().toUpperCase() : '';
-  if (precision !== 'TTC') return totaux;
-
-  const next = { ...totaux };
-  for (const key of ['total_abonnements_source', 'total_locations_source', 'total_solution_actuelle_source']) {
-    const ttc = toNumber(next[key]);
-    if (ttc > 0) next[key] = Math.round((ttc / TVA_RATE) * 100) / 100;
-  }
-  next.precision = 'HT';
-  return next;
-}
-
 function normalizeAmountText(value: string): number | null {
   const match = value.match(/(-?\d+(?:[\s.,]\d{2})?)/);
   if (!match) return null;
@@ -154,7 +131,7 @@ function enrichSituationActuelle(
   }
   if (!isRecord(root.situation_actuelle)) return root;
 
-  const situation = { ...root.situation_actuelle };
+  const situation = normalizeSaAmountsToHT(root.situation_actuelle);
 
   const enrichDateArray = (key: string) => {
     const raw = situation[key];
@@ -175,7 +152,7 @@ function enrichSituationActuelle(
   enrichDateArray('lignes');
   enrichDateArray('engagements');
 
-  const totaux = normalizeTotauxToHT(isRecord(situation.totaux) ? { ...situation.totaux } : {});
+  const totaux = isRecord(situation.totaux) ? { ...situation.totaux } : {};
   const totalAbonnementsCalcule = sumArrayValues(situation.abonnements, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
   const totalLocationsCalcule = sumArrayValues(situation.locations, ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif']);
   const totalLignesCalcule = sumArrayValues(situation.lignes, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
@@ -407,15 +384,15 @@ STRUCTURE JSON ATTENDUE:
     "operateurs": [{"nom": "Nom opérateur", "type": "operateur_telecom"}],
     "leasers": [{"nom": "Nom leaser", "type": "organisme_financement"}],
     "sites": [{"nom": "Site principal", "adresse": "Adresse complète", "code_postal": "75001", "ville": "Paris"}],
-    "abonnements": [{"libelle": "Abonnement", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "operateur": "Nom opérateur", "site": "Site concerné", "quantite": "1", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "periode_facturation": "mensuelle|trimestrielle|annuelle|autre"}],
-    "locations": [{"libelle": "Location matériel", "reference_contrat": "CTR-LOC-001", "libelle_contrat": "Contrat location matériel", "engagement_ref": "ENG-LOC-001", "leaser": "Nom leaser", "site": "Site concerné", "materiel": "Description", "quantite": "1", "loyer_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "loyer_net_mensuel": "XX.XX"}],
-    "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "libelle": "Ligne ou service", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
+    "abonnements": [{"libelle": "Abonnement", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "operateur": "Nom opérateur", "site": "Site concerné", "quantite": "1", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "precision_montant": "HT", "periode_facturation": "mensuelle|trimestrielle|annuelle|autre"}],
+    "locations": [{"libelle": "Location matériel", "reference_contrat": "CTR-LOC-001", "libelle_contrat": "Contrat location matériel", "engagement_ref": "ENG-LOC-001", "leaser": "Nom leaser", "site": "Site concerné", "materiel": "Description", "quantite": "1", "loyer_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "loyer_net_mensuel": "XX.XX", "precision_montant": "HT"}],
+    "lignes": [{"numero_ligne": "0XXXXXXXXX", "type": "fixe|mobile|internet", "libelle": "Ligne ou service", "reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "forfait": "Nom forfait", "operateur": "Nom opérateur", "site": "Site concerné", "tarif_brut_mensuel": "XX.XX", "remise_mensuelle": "XX.XX", "tarif_net_mensuel": "XX.XX", "precision_montant": "HT", "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA"}],
     "periodes_facturation": [{"date_debut": "JJ/MM/AAAA", "date_fin": "JJ/MM/AAAA", "periodicite": "mensuelle|trimestrielle|annuelle|autre"}],
     "engagements": [{"reference_contrat": "CTR-001", "libelle_contrat": "Contrat flotte mobile principal", "engagement_ref": "ENG-001", "libelle": "Contrat/ligne/service", "operateur": "Nom opérateur", "site": "Site concerné", "elements_rattaches": ["06XXXXXXXX", "Accès fibre siège"], "date_fin_engagement_source": "JJ/MM/AAAA", "date_limite_resiliation_calculee": "JJ/MM/AAAA", "preavis_mois": 3}],
     "total_abonnements": "XX.XX",
     "total_loyer_mensuel": "XX.XX",
     "total_materiel": "XX.XX",
-    "totaux": {"total_abonnements_source": "XX.XX", "total_abonnements_calcule": "XX.XX", "total_locations_source": "XX.XX", "total_locations_calcule": "XX.XX", "total_solution_actuelle_source": "XX.XX", "total_solution_actuelle_calcule": "XX.XX", "devise": "EUR", "precision": "HT|TTC|non_precise"},
+    "totaux": {"total_abonnements_source": "XX.XX", "total_abonnements_calcule": "XX.XX", "total_locations_source": "XX.XX", "total_locations_calcule": "XX.XX", "total_solution_actuelle_source": "XX.XX", "total_solution_actuelle_calcule": "XX.XX", "devise": "EUR", "precision": "HT"},
     "indemnites": {"montant_source": "XX.XX", "montant_calcule": "XX.XX", "montant_estime": "XX.XX", "mois_restants_source": "X", "preavis_mois_source": "X", "base_mensuelle_source": "XX.XX", "mensualites_restantes": "XX.XX", "frais_resiliation_fixes": "XX.XX", "penalites": "XX.XX", "frais_materiel": "XX.XX", "services_annexes": "XX.XX", "source_retenue": "source|estimation|aucune", "fiabilite": "forte|moyenne|faible|insuffisante", "details_calcul": ["..."], "motifs_manquants": ["..."], "methode_calcul": "..."},
     "ligne_bon_commande_materiel": {"libelle": "Remboursement de XX.XX € au titre du solde définitif de vos contrats téléphoniques.", "montant": "XX.XX"}
   }
@@ -436,7 +413,7 @@ RÈGLES:
 - Si "situation_actuelle" est demandée, sépare strictement opérateur télécom et leaser/organisme de financement.
 - Si "situation_actuelle" est demandée, traite chaque facture, échéancier ou contrat comme un document distinct dans situation_actuelle.documents.
 - Si "situation_actuelle" est demandée, conserve les montants lus dans les champs *_source et ajoute les montants calculés dans les champs *_calcule.
-- Si "situation_actuelle" est demandée, sépare toujours tarif/loyer brut, remise et tarif/loyer net lorsque l'information existe.
+- Si "situation_actuelle" est demandée, sépare toujours tarif/loyer brut, remise et tarif/loyer net lorsque l'information existe. Tous ces montants doivent être HT.
 - Si "situation_actuelle" est demandée, détecte les sites multiples et rattache les lignes, abonnements et locations à leur site si possible.
 - Si "situation_actuelle" est demandée, extrais explicitement les références de contrat et d'engagement quand elles existent: reference_contrat, libelle_contrat, engagement_ref.
 - Si "situation_actuelle" est demandée, rattache chaque ligne, abonnement ou location à son engagement/contrat en répétant la même reference_contrat, le même libelle_contrat et le même engagement_ref sur les éléments concernés.
@@ -466,6 +443,15 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
     }
 
     promptToUse = `${promptToUse.trim()}
+
+CONTRAINTE ABSOLUE - MONTANTS HORS TAXES DE LA SITUATION ACTUELLE:
+- Tous les montants utilisés dans situation_actuelle doivent être HORS TAXES (HT), sans exception : tarifs, loyers, remises, abonnements, lignes, locations et totaux source ou calculés.
+- Lorsqu'un document affiche à la fois un montant HT et un montant TTC, sélectionne TOUJOURS le montant HT et ignore le TTC. Ne recopie jamais le TTC dans un champ de montant de situation_actuelle.
+- Les champs tarif_brut_mensuel, tarif_net_mensuel, loyer_brut_mensuel, loyer_net_mensuel et remise_mensuelle contiennent exclusivement des montants HT. "Net" signifie après remise, mais toujours HT.
+- Les champs total_abonnements_source, total_locations_source et total_solution_actuelle_source contiennent exclusivement les totaux HT explicitement indiqués sur le document. Si un total HT et un total TTC sont tous les deux présents, prends le total HT.
+- Renseigne precision_montant à "HT" sur chaque abonnement, location et ligne. Renseigne situation_actuelle.totaux.precision à "HT" dès qu'un montant HT est présent.
+- N'utilise un montant TTC que si aucun montant HT correspondant n'existe ; dans ce seul cas, convertis-le en HT avec le taux de TVA explicitement indiqué sur le document. Si aucun taux n'est indiqué, applique 20 %. La valeur enregistrée et retournée doit malgré tout être HT et sa précision doit être "HT".
+- Avant de retourner le JSON, vérifie qu'aucun montant TTC n'a été placé dans les champs de situation_actuelle.
 
 INSTRUCTION COMPLÉMENTAIRE - RÉSUMÉ:
 - Ajoute un champ "resume" (string) dans le JSON retourné.

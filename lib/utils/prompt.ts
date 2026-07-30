@@ -106,6 +106,7 @@ const SITUATION_ACTUELLE_STRUCTURE = {
       tarif_brut_mensuel: 'XX.XX',
       remise_mensuelle: 'XX.XX',
       tarif_net_mensuel: 'XX.XX',
+      precision_montant: 'HT',
       periode_facturation: 'mensuelle|trimestrielle|annuelle|autre',
     },
   ],
@@ -122,6 +123,7 @@ const SITUATION_ACTUELLE_STRUCTURE = {
       loyer_brut_mensuel: 'XX.XX',
       remise_mensuelle: 'XX.XX',
       loyer_net_mensuel: 'XX.XX',
+      precision_montant: 'HT',
     },
   ],
   lignes: [
@@ -141,6 +143,7 @@ const SITUATION_ACTUELLE_STRUCTURE = {
       tarif_brut_mensuel: 'XX.XX',
       remise_mensuelle: 'XX.XX',
       tarif_net_mensuel: 'XX.XX',
+      precision_montant: 'HT',
       date_fin_engagement_source: 'JJ/MM/AAAA',
       date_limite_resiliation_calculee: 'JJ/MM/AAAA',
     },
@@ -177,7 +180,7 @@ const SITUATION_ACTUELLE_STRUCTURE = {
     total_solution_actuelle_source: 'XX.XX',
     total_solution_actuelle_calcule: 'XX.XX',
     devise: 'EUR',
-    precision: 'HT|TTC|non_precise',
+    precision: 'HT',
   },
   indemnites: {
     montant_source: 'XX.XX',
