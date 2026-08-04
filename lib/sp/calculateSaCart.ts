@@ -120,6 +120,12 @@ function pickMontant(item: Record<string, unknown>, keys: string[]): number {
   return 0;
 }
 
+/** Quantité d'un abonnement/location (ex. "Forfait Mobile x3" facturé en une seule ligne). */
+function pickQuantite(item: Record<string, unknown>): number {
+  const q = toNumber(item.quantite);
+  return q > 0 ? q : 1;
+}
+
 function getStr(item: Record<string, unknown>, key: string): string | undefined {
   const v = item[key];
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
@@ -167,8 +173,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   const locs = Array.isArray(sa.locations) ? sa.locations : [];
   for (const raw of locs) {
     if (!isRecord(raw)) continue;
-    const montant = pickMontant(raw, ['loyer_net_mensuel', 'loyer_brut_mensuel']);
-    if (montant <= 0) continue;
+    const montantUnitaire = pickMontant(raw, ['loyer_net_mensuel', 'loyer_brut_mensuel']);
+    if (montantUnitaire <= 0) continue;
+    const montant = round2(montantUnitaire * pickQuantite(raw));
     const libelle =
       getStr(raw, 'libelle') || getStr(raw, 'materiel') || getStr(raw, 'libelle_contrat') || 'Location';
     const operateur = getStr(raw, 'leaser') || getStr(raw, 'operateur');
@@ -191,8 +198,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   const abos = Array.isArray(sa.abonnements) ? sa.abonnements : [];
   for (const raw of abos) {
     if (!isRecord(raw)) continue;
-    const montant = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
-    if (montant <= 0) continue;
+    const montantUnitaire = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
+    if (montantUnitaire <= 0) continue;
+    const montant = round2(montantUnitaire * pickQuantite(raw));
     const libelle = getStr(raw, 'libelle') || getStr(raw, 'libelle_contrat') || 'Abonnement';
     const operateur = getStr(raw, 'operateur');
     const key = dedupeKey(libelle, montant);

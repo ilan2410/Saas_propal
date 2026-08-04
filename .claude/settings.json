@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --version)",
+      "Bash(npx --yes tsx --version)",
+      "Bash(npx tsx *)",
+      "Bash(grep -c '\\\\$prompt\\\\$' c:/Users/ilan/CascadeProjects/Saas_propal/supabase/migrations/2026-08-03_update_telephonie_prompt_periodicite.sql)"
+    ]
+  }
+}
