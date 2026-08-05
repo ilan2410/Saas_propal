@@ -4,7 +4,15 @@
       "Bash(npx --version)",
       "Bash(npx --yes tsx --version)",
       "Bash(npx tsx *)",
-      "Bash(grep -c '\\\\$prompt\\\\$' c:/Users/ilan/CascadeProjects/Saas_propal/supabase/migrations/2026-08-03_update_telephonie_prompt_periodicite.sql)"
+      "Bash(grep -c '\\\\$prompt\\\\$' c:/Users/ilan/CascadeProjects/Saas_propal/supabase/migrations/2026-08-03_update_telephonie_prompt_periodicite.sql)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(echo \"TSC_EXIT:$?\")",
+      "Bash(echo \"LINT_EXIT:$?\")",
+      "Bash(command -v playwright)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(timeout 40 bash -c 'until curl -sf http://localhost:3000 >/dev/null 2>&1; do sleep 1; done')",
+      "Bash(curl -sf -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001)",
+      "Bash(curl -sf -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002)"
     ]
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, ChevronLeft, ChevronRight, ChevronDown, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff, Info } from 'lucide-react';
+import { Bot, User, ChevronLeft, ChevronRight, ChevronDown, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff, Info, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
@@ -21,6 +21,7 @@ import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
+import { PopupPortal } from '@/components/ui/PopupPortal';
 
 export interface SpQuestionnaireUIProps {
   questions: SpQuestion[];
@@ -1040,6 +1041,11 @@ export function SpQuestionnaireUI({
   const isDraggingWidget = useRef(false);
   const widgetDragOffset = useRef({ x: 0, y: 0 });
 
+  // Détachement des widgets sur une fenêtre séparée (visio : les cacher du
+  // partage d'écran tout en gardant un accès permanent sur un 2e écran).
+  const [widgetsDetached, setWidgetsDetached] = useState(false);
+  const [popupBlockedMessage, setPopupBlockedMessage] = useState(false);
+
   const confettiPieces = useMemo(() => {
     const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316'];
     return Array.from({ length: 60 }, (_, i) => ({
@@ -1105,6 +1111,13 @@ export function SpQuestionnaireUI({
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
+
+  // Message "popup bloqué" éphémère.
+  useEffect(() => {
+    if (!popupBlockedMessage) return;
+    const timer = window.setTimeout(() => setPopupBlockedMessage(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [popupBlockedMessage]);
 
   // ── Expand questions: handle loop groups ──────────────────────────
   const expandedQuestions: ExpandedQuestion[] = (() => {
@@ -3332,6 +3345,124 @@ export function SpQuestionnaireUI({
           spSummary.loyer?.loyer_mensuel && spSummary.loyer.loyer_mensuel > 0
             ? spSummary.loyer.loyer_mensuel
             : spSummary.abonnements.totalMensuel;
+        const widgetGroupContent = (
+          <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
+            {(() => {
+              const margeRemplie = reponses.some(
+                (r) => r.question_id === 'sp_marge_calculee' && Number(r.valeur) > 0,
+              );
+              const seuilId = spConfigModeClient?.garde_fou_marge_seuil_question_id;
+              const seuilIdx = seuilId
+                ? expandedQuestions.findIndex((eq) => eq.question.id === seuilId)
+                : -1;
+              const gardeFouVisible =
+                !margeRemplie && seuilIdx >= 0 && currentIdx >= seuilIdx;
+              return (
+                <SpMargeWidget
+                  reponses={reponses}
+                  questions={questions}
+                  catalogue={catalogue}
+                  donneesExtraites={donneesExtraites}
+                  spConfigLoyer={spConfigLoyer}
+                  spConfigMoisOfferts={spConfigMoisOfferts}
+                  spPreferencesProduits={spPreferencesProduits}
+                  onUpdateReponses={(nextReponses) => {
+                    setReponses(nextReponses);
+                  }}
+                  gardeFouActif={spConfigModeClient?.garde_fou_marge_actif ?? false}
+                  gardeFouVisible={gardeFouVisible}
+                />
+              );
+            })()}
+            {(() => {
+              const indemQuestion = questions.find(
+                (q) =>
+                  q.affichage === 'nombre' &&
+                  q.nombre_config?.suggestion_source === 'indemnite_resiliation',
+              );
+              // Id de repli `sp_total_indemnites` quand aucune question
+              // d'indemnité n'existe (aligné sur le widget Indemnité), afin
+              // que le garde-fou fonctionne comme celui de la marge.
+              const indemTargetId = indemQuestion?.id ?? 'sp_total_indemnites';
+              const indemRemplie = reponses.some(
+                (r) => r.question_id === indemTargetId && Number(r.valeur) > 0,
+              );
+              const seuilIndemId = spConfigModeClient?.garde_fou_indemnite_seuil_question_id;
+              const seuilIndemIdx = seuilIndemId
+                ? expandedQuestions.findIndex((eq) => eq.question.id === seuilIndemId)
+                : -1;
+              const gardeFouIndemVisible =
+                !indemRemplie && seuilIndemIdx >= 0 && currentIdx >= seuilIndemIdx;
+              return (
+                <SpIndemniteWidget
+                  reponses={reponses}
+                  questions={questions}
+                  donneesExtraites={donneesExtraites}
+                  spConfigResiliation={spConfigResiliation}
+                  referenceDate={spIndemnitesReferenceDate}
+                  onUpdateReponses={(nextReponses) => {
+                    setReponses(nextReponses);
+                  }}
+                  gardeFouActif={spConfigModeClient?.garde_fou_indemnite_actif ?? false}
+                  gardeFouVisible={gardeFouIndemVisible}
+                />
+              );
+            })()}
+            <SaRealTimeCart
+              donneesExtraites={donneesExtraites}
+              spTotalMensuel={spReference}
+              onUpdateSaData={handleUpdateSaData}
+              onResetSaData={handleResetSaData}
+            />
+            <SpRealTimeCart
+              reponses={reponses}
+              questions={questions}
+              catalogue={catalogue}
+              donneesExtraites={donneesExtraites}
+              spConfigLoyer={spConfigLoyer}
+              spConfigMoisOfferts={spConfigMoisOfferts}
+              spPreferencesProduits={spPreferencesProduits}
+              modeClientActif={modeClientActif}
+              spConfigModeClient={spConfigModeClient}
+              onUpdateReponses={(nextReponses) => setReponses(nextReponses)}
+            />
+          </div>
+        );
+
+        if (widgetsDetached) {
+          return (
+            <>
+              <PopupPortal
+                isOpen={widgetsDetached}
+                onClose={() => setWidgetsDetached(false)}
+                onOpenBlocked={() => {
+                  setWidgetsDetached(false);
+                  setPopupBlockedMessage(true);
+                }}
+                title="Widgets SP"
+                windowName="sp-widgets-detached"
+                width={340}
+                height={760}
+              >
+                <div className="p-3">{widgetGroupContent}</div>
+              </PopupPortal>
+              {widgetsVisibles && (
+                <div className="fixed z-40" style={{ bottom: 16, right: 16 }}>
+                  <button
+                    type="button"
+                    onClick={() => setWidgetsDetached(false)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm bg-white text-gray-600 border-gray-300 hover:border-gray-400 transition-colors"
+                    title="Réattacher les widgets sur cet écran"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Réattacher les widgets
+                  </button>
+                </div>
+              )}
+            </>
+          );
+        }
+
         return (
           <div
             ref={widgetContainerRef}
@@ -3354,93 +3485,31 @@ export function SpQuestionnaireUI({
                 setWidgetPos({ x: rect.left, y: rect.top });
                 isDraggingWidget.current = true;
               }}
-              className="absolute top-1 right-1 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-black/20 hover:bg-black/40 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing select-none transition-all"
+              className="absolute top-1 right-8 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-black/20 hover:bg-black/40 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing select-none transition-all"
               title="Déplacer les widgets"
             >
               <GripHorizontal className="h-3.5 w-3.5 text-white" />
             </div>
 
-            <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
-              {(() => {
-                const margeRemplie = reponses.some(
-                  (r) => r.question_id === 'sp_marge_calculee' && Number(r.valeur) > 0,
-                );
-                const seuilId = spConfigModeClient?.garde_fou_marge_seuil_question_id;
-                const seuilIdx = seuilId
-                  ? expandedQuestions.findIndex((eq) => eq.question.id === seuilId)
-                  : -1;
-                const gardeFouVisible =
-                  !margeRemplie && seuilIdx >= 0 && currentIdx >= seuilIdx;
-                return (
-                  <SpMargeWidget
-                    reponses={reponses}
-                    questions={questions}
-                    catalogue={catalogue}
-                    donneesExtraites={donneesExtraites}
-                    spConfigLoyer={spConfigLoyer}
-                    spConfigMoisOfferts={spConfigMoisOfferts}
-                    spPreferencesProduits={spPreferencesProduits}
-                    onUpdateReponses={(nextReponses) => {
-                      setReponses(nextReponses);
-                    }}
-                    gardeFouActif={spConfigModeClient?.garde_fou_marge_actif ?? false}
-                    gardeFouVisible={gardeFouVisible}
-                  />
-                );
-              })()}
-              {(() => {
-                const indemQuestion = questions.find(
-                  (q) =>
-                    q.affichage === 'nombre' &&
-                    q.nombre_config?.suggestion_source === 'indemnite_resiliation',
-                );
-                // Id de repli `sp_total_indemnites` quand aucune question
-                // d'indemnité n'existe (aligné sur le widget Indemnité), afin
-                // que le garde-fou fonctionne comme celui de la marge.
-                const indemTargetId = indemQuestion?.id ?? 'sp_total_indemnites';
-                const indemRemplie = reponses.some(
-                  (r) => r.question_id === indemTargetId && Number(r.valeur) > 0,
-                );
-                const seuilIndemId = spConfigModeClient?.garde_fou_indemnite_seuil_question_id;
-                const seuilIndemIdx = seuilIndemId
-                  ? expandedQuestions.findIndex((eq) => eq.question.id === seuilIndemId)
-                  : -1;
-                const gardeFouIndemVisible =
-                  !indemRemplie && seuilIndemIdx >= 0 && currentIdx >= seuilIndemIdx;
-                return (
-                  <SpIndemniteWidget
-                    reponses={reponses}
-                    questions={questions}
-                    donneesExtraites={donneesExtraites}
-                    spConfigResiliation={spConfigResiliation}
-                    referenceDate={spIndemnitesReferenceDate}
-                    onUpdateReponses={(nextReponses) => {
-                      setReponses(nextReponses);
-                    }}
-                    gardeFouActif={spConfigModeClient?.garde_fou_indemnite_actif ?? false}
-                    gardeFouVisible={gardeFouIndemVisible}
-                  />
-                );
-              })()}
-              <SaRealTimeCart
-                donneesExtraites={donneesExtraites}
-                spTotalMensuel={spReference}
-                onUpdateSaData={handleUpdateSaData}
-                onResetSaData={handleResetSaData}
-              />
-              <SpRealTimeCart
-                reponses={reponses}
-                questions={questions}
-                catalogue={catalogue}
-                donneesExtraites={donneesExtraites}
-                spConfigLoyer={spConfigLoyer}
-                spConfigMoisOfferts={spConfigMoisOfferts}
-                spPreferencesProduits={spPreferencesProduits}
-                modeClientActif={modeClientActif}
-                spConfigModeClient={spConfigModeClient}
-                onUpdateReponses={(nextReponses) => setReponses(nextReponses)}
-              />
+            {/* Détacher — ouvre les widgets dans une fenêtre séparée à glisser sur un 2e écran */}
+            <div
+              onClick={() => {
+                setPopupBlockedMessage(false);
+                setWidgetsDetached(true);
+              }}
+              className="absolute top-1 right-1 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-black/20 hover:bg-black/40 opacity-0 group-hover:opacity-100 cursor-pointer select-none transition-all"
+              title="Détacher les widgets dans une fenêtre séparée"
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-white" />
             </div>
+
+            {popupBlockedMessage && (
+              <div className="absolute -top-8 right-1 z-10 whitespace-nowrap rounded-md bg-red-600 px-2 py-1 text-[11px] text-white shadow-lg">
+                Autorise les popups pour détacher les widgets
+              </div>
+            )}
+
+            {widgetGroupContent}
           </div>
         );
       })()}
