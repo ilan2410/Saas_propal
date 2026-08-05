@@ -36,42 +36,52 @@ export function DraggablePanel({
   const [left, setLeft] = useState(0);
   const [top, setTop] = useState(0);
   const dragStateRef = useRef<DragState>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Le panneau peut être rendu via un portail dans une autre fenêtre (widgets
+  // détachés sur un 2e écran) : `window`/`document` globaux pointeraient
+  // alors sur la fenêtre principale, pas sur celle qui affiche réellement le
+  // panneau. `ownerDocument.defaultView` donne toujours la bonne fenêtre.
+  const getOwnerWindow = () => panelRef.current?.ownerDocument?.defaultView ?? window;
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
-    setLeft(Math.round((window.innerWidth - defaultWidth) / 2));
-    setTop(Math.round((window.innerHeight - defaultHeight) / 2));
+    const win = getOwnerWindow();
+    setLeft(Math.round((win.innerWidth - defaultWidth) / 2));
+    setTop(Math.round((win.innerHeight - defaultHeight) / 2));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
+    const win = getOwnerWindow();
     const handleMouseMove = (e: MouseEvent) => {
       const ds = dragStateRef.current;
       if (!ds) return;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      const vw = win.innerWidth;
+      const vh = win.innerHeight;
       setLeft(clamp(ds.startLeft + (e.clientX - ds.startX), EDGE_MARGIN, Math.max(EDGE_MARGIN, vw - defaultWidth - EDGE_MARGIN)));
       setTop(clamp(ds.startTop + (e.clientY - ds.startY), EDGE_MARGIN, Math.max(EDGE_MARGIN, vh - defaultHeight - EDGE_MARGIN)));
     };
     const handleMouseUp = () => {
       dragStateRef.current = null;
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
+      win.document.body.style.userSelect = '';
+      win.document.body.style.cursor = '';
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    win.addEventListener('mousemove', handleMouseMove);
+    win.addEventListener('mouseup', handleMouseUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
+      win.removeEventListener('mousemove', handleMouseMove);
+      win.removeEventListener('mouseup', handleMouseUp);
+      win.document.body.style.userSelect = '';
+      win.document.body.style.cursor = '';
     };
-  }, [defaultWidth, defaultHeight]);
+  }, [defaultWidth, defaultHeight, isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div
+      ref={panelRef}
       className="fixed z-[70] flex flex-col rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
       style={{ left, top, width: defaultWidth, height: defaultHeight }}
     >
@@ -85,8 +95,9 @@ export function DraggablePanel({
             startLeft: left,
             startTop: top,
           };
-          document.body.style.userSelect = 'none';
-          document.body.style.cursor = 'grabbing';
+          const doc = panelRef.current?.ownerDocument ?? document;
+          doc.body.style.userSelect = 'none';
+          doc.body.style.cursor = 'grabbing';
         }}
       >
         <span className="text-sm font-semibold text-white">{title}</span>
