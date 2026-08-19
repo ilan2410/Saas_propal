@@ -207,12 +207,15 @@ export function SpMargeWidget({
             <label className="text-xs text-gray-500 shrink-0">Marge :</label>
             <input
               type="number"
-              min="0"
               step="1"
               value={margeInput}
               onChange={(e) => handleMargeChange(e.target.value)}
               placeholder="0"
-              className="h-8 w-24 text-sm border border-gray-300 rounded px-2"
+              className={`h-8 w-24 text-sm border rounded px-2 ${
+                loyerResult.margeNum < 0
+                  ? 'border-red-300 text-red-600 font-semibold'
+                  : 'border-gray-300'
+              }`}
             />
             <span className="text-xs text-gray-500">€</span>
           </div>
@@ -226,9 +229,6 @@ export function SpMargeWidget({
                   {loyerResult.loyer.loyer_mensuel.toFixed(2)} €
                 </span>
               </div>
-              <span className="block text-[10px] text-gray-400">
-                ({loyerResult.baseLoyer.toFixed(2)} × {(loyerResult.loyer.taux_utilise * 100).toFixed(2)}%) / 3
-              </span>
               <div className="flex gap-3 text-xs text-gray-500 pt-1 border-t border-blue-100">
                 <span>Durée : {loyerResult.dureeMois} mois</span>
                 <span>Trim. : {loyerResult.loyer.trimestres}</span>

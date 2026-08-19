@@ -230,6 +230,12 @@ function formatPrixProduit(p: CatalogueProduit): string | null {
   return null;
 }
 
+function extractDetailProduit(description?: string | null): string | null {
+  const match = description?.match(/\*([^*]+)\*/);
+  const detail = match?.[1]?.trim();
+  return detail ? detail : null;
+}
+
 function getProduitPrixValue(p: CatalogueProduit): string {
   if (p.type_frequence === 'mensuel' && p.prix_mensuel != null) return p.prix_mensuel.toString();
   if (p.type_frequence === 'unique' && p.prix_vente != null) return p.prix_vente.toString();
@@ -521,6 +527,7 @@ function CatalogueMultipleChoiceInput({
               {filteredProducts.map((p) => {
                 const prix = formatPrixProduit(p);
                 const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                const detail = extractDetailProduit(p.description);
                 const isSelected = selected.has(p.nom);
                 return (
                   <button
@@ -537,6 +544,11 @@ function CatalogueMultipleChoiceInput({
                         {[prix, fas].filter(Boolean).join(' · ')}
                       </div>
                     )}
+                    {detail && (
+                      <div className={`text-[11px] italic mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                        {detail}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -551,6 +563,7 @@ function CatalogueMultipleChoiceInput({
           {products.map((p) => {
             const prix = formatPrixProduit(p);
             const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+            const detail = extractDetailProduit(p.description);
             const isSelected = selected.has(p.nom);
             return (
               <button key={p.nom} type="button" onClick={() => toggle(p.nom)}
@@ -562,6 +575,11 @@ function CatalogueMultipleChoiceInput({
                 {!hidePrice && (prix || fas) && (
                   <div className={`text-xs mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
                     {[prix, fas].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {detail && (
+                  <div className={`text-[11px] italic mt-0.5 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                    {detail}
                   </div>
                 )}
               </button>
@@ -1513,7 +1531,10 @@ export function SpQuestionnaireUI({
       currentIdx,
     }]);
 
-    setMessages((prev) => [...prev, { from: 'user', text: 'Passer' }]);
+    setMessages((prev) => [
+      ...prev.filter((m) => !(m.from === 'bot' && m.variant === 'success')),
+      { from: 'user', text: 'Passer' },
+    ]);
     setInputValue('');
     setCatalogueSearch('');
     setAdresseEdit(EMPTY_ADRESSE);
@@ -1555,7 +1576,10 @@ export function SpQuestionnaireUI({
       ...extra,
     ];
     setReponses(nextReps);
-    setMessages((prev) => [...prev, { from: 'user', text: formatReponseText(valeur) }]);
+    setMessages((prev) => [
+      ...prev.filter((m) => !(m.from === 'bot' && m.variant === 'success')),
+      { from: 'user', text: formatReponseText(valeur) },
+    ]);
 
     const eq = expandedQuestions[currentIdx];
 
@@ -2236,10 +2260,11 @@ export function SpQuestionnaireUI({
           {(currentQuestion.affichage === 'boutons_choix_unique' || currentQuestion.affichage === 'choix_liste_manuelle') && (
             <div className="space-y-2">
               {currentCatalogueOptions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {currentCatalogueOptions.map((p) => {
                     const prix = formatPrixProduit(p);
                     const fas = p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                    const detail = extractDetailProduit(p.description);
                     const isPending = pendingCatalogueSelection?.product.nom === p.nom
                       && pendingCatalogueSelection?.instanceId === currentExpanded.instanceId;
                     return (
@@ -2261,6 +2286,11 @@ export function SpQuestionnaireUI({
                         {!(modeClientActif && spConfigModeClient?.masquer_prix_produits) && (prix || fas) && (
                           <div className={`text-xs mt-0.5 ${isPending ? 'text-blue-100' : 'text-gray-400'}`}>
                             {[prix, fas].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                        {detail && (
+                          <div className={`text-[11px] italic mt-0.5 ${isPending ? 'text-blue-100' : 'text-gray-400'}`}>
+                            {detail}
                           </div>
                         )}
                       </button>
@@ -2317,6 +2347,7 @@ export function SpQuestionnaireUI({
                   {filteredCatalogueOptions.map((p) => {
                     const prix = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) ? formatPrixProduit(p) : null;
                     const fas = !(modeClientActif && spConfigModeClient?.masquer_prix_produits) && p.prix_installation != null ? `FAS: ${p.prix_installation.toFixed(2).replace('.', ',')} €` : null;
+                    const detail = extractDetailProduit(p.description);
                     const isPending = pendingCatalogueSelection?.product.nom === p.nom
                       && pendingCatalogueSelection?.instanceId === currentExpanded.instanceId;
                     return (
@@ -2340,6 +2371,9 @@ export function SpQuestionnaireUI({
                           <span className="block truncate font-medium">{p.nom}</span>
                           {(prix || fas) && (
                             <span className="block truncate text-xs text-gray-400">{[prix, fas].filter(Boolean).join(' · ')}</span>
+                          )}
+                          {detail && (
+                            <span className="block truncate text-[11px] italic text-gray-400">{detail}</span>
                           )}
                         </span>
                       </button>
@@ -2780,12 +2814,13 @@ export function SpQuestionnaireUI({
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
-                    min="0"
                     step="1"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     placeholder="Ex : 500"
-                    className="h-8 w-32 text-sm border border-gray-300 rounded px-2"
+                    className={`h-8 w-32 text-sm border rounded px-2 ${
+                      margeNum < 0 ? 'border-red-300 text-red-600 font-semibold' : 'border-gray-300'
+                    }`}
                   />
                   <span className="text-sm text-gray-500">€ de marge</span>
                 </div>
@@ -2833,7 +2868,9 @@ export function SpQuestionnaireUI({
                       )}
                       <div className="flex items-center justify-between">
                         <span className="text-gray-600">Marge saisie</span>
-                        <span className="tabular-nums">{margeNum.toFixed(2)} €</span>
+                        <span className={`tabular-nums ${margeNum < 0 ? 'text-red-600 font-semibold' : ''}`}>
+                          {margeNum.toFixed(2)} €
+                        </span>
                       </div>
                       <div className="flex items-center justify-between pt-1 border-t border-gray-200 font-semibold text-gray-900">
                         <span>Base loyer</span>
@@ -3349,7 +3386,7 @@ export function SpQuestionnaireUI({
           <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
             {(() => {
               const margeRemplie = reponses.some(
-                (r) => r.question_id === 'sp_marge_calculee' && Number(r.valeur) > 0,
+                (r) => r.question_id === 'sp_marge_calculee' && Number.isFinite(Number(r.valeur)),
               );
               const seuilId = spConfigModeClient?.garde_fou_marge_seuil_question_id;
               const seuilIdx = seuilId
@@ -3446,19 +3483,6 @@ export function SpQuestionnaireUI({
               >
                 <div className="p-3">{widgetGroupContent}</div>
               </PopupPortal>
-              {widgetsVisibles && (
-                <div className="fixed z-40" style={{ bottom: 16, right: 16 }}>
-                  <button
-                    type="button"
-                    onClick={() => setWidgetsDetached(false)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm bg-white text-gray-600 border-gray-300 hover:border-gray-400 transition-colors"
-                    title="Réattacher les widgets sur cet écran"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Réattacher les widgets
-                  </button>
-                </div>
-              )}
             </>
           );
         }
