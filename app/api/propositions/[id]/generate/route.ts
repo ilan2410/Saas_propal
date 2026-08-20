@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
-import { repairMaterialDetailFromQuestionnaire } from '@/lib/sp/repairMaterialDetail';
+import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
@@ -82,12 +82,25 @@ export async function POST(
     const spPreferencesProduits = typeof templateFileCfg.sp_preferences_produits === 'object' && templateFileCfg.sp_preferences_produits !== null
       ? templateFileCfg.sp_preferences_produits as SpPreferencesProduits
       : undefined;
-    const suggestionsSpCompletes = repairMaterialDetailFromQuestionnaire(
+
+    // Config loyer / mois offerts : même source que l'aperçu Word, pour garantir des
+    // montants identiques entre l'aperçu et le document Word généré.
+    const orgPreferences = (typeof organization?.preferences === 'object' && organization.preferences !== null
+      ? organization.preferences
+      : {}) as OrganizationPreferences;
+    const spConfigLoyer = (templateFileCfg.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
+      ? (templateFileCfg.sp_config_loyer as SpConfigLoyer)
+      : undefined;
+    const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
+
+    const suggestionsSpCompletes = repairSpCompletesFromQuestionnaire(
       (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null,
       spReponses,
       templateQuestions,
       catalogue,
       donnees as UnknownRecord,
+      spConfigLoyer,
+      spConfigMoisOfferts,
       spPreferencesProduits,
     );
 
@@ -105,13 +118,6 @@ export async function POST(
 
     // Référence proposition → variable Word {{sp_reference}}
     // Loyer évalué sur l'état FINAL des réponses (cf. config résumé/réf du template).
-    const orgPreferences = (typeof organization?.preferences === 'object' && organization.preferences !== null
-      ? organization.preferences
-      : {}) as OrganizationPreferences;
-    const spConfigLoyer = (templateFileCfg.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
-      ? (templateFileCfg.sp_config_loyer as SpConfigLoyer)
-      : undefined;
-    const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
     const spConfigResumeRef = templateFileCfg.sp_config_resume_ref as SpConfigResumeRef | undefined;
     const sp_reference = buildSpReference(
       spConfigResumeRef,

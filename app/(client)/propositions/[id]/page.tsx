@@ -31,8 +31,18 @@ import { CopyButton } from '@/components/propositions/CopyButton';
 import { ExportButton } from '@/components/propositions/ExportButton';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
-import type { SpObjectifConfig, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes } from '@/types';
-import { resolveIndemnites } from '@/lib/sp/calculateCart';
+import type {
+  CatalogueProduit,
+  OrganizationPreferences,
+  SpConfigLoyer,
+  SpObjectifConfig,
+  SpPreferencesProduits,
+  SpQuestion,
+  SpQuestionReponse,
+  SuggestionsSpCompletes,
+} from '@/types';
+import { calculateCartSummary, resolveIndemnites, type SpCartSummary } from '@/lib/sp/calculateCart';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 
@@ -129,11 +139,15 @@ function SpResumePanel({
   reponses,
   questions,
   indemnitesResolues,
+  cart,
+  saTotalMensuel,
 }: {
   sp: SuggestionsSpCompletes | null;
   reponses: SpQuestionReponse[];
   questions: SpQuestion[];
   indemnitesResolues: string | null;
+  cart: SpCartSummary | null;
+  saTotalMensuel: number;
 }) {
   const questionsById = new Map(questions.map((question) => [question.id, question]));
   const mobiles = compactRows(sp?.sp_lignes_mobiles);
@@ -153,14 +167,43 @@ function SpResumePanel({
 
   // FAS : le champ réellement stocké est sp_fas_total (pas sp_total_fas)
   const fasValue = (sp as unknown as Record<string, unknown>)?.sp_fas_total as string | undefined ?? sp?.sp_total_fas ?? sp?.sp_total_installation;
-  const showFas = hasPositiveValue(fasValue);
 
   // Indemnités : valeur résolue côté serveur (même logique que le comparatif SA/SP)
   const indemnitesValue = indemnitesResolues;
-  const showIndemnites = !!indemnitesValue || hasPositiveValue(sp?.sp_remise_mois_offert);
   const adresseFactu = sp?.sp_adresse_facturation;
   const adresseLivr = sp?.sp_adresse_livraison;
   const showAdresses = !!(sp?.sp_fournisseur_propose || adresseFactu);
+
+  // ── Totaux du panier ──────────────────────────────────────────────
+  // Le panier recalculé côté serveur (cart) est la source de vérité : mêmes chiffres
+  // que le widget "Situation Proposée", avec matériel / installation / FAS séparés.
+  // Repli sur les données figées à la génération pour les anciennes propositions
+  // sans sp_reponses enregistrées.
+  const abosFixe = cart ? cart.abonnements.fixe : fixeRows.reduce((sum, row) => sum + rowPrice(row), 0);
+  const abosMobile = cart ? cart.abonnements.mobile : mobileRows.reduce((sum, row) => sum + rowPrice(row), 0);
+  const abosInternet = cart ? cart.abonnements.internet : internetRows.reduce((sum, row) => sum + rowPrice(row), 0);
+  const abosTotal = cart ? cart.abonnements.totalMensuel : recurrentTotal;
+
+  const materielTotalFinal = cart ? cart.materiel : materielTotal;
+  const installationsTotal = cart ? cart.installations : 0;
+  const fasTotalFinal = cart ? cart.fas : parseEuroValue(fasValue);
+  const cadeauxTotalFinal = cart ? cart.cadeaux : cadeaux.reduce((sum, c) => sum + (c._valeur_raw || 0), 0);
+  const indemnitesTotalFinal = cart ? cart.indemnites : (indemnitesValue ? parseEuroValue(indemnitesValue) : 0);
+  const remiseMoisOffertFinal = cart ? cart.remiseMoisOffert : parseEuroValue(sp?.sp_remise_mois_offert);
+
+  const totalMensuelFinal = cart
+    ? (cart.loyer?.loyer_mensuel ?? cart.abonnements.totalMensuel)
+    : (parseEuroValue(sp?.sp_loyer_mensuel) > 0 ? parseEuroValue(sp?.sp_loyer_mensuel) : abosTotal);
+
+  const showFas = fasTotalFinal > 0;
+  const showInstallations = installationsTotal > 0;
+  const showCadeaux = cadeauxTotalFinal > 0 || cadeaux.length > 0;
+  const showIndemnites = indemnitesTotalFinal > 0;
+  const showRemiseMoisOffert = remiseMoisOffertFinal > 0;
+
+  // Économie = SA total mensuel - SP total mensuel (loyer), même calcul que le
+  // badge "Économie loyer SP vs SA" du panier temps réel.
+  const economieMensuelle = saTotalMensuel > 0 ? saTotalMensuel - totalMensuelFinal : null;
 
   return (
     <div className="space-y-5">
@@ -182,8 +225,8 @@ function SpResumePanel({
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Total mensuel proposé</p>
               <p className="text-5xl font-extrabold text-gray-900 leading-none">
-                {recurrentTotal > 0
-                  ? formatEuroValue(recurrentTotal)
+                {totalMensuelFinal > 0
+                  ? formatEuroValue(totalMensuelFinal)
                   : sp.sp_total_recurrent || sp.sp_total_propose || '-'}
               </p>
 
@@ -197,40 +240,62 @@ function SpResumePanel({
               )}
 
               {/* Badge économie */}
-              {sp.sp_est_economie === 'Oui' && sp.sp_economie_mensuelle && (
-                <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full">
-                  <TrendingDown className="w-4 h-4 text-emerald-600" />
-                  <span className="text-sm font-semibold text-emerald-700">
-                    Économie {sp.sp_economie_mensuelle}/mois
-                    {sp.sp_economie_annuelle ? ` · ${sp.sp_economie_annuelle}/an` : ''}
-                  </span>
-                </div>
-              )}
-
-              {/* Loyer mensuel */}
-              {sp.sp_loyer_mensuel && sp.sp_loyer_mensuel !== '-' && (
-                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-full">
-                  <span className="text-sm font-medium text-purple-700">
-                    Loyer : {sp.sp_loyer_mensuel}/mois
-                    {sp.sp_loyer_trimestriel ? ` · ${sp.sp_loyer_trimestriel}/trim.` : ''}
+              {economieMensuelle !== null && economieMensuelle !== 0 && (
+                <div
+                  className={`mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+                    economieMensuelle > 0
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : 'bg-red-50 border-red-200'
+                  }`}
+                >
+                  <TrendingDown className={`w-4 h-4 ${economieMensuelle > 0 ? 'text-emerald-600' : 'text-red-600 rotate-180'}`} />
+                  <span className={`text-sm font-semibold ${economieMensuelle > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                    {economieMensuelle > 0 ? 'Économie' : 'Surcoût'} {formatEuroValue(Math.abs(economieMensuelle))}/mois
+                    {' · '}{formatEuroValue(Math.abs(economieMensuelle) * 12)}/an
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Droite — synthèse rapide */}
+            {/* Droite — synthèse détaillée */}
             <div className="flex flex-col gap-2.5 justify-center">
               <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                <span className="text-gray-600">Forfaits récurrents</span>
-                <span className="font-semibold text-gray-900">
-                  {recurrentTotal > 0 ? formatEuroValue(recurrentTotal) : sp.sp_total_recurrent || '-'}
-                </span>
+                <span className="text-gray-600 font-medium">Abonnements</span>
+                <span className="font-semibold text-gray-900">{formatEuroValue(abosTotal)}</span>
               </div>
+              {abosFixe > 0 && (
+                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
+                  <span className="text-gray-500">Fixe</span>
+                  <span className="text-gray-600">{formatEuroValue(abosFixe)}</span>
+                </div>
+              )}
+              {abosMobile > 0 && (
+                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
+                  <span className="text-gray-500">Mobile</span>
+                  <span className="text-gray-600">{formatEuroValue(abosMobile)}</span>
+                </div>
+              )}
+              {abosInternet > 0 && (
+                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5 pb-0.5">
+                  <span className="text-gray-500">Internet</span>
+                  <span className="text-gray-600">{formatEuroValue(abosInternet)}</span>
+                </div>
+              )}
 
-              {materielTotal > 0 && (
+              {materielTotalFinal > 0 && (
                 <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600">Matériel (ponctuel)</span>
-                  <span className="font-semibold text-gray-900">{formatEuroValue(materielTotal)}</span>
+                  <span className="text-gray-600">Matériel</span>
+                  <span className="font-semibold text-gray-900">{formatEuroValue(materielTotalFinal)}</span>
+                </div>
+              )}
+
+              {showInstallations && (
+                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
+                  <span className="text-gray-600 flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5" />
+                    Installation
+                  </span>
+                  <span className="font-semibold text-gray-900">{formatEuroValue(installationsTotal)}</span>
                 </div>
               )}
 
@@ -238,35 +303,35 @@ function SpResumePanel({
                 <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
                   <span className="text-gray-600 flex items-center gap-1.5">
                     <Wrench className="w-3.5 h-3.5" />
-                    FAS / Installation
+                    {showInstallations ? 'FAS' : 'FAS / Installation'}
                   </span>
-                  <span className="font-semibold text-gray-900">{fasValue}</span>
+                  <span className="font-semibold text-gray-900">{formatEuroValue(fasTotalFinal)}</span>
                 </div>
               )}
 
-              {cadeaux.length > 0 && (
+              {showCadeaux && (
                 <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
                   <span className="text-gray-600 flex items-center gap-1.5">
                     <Gift className="w-3.5 h-3.5" />
                     Cadeaux / avantages
                   </span>
                   <span className="font-semibold text-emerald-700">
-                    {sp?.sp_total_cadeaux_ht || `${cadeaux.length} cadeau${cadeaux.length > 1 ? 'x' : ''}`}
+                    {cadeauxTotalFinal > 0 ? formatEuroValue(cadeauxTotalFinal) : (sp?.sp_total_cadeaux_ht || `${cadeaux.length} cadeau${cadeaux.length > 1 ? 'x' : ''}`)}
                   </span>
                 </div>
               )}
 
-              {sp.sp_remise_mois_offert && hasPositiveValue(sp.sp_remise_mois_offert) && (
+              {showRemiseMoisOffert && (
                 <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
                   <span className="text-gray-600">Remise mois offerts</span>
-                  <span className="font-semibold text-emerald-700">-{sp.sp_remise_mois_offert}</span>
+                  <span className="font-semibold text-emerald-700">{formatEuroValue(remiseMoisOffertFinal)}</span>
                 </div>
               )}
 
-              {indemnitesValue && (
+              {showIndemnites && (
                 <div className="flex items-center justify-between text-sm py-2">
                   <span className="text-gray-600">Indemnités résiliation</span>
-                  <span className="font-semibold text-red-600">{indemnitesValue}</span>
+                  <span className="font-semibold text-red-600">{formatEuroValue(indemnitesTotalFinal)}</span>
                 </div>
               )}
             </div>
@@ -408,7 +473,7 @@ function SpResumePanel({
             <div className="rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-gray-500" />
-                <h3 className="font-semibold text-gray-900">FAS / Installation</h3>
+                <h3 className="font-semibold text-gray-900">FAS</h3>
               </div>
               <div className="px-4 py-3 flex items-center justify-between text-sm">
                 <span className="text-gray-600">Frais d&apos;accès au service</span>
@@ -808,6 +873,33 @@ export default async function PropositionDetailPage({
       : extractedDataRecord;
   const indemnitesResolues = resolveIndemnites(spReponses, spQuestions, donneesExtraitesForCalc);
   const indemnitesResoluesStr = indemnitesResolues > 0 ? formatEuroValue(indemnitesResolues) : null;
+  const saTotalMensuel = calculateSaCartSummary(donneesExtraitesForCalc).totalMensuel;
+
+  // Panier SP recalculé en temps réel (même logique que le widget "Situation Proposée"
+  // et l'export comparatif) : seule source qui distingue vraiment matériel / installation / FAS.
+  let spCart: SpCartSummary | null = null;
+  if (spReponses.length > 0) {
+    const { data: catalogueRows } = await supabase
+      .from('catalogues_produits')
+      .select('*')
+      .eq('actif', true)
+      .or(`organization_id.eq.${user.id},organization_id.is.null`);
+    const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]) : [];
+
+    const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
+    const templateFileCfg = isRecord(template?.file_config) ? (template.file_config as Record<string, unknown>) : {};
+    const spConfigLoyer: SpConfigLoyer | undefined = isRecord(prefs.sp_config_loyer)
+      ? prefs.sp_config_loyer
+      : isRecord(templateFileCfg.sp_config_loyer)
+        ? (templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer)
+        : undefined;
+    const spPreferencesProduits: SpPreferencesProduits | undefined = isRecord(templateFileCfg.sp_preferences_produits)
+      ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits)
+      : undefined;
+    const spConfigMoisOfferts = isRecord(prefs.sp_config_mois_offerts) ? prefs.sp_config_mois_offerts : undefined;
+
+    spCart = calculateCartSummary(spReponses, spQuestions, catalogue, donneesExtraitesForCalc, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
@@ -1107,7 +1199,7 @@ export default async function PropositionDetailPage({
             </summary>
 
             <div className="p-6">
-              <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} />
+              <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} cart={spCart} saTotalMensuel={saTotalMensuel} />
               <ObjectifsSection
                 objectifsConfig={spObjectifsConfig}
                 templateId={templateId ?? ''}
