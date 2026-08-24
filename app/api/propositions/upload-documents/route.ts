@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // Types réellement supportés en aval : envoyés tels quels à Claude
 // (extractDataFromDocuments) comme document PDF ou image.
@@ -21,6 +22,11 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -46,7 +52,7 @@ export async function POST(request: NextRequest) {
       if (!validation.ok) continue; // garde de type (déjà vérifié ci-dessus)
 
       // Nom de stockage généré côté serveur : jamais le nom fourni par le client.
-      const fileName = `${user.id}/${randomStorageFileName(validation.extension)}`;
+      const fileName = `${ctx.organizationId}/${randomStorageFileName(validation.extension)}`;
 
       const { error } = await supabase.storage
         .from('documents')
