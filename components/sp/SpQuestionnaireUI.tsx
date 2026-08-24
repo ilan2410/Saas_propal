@@ -3086,11 +3086,13 @@ export function SpQuestionnaireUI({
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, contact: e.target.value }))}
                 className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
               <div className="flex gap-2">
-                <input placeholder="Ligne fixe" value={adresseEdit.ligne_fixe ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: e.target.value }))}
+                <input type="tel" placeholder="Ligne fixe" value={adresseEdit.ligne_fixe ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: maskPhoneInput(e.target.value) }))}
+                  onBlur={(e: React.FocusEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: normalizePhoneNumber(e.target.value) }))}
                   className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
-                <input placeholder="Ligne mobile" value={adresseEdit.ligne_mobile ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: e.target.value }))}
+                <input type="tel" placeholder="Ligne mobile" value={adresseEdit.ligne_mobile ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: maskPhoneInput(e.target.value) }))}
+                  onBlur={(e: React.FocusEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: normalizePhoneNumber(e.target.value) }))}
                   className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
               </div>
               <input placeholder="Adresse e-mail" value={adresseEdit.email ?? ''}

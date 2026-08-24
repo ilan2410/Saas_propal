@@ -75,6 +75,9 @@ export async function PATCH(request: Request) {
       ...(newPreferences.sp_objectifs_config !== undefined
         ? { sp_objectifs_config: newPreferences.sp_objectifs_config }
         : {}),
+      ...(newPreferences.sp_categories_order !== undefined
+        ? { sp_categories_order: newPreferences.sp_categories_order }
+        : {}),
     };
 
     const supabaseAdmin = createServiceClient();

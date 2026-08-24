@@ -6,6 +6,7 @@
  */
 
 import { buildSituationActuelleLines } from '@/lib/sp/buildExportSaSpData';
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
 
 export type UnknownRecord = Record<string, unknown>;
 
@@ -398,6 +399,38 @@ export function formatValueForWord(value: unknown): unknown {
 
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+export type EntrepriseOrgFields = UnknownRecord;
+
+function orgStr(organization: UnknownRecord, key: string): string {
+  const v = organization[key];
+  return typeof v === 'string' ? v : '';
+}
+
+/**
+ * Expose les infos du profil Entreprise (organizations) sous des variables
+ * Word préfixées `entreprise_`, distinctes des variables SA (client) et SP
+ * (situation proposée). `entreprise_logo_image_url` se comporte comme les
+ * autres champs `*_image_url` : utilisable en Word via {{%entreprise_logo_image_url}}.
+ */
+export function buildEntrepriseWordData(organization: EntrepriseOrgFields | null | undefined): UnknownRecord {
+  if (!isPlainObject(organization)) return {};
+
+  return {
+    entreprise_nom: orgStr(organization, 'nom'),
+    entreprise_email: orgStr(organization, 'email'),
+    entreprise_secteur: orgStr(organization, 'secteur'),
+    entreprise_siret: orgStr(organization, 'siret'),
+    entreprise_adresse: orgStr(organization, 'adresse'),
+    entreprise_code_postal: orgStr(organization, 'code_postal'),
+    entreprise_ville: orgStr(organization, 'ville'),
+    entreprise_telephone_fixe: normalizePhoneNumber(orgStr(organization, 'telephone_fixe')),
+    entreprise_telephone_mobile: normalizePhoneNumber(orgStr(organization, 'telephone_mobile')),
+    entreprise_contact_prenom: orgStr(organization, 'contact_prenom'),
+    entreprise_contact_nom: orgStr(organization, 'contact_nom'),
+    entreprise_logo_image_url: orgStr(organization, 'logo_url'),
+  };
 }
 
 /**

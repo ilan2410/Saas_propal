@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
 import { 
   Building, 
   Shield, 
@@ -30,7 +31,8 @@ import {
   Plus,
   Percent,
   EyeOff,
-  Package
+  Package,
+  ListOrdered
 } from 'lucide-react';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
@@ -40,6 +42,7 @@ import { SpResiliationManager } from '@/components/settings/SpResiliationManager
 import { SpMoisOffertsManager, getDefaultSpConfigMoisOfferts } from '@/components/settings/SpMoisOffertsManager';
 import { SpCodesPromoManager } from '@/components/settings/SpCodesPromoManager';
 import { SpObjectifsManager } from '@/components/settings/SpObjectifsManager';
+import { SpCategoriesOrderManager } from '@/components/settings/SpCategoriesOrderManager';
 import { SpReferenceManager } from '@/components/settings/SpReferenceManager';
 import { SpModeClientManager } from '@/components/settings/SpModeClientManager';
 
@@ -68,7 +71,7 @@ type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees'
 const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits';
+type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -244,6 +247,10 @@ export default function SettingsPage({
     code_postal: organization.code_postal || '',
     ville: organization.ville || '',
     logo_url: organization.logo_url || '',
+    contact_prenom: organization.contact_prenom || '',
+    contact_nom: organization.contact_nom || '',
+    telephone_fixe: organization.telephone_fixe || '',
+    telephone_mobile: organization.telephone_mobile || '',
   });
 
   // Password State
@@ -1262,6 +1269,50 @@ export default function SettingsPage({
             </div>
 
             <div className="border-t border-gray-100 pt-6">
+              <h3 className="text-sm font-medium text-gray-900 mb-4">Contact</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prénom</label>
+                  <input
+                    type="text"
+                    value={profileData.contact_prenom}
+                    onChange={(e) => setProfileData({...profileData, contact_prenom: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
+                  <input
+                    type="text"
+                    value={profileData.contact_nom}
+                    onChange={(e) => setProfileData({...profileData, contact_nom: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone fixe</label>
+                  <input
+                    type="tel"
+                    value={profileData.telephone_fixe}
+                    onChange={(e) => setProfileData({...profileData, telephone_fixe: maskPhoneInput(e.target.value)})}
+                    onBlur={(e) => setProfileData((prev) => ({...prev, telephone_fixe: normalizePhoneNumber(e.target.value)}))}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone mobile</label>
+                  <input
+                    type="tel"
+                    value={profileData.telephone_mobile}
+                    onChange={(e) => setProfileData({...profileData, telephone_mobile: maskPhoneInput(e.target.value)})}
+                    onBlur={(e) => setProfileData((prev) => ({...prev, telephone_mobile: normalizePhoneNumber(e.target.value)}))}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-6">
               <h3 className="text-sm font-medium text-gray-900 mb-4">Informations légales (optionnel)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1571,7 +1622,8 @@ export default function SettingsPage({
                   <input
                     type="tel"
                     value={billingData.telephone_facturation}
-                    onChange={(e) => setBillingData({...billingData, telephone_facturation: e.target.value})}
+                    onChange={(e) => setBillingData({...billingData, telephone_facturation: maskPhoneInput(e.target.value)})}
+                    onBlur={(e) => setBillingData((prev) => ({...prev, telephone_facturation: normalizePhoneNumber(e.target.value)}))}
                     className="w-full p-2 border border-gray-300 rounded-md"
                     placeholder="+33 1 23 45 67 89"
                   />
@@ -2373,6 +2425,18 @@ export default function SettingsPage({
                 <Package className="w-3.5 h-3.5" />
                 Préférences produits
               </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('ordre_categories')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'ordre_categories'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <ListOrdered className="w-3.5 h-3.5" />
+                Ordre des catégories
+              </button>
             </div>
 
             {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
@@ -2380,6 +2444,7 @@ export default function SettingsPage({
             {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
             {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
+            {questionsSpSubTab === 'ordre_categories' && <SpCategoriesOrderManager />}
             {questionsSpSubTab === 'apparence' && (
               <div className="space-y-6">
                 <div className="border border-gray-100 rounded-xl p-5 space-y-4">

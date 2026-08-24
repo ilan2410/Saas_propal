@@ -1,5 +1,6 @@
 import type { SuggestionsSpCompletes, SpAdresse, SpTableauFusionne } from '@/types';
 import { deepApplyTitleCase } from '@/lib/generators/word-data-utils';
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
 
 function sanitizeLineNumber(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -63,8 +64,8 @@ export function buildSpWordData(
     Adresse_facturation_SP_cp:           adresseFact?.code_postal ?? '',
     Adresse_facturation_SP_ville:        adresseFact?.ville ?? '',
     Adresse_facturation_SP_contact:      adresseFact?.contact ?? '',
-    Adresse_facturation_SP_ligne_fixe:   adresseFact?.ligne_fixe ?? '',
-    Adresse_facturation_SP_ligne_mobile: adresseFact?.ligne_mobile ?? '',
+    Adresse_facturation_SP_ligne_fixe:   normalizePhoneNumber(adresseFact?.ligne_fixe ?? ''),
+    Adresse_facturation_SP_ligne_mobile: normalizePhoneNumber(adresseFact?.ligne_mobile ?? ''),
     Adresse_facturation_SP_email:        adresseFact?.email ?? '',
     Adresse_facturation_SP_siret:        adresseFact?.siret ?? '',
 
@@ -73,8 +74,8 @@ export function buildSpWordData(
     Adresse_livraison_SP_cp:             adresseLiv?.code_postal ?? '',
     Adresse_livraison_SP_ville:          adresseLiv?.ville ?? '',
     Adresse_livraison_SP_contact:        adresseLiv?.contact ?? '',
-    Adresse_livraison_SP_ligne_fixe:     adresseLiv?.ligne_fixe ?? '',
-    Adresse_livraison_SP_ligne_mobile:   adresseLiv?.ligne_mobile ?? '',
+    Adresse_livraison_SP_ligne_fixe:     normalizePhoneNumber(adresseLiv?.ligne_fixe ?? ''),
+    Adresse_livraison_SP_ligne_mobile:   normalizePhoneNumber(adresseLiv?.ligne_mobile ?? ''),
     Adresse_livraison_SP_email:          adresseLiv?.email ?? '',
     Adresse_livraison_SP_siret:          adresseLiv?.siret ?? '',
 

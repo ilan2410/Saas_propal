@@ -75,6 +75,23 @@ function inferFileTypeFromName(fileName?: string | null): 'excel' | 'word' | 'pd
   return undefined;
 }
 
+// Variables du profil Entreprise (Paramètres > Profil), préfixées `entreprise_`
+// pour bien les distinguer des variables SA (client) et SP (situation proposée).
+const ENTREPRISE_VARS = [
+  { key: 'entreprise_nom', label: "Nom de l'entreprise" },
+  { key: 'entreprise_email', label: 'Email' },
+  { key: 'entreprise_secteur', label: "Secteur d'activité" },
+  { key: 'entreprise_contact_prenom', label: 'Prénom du contact' },
+  { key: 'entreprise_contact_nom', label: 'Nom du contact' },
+  { key: 'entreprise_telephone_fixe', label: 'Téléphone fixe' },
+  { key: 'entreprise_telephone_mobile', label: 'Téléphone mobile' },
+  { key: 'entreprise_siret', label: 'SIRET' },
+  { key: 'entreprise_adresse', label: 'Adresse' },
+  { key: 'entreprise_code_postal', label: 'Code postal' },
+  { key: 'entreprise_ville', label: 'Ville' },
+  { key: 'entreprise_logo_image_url', label: 'Logo (image) — balise {{%entreprise_logo_image_url}}' },
+];
+
 const SP_SIMPLE_VARS = [
   { key: 'sp_economie_mensuelle', label: 'Économie mensuelle (ex: "45,00 €")' },
   { key: 'sp_economie_annuelle', label: 'Économie annuelle' },
@@ -2247,6 +2264,34 @@ export function Step2UploadTemplate({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Section Variables Entreprise / Commercial - infos du profil (Paramètres > Profil),
+              volontairement séparées des variables SA (client) et SP (situation proposée). */}
+          {effectiveFileType === 'word' && (
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                Variables Entreprise / Commercial
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Profil de votre société</span>
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Issues de Paramètres → Profil. Distinctes des variables du client (SA) et de la situation proposée (SP).
+              </p>
+              <div className="grid grid-cols-1 gap-1">
+                {ENTREPRISE_VARS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-50">
+                    <div className="min-w-0">
+                      <code className="text-xs text-emerald-700 font-mono break-all">{key.endsWith('_image_url') ? `{{%${key}}}` : `{{${key}}}`}</code>
+                      <span className="text-xs text-gray-500 ml-2">{label}</span>
+                    </div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(key.endsWith('_image_url') ? `{{%${key}}}` : `{{${key}}}`)}
+                      className="text-xs text-gray-400 hover:text-gray-700 px-2 py-0.5 border rounded"
+                    >Copier</button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

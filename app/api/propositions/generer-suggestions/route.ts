@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie } from '@/types';
+import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
@@ -463,6 +464,7 @@ function buildSpCompletes(
   fasTotal = 0,
   loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
   spConfigMoisOfferts?: SpConfigMoisOfferts,
+  spCategoriesOrder?: SpCategorie[],
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -567,7 +569,10 @@ function buildSpCompletes(
     sp_materiel.push(buildSpMaterielFromLibre(lp));
   }
 
-  const toutes = [...sp_lignes_mobiles, ...sp_lignes_fixes, ...sp_internet];
+  const toutes = orderProductBuckets(
+    { internet: sp_internet, fixe: sp_lignes_fixes, mobile: sp_lignes_mobiles },
+    spCategoriesOrder,
+  );
   const economieTotale = toutes.reduce((s, l) => s + l._economie_raw, 0);
   const totalActuel = toutes.reduce((s, l) => s + l._prix_actuel_raw, 0);
   const totalPropose = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
@@ -665,8 +670,11 @@ function buildSpCompletes(
     sp_lignes_fixes,
     sp_internet,
     sp_materiel,
-    sp_fixes_mobiles: [...sp_lignes_fixes, ...sp_lignes_mobiles],
-    sp_fixes_mobiles_internet: [...sp_lignes_fixes, ...sp_lignes_mobiles, ...sp_internet],
+    sp_fixes_mobiles: orderProductBuckets(
+      { internet: [], fixe: sp_lignes_fixes, mobile: sp_lignes_mobiles },
+      spCategoriesOrder,
+    ),
+    sp_fixes_mobiles_internet: toutes,
     sp_toutes_lignes: toutes,
     sp_tout: [...toutes, ...sp_materiel],
     sp_economie_mensuelle: economieTotaleEffectif > 0 ? formatEuro(economieTotaleEffectif) : '',
@@ -790,7 +798,10 @@ function buildSpCompletes(
   };
 
   // sp_bdc_operateur_table: forfaits (mobile/fixe) filtrés par destinations.bdc_operateur
-  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = [...sp_lignes_mobiles, ...sp_lignes_fixes]
+  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = orderProductBuckets(
+    { internet: [], fixe: sp_lignes_fixes, mobile: sp_lignes_mobiles },
+    spCategoriesOrder,
+  )
     .filter((l) => {
       if (!l.sp_produit_id) return true; // pas de ref catalogue → inclure par défaut
       const cat = catalogueMap.get(l.sp_produit_id);
@@ -955,6 +966,7 @@ export async function POST(request: NextRequest) {
     }
 
     const priceOverrides = buildPriceOverridesMap(spReponses);
+    let spCategoriesOrder: SpCategorie[] | undefined;
 
     const rawResult: UnknownRecord = {
       sp_lignes_mobiles: [],
@@ -1010,6 +1022,9 @@ export async function POST(request: NextRequest) {
           : undefined;
         resiliationConfig = wordCfg.sp_config_resiliation
           ?? (orgPreferences?.sp_config_resiliation as SpConfigResiliation | undefined);
+        if (Array.isArray(orgPreferences?.sp_categories_order)) {
+          spCategoriesOrder = orgPreferences.sp_categories_order as SpCategorie[];
+        }
       }
     }
 
@@ -1116,6 +1131,7 @@ export async function POST(request: NextRequest) {
       typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
       loyerDureeConfig,
       spConfigMoisOfferts,
+      spCategoriesOrder,
     );
 
     if (montantIndemnites !== null) {

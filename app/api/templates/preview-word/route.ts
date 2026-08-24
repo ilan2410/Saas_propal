@@ -9,12 +9,14 @@ import {
   flattenForDocx,
   setNestedValue,
   buildSaWordData,
+  buildEntrepriseWordData,
   type UnknownRecord,
 } from '@/lib/generators/word-data-utils';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
 import type { WordConfig, SpPreferencesProduits, SpClauseConditionnelle, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpQuestion, SpQuestionReponse, CatalogueProduit, SuggestionsSpCompletes } from '@/types';
 
 /**
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
     //    Priorité : la plus récente proposition AYANT des données SP
     //    (suggestions_sp_completes non nul). À défaut, la plus récente tout
     //    court (les variables SA seront remplies, les tableaux SP resteront vides).
-    const baseSelect = 'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(sp_questions, preferences)';
+    const baseSelect = 'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -151,6 +153,12 @@ export async function POST(request: NextRequest) {
 
     const flatData: UnknownRecord = {};
     flattenForDocx(baseData, flatData);
+    if (typeof flatData['client.mobile'] === 'string') {
+      flatData['client.mobile'] = normalizePhoneNumber(flatData['client.mobile']);
+    }
+    if (typeof flatData['client.fixe'] === 'string') {
+      flatData['client.fixe'] = normalizePhoneNumber(flatData['client.fixe']);
+    }
 
     const orgRaw = (proposition as Record<string, unknown>).organizations;
     const org = isPlainObject(orgRaw)
@@ -182,7 +190,7 @@ export async function POST(request: NextRequest) {
       ? (fileConfig.sp_config_loyer as SpConfigLoyer)
       : undefined;
     const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
-    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits, orgPreferences.sp_categories_order);
     const wordCfg = fileConfig as unknown as WordConfig;
     const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
     // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
@@ -204,9 +212,12 @@ export async function POST(request: NextRequest) {
       spPreferencesProduits,
     );
     const referenceData: Record<string, string> = { sp_reference: sp_reference ?? '' };
-    // Ordre de priorité : données extraites (flat) < SA < SP calculées < clauses < référence < mapping utilisateur.
+    // Profil Entreprise (organizations) → variables {{entreprise_*}}, distinctes des
+    // variables client (SA) et situation proposée (SP).
+    const entrepriseData = buildEntrepriseWordData(org);
+    // Ordre de priorité : données extraites (flat) < SA < SP calculées < entreprise < clauses < référence < mapping utilisateur.
     // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
-    const finalData = { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData, ...mappedData };
+    const finalData = { ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData, ...mappedData };
 
     // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
     let uint8Array: Uint8Array;

@@ -64,7 +64,7 @@ export async function POST(
 
     const { data: organization } = await supabase
       .from('organizations')
-      .select('sp_questions, credits, tarif_par_proposition, preferences')
+      .select('nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, credits, tarif_par_proposition, preferences')
       .eq('id', user.id)
       .single();
 
@@ -102,6 +102,7 @@ export async function POST(
       spConfigLoyer,
       spConfigMoisOfferts,
       spPreferencesProduits,
+      orgPreferences.sp_categories_order,
     );
 
     // Clauses conditionnelles → variables Word {{sp_clause_<cle>}}
@@ -139,6 +140,7 @@ export async function POST(
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,
       sp_reference,
+      organization_profile: organization,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes

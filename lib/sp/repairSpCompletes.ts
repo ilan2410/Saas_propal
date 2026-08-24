@@ -1,10 +1,12 @@
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
+import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import type {
   CatalogueProduit,
   SpBdcInternetLigne,
   SpBdcMaterielLigne,
   SpBdcOperateurLigne,
   SpCadeauLigne,
+  SpCategorie,
   SpConfigLoyer,
   SpConfigMoisOfferts,
   SpInternet,
@@ -167,6 +169,7 @@ export function repairSpCompletesFromQuestionnaire(
   spConfigLoyer?: SpConfigLoyer,
   spConfigMoisOfferts?: SpConfigMoisOfferts,
   spPreferencesProduits?: SpPreferencesProduits,
+  spCategoriesOrder?: SpCategorie[],
 ): SuggestionsSpCompletes | null {
   if (!sp || reponses.length === 0 || questions.length === 0 || catalogue.length === 0) return sp;
 
@@ -187,7 +190,10 @@ export function repairSpCompletesFromQuestionnaire(
   const internet = hasTelecomSelections
     ? (internetCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp.sp_internet ?? [], internetCartLines, 'Internet', catalogueMap) : [])
     : (sp.sp_internet ?? []);
-  const toutes = [...fixes, ...mobiles, ...internet];
+  const toutes = orderProductBuckets(
+    { internet, fixe: fixes, mobile: mobiles },
+    spCategoriesOrder,
+  );
 
   // ── Reconstruire le matériel à partir des réponses du questionnaire ─────
   // Exclure les catégories telecom (gérées séparément) ET les cadeaux (sp_cadeaux_table)
@@ -267,7 +273,10 @@ export function repairSpCompletesFromQuestionnaire(
   };
 
   // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
-  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = [...mobiles, ...fixes]
+  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = orderProductBuckets(
+    { internet: [], fixe: fixes, mobile: mobiles },
+    spCategoriesOrder,
+  )
     .filter((l) => {
       if (!l.sp_produit_id) return true;
       return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
@@ -343,7 +352,10 @@ export function repairSpCompletesFromQuestionnaire(
     sp_lignes_mobiles: mobiles,
     sp_lignes_fixes: fixes,
     sp_internet: internet,
-    sp_fixes_mobiles: [...fixes, ...mobiles],
+    sp_fixes_mobiles: orderProductBuckets(
+      { internet: [], fixe: fixes, mobile: mobiles },
+      spCategoriesOrder,
+    ),
     sp_fixes_mobiles_internet: toutes,
     sp_toutes_lignes: toutes,
     sp_materiel,

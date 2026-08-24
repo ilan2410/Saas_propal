@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { GripHorizontal, X, User } from 'lucide-react';
+import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
 
 interface Props {
   open: boolean;
@@ -264,11 +265,25 @@ export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onS
           <div className="flex gap-2">
             <div className="flex-1">
               <label className={labelClass}>Ligne mobile</label>
-              <input value={edit.mobile} onChange={setField('mobile')} className={inputClass} placeholder="Mobile" />
+              <input
+                type="tel"
+                value={edit.mobile}
+                onChange={(e) => setEdit((p) => ({ ...p, mobile: maskPhoneInput(e.target.value) }))}
+                onBlur={(e) => setEdit((p) => ({ ...p, mobile: normalizePhoneNumber(e.target.value) }))}
+                className={inputClass}
+                placeholder="Mobile"
+              />
             </div>
             <div className="flex-1">
               <label className={labelClass}>Ligne fixe</label>
-              <input value={edit.fixe} onChange={setField('fixe')} className={inputClass} placeholder="Fixe" />
+              <input
+                type="tel"
+                value={edit.fixe}
+                onChange={(e) => setEdit((p) => ({ ...p, fixe: maskPhoneInput(e.target.value) }))}
+                onBlur={(e) => setEdit((p) => ({ ...p, fixe: normalizePhoneNumber(e.target.value) }))}
+                className={inputClass}
+                placeholder="Fixe"
+              />
             </div>
           </div>
           <div>

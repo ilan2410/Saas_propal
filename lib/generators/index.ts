@@ -16,8 +16,11 @@ import {
   formatValueForWord,
   flattenForDocx,
   buildSaWordData,
+  buildEntrepriseWordData,
   type UnknownRecord,
+  type EntrepriseOrgFields,
 } from './word-data-utils';
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
 import type { SuggestionsSpCompletes, WordConfig } from '@/types';
 
 type SheetMapping = {
@@ -116,6 +119,8 @@ interface GenerateOptions {
   sp_clauses_rendered?: Record<string, string>;
   /** Référence proposition calculée → variable Word {{sp_reference}} (null si non configurée). */
   sp_reference?: string | null;
+  /** Profil Entreprise (organizations) → variables Word {{entreprise_*}}. */
+  organization_profile?: EntrepriseOrgFields | null;
 }
 
 /**
@@ -145,6 +150,9 @@ export function buildPropositionBaseData(options: GenerateOptions): UnknownRecor
   const clausesData = options.sp_clauses_rendered ?? {};
   // Référence proposition → sp_reference (chaîne vide si non configurée).
   const referenceData: Record<string, string> = { sp_reference: options.sp_reference ?? '' };
+  // Profil Entreprise (organizations) → variables {{entreprise_*}}, distinctes des
+  // variables client (SA) et situation proposée (SP).
+  const entrepriseData = buildEntrepriseWordData(options.organization_profile);
 
   // Contact SA (client.email / client.mobile) : si absent (IA n'a rien extrait,
   // panneau "Coordonnées client" non renseigné), on complète avec l'adresse de
@@ -155,8 +163,14 @@ export function buildPropositionBaseData(options: GenerateOptions): UnknownRecor
   if (!flatData['client.mobile'] && spData['Adresse_facturation_SP_ligne_mobile']) {
     flatData['client.mobile'] = spData['Adresse_facturation_SP_ligne_mobile'];
   }
+  if (typeof flatData['client.mobile'] === 'string') {
+    flatData['client.mobile'] = normalizePhoneNumber(flatData['client.mobile']);
+  }
+  if (typeof flatData['client.fixe'] === 'string') {
+    flatData['client.fixe'] = normalizePhoneNumber(flatData['client.fixe']);
+  }
 
-  return { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData };
+  return { ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData };
 }
 
 /**

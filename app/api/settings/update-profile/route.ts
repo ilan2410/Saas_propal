@@ -14,14 +14,18 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { 
-      nom, 
-      email, 
-      logo_url, 
-      siret, 
-      adresse, 
-      code_postal, 
-      ville 
+    const {
+      nom,
+      email,
+      logo_url,
+      siret,
+      adresse,
+      code_postal,
+      ville,
+      contact_prenom,
+      contact_nom,
+      telephone_fixe,
+      telephone_mobile
     } = body;
 
     // Récupérer l'organisation de l'utilisateur
@@ -53,6 +57,10 @@ export async function PATCH(request: Request) {
       adresse,
       code_postal,
       ville,
+      contact_prenom,
+      contact_nom,
+      telephone_fixe,
+      telephone_mobile,
       updated_at: new Date().toISOString(),
     };
 

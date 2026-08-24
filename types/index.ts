@@ -32,6 +32,10 @@ export interface Organization {
   
   // Nouveaux champs
   logo_url?: string;
+  contact_prenom?: string;
+  contact_nom?: string;
+  telephone_fixe?: string;
+  telephone_mobile?: string;
   siret?: string;
   adresse?: string;
   code_postal?: string;
@@ -79,7 +83,10 @@ export interface OrganizationPreferences {
   sp_codes_promo_mode?: 'addition' | 'soustraction';
   sp_codes_promo_masquer_saisie?: boolean;
   sp_objectifs_config?: SpObjectifConfig[];
+  sp_categories_order?: SpCategorie[];
 }
+
+export type SpCategorie = 'internet' | 'fixe' | 'mobile';
 
 export type SpOutputFormat = 'pdf' | 'word';
 
