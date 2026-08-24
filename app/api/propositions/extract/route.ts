@@ -5,6 +5,7 @@ import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -238,6 +239,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { template_id, documents_urls, nom_client, proposition_id } = body;
     const copieursCount = Math.max(1, Number(body?.copieurs_count || 1));
@@ -268,7 +274,7 @@ export async function POST(request: NextRequest) {
       .from('proposition_templates')
       .select('*')
       .eq('id', template_id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (templateError || !template) {
@@ -289,7 +295,7 @@ export async function POST(request: NextRequest) {
     const resultById = await supabase
       .from('organizations')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
     
     if (resultById.data && !resultById.error) {
@@ -310,9 +316,9 @@ export async function POST(request: NextRequest) {
         console.log('✅ Organisation trouvée par email, ID:', organization.id);
         
         // Vérifier si les ID correspondent - si non, il y a un problème de cohérence
-        if (organization.id !== user.id) {
-          console.warn('⚠️ Incohérence détectée: user.id != organization.id', {
-            userId: user.id,
+        if (organization.id !== ctx.organizationId) {
+          console.warn('⚠️ Incohérence détectée: ctx.organizationId != organization.id', {
+            expectedOrgId: ctx.organizationId,
             orgId: organization.id
           });
         }
@@ -501,7 +507,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         .from('propositions')
         .select('*')
         .eq('id', proposition_id)
-        .eq('organization_id', user.id)
+        .eq('organization_id', ctx.organizationId)
         .single();
 
       if (existingError || !existingProp) {
@@ -518,7 +524,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           current_step: 3,
         })
         .eq('id', proposition_id)
-        .eq('organization_id', user.id)
+        .eq('organization_id', ctx.organizationId)
         .select('*')
         .single();
 
@@ -537,7 +543,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       const { data: created, error: propError } = await supabase
         .from('propositions')
         .insert({
-          organization_id: user.id,
+          organization_id: ctx.organizationId,
           template_id: template_id,
           nom_client: nom_client || null,
           source_documents: documents_urls, // JSONB array
@@ -565,7 +571,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     // Utilisation du helper centralisé
     try {
       // On utilise 15 ici car la proposition courante est déjà créée/mise à jour et incluse dans le compte
-      await cleanupOldPropositions(serviceSupabase, user.id, 15);
+      await cleanupOldPropositions(serviceSupabase, ctx.organizationId, 15);
     } catch (trimError) {
       console.error('Erreur lors du trim à 15 propositions:', trimError);
     }

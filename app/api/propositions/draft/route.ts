@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,11 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -34,12 +40,12 @@ export async function POST(request: NextRequest) {
     // L'appel async ne bloque pas le retour immédiat, mais c'est mieux d'attendre un peu pour éviter les race conditions
     // On le fait en "fire and forget" pour la rapidité, ou await pour la sûreté ?
     // Await est plus sûr pour la cohérence des données.
-    await cleanupOldPropositions(serviceSupabase, user.id, 14); // On garde 14 pour laisser la place au 15ème
+    await cleanupOldPropositions(serviceSupabase, ctx.organizationId, 14); // On garde 14 pour laisser la place au 15ème
 
     const { data: proposition, error } = await supabase
       .from('propositions')
       .insert({
-        organization_id: user.id,
+        organization_id: ctx.organizationId,
         template_id,
         nom_client,
         source_documents,

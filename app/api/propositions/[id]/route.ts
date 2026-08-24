@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
   if (!url) return null;
@@ -31,6 +32,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Récupérer la proposition avec le template
     const { data: proposition, error } = await supabase
       .from('propositions')
@@ -39,7 +45,7 @@ export async function GET(
         template:proposition_templates(*)
       `)
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (error || !proposition) {
@@ -76,11 +82,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { data: proposition, error: fetchError } = await serviceSupabase
       .from('propositions')
       .select('*')
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (fetchError || !proposition) {
@@ -137,7 +148,7 @@ export async function DELETE(
       .from('propositions')
       .delete()
       .eq('id', id)
-      .eq('organization_id', user.id);
+      .eq('organization_id', ctx.organizationId);
 
     if (error) throw error;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { SpQuestionReponse } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +13,11 @@ export async function POST(
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -27,7 +33,7 @@ export async function POST(
       .from('propositions')
       .select('id, organization_id, template_id, parent_proposition_id, extracted_data')
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (!proposition) {
@@ -45,7 +51,7 @@ export async function POST(
     const { data: org } = await supabase
       .from('organizations')
       .select('credits, tarif_clone_site')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (!org) {
@@ -62,7 +68,7 @@ export async function POST(
     }
 
     // Debit credits
-    await supabase.rpc('debit_credits', { org_id: user.id, amount: tarif });
+    await supabase.rpc('debit_credits', { org_id: ctx.organizationId, amount: tarif });
 
     // Update sp_reponses on the proposition
     await supabase

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(
   request: NextRequest,
@@ -17,12 +18,17 @@ export async function POST(
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+
     // Récupérer la proposition originale
     const { data: originalProposition, error: fetchError } = await supabase
       .from('propositions')
       .select('*')
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (fetchError || !originalProposition) {
@@ -48,7 +54,7 @@ export async function POST(
     const { data: newProposition, error: insertError } = await supabase
       .from('propositions')
       .insert({
-        organization_id: user.id,
+        organization_id: ctx.organizationId,
         template_id: originalProposition.template_id,
         nom_client: `[COPIE] ${clientName}`,
         statut: originalProposition.extracted_data || originalProposition.donnees_extraites ? 'ready' : 'draft',

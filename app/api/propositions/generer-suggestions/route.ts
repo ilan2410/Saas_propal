@@ -8,6 +8,7 @@ import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -928,6 +929,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const {
       situation_actuelle,
@@ -949,7 +955,7 @@ export async function POST(request: NextRequest) {
         .from('propositions')
         .select('id, suggestions_sp_completes')
         .eq('id', proposition_id)
-        .eq('organization_id', user.id)
+        .eq('organization_id', ctx.organizationId)
         .single();
 
       if (propError || !proposition) {
@@ -1007,7 +1013,7 @@ export async function POST(request: NextRequest) {
           supabase
             .from('organizations')
             .select('preferences, sp_questions')
-            .eq('id', user.id)
+            .eq('id', ctx.organizationId)
             .single(),
         ]);
         if (isPlainObject(tmpl?.file_config)) {
@@ -1056,7 +1062,7 @@ export async function POST(request: NextRequest) {
       const { data: orgData } = await supabase
         .from('organizations')
         .select('preferences')
-        .eq('id', user.id)
+        .eq('id', ctx.organizationId)
         .single();
       const orgCfg = isPlainObject(orgData?.preferences)
         ? (orgData.preferences as UnknownRecord).sp_config_loyer
@@ -1080,7 +1086,7 @@ export async function POST(request: NextRequest) {
       const { data: orgData } = await supabase
         .from('organizations')
         .select('preferences')
-        .eq('id', user.id)
+        .eq('id', ctx.organizationId)
         .single();
       const orgMoisOffertsCfg = isPlainObject(orgData?.preferences)
         ? (orgData.preferences as UnknownRecord).sp_config_mois_offerts
@@ -1148,7 +1154,7 @@ export async function POST(request: NextRequest) {
         .from('propositions')
         .update(updatePayload)
         .eq('id', proposition_id)
-        .eq('organization_id', user.id);
+        .eq('organization_id', ctx.organizationId);
 
       if (updateError) {
         console.error('Erreur sauvegarde suggestions:', updateError);

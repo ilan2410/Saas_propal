@@ -5,6 +5,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -24,12 +25,17 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Récupérer la proposition
     const { data: proposition, error: propError } = await supabase
       .from('propositions')
       .select('*')
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (propError || !proposition) {
@@ -43,7 +49,7 @@ export async function POST(
       .from('proposition_templates')
       .select('*')
       .eq('id', proposition.template_id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (templateError || !template) {
@@ -65,14 +71,14 @@ export async function POST(
     const { data: organization } = await supabase
       .from('organizations')
       .select('nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, credits, tarif_par_proposition, preferences')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     const { data: catalogueRows } = await supabase
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${user.id},organization_id.is.null`);
+      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
 
     const allQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
     const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
@@ -135,7 +141,7 @@ export async function POST(
     const fileUrl = await generatePropositionFile({
       template,
       donnees,
-      organization_id: user.id,
+      organization_id: ctx.organizationId,
       proposition_id: id,
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,

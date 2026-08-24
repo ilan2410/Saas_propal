@@ -14,6 +14,7 @@ import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-genera
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { buildExportSaSpData } from '@/lib/sp/buildExportSaSpData';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -29,6 +30,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   // 1. Récupérer la proposition (avec sp_reponses, extracted_data, filled_data)
   const { data: proposition, error } = await supabase
     .from('propositions')
@@ -43,7 +47,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
     `)
     .eq('id', id)
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .single();
 
   if (error || !proposition) {
@@ -94,7 +98,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     .from('catalogues_produits')
     .select('*')
     .eq('actif', true)
-    .or(`organization_id.eq.${user.id},organization_id.is.null`);
+    .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
   const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows)
     ? (catalogueRows as CatalogueProduit[])
     : [];
