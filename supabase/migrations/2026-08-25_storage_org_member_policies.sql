@@ -14,11 +14,15 @@
 -- propriétaire (target_org_id = auth.uid()) et un commercial actif rattaché
 -- via organization_members.
 --
--- Périmètre : uniquement les 4 policies listées ci-dessous (buckets `documents`
--- et `propositions`, hors "Service can create propositions" qui n'est pas
--- scopée par utilisateur). Le bucket `templates` a le même défaut mais est
--- géré par une permission non par défaut pour les commerciaux (manage_templates) ;
--- traité séparément, hors périmètre de cette migration.
+-- Périmètre : les policies listées ci-dessous pour les buckets `documents`,
+-- `propositions` et `templates` (hors "Service can create propositions" qui
+-- n'est pas scopée par utilisateur). Le bucket `templates` est couvert malgré
+-- la permission manage_templates n'étant pas accordée par défaut aux
+-- commerciaux : app/api/templates/upload/route.ts construit déjà le chemin de
+-- stockage à partir de ctx.organizationId (cf. Task 4), donc dès qu'un
+-- commercial se voit accorder manage_templates (Task 5+), ces policies
+-- doivent déjà accepter le chemin `<organization_id>/...` plutôt que
+-- `<auth.uid()>/...`.
 --
 -- Ne pas exécuter directement contre une base de données depuis cet
 -- environnement : relecture manuelle uniquement, comme pour
@@ -66,4 +70,40 @@ USING (
     WHERE propositions.duplicated_template_url LIKE '%' || name
     AND is_org_member(propositions.organization_id)
   )
+);
+
+-- ==========================================
+-- BUCKET: templates
+-- ==========================================
+
+DROP POLICY IF EXISTS "Users can upload their own templates" ON storage.objects;
+CREATE POLICY "Users can upload their own templates"
+ON storage.objects FOR INSERT
+WITH CHECK (
+  bucket_id = 'templates' AND
+  is_org_member(((storage.foldername(name))[1])::uuid)
+);
+
+DROP POLICY IF EXISTS "Users can read their own templates" ON storage.objects;
+CREATE POLICY "Users can read their own templates"
+ON storage.objects FOR SELECT
+USING (
+  bucket_id = 'templates' AND
+  is_org_member(((storage.foldername(name))[1])::uuid)
+);
+
+DROP POLICY IF EXISTS "Users can update their own templates" ON storage.objects;
+CREATE POLICY "Users can update their own templates"
+ON storage.objects FOR UPDATE
+USING (
+  bucket_id = 'templates' AND
+  is_org_member(((storage.foldername(name))[1])::uuid)
+);
+
+DROP POLICY IF EXISTS "Users can delete their own templates" ON storage.objects;
+CREATE POLICY "Users can delete their own templates"
+ON storage.objects FOR DELETE
+USING (
+  bucket_id = 'templates' AND
+  is_org_member(((storage.foldername(name))[1])::uuid)
 );
