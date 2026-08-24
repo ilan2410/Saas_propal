@@ -140,11 +140,41 @@ function pureSummary(sa: Record<string, unknown>) {
 
 // ── Construction de la vue éditable ──────────────────────────────────
 
+/**
+ * Résout le numéro de ligne réel d'un item (abonnement/location) :
+ *  1. `numero_ligne` direct s'il existe déjà dessus ;
+ *  2. sinon, le `numero_ligne` d'un item de `lignes` rattaché au même contrat
+ *     (même `engagement_ref` ou `reference_contrat`) — cas fréquent où la
+ *     facture détaille le numéro sur une ligne « chapeau » et regroupe les
+ *     options (extensions, SDA, etc.) sous le même engagement sans le répéter ;
+ *  3. sinon '' — `reference_contrat` n'est PAS un numéro de ligne/téléphone,
+ *     on ne l'affiche jamais sous ce label pour éviter de le faire passer
+ *     pour un numéro.
+ */
+function resolveNumero(item: Record<string, unknown>, sa: Record<string, unknown>): string {
+  const direct = getStr(item, 'numero_ligne');
+  if (direct) return direct;
+
+  const engagementRef = getStr(item, 'engagement_ref');
+  const referenceContrat = getStr(item, 'reference_contrat');
+  if (!engagementRef && !referenceContrat) return '';
+
+  for (const raw of records(sa.lignes)) {
+    const num = getStr(raw, 'numero_ligne');
+    if (!num) continue;
+    const sameEngagement = !!engagementRef && getStr(raw, 'engagement_ref') === engagementRef;
+    const sameContrat = !!referenceContrat && getStr(raw, 'reference_contrat') === referenceContrat;
+    if (sameEngagement || sameContrat) return num;
+  }
+  return '';
+}
+
 function readLine(
   item: Record<string, unknown>,
   id: string,
   section: SaSection,
   montant: number,
+  sa: Record<string, unknown>,
 ): SaEditableLine {
   const designation =
     section === 'location'
@@ -155,7 +185,7 @@ function readLine(
     id,
     section,
     designation: designation || (section === 'location' ? 'Location' : 'Abonnement'),
-    numero: getStr(item, 'numero_ligne') || getStr(item, 'reference_contrat'),
+    numero: resolveNumero(item, sa),
     quantite: Math.max(1, toNumber(item.quantite) || 1),
     montant,
     isResidual: item._sa_residual === true,
@@ -182,14 +212,14 @@ export function getSaEditableLines(situationActuelle: unknown): SaEditableLine[]
   let hasMaterializedAbo = false;
   if (aboPrimary) {
     records(sa.abonnements).forEach((item, i) => {
-      lines.push(readLine(item, `abonnements:${i}`, 'abonnement', pickMontant(item, ABO_PRICE_KEYS)));
+      lines.push(readLine(item, `abonnements:${i}`, 'abonnement', pickMontant(item, ABO_PRICE_KEYS), sa));
       if (item._sa_residual === true) hasMaterializedAbo = true;
     });
   } else {
     records(sa.lignes).forEach((item, i) => {
       const montant = pickMontant(item, ABO_PRICE_KEYS);
       if (montant <= 0 && item._sa_residual !== true) return;
-      lines.push(readLine(item, `lignes:${i}`, 'abonnement', montant));
+      lines.push(readLine(item, `lignes:${i}`, 'abonnement', montant, sa));
       if (item._sa_residual === true) hasMaterializedAbo = true;
     });
   }
@@ -209,7 +239,7 @@ export function getSaEditableLines(situationActuelle: unknown): SaEditableLine[]
   // ── Section Locations ──
   let hasMaterializedLoc = false;
   records(sa.locations).forEach((item, i) => {
-    lines.push(readLine(item, `locations:${i}`, 'location', pickMontant(item, LOC_PRICE_KEYS)));
+    lines.push(readLine(item, `locations:${i}`, 'location', pickMontant(item, LOC_PRICE_KEYS), sa));
     if (item._sa_residual === true) hasMaterializedLoc = true;
   });
   const residualLoc = round2(summary.locations - pure.locations);

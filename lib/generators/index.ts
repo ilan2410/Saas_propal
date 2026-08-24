@@ -146,6 +146,16 @@ export function buildPropositionBaseData(options: GenerateOptions): UnknownRecor
   // Référence proposition → sp_reference (chaîne vide si non configurée).
   const referenceData: Record<string, string> = { sp_reference: options.sp_reference ?? '' };
 
+  // Contact SA (client.email / client.mobile) : si absent (IA n'a rien extrait,
+  // panneau "Coordonnées client" non renseigné), on complète avec l'adresse de
+  // facturation SP déjà saisie manuellement — souvent le même contact.
+  if (!flatData['client.email'] && spData['Adresse_facturation_SP_email']) {
+    flatData['client.email'] = spData['Adresse_facturation_SP_email'];
+  }
+  if (!flatData['client.mobile'] && spData['Adresse_facturation_SP_ligne_mobile']) {
+    flatData['client.mobile'] = spData['Adresse_facturation_SP_ligne_mobile'];
+  }
+
   return { ...flatData, ...saData, ...spData, ...clausesData, ...referenceData };
 }
 

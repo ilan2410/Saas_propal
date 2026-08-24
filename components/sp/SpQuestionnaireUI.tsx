@@ -1009,7 +1009,13 @@ export function SpQuestionnaireUI({
   const [margeDureeMoisOverride, setMargeDureeMoisOverride] = useState<number>(
     spConfigLoyer?.duree_mois_par_defaut ?? 63,
   );
-  const [promoApplied, setPromoApplied] = useState<{ nom: string; valeur: number } | null>(null);
+  const [promoPopupData, setPromoPopupData] = useState<{
+    nom: string;
+    valeur: number;
+    loyerMensuel: number | null;
+    margeVal: string;
+    extras: SpQuestionReponse[];
+  } | null>(null);
   const [promoError, setPromoError] = useState<string>('');
   const [hiddenByConsequence, setHiddenByConsequence] = useState<Set<string>>(new Set());
   const [shownByConsequence, setShownByConsequence] = useState<Set<string>>(new Set());
@@ -1098,7 +1104,7 @@ export function SpQuestionnaireUI({
     setDynamicFilters(new Map());
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
-    setPromoApplied(null);
+    setPromoPopupData(null);
     setPromoError('');
     setHistory([]);
     hasReportedCompletion.current = false;
@@ -1515,7 +1521,7 @@ export function SpQuestionnaireUI({
     setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
-    setPromoApplied(null);
+    setPromoPopupData(null);
     setPromoError('');
   };
 
@@ -1540,7 +1546,7 @@ export function SpQuestionnaireUI({
     setAdresseEdit(EMPTY_ADRESSE);
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
-    setPromoApplied(null);
+    setPromoPopupData(null);
     setPromoError('');
 
     const nextIdx = findNextVisibleIndex(currentIdx, reponses, hiddenByConsequence, shownByConsequence);
@@ -1924,6 +1930,55 @@ export function SpQuestionnaireUI({
                   recordAnswer(currentExpanded.instanceId, 'vu');
                 }}
                 className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continuer
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Code promo popup */}
+      {promoPopupData && currentExpanded && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-500 to-green-600 px-6 py-5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <Check className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Code promo bien appliqué</h2>
+                {!spCodesPromoMasquerSaisie && (
+                  <p className="text-sm text-emerald-100 mt-0.5">
+                    Code <span className="font-mono font-semibold">{promoPopupData.nom}</span> appliqué
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-6 flex flex-col items-center gap-1">
+              {promoPopupData.loyerMensuel != null ? (
+                <>
+                  <p className="text-xs text-gray-400">Nouveau loyer mensuel</p>
+                  <p className="text-4xl font-bold text-gray-900">
+                    {promoPopupData.loyerMensuel.toFixed(2).replace('.', ',')} €
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 italic">Loyer non calculé</p>
+              )}
+            </div>
+            <div className="px-6 pb-6 flex justify-center">
+              <Button
+                onClick={() => {
+                  const data = promoPopupData;
+                  setPromoPopupData(null);
+                  setInputValue('');
+                  setPromoError('');
+                  if (data) recordAnswer(currentExpanded.instanceId, data.margeVal, data.extras);
+                }}
+                className="px-10 bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 Continuer
               </Button>
@@ -2954,7 +3009,7 @@ export function SpQuestionnaireUI({
 
             const applyPromo = (code: string) => {
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
-              if (!found) { setPromoApplied(null); setPromoError('Code promo invalide'); return; }
+              if (!found) { setPromoError('Code promo invalide'); return; }
               setPromoError('');
               const existingMargeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
               const existingMarge = existingMargeRep ? Number(existingMargeRep.valeur) || 0 : 0;
@@ -2976,47 +3031,36 @@ export function SpQuestionnaireUI({
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
               }
-              // Affiche la confirmation 1 seconde, puis valide et passe à la suite
-              setPromoApplied({ nom: found.nom, valeur: found.valeur });
-              setTimeout(() => {
-                recordAnswer(currentExpanded.instanceId, margeVal, extras);
-                setInputValue('');
-                setPromoApplied(null);
-                setPromoError('');
-              }, 1000);
+              setPromoPopupData({
+                nom: found.nom,
+                valeur: found.valeur,
+                loyerMensuel: loyer?.loyer_mensuel ?? null,
+                margeVal,
+                extras,
+              });
             };
 
             return (
               <div className="space-y-3">
-                {promoApplied ? (
-                  <p className="text-sm font-medium text-green-700">
-                    {spCodesPromoMasquerSaisie
-                      ? '✓ Code promo appliqué'
-                      : <>✓ Code <span className="font-mono">{promoApplied.nom}</span> appliqué</>}
-                  </p>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type={spCodesPromoMasquerSaisie ? 'password' : 'text'}
-                        value={inputValue}
-                        onChange={(e) => { setInputValue(e.target.value); setPromoError(''); }}
-                        placeholder="Entrez votre code promo"
-                        className={`h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono${spCodesPromoMasquerSaisie ? '' : ' uppercase'}`}
-                        onKeyDown={(e) => { if (e.key === 'Enter') applyPromo(inputValue); }}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => applyPromo(inputValue)}
-                      >
-                        Appliquer votre code promo
-                      </Button>
-                    </div>
-                    {promoError && (
-                      <p className="text-xs text-red-600">{promoError}</p>
-                    )}
-                  </>
+                <div className="flex items-center gap-2">
+                  <input
+                    type={spCodesPromoMasquerSaisie ? 'password' : 'text'}
+                    value={inputValue}
+                    onChange={(e) => { setInputValue(e.target.value); setPromoError(''); }}
+                    placeholder="Entrez votre code promo"
+                    className={`h-8 text-sm border border-gray-300 rounded px-2 flex-1 font-mono${spCodesPromoMasquerSaisie ? '' : ' uppercase'}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter') applyPromo(inputValue); }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applyPromo(inputValue)}
+                  >
+                    Appliquer votre code promo
+                  </Button>
+                </div>
+                {promoError && (
+                  <p className="text-xs text-red-600">{promoError}</p>
                 )}
               </div>
             );

@@ -12,7 +12,18 @@
       "Bash(npx --yes playwright --version)",
       "Bash(timeout 40 bash -c 'until curl -sf http://localhost:3000 >/dev/null 2>&1; do sleep 1; done')",
       "Bash(curl -sf -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001)",
-      "Bash(curl -sf -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002)"
+      "Bash(curl -sf -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002)",
+      "Bash(curl -s -o /dev/null -w \"base [id] GET -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000\")",
+      "Bash(taskkill //F //PID 42040)",
+      "Bash(rm -rf .next)",
+      "Bash(nohup npm run dev)",
+      "Bash(echo \"started, pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"sp-questions -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/sp-questions\")",
+      "Bash(curl -s -o /dev/null -w \"sp-variables -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/sp-variables\")",
+      "Bash(curl -s -o /dev/null -w \"sa-variables -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/sa-variables\")",
+      "Bash(curl -s -o /dev/null -w \"status -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/status\")",
+      "Bash(command -v jq)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

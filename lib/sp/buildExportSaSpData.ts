@@ -172,23 +172,45 @@ function enrichSaLine(
     if (matched) break;
   }
 
-  // Si pas matché, chercher une ligne du tableau `lignes` ayant le même libellé/forfait
-  // pour récupérer au moins le numero_ligne (cas abonnement → ligne).
+  // Si pas de numero_ligne direct, chercher une ligne du tableau `lignes` rattachée
+  // au même contrat/engagement (fiable même si les libellés diffèrent — cas
+  // fréquent où la facture détaille le numéro sur une ligne « chapeau » et
+  // regroupe les options sous le même engagement sans le répéter), puis en
+  // repli une correspondance approximative sur le libellé/forfait.
   if (!matched || !pickStr(matched, ['numero_ligne'])) {
     const lignesArr = Array.isArray(sa.lignes) ? sa.lignes : [];
-    for (const raw of lignesArr) {
-      if (!isRecord(raw)) continue;
-      const forfait = pickStr(raw, ['forfait', 'libelle']);
-      if (!forfait) continue;
-      if (
-        normalize(forfait) === normLibelle
-        || normalize(forfait).includes(normLibelle)
-        || normLibelle.includes(normalize(forfait))
-      ) {
+    const matchedEngagementRef = matched ? pickStr(matched, ['engagement_ref']) : '';
+    const matchedReferenceContrat = matched ? pickStr(matched, ['reference_contrat']) : '';
+
+    if (matchedEngagementRef || matchedReferenceContrat) {
+      for (const raw of lignesArr) {
+        if (!isRecord(raw)) continue;
         const num = pickStr(raw, ['numero_ligne']);
-        if (num) {
+        if (!num) continue;
+        const sameEngagement = !!matchedEngagementRef && pickStr(raw, ['engagement_ref']) === matchedEngagementRef;
+        const sameContrat = !!matchedReferenceContrat && pickStr(raw, ['reference_contrat']) === matchedReferenceContrat;
+        if (sameEngagement || sameContrat) {
           matchedNumero = num;
           break;
+        }
+      }
+    }
+
+    if (!matchedNumero) {
+      for (const raw of lignesArr) {
+        if (!isRecord(raw)) continue;
+        const forfait = pickStr(raw, ['forfait', 'libelle']);
+        if (!forfait) continue;
+        if (
+          normalize(forfait) === normLibelle
+          || normalize(forfait).includes(normLibelle)
+          || normLibelle.includes(normalize(forfait))
+        ) {
+          const num = pickStr(raw, ['numero_ligne']);
+          if (num) {
+            matchedNumero = num;
+            break;
+          }
         }
       }
     }
@@ -200,7 +222,10 @@ function enrichSaLine(
     : '';
   const quantite = matched ? Math.max(1, toNumber(matched.quantite) || 1) : 1;
   const offre = cartLine.libelle;
-  const numero = matched ? pickStr(matched, ['numero_ligne', 'reference_contrat']) || matchedNumero : matchedNumero;
+  // Un numero_ligne réel (direct ou retrouvé via une ligne rattachée) prime toujours.
+  // reference_contrat n'est PAS un numéro de ligne/téléphone : on ne l'utilise plus
+  // comme repli pour éviter de le faire passer pour un numéro dans les exports.
+  const numero = (matched ? pickStr(matched, ['numero_ligne']) : '') || matchedNumero;
 
   let moisRestants = 0;
   const date = parseFrDate(dateFinEngagement);
