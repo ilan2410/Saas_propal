@@ -19,6 +19,7 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export const revalidate = 0;
 
@@ -89,11 +90,10 @@ export default async function ClientDashboard() {
     .order('created_at', { ascending: false });
 
   // Récupérer TOUTES les propositions pour les stats
-  const { data: allPropositions } = await supabase
-    .from('propositions')
-    .select('*')
-    .eq('organization_id', ctx.organizationId)
-    .order('created_at', { ascending: false });
+  const { data: allPropositions } = await scopePropositionsQuery(
+    supabase.from('propositions').select('*'),
+    ctx
+  ).order('created_at', { ascending: false });
 
   // Récupérer les propositions récentes pour l'affichage
   const propositions = allPropositions?.slice(0, 5) || [];

@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       .from('propositions')
       .insert({
         organization_id: ctx.organizationId,
+        created_by: user.id,
         template_id,
         nom_client,
         source_documents,

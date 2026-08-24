@@ -46,6 +46,7 @@ import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -809,15 +810,16 @@ export default async function PropositionDetailPage({
   }
 
   // Récupérer la proposition avec le template
-  const { data: proposition, error } = await supabase
-    .from('propositions')
-    .select(`
-      *,
-      template:proposition_templates(*)
-    `)
-    .eq('id', id)
-    .eq('organization_id', ctx.organizationId)
-    .single();
+  const { data: proposition, error } = await scopePropositionsQuery(
+    supabase
+      .from('propositions')
+      .select(`
+        *,
+        template:proposition_templates(*)
+      `)
+      .eq('id', id),
+    ctx
+  ).single();
 
   if (error || !proposition) {
     console.error('Erreur récupération proposition:', error);

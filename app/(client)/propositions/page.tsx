@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import {
   PropositionsListClient,
   type PropositionListItem,
@@ -92,14 +93,15 @@ export default async function PropositionsPage() {
   }
 
   // Récupérer toutes les propositions avec les templates
-  const { data: propositions } = await supabase
+  const propositionsQuery = supabase
     .from('propositions')
     .select(`
       *,
       template:proposition_templates(nom)
-    `)
-    .eq('organization_id', ctx?.organizationId)
-    .order('created_at', { ascending: false });
+    `);
+  const { data: propositions } = ctx
+    ? await scopePropositionsQuery(propositionsQuery, ctx).order('created_at', { ascending: false })
+    : await propositionsQuery.eq('organization_id', '').order('created_at', { ascending: false });
 
   const displayedPropositions = (propositions || []).filter((p) => {
     const prop = p as Record<string, unknown>;

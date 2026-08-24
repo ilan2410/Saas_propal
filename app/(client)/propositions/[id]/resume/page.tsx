@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export default async function ResumePropositionPage({
   params,
@@ -48,12 +49,10 @@ export default async function ResumePropositionPage({
     redirect('/propositions/new');
   }
 
-  const { data: proposition, error } = await supabase
-    .from('propositions')
-    .select('*')
-    .eq('id', id)
-    .eq('organization_id', ctx.organizationId)
-    .single();
+  const { data: proposition, error } = await scopePropositionsQuery(
+    supabase.from('propositions').select('*').eq('id', id),
+    ctx
+  ).single();
 
   if (error || !proposition) {
     notFound();
