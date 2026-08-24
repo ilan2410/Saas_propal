@@ -28,6 +28,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Le logo est un attribut de la société, géré uniquement par le propriétaire du compte.
+    if (ctx.role !== 'owner') {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 

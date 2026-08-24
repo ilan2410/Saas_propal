@@ -99,6 +99,7 @@ export default async function Settings() {
         oldestProposition={oldestProposition ? oldestProposition.created_at : null}
         billingStats={billingStats}
         role={ctx.role}
+        displayName={ctx.displayName}
       />
     </div>
   );

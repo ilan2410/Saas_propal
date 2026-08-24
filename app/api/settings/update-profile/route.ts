@@ -23,6 +23,39 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
+
+    // Commercial : uniquement ses coordonnées personnelles, stockées sur sa propre ligne
+    // organization_members. Toute autre clé du body (champs société, email...) est ignorée :
+    // on ne lit ici QUE prenom/nom/telephone_fixe/telephone_mobile, jamais le reste du body.
+    if (ctx.role !== 'owner') {
+      const { prenom, nom, telephone_fixe, telephone_mobile } = body;
+
+      const memberUpdates = {
+        prenom,
+        nom,
+        telephone_fixe,
+        telephone_mobile,
+        updated_at: new Date().toISOString(),
+      };
+
+      const supabaseAdmin = createServiceClient();
+      const { data: updatedMember, error: updateError } = await supabaseAdmin
+        .from('organization_members')
+        .update(memberUpdates)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: 'Erreur lors de la mise à jour du profil' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(updatedMember);
+    }
+
     const {
       nom,
       email,
