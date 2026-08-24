@@ -24,6 +24,10 @@ export default async function CreditsPage() {
     redirect('/login');
   }
 
+  if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+    redirect('/dashboard');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')

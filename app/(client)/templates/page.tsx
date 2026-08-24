@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, FileText, Settings, TrendingUp, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
@@ -46,6 +47,10 @@ export default async function TemplatesPage() {
   } = await supabase.auth.getUser();
 
   const ctx = user ? await resolveOrgContext(supabase, user) : null;
+
+  if (ctx && ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+    redirect('/dashboard');
+  }
 
   // Récupérer tous les templates
   const { data: templates } = await supabase

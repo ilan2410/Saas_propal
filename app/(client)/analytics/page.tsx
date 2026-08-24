@@ -22,6 +22,10 @@ export default async function AnalyticsPage() {
     redirect('/login');
   }
 
+  if (ctx.role !== 'owner' && !ctx.permissions.view_all_propositions) {
+    redirect('/dashboard');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')

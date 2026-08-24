@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import { CatalogueView } from '@/components/catalogue/CatalogueView';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
@@ -12,6 +13,10 @@ export default async function CataloguePage() {
   } = await supabase.auth.getUser();
 
   const ctx = user ? await resolveOrgContext(supabase, user) : null;
+
+  if (ctx && ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    redirect('/dashboard');
+  }
 
   const { data: produits } = await supabase
     .from('catalogues_produits')
