@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type SiteActuelle = { nom: string; adresse?: string; code_postal?: string; ville?: string };
 type LigneActuelle = { site?: string; [key: string]: unknown };
@@ -65,12 +66,13 @@ export async function POST(
     }
 
     // Load parent proposition
-    const { data: parent } = await supabase
-      .from('propositions')
-      .select('id, organization_id, template_id, nom_client, extracted_data')
-      .eq('id', id)
-      .eq('organization_id', ctx.organizationId)
-      .single();
+    const { data: parent } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select('id, organization_id, template_id, nom_client, extracted_data')
+        .eq('id', id),
+      ctx
+    ).single();
 
     if (!parent) {
       return NextResponse.json({ error: 'Proposition parente introuvable' }, { status: 404 });
@@ -108,6 +110,7 @@ export async function POST(
       .from('propositions')
       .insert({
         organization_id: ctx.organizationId,
+        created_by: user.id,
         template_id: parent.template_id,
         nom_client: parent.nom_client,
         extracted_data: extractedDataFiltered,

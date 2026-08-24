@@ -544,6 +544,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         .from('propositions')
         .insert({
           organization_id: ctx.organizationId,
+          created_by: user.id,
           template_id: template_id,
           nom_client: nom_client || null,
           source_documents: documents_urls, // JSONB array
