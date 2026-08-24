@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
   if (!url) return null;
@@ -31,6 +32,14 @@ export async function DELETE(request: Request) {
       );
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const mode = body?.mode === 'older_than_30_days' ? 'older_than_30_days' : 'all';
 
@@ -43,7 +52,7 @@ export async function DELETE(request: Request) {
     const { data: propositions, error: listError } = await serviceSupabase
       .from('propositions')
       .select('id, duplicated_template_url, created_at, source_documents')
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .order('created_at', { ascending: false });
 
     if (listError) {
@@ -102,7 +111,7 @@ export async function DELETE(request: Request) {
       .from('propositions')
       .delete({ count: 'exact' })
       .in('id', ids)
-      .eq('organization_id', user.id);
+      .eq('organization_id', ctx.organizationId);
 
     if (deleteError) {
       return NextResponse.json(

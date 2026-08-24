@@ -4,6 +4,7 @@ import { CreditCard, Plus, History, TrendingUp, Zap, Shield } from 'lucide-react
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 import { CreditPurchaseForm } from '@/components/credits/CreditPurchaseForm';
 import { PendingTransactionActions } from '@/components/credits/PendingTransactionActions';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -18,18 +19,23 @@ export default async function CreditsPage() {
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   // Récupérer les transactions
   const { data: transactions } = await supabase
     .from('stripe_transactions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false })
     .limit(20);
 
@@ -136,7 +142,7 @@ export default async function CreditsPage() {
           </div>
         </div>
 
-        <CreditPurchaseForm organizationId={user.id} />
+        <CreditPurchaseForm organizationId={ctx.organizationId} />
       </div>
 
       {/* Historique des transactions */}

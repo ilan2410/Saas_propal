@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function PATCH(request: Request) {
   try {
@@ -7,6 +8,14 @@ export async function PATCH(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json(
         { error: 'Non authentifié' },
         { status: 401 }
@@ -32,7 +41,7 @@ export async function PATCH(request: Request) {
     const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('*')
-      .eq('id', user.id) // En supposant que l'ID de l'organisation est le même que l'ID de l'utilisateur (relation 1:1)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (orgError || !organization) {
@@ -42,8 +51,8 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Vérification de sécurité supplémentaire (bien que la requête précédente filtre déjà par user.id)
-    if (organization.id !== user.id) {
+    // Vérification de sécurité supplémentaire (bien que la requête précédente filtre déjà par ctx.organizationId)
+    if (organization.id !== ctx.organizationId) {
       return NextResponse.json(
         { error: 'Accès non autorisé' },
         { status: 403 }

@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 import {
   PropositionsListClient,
   type PropositionListItem,
@@ -83,9 +84,11 @@ export default async function PropositionsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user?.id) {
+  const ctx = user ? await resolveOrgContext(supabase, user) : null;
+
+  if (ctx) {
     const serviceSupabase = createServiceClient();
-    await cleanupOldPropositions(serviceSupabase, user.id, 15);
+    await cleanupOldPropositions(serviceSupabase, ctx.organizationId, 15);
   }
 
   // Récupérer toutes les propositions avec les templates
@@ -95,7 +98,7 @@ export default async function PropositionsPage() {
       *,
       template:proposition_templates(nom)
     `)
-    .eq('organization_id', user?.id)
+    .eq('organization_id', ctx?.organizationId)
     .order('created_at', { ascending: false });
 
   const displayedPropositions = (propositions || []).filter((p) => {

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
@@ -12,6 +13,14 @@ export async function PATCH(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json(
         { error: 'Non authentifié' },
         { status: 401 }
@@ -46,7 +55,7 @@ export async function PATCH(request: Request) {
         adresse_facturation: adresse_ligne1_facturation, 
         updated_at: new Date().toISOString()
       })
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .select('stripe_customer_id, id')
       .single();
 

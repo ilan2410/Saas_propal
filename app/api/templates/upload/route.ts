@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // Types réellement supportés en aval par les générateurs (lib/generators) :
 // Excel (ExcelJS) et Word (Docxtemplater). Le PDF est accepté côté template
@@ -24,6 +25,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Nom de stockage généré côté serveur : jamais le nom fourni par le client.
-    const fileName = `${user.id}/${randomStorageFileName(validation.extension)}`;
+    const fileName = `${ctx.organizationId}/${randomStorageFileName(validation.extension)}`;
 
     // Upload vers Supabase Storage
     const { error } = await supabase.storage

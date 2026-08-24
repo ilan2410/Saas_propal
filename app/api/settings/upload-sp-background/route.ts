@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { OrganizationPreferences } from '@/types';
 import { validateUploadedFile } from '@/lib/security/validate-upload';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const ALLOWED_BACKGROUND_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_BACKGROUND_SIZE_BYTES = 5 * 1024 * 1024;
@@ -12,6 +13,11 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
@@ -28,7 +34,7 @@ export async function POST(request: Request) {
     }
 
     const ext = validation.extension === 'jpeg' ? 'jpg' : validation.extension;
-    const path = `${user.id}/sp-background.${ext}`;
+    const path = `${ctx.organizationId}/sp-background.${ext}`;
     const serviceSupabase = createServiceClient();
 
     const { error: uploadError } = await serviceSupabase
@@ -47,7 +53,7 @@ export async function POST(request: Request) {
     const { data: orgRow } = await serviceSupabase
       .from('organizations')
       .select('preferences')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     const currentPrefs = ((orgRow?.preferences as OrganizationPreferences) || {}) as OrganizationPreferences;
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
     const { error: updateError } = await serviceSupabase
       .from('organizations')
       .update({ preferences: updatedPrefs, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .eq('id', ctx.organizationId);
 
     if (updateError) {
       console.error('Erreur update prefs sp-background:', updateError);

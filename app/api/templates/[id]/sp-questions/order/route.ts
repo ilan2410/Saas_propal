@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { SpQuestion } from '@/types';
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -10,11 +11,14 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { orderedIds }: { orderedIds: string[] } = await req.json();
   const { data: org } = await supabase
     .from('organizations')
     .select('sp_questions')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   const all: SpQuestion[] = (org?.sp_questions ?? []) as SpQuestion[];
@@ -24,6 +28,6 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return newOrdre >= 0 ? { ...q, ordre: newOrdre + 1 } : q;
   });
 
-  await supabase.from('organizations').update({ sp_questions: reordered }).eq('id', user.id);
+  await supabase.from('organizations').update({ sp_questions: reordered }).eq('id', ctx.organizationId);
   return NextResponse.json({ success: true });
 }

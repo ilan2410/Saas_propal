@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
 import { PropositionPageTourTrigger } from '@/components/onboarding/PropositionPageTourTrigger';
 import type { Secteur } from '@/lib/onboarding/onboarding.types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export default async function NewPropositionPage() {
   const supabase = await createClient();
@@ -18,10 +19,15 @@ export default async function NewPropositionPage() {
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   const { data: organization } = await supabase
     .from('organizations')
     .select('secteur')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   const secteur = organization?.secteur || 'telephonie';
@@ -30,7 +36,7 @@ export default async function NewPropositionPage() {
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .eq('statut', 'actif')
     .order('created_at', { ascending: false });
 

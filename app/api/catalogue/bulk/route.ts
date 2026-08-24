@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -9,6 +10,11 @@ export async function DELETE(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -31,7 +37,7 @@ export async function DELETE(request: NextRequest) {
     if (isGlobalOperation) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { error } = await query;
@@ -60,6 +66,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { ids, updates, is_global } = body;
     const { is_global: _ignored, ...sanitizedUpdates } = updates ?? {};
@@ -84,7 +95,7 @@ export async function PATCH(request: NextRequest) {
     if (isGlobalOperation) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { error } = await query;

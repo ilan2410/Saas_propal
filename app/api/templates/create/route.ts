@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,11 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -33,7 +39,7 @@ export async function POST(request: NextRequest) {
     const { count: templatesCount, error: countError } = await supabase
       .from('proposition_templates')
       .select('id', { count: 'exact', head: true })
-      .eq('organization_id', user.id);
+      .eq('organization_id', ctx.organizationId);
 
     if (countError) {
       return NextResponse.json(
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
         : {};
 
     const insertData: Record<string, unknown> = {
-      organization_id: user.id,
+      organization_id: ctx.organizationId,
       nom,
       description: typeof body.description === 'string' ? body.description : null,
       file_type: fileType,

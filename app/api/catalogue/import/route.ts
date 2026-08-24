@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 import { CatalogueCategorie, UpdateMode } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -10,6 +11,11 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -84,7 +90,7 @@ export async function POST(request: NextRequest) {
         bdc_materiel: parseBool(p.destinations_bdc_materiel ?? p.bdc_materiel),
       };
 
-      const orgId = isGlobalImport ? null : user.id;
+      const orgId = isGlobalImport ? null : ctx.organizationId;
 
       // Check duplicate by nom + fournisseur + tarif
       const { data: matches } = await supabase
@@ -102,7 +108,7 @@ export async function POST(request: NextRequest) {
       });
 
       const payload = {
-        organization_id: isGlobalImport ? null : user.id,
+        organization_id: isGlobalImport ? null : ctx.organizationId,
         nom: p.nom,
         categorie,
         description: (p.description as string) || null,

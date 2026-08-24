@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { OrganizationPreferences } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function PATCH(request: Request) {
   try {
@@ -14,6 +15,14 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const newPreferences = body as Partial<OrganizationPreferences>;
 
@@ -21,7 +30,7 @@ export async function PATCH(request: Request) {
     const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('preferences')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (orgError || !organization) {
@@ -87,7 +96,7 @@ export async function PATCH(request: Request) {
         preferences: updatedPreferences,
         updated_at: new Date().toISOString()
       })
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .select('preferences')
       .single();
 

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { BarChart3, TrendingUp, Calendar, DollarSign } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatting';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -16,25 +17,30 @@ export default async function AnalyticsPage() {
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   // Récupérer toutes les propositions
   const { data: propositions } = await supabase
     .from('propositions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   // Récupérer toutes les transactions
   const { data: transactions } = await supabase
     .from('stripe_transactions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   // Calculer les stats globales

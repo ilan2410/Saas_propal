@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Plus, FileText, Settings, TrendingUp, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -44,11 +45,13 @@ export default async function TemplatesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const ctx = user ? await resolveOrgContext(supabase, user) : null;
+
   // Récupérer tous les templates
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('*')
-    .eq('organization_id', user?.id)
+    .eq('organization_id', ctx?.organizationId)
     .order('created_at', { ascending: false });
 
   // Stats

@@ -45,6 +45,7 @@ import { calculateCartSummary, resolveIndemnites, type SpCartSummary } from '@/l
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -802,6 +803,11 @@ export default async function PropositionDetailPage({
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   // Récupérer la proposition avec le template
   const { data: proposition, error } = await supabase
     .from('propositions')
@@ -810,7 +816,7 @@ export default async function PropositionDetailPage({
       template:proposition_templates(*)
     `)
     .eq('id', id)
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .single();
 
   if (error || !proposition) {
@@ -854,7 +860,7 @@ export default async function PropositionDetailPage({
   const { data: organization } = await supabase
     .from('organizations')
     .select('sp_questions, preferences')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
   const allSpQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
   const templateId = typeof proposition.template_id === 'string' ? proposition.template_id : undefined;
@@ -883,7 +889,7 @@ export default async function PropositionDetailPage({
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${user.id},organization_id.is.null`);
+      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
     const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]) : [];
 
     const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;

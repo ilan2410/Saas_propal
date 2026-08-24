@@ -1,20 +1,23 @@
 import { createClient } from '@/lib/supabase/server';
 import { CatalogueView } from '@/components/catalogue/CatalogueView';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
 export default async function CataloguePage() {
   const supabase = await createClient();
-  
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const ctx = user ? await resolveOrgContext(supabase, user) : null;
 
   const { data: produits } = await supabase
     .from('catalogues_produits')
     .select('*')
     .eq('actif', true)
-    .eq('organization_id', user?.id) // Filtrer uniquement les produits de l'utilisateur
+    .eq('organization_id', ctx?.organizationId) // Filtrer uniquement les produits de l'organisation
     .order('nom', { ascending: true });
 
   return (

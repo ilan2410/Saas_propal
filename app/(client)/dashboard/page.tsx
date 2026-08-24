@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -68,25 +69,30 @@ export default async function ClientDashboard() {
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   // Récupérer l'organization
   const { data: organization } = await supabase
     .from('organizations')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   // Récupérer les templates
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   // Récupérer TOUTES les propositions pour les stats
   const { data: allPropositions } = await supabase
     .from('propositions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   // Récupérer les propositions récentes pour l'affichage
@@ -96,7 +102,7 @@ export default async function ClientDashboard() {
   const { data: transactions } = await supabase
     .from('stripe_transactions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .eq('statut', 'succeeded')
     .order('created_at', { ascending: false });
 

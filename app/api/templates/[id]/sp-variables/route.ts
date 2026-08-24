@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { WordConfig, SpVariableCustom, SpQuestion, SpClauseConditionnelle } from '@/types';
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -100,6 +101,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const [{ data: template }, { data: org }] = await Promise.all([
     supabase
       .from('proposition_templates')
@@ -109,7 +113,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     supabase
       .from('organizations')
       .select('sp_questions')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single(),
   ]);
 
@@ -129,6 +133,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = await req.json() as { key?: string; label?: string; description?: string; type?: string };
   if (!body.key || !body.label) {
     return NextResponse.json({ error: 'key et label requis' }, { status: 400 });
@@ -143,7 +150,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     supabase
       .from('organizations')
       .select('sp_questions')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single(),
   ]);
 
@@ -183,6 +190,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = await req.json() as { oldKey?: string; newKey?: string; label?: string };
   const oldKey = body.oldKey?.trim();
   const newKey = body.newKey?.trim();
@@ -205,7 +215,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     supabase
       .from('organizations')
       .select('sp_questions')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single(),
   ]);
 
@@ -254,7 +264,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     supabase
       .from('organizations')
       .update({ sp_questions: updatedQuestions })
-      .eq('id', user.id),
+      .eq('id', ctx.organizationId),
   ]);
 
   if (templateUpdate.error) return NextResponse.json({ error: templateUpdate.error.message }, { status: 500 });

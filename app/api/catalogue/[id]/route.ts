@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -13,6 +14,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { data, error } = await query.select().single();
@@ -64,6 +70,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json().catch(() => ({})); // Body optionnel
 
@@ -81,7 +92,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { error } = await query;
