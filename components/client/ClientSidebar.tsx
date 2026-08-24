@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
+import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 
 interface ClientSidebarProps {
   user: {
@@ -18,6 +19,9 @@ interface ClientSidebarProps {
     tarif_par_proposition: number;
     logo_url?: string | null;
   };
+  // Câblés par Task 2 ; le nav-hiding effectif est fait par Task 9.
+  role?: OrgRole;
+  permissions?: OrgPermissions;
 }
 
 export function ClientSidebar({ user, organization }: ClientSidebarProps) {
