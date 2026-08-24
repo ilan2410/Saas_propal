@@ -265,10 +265,12 @@ WITH CHECK (
 -- ==========================================
 ALTER TABLE organization_members ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can view their team" ON organization_members;
 CREATE POLICY "Owners can view their team"
 ON organization_members FOR SELECT
 USING (organization_id = auth.uid() OR user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Owners can manage their team" ON organization_members;
 CREATE POLICY "Owners can manage their team"
 ON organization_members FOR ALL
 USING (organization_id = auth.uid())
