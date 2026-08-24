@@ -103,3 +103,24 @@ export async function resolveOrgContext(
   // 3. Ni propriétaire, ni commercial actif.
   return null;
 }
+
+/**
+ * Superpose les champs de contact de l'utilisateur agissant (`ctx.displayName`) sur
+ * l'objet organisation (société) chargé pour la génération de documents. Les champs
+ * société (nom, siret, adresse, logo…) restent inchangés ; seuls prenom/nom de contact
+ * et téléphones sont remplacés par ceux de l'acteur courant (le commercial lui-même
+ * pour un sous-compte, identiques à l'existant pour un propriétaire puisque
+ * `ctx.displayName` d'un propriétaire est déjà dérivé de `organizations.contact_*`).
+ */
+export function buildActingOrgProfile(
+  organization: Record<string, unknown>,
+  ctx: OrgContext
+): Record<string, unknown> {
+  return {
+    ...organization,
+    contact_prenom: ctx.displayName.prenom,
+    contact_nom: ctx.displayName.nom,
+    telephone_fixe: ctx.displayName.telephone_fixe,
+    telephone_mobile: ctx.displayName.telephone_mobile,
+  };
+}

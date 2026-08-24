@@ -5,7 +5,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveOrgContext, buildActingOrgProfile } from '@/lib/auth/org-context';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -137,6 +137,11 @@ export async function POST(
       spPreferencesProduits,
     );
 
+    // Profil entreprise transmis au générateur : champs société inchangés, mais
+    // contact_prenom/contact_nom/telephone_fixe/telephone_mobile proviennent de
+    // l'utilisateur agissant (le commercial lui-même pour un sous-compte).
+    const organizationProfile = organization ? buildActingOrgProfile(organization, ctx) : organization;
+
     // Générer le fichier
     const fileUrl = await generatePropositionFile({
       template,
@@ -146,7 +151,7 @@ export async function POST(
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,
       sp_reference,
-      organization_profile: organization,
+      organization_profile: organizationProfile,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes
