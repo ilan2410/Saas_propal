@@ -53,6 +53,14 @@ export interface Organization {
   preferences?: OrganizationPreferences;
   sp_questions?: SpQuestion[];
 
+  // Gestion d'équipe (sous-comptes commerciaux)
+  commercial_default_permissions?: {
+    view_all_propositions: boolean;
+    manage_catalogue: boolean;
+    manage_templates: boolean;
+    view_credits_billing: boolean;
+  };
+
   created_at: string;
   updated_at: string;
 }

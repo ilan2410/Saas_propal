@@ -1,25 +1,26 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ComponentType } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
+import type { OrgRole } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
-import { 
-  Building, 
-  Shield, 
-  Bell, 
-  CreditCard, 
-  Database, 
-  Monitor, 
-  Upload, 
-  Download, 
+import {
+  Building,
+  Shield,
+  Bell,
+  CreditCard,
+  Database,
+  Monitor,
+  Upload,
+  Download,
   Table,
-  Trash2, 
-  Moon, 
-  Sun, 
-  FileText, 
+  Trash2,
+  Moon,
+  Sun,
+  FileText,
   ExternalLink,
   AlertTriangle,
   Loader2,
@@ -32,8 +33,10 @@ import {
   Percent,
   EyeOff,
   Package,
-  ListOrdered
+  ListOrdered,
+  Users
 } from 'lucide-react';
+import { EquipeTab } from '@/components/client/settings/EquipeTab';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
@@ -65,10 +68,16 @@ interface SettingsPageProps {
       amount: number;
     };
   };
+  // Rôle de l'utilisateur courant (propriétaire ou commercial) ; contrôle la visibilité de l'onglet Équipe.
+  role?: OrgRole;
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises';
-const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
+
+function getVisibleTabs(role?: OrgRole): TabId[] {
+  const base: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
+  return role === 'owner' ? [...base, 'equipe'] : base;
+}
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
 type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories';
@@ -216,20 +225,22 @@ function SpPreviewBanner({
   return layout;
 }
 
-export default function SettingsPage({ 
-  organization, 
-  userEmail, 
+export default function SettingsPage({
+  organization,
+  userEmail,
   transactions,
   propositions,
   templates,
   propositionsCount,
   oldestProposition,
-  billingStats 
+  billingStats,
+  role
 }: SettingsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const visibleTabs = useMemo(() => getVisibleTabs(role), [role]);
   const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
-  const currentTab = VISIBLE_SETTINGS_TABS.includes(requestedTab) ? requestedTab : 'profil';
+  const currentTab = visibleTabs.includes(requestedTab) ? requestedTab : 'profil';
 
   const [isLoading, setIsLoading] = useState(false);
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
@@ -411,11 +422,11 @@ export default function SettingsPage({
 
   useEffect(() => {
     const tab = searchParams.get('tab') as TabId;
-    const nextTab = tab && VISIBLE_SETTINGS_TABS.includes(tab) ? tab : 'profil';
+    const nextTab = tab && visibleTabs.includes(tab) ? tab : 'profil';
     if (nextTab !== activeTab) {
       setActiveTab(nextTab);
     }
-  }, [searchParams, activeTab]);
+  }, [searchParams, activeTab, visibleTabs]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme;
@@ -1158,6 +1169,7 @@ export default function SettingsPage({
           <option value="sp-questions">Questions SP</option>
           <option value="sp-calculs">Calculs SP</option>
           <option value="sp-remises">Remises SP</option>
+          {role === 'owner' && <option value="equipe">Équipe</option>}
         </select>
       </div>
 
@@ -1172,6 +1184,7 @@ export default function SettingsPage({
         <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
         <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />
         <TabButton id="sp-remises" label="Remises" icon={Percent} />
+        {role === 'owner' && <TabButton id="equipe" label="Équipe" icon={Users} />}
       </div>
 
       {/* Content Area */}
@@ -2955,6 +2968,18 @@ export default function SettingsPage({
               </Button>
             </div>
           </div>
+        )}
+
+        {/* SECTION 10: ÉQUIPE (propriétaire uniquement) */}
+        {activeTab === 'equipe' && role === 'owner' && (
+          <EquipeTab
+            initialDefaultPermissions={{
+              view_all_propositions: organization.commercial_default_permissions?.view_all_propositions ?? false,
+              manage_catalogue: organization.commercial_default_permissions?.manage_catalogue ?? false,
+              manage_templates: organization.commercial_default_permissions?.manage_templates ?? false,
+              view_credits_billing: organization.commercial_default_permissions?.view_credits_billing ?? false,
+            }}
+          />
         )}
       </div>
 

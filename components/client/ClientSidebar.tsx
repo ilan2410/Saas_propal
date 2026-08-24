@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar } from 'lucide-react';
+import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar, Users } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
 import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
@@ -19,12 +19,13 @@ interface ClientSidebarProps {
     tarif_par_proposition: number;
     logo_url?: string | null;
   };
-  // Câblés par Task 2 ; le nav-hiding effectif est fait par Task 9.
+  // Câblés par Task 2. `role` pilote le lien "Équipe" (Task 5) ; le masquage des
+  // autres liens selon `permissions` reste à faire par Task 9.
   role?: OrgRole;
   permissions?: OrgPermissions;
 }
 
-export function ClientSidebar({ user, organization }: ClientSidebarProps) {
+export function ClientSidebar({ user, organization, role }: ClientSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -136,6 +137,17 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
             <ChartBar className="w-5 h-5" />
             <span className="font-medium">Analytics</span>
           </Link>
+
+          {role === 'owner' && (
+            <Link
+              href="/settings?tab=equipe"
+              onClick={closeSidebar}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-gray-100 text-gray-600"
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-medium">Équipe</span>
+            </Link>
+          )}
 
           <Link
             href="/settings"
