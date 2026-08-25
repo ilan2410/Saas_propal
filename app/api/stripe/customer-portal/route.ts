@@ -27,6 +27,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Récupérer le stripe_customer_id de l'organisation
     const { data: organization, error: orgError } = await supabase
       .from('organizations')
