@@ -193,6 +193,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
+  if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const serviceSupabase = createServiceClient();
 
   const { searchParams } = new URL(request.url);

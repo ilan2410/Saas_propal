@@ -54,6 +54,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { error } = await supabase
       .from('proposition_templates')
       .delete()
@@ -88,6 +92,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();

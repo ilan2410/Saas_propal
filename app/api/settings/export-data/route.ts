@@ -22,6 +22,10 @@ export async function GET(request: Request) {
       );
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Récupérer toutes les données en parallèle
     const [
       { data: organization },

@@ -21,6 +21,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
+    // Le logo SP fait partie de la personnalisation du questionnaire (onglet "Questions SP" >
+    // sous-onglet Apparence), gardé par la même permission que ce groupe d'onglets.
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 

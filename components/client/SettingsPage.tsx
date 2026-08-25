@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
-import type { OrgRole } from '@/lib/auth/org-context';
+import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
@@ -71,6 +71,9 @@ interface SettingsPageProps {
   // Rôle de l'utilisateur courant (propriétaire ou commercial) ; contrôle la visibilité de l'onglet Équipe
   // ainsi que le verrouillage des champs société dans l'onglet Profil.
   role?: OrgRole;
+  // Permissions effectives du commercial (toujours entièrement peuplées pour un propriétaire) ;
+  // contrôle la visibilité des onglets Facturation/Données/Questions SP/Calculs/Remises.
+  permissions?: OrgPermissions;
   // Coordonnées personnelles de l'utilisateur courant (issues de organizations.contact_* pour un
   // propriétaire, de organization_members pour un commercial). Utilisé pour initialiser l'onglet Profil
   // d'un commercial, dont les champs personnels ne viennent pas de `organization`.
@@ -84,9 +87,16 @@ interface SettingsPageProps {
 
 type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
 
-function getVisibleTabs(role?: OrgRole): TabId[] {
-  const base: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
-  return role === 'owner' ? [...base, 'equipe'] : base;
+function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
+  const isOwner = role === 'owner';
+  const base: TabId[] = ['profil', 'securite', 'notifications', 'apparence'];
+  if (isOwner || permissions?.view_credits_billing) {
+    base.push('facturation', 'donnees');
+  }
+  if (isOwner || permissions?.manage_templates) {
+    base.push('sp-questions', 'sp-calculs', 'sp-remises');
+  }
+  return isOwner ? [...base, 'equipe'] : base;
 }
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
@@ -245,11 +255,14 @@ export default function SettingsPage({
   oldestProposition,
   billingStats,
   role,
+  permissions,
   displayName
 }: SettingsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const visibleTabs = useMemo(() => getVisibleTabs(role), [role]);
+  const visibleTabs = useMemo(() => getVisibleTabs(role, permissions), [role, permissions]);
+  const canViewBilling = role === 'owner' || !!permissions?.view_credits_billing;
+  const canManageTemplates = role === 'owner' || !!permissions?.manage_templates;
   const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
   const currentTab = visibleTabs.includes(requestedTab) ? requestedTab : 'profil';
   // Un commercial n'a pas la main sur les champs société (nom, logo, siret, adresse, code postal,
@@ -1190,12 +1203,12 @@ export default function SettingsPage({
           <option value="profil">Profil & Entreprise</option>
           <option value="securite">Sécurité</option>
           <option value="notifications">Notifications</option>
-          <option value="facturation">Facturation</option>
-          <option value="donnees">Données</option>
+          {canViewBilling && <option value="facturation">Facturation</option>}
+          {canViewBilling && <option value="donnees">Données</option>}
           <option value="apparence">Apparence</option>
-          <option value="sp-questions">Questions SP</option>
-          <option value="sp-calculs">Calculs SP</option>
-          <option value="sp-remises">Remises SP</option>
+          {canManageTemplates && <option value="sp-questions">Questions SP</option>}
+          {canManageTemplates && <option value="sp-calculs">Calculs SP</option>}
+          {canManageTemplates && <option value="sp-remises">Remises SP</option>}
           {role === 'owner' && <option value="equipe">Équipe</option>}
         </select>
       </div>
@@ -1205,12 +1218,12 @@ export default function SettingsPage({
         <TabButton id="profil" label="Profil & Entreprise" icon={Building} />
         <TabButton id="securite" label="Sécurité" icon={Shield} />
         <TabButton id="notifications" label="Notifications" icon={Bell} />
-        <TabButton id="facturation" label="Facturation" icon={CreditCard} />
-        <TabButton id="donnees" label="Données" icon={Database} />
+        {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
+        {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
-        <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
-        <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />
-        <TabButton id="sp-remises" label="Remises" icon={Percent} />
+        {canManageTemplates && <TabButton id="sp-questions" label="Questions SP" icon={Bot} />}
+        {canManageTemplates && <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />}
+        {canManageTemplates && <TabButton id="sp-remises" label="Remises" icon={Percent} />}
         {role === 'owner' && <TabButton id="equipe" label="Équipe" icon={Users} />}
       </div>
 

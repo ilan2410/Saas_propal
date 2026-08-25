@@ -171,12 +171,14 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-[var(--background)]">
-          {/* Solde crédits */}
-          <CreditsDisplay 
-            organizationId={organization.id}
-            initialCredits={organization.credits || 0}
-            tarifParProposition={organization.tarif_par_proposition || 0}
-          />
+          {/* Solde crédits : réservé au propriétaire ou à un commercial avec view_credits_billing. */}
+          {(role === 'owner' || permissions?.view_credits_billing) && (
+            <CreditsDisplay
+              organizationId={organization.id}
+              initialCredits={organization.credits || 0}
+              tarifParProposition={organization.tarif_par_proposition || 0}
+            />
+          )}
 
           {/* Profil */}
           <div className="flex items-center gap-3 mb-3 mt-4">

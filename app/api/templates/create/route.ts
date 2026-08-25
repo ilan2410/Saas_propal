@@ -21,6 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = (await request.json()) as Record<string, unknown>;
     
     console.log('Création template - body reçu:', JSON.stringify(body, null, 2));

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { SpQuestionReponse } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export async function POST(
   request: NextRequest,
@@ -29,12 +30,13 @@ export async function POST(
     }
 
     // Verify proposition belongs to org and is a clone
-    const { data: proposition } = await supabase
-      .from('propositions')
-      .select('id, organization_id, template_id, parent_proposition_id, extracted_data')
-      .eq('id', id)
-      .eq('organization_id', ctx.organizationId)
-      .single();
+    const { data: proposition } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select('id, organization_id, template_id, parent_proposition_id, extracted_data')
+        .eq('id', id),
+      ctx
+    ).single();
 
     if (!proposition) {
       return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });

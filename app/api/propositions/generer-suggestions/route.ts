@@ -9,6 +9,7 @@ import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -951,12 +952,13 @@ export async function POST(request: NextRequest) {
     const spReponses: SpQuestionReponse[] = Array.isArray(sp_questions_reponses) ? sp_questions_reponses as SpQuestionReponse[] : [];
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
-      const { data: proposition, error: propError } = await supabase
-        .from('propositions')
-        .select('id, suggestions_sp_completes')
-        .eq('id', proposition_id)
-        .eq('organization_id', ctx.organizationId)
-        .single();
+      const { data: proposition, error: propError } = await scopePropositionsQuery(
+        supabase
+          .from('propositions')
+          .select('id, suggestions_sp_completes')
+          .eq('id', proposition_id),
+        ctx
+      ).single();
 
       if (propError || !proposition) {
         return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
@@ -997,11 +999,13 @@ export async function POST(request: NextRequest) {
     let resiliationConfig: SpConfigResiliation | undefined;
     let propositionCreatedAt: string | undefined;
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
-      const { data: prop } = await supabase
-        .from('propositions')
-        .select('template_id, created_at')
-        .eq('id', proposition_id)
-        .single();
+      const { data: prop } = await scopePropositionsQuery(
+        supabase
+          .from('propositions')
+          .select('template_id, created_at')
+          .eq('id', proposition_id),
+        ctx
+      ).single();
       propositionCreatedAt = typeof prop?.created_at === 'string' ? prop.created_at : undefined;
       if (prop?.template_id) {
         const [{ data: tmpl }, { data: org }] = await Promise.all([
@@ -1150,11 +1154,10 @@ export async function POST(request: NextRequest) {
       if (spReponses.length > 0) {
         updatePayload.sp_reponses = spReponses;
       }
-      const { error: updateError } = await supabase
-        .from('propositions')
-        .update(updatePayload)
-        .eq('id', proposition_id)
-        .eq('organization_id', ctx.organizationId);
+      const { error: updateError } = await scopePropositionsQuery(
+        supabase.from('propositions').update(updatePayload).eq('id', proposition_id),
+        ctx
+      );
 
       if (updateError) {
         console.error('Erreur sauvegarde suggestions:', updateError);

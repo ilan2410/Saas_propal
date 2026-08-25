@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -26,12 +27,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'template_id requis' }, { status: 400 });
     }
 
-    const { data: proposition } = await supabase
-      .from('propositions')
-      .select('id, extracted_data')
-      .eq('organization_id', ctx.organizationId)
-      .eq('template_id', templateId)
-      .not('extracted_data', 'is', null)
+    const { data: proposition } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select('id, extracted_data')
+        .eq('template_id', templateId)
+        .not('extracted_data', 'is', null),
+      ctx
+    )
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

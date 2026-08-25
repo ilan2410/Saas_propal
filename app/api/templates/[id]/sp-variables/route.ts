@@ -136,6 +136,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const body = await req.json() as { key?: string; label?: string; description?: string; type?: string };
   if (!body.key || !body.label) {
     return NextResponse.json({ error: 'key et label requis' }, { status: 400 });
@@ -192,6 +196,10 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const body = await req.json() as { oldKey?: string; newKey?: string; label?: string };
   const oldKey = body.oldKey?.trim();

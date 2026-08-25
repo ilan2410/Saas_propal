@@ -27,6 +27,12 @@ export async function PATCH(request: Request) {
       );
     }
 
+    // Écriture qui réécrit l'identité de facturation de l'organisation et la pousse vers Stripe :
+    // réservé au propriétaire (`view_credits_billing` ne donne qu'un droit de consultation).
+    if (ctx.role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { 
       nom_facturation, 

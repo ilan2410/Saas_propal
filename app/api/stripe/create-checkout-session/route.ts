@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
@@ -27,6 +28,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { montant } = body;
 
@@ -40,36 +46,22 @@ export async function POST(request: NextRequest) {
     // Déterminer l'URL de base (évite un crash si NEXT_PUBLIC_URL n'est pas défini)
     const baseUrl = process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
 
-    // Récupérer l'organization
-    type OrganizationBasic = { id: string; email: string | null; nom: string | null; stripe_customer_id: string | null };
-    let organization: OrganizationBasic | null = null;
-
-    const orgById = await supabase
+    // Récupérer l'organization (scopée via ctx.organizationId : couvre à la fois le
+    // propriétaire, historiquement id === user.id, et un commercial sous-compte).
+    const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('id, email, nom, stripe_customer_id')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
-    if (orgById.data && !orgById.error) {
-      organization = orgById.data as OrganizationBasic;
-    } else {
-      const orgByEmail = await supabase
-        .from('organizations')
-        .select('id, email, nom, stripe_customer_id')
-        .eq('email', user.email)
-        .single();
-
-      if (orgByEmail.data && !orgByEmail.error) {
-        organization = orgByEmail.data as OrganizationBasic;
-      } else {
-        return NextResponse.json(
-          {
-            error: 'Organization not found',
-            details: orgById.error?.message || orgByEmail.error?.message || 'Organisation introuvable',
-          },
-          { status: 404 }
-        );
-      }
+    if (orgError || !organization) {
+      return NextResponse.json(
+        {
+          error: 'Organization not found',
+          details: orgError?.message || 'Organisation introuvable',
+        },
+        { status: 404 }
+      );
     }
 
     let stripeCustomerId = organization.stripe_customer_id || null;
@@ -156,7 +148,7 @@ export async function POST(request: NextRequest) {
 
     // Créer la transaction en BDD (statut: pending)
     const { error: txError } = await supabase.from('stripe_transactions').insert({
-      organization_id: user.id,
+      organization_id: ctx.organizationId,
       stripe_session_id: session.id,
       montant: montant,
       credits_ajoutes: creditsTotal,

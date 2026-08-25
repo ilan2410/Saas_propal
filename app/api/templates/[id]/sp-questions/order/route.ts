@@ -14,6 +14,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { orderedIds }: { orderedIds: string[] } = await req.json();
   const { data: org } = await supabase
     .from('organizations')

@@ -6,6 +6,7 @@ import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
 import { resolveOrgContext, buildActingOrgProfile } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -31,12 +32,10 @@ export async function POST(
     }
 
     // Récupérer la proposition
-    const { data: proposition, error: propError } = await supabase
-      .from('propositions')
-      .select('*')
-      .eq('id', id)
-      .eq('organization_id', ctx.organizationId)
-      .single();
+    const { data: proposition, error: propError } = await scopePropositionsQuery(
+      supabase.from('propositions').select('*').eq('id', id),
+      ctx
+    ).single();
 
     if (propError || !proposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });

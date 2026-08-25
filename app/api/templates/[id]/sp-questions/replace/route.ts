@@ -15,6 +15,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { questions } = await req.json() as { questions: SpQuestion[] };
 
   const { data: org } = await supabase

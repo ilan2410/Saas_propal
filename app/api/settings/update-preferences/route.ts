@@ -26,6 +26,36 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const newPreferences = body as Partial<OrganizationPreferences>;
 
+    // Cette route sert plusieurs onglets aux permissions différentes :
+    // - `notifications` (préférences de notification) et `apparence` (theme/densite/page_accueil)
+    //   restent ouverts à tout commercial (pas d'effet de gestion d'organisation au sens produit).
+    // - `sp_*` (barèmes loyer, résiliation, remises, mois offerts, codes promo, personnalisation
+    //   SP, objectifs, ordre des catégories) relèvent des onglets "Questions SP"/"Calculs"/"Remises",
+    //   gardés par `manage_templates`.
+    // - `recharge_auto` relève de l'onglet Facturation ; par cohérence avec update-billing (écriture
+    //   réservée au propriétaire), on la restreint de la même façon plutôt que via `view_credits_billing`.
+    const SP_TEMPLATE_KEYS: (keyof OrganizationPreferences)[] = [
+      'sp_config_loyer',
+      'sp_config_resiliation',
+      'sp_regles_remise',
+      'sp_customization',
+      'sp_config_mois_offerts',
+      'sp_codes_promo',
+      'sp_codes_promo_mode',
+      'sp_codes_promo_masquer_saisie',
+      'sp_objectifs_config',
+      'sp_categories_order',
+    ];
+    const bodyKeys = Object.keys(newPreferences) as (keyof OrganizationPreferences)[];
+    const touchesSpTemplateSettings = bodyKeys.some((k) => SP_TEMPLATE_KEYS.includes(k));
+    if (touchesSpTemplateSettings && ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const touchesBillingSettings = bodyKeys.includes('recharge_auto');
+    if (touchesBillingSettings && ctx.role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Récupérer les préférences actuelles
     const { data: organization, error: orgError } = await supabase
       .from('organizations')

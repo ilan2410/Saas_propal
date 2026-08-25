@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
@@ -18,11 +19,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
     // Récupérer le stripe_customer_id de l'organisation
     const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('stripe_customer_id, email, nom')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (orgError || !organization) {
@@ -44,7 +53,7 @@ export async function POST(request: Request) {
           await serviceSupabase
             .from('organizations')
             .update({ stripe_customer_id: stripeCustomerId, updated_at: new Date().toISOString() })
-            .eq('id', user.id);
+            .eq('id', ctx.organizationId);
         }
       }
     }

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import SettingsPage from '@/components/client/SettingsPage';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -40,13 +41,14 @@ export default async function Settings() {
     .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
-  const { data: propositions } = await supabase
-    .from('propositions')
-    .select(
-      'id, nom_client, template_id, statut, created_at, exported_at, duplicated_template_url, generated_file_name, source_documents'
-    )
-    .eq('organization_id', ctx.organizationId)
-    .order('created_at', { ascending: false });
+  const { data: propositions } = await scopePropositionsQuery(
+    supabase
+      .from('propositions')
+      .select(
+        'id, nom_client, template_id, statut, created_at, exported_at, duplicated_template_url, generated_file_name, source_documents'
+      ),
+    ctx
+  ).order('created_at', { ascending: false });
 
   const { data: templates } = await supabase
     .from('proposition_templates')
@@ -99,6 +101,7 @@ export default async function Settings() {
         oldestProposition={oldestProposition ? oldestProposition.created_at : null}
         billingStats={billingStats}
         role={ctx.role}
+        permissions={ctx.permissions}
         displayName={ctx.displayName}
       />
     </div>

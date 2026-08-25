@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { generateComparatifPdf } from '@/lib/pdf/comparatif-generator';
 import { generateComparatifWord } from '@/lib/word/comparatif-generator';
 import { OrganizationPreferences, SpCustomization, SuggestionsGenerees } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type OrganizationPdfSettings = {
   nom?: string | null;
@@ -94,17 +96,24 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => ({}));
     let { suggestions, synthese } = body;
     
     // Si les données ne sont pas fournies dans le body, on les récupère de la BDD
     if (!suggestions || !synthese) {
       console.log('🔵 [PDF Export] Données manquantes dans le body, récupération depuis la BDD...');
-      const { data: propData, error: fetchError } = await supabase
-        .from('propositions')
-        .select('suggestions_editees, suggestions_generees')
-        .eq('id', id)
-        .single();
+      const { data: propData, error: fetchError } = await scopePropositionsQuery(
+        supabase
+          .from('propositions')
+          .select('suggestions_editees, suggestions_generees')
+          .eq('id', id),
+        ctx
+      ).single();
         
       if (fetchError || !propData) {
         return NextResponse.json({ error: 'Proposition introuvable ou données manquantes' }, { status: 404 });
@@ -148,20 +157,22 @@ export async function POST(
     }
     
     // Récupérer infos proposition et organisation
-    const { data: proposition, error: propError } = await supabase
-      .from('propositions')
-      .select(`
-        *,
-        organizations (
-          nom,
-          pdf_header_logo_url,
-          pdf_footer_text,
-          logo_url,
-          preferences
-        )
-      `)
-      .eq('id', id)
-      .single();
+    const { data: proposition, error: propError } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select(`
+          *,
+          organizations (
+            nom,
+            pdf_header_logo_url,
+            pdf_footer_text,
+            logo_url,
+            preferences
+          )
+        `)
+        .eq('id', id),
+      ctx
+    ).single();
 
     if (propError || !proposition) {
       console.log('🔴 [PDF Export] Proposition introuvable:', propError);

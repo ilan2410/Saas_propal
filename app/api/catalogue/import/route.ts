@@ -19,6 +19,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { products, is_global, update_mode } = await request.json() as {
       products: unknown[];
       is_global?: boolean;

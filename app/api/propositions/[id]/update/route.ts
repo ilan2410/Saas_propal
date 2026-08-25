@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export async function PATCH(
   request: NextRequest,
@@ -68,11 +69,10 @@ export async function PATCH(
     }
 
     // Mettre à jour la proposition
-    const { data: proposition, error } = await supabase
-      .from('propositions')
-      .update(updateData)
-      .eq('id', id)
-      .eq('organization_id', ctx.organizationId)
+    const { data: proposition, error } = await scopePropositionsQuery(
+      supabase.from('propositions').update(updateData).eq('id', id),
+      ctx
+    )
       .select()
       .single();
 

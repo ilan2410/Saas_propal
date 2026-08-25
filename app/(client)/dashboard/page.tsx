@@ -157,6 +157,11 @@ export default async function ClientDashboard() {
     };
   });
 
+  // Visibilité des éléments liés aux crédits/facturation (montant disponible, dépenses,
+  // alerte crédits faibles) : réservée au propriétaire ou à un commercial avec la
+  // permission view_credits_billing. Le reste du dashboard reste inchangé.
+  const canViewBilling = ctx.role === 'owner' || ctx.permissions.view_credits_billing;
+
   // Onboarding state
   const onboardingCompleted = organization?.onboarding_completed ?? false;
   const toursSeen: string[] = Array.isArray(organization?.onboarding_tours_seen)
@@ -213,25 +218,27 @@ export default async function ClientDashboard() {
         {/* Stats principales */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Crédits */}
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100 group">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                  Crédits disponibles
+          {canViewBilling && (
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100 group">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                    Crédits disponibles
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {formatCurrency(organization?.credits || 0)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {formatCurrency(organization?.tarif_par_proposition || 0)} / proposition
+                  </p>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">
-                  {formatCurrency(organization?.credits || 0)}
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  {formatCurrency(organization?.tarif_par_proposition || 0)} / proposition
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform duration-300">
-                <TrendingUp className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform duration-300">
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Templates */}
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100 group">
@@ -354,19 +361,21 @@ export default async function ClientDashboard() {
             </div>
 
             {/* Dépenses totales */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <span className="text-xl">💳</span>
+            {canViewBilling && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <span className="text-xl">💳</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-600">Dépenses totales</span>
                 </div>
-                <span className="text-sm font-medium text-gray-600">Dépenses totales</span>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalDepense)}</p>
+                <p className="text-xs text-gray-500 mt-2">{transactions?.length || 0} transactions</p>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalDepense)}</p>
-              <p className="text-xs text-gray-500 mt-2">{transactions?.length || 0} transactions</p>
-            </div>
+            )}
 
             {/* Alert crédits faibles */}
-            {(organization?.credits || 0) < 20 && (
+            {canViewBilling && (organization?.credits || 0) < 20 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -375,7 +384,7 @@ export default async function ClientDashboard() {
                     <p className="text-xs text-amber-700 mt-1">
                       Pensez à recharger vos crédits
                     </p>
-                    <Link 
+                    <Link
                       href="/credits"
                       className="text-xs text-amber-600 hover:text-amber-800 font-medium mt-2 inline-block"
                     >

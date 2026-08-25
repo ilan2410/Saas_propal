@@ -40,6 +40,10 @@ export async function DELETE(request: Request) {
       );
     }
 
+    if (ctx.role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const mode = body?.mode === 'older_than_30_days' ? 'older_than_30_days' : 'all';
 
