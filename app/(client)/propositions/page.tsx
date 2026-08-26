@@ -8,7 +8,7 @@ import {
   AlertCircle,
   Sparkles,
 } from 'lucide-react';
-import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import {
@@ -89,7 +89,7 @@ export default async function PropositionsPage() {
 
   if (ctx) {
     const serviceSupabase = createServiceClient();
-    await cleanupOldPropositions(serviceSupabase, ctx.organizationId, 15);
+    await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 15);
   }
 
   // Récupérer toutes les propositions avec les templates

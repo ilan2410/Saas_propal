@@ -1,15 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
-type PropositionListRow = {
+type PropositionSourceDocsRow = {
   id: string;
-  created_at: string;
-  exported_at?: string | null;
-  nom_client?: string | null;
-  template_id?: string | null;
-  generated_file_name?: string | null;
   source_documents: unknown;
-  duplicated_template_url: string | null;
-  template?: unknown;
 };
 
 function asStringArray(value: unknown): string[] {
@@ -31,10 +24,15 @@ function extractStoragePathFromPublicUrl(url: string, bucket: string): string | 
 }
 
 /**
- * Nettoie les anciennes propositions pour ne garder que les N plus récentes.
- * Supprime également les fichiers associés dans le stockage.
+ * Purge les documents source (envoyés à l'IA pour extraction) des anciennes
+ * propositions au-delà des N plus récentes, pour limiter le stockage.
+ *
+ * La proposition elle-même (et le document généré/téléchargeable) n'est
+ * jamais supprimée : sa fiche reste toujours consultable. Seuls les
+ * documents source, qui représentent l'essentiel du volume de stockage,
+ * sont retirés au-delà de la limite.
  */
-export async function cleanupOldPropositions(
+export async function purgeOldSourceDocuments(
   serviceSupabase: SupabaseClient,
   organizationId: string,
   limit: number = 15
@@ -42,69 +40,34 @@ export async function cleanupOldPropositions(
   try {
     const { data: allProps, error: listError } = await serviceSupabase
       .from('propositions')
-      .select('id, created_at, exported_at, nom_client, template_id, generated_file_name, source_documents, duplicated_template_url, template:proposition_templates(nom, file_type)')
+      .select('id, source_documents')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false });
 
     if (listError) {
-      console.error('Erreur listing propositions pour cleanup:', listError);
+      console.error('Erreur listing propositions pour purge des documents source:', listError);
       return;
     }
 
-    const rows = (allProps || []) as PropositionListRow[];
+    const rows = (allProps || []) as PropositionSourceDocsRow[];
 
     if (rows.length <= limit) {
-      return; // Rien à nettoyer
+      return; // Rien à purger
     }
 
-    const toDelete = rows.slice(limit);
+    const toPurge = rows.slice(limit).filter((p) => asStringArray(p.source_documents).length > 0);
+
+    if (toPurge.length === 0) {
+      return; // Les propositions au-delà de la limite n'ont déjà plus de documents source
+    }
+
     console.log(
-      `🧹 Nettoyage: Suppression de ${toDelete.length} anciennes propositions pour l'utilisateur ${organizationId}`
+      `🧹 Purge: suppression des documents source de ${toPurge.length} ancienne(s) proposition(s) pour l'organisation ${organizationId}`
     );
 
-    const idsToDelete = toDelete.map((p) => p.id).filter(Boolean);
-
-    if (toDelete.length > 0) {
-      const archiveRows = toDelete.map((p) => {
-        const templateValue = p.template;
-        const template =
-          Array.isArray(templateValue)
-            ? (templateValue[0] as Record<string, unknown> | undefined)
-            : templateValue && typeof templateValue === 'object'
-              ? (templateValue as Record<string, unknown>)
-              : undefined;
-
-        const templateNom = typeof template?.nom === 'string' ? template.nom : null;
-        const templateType = typeof template?.file_type === 'string' ? template.file_type : null;
-
-        return {
-          organization_id: organizationId,
-          proposition_id: p.id,
-          template_id: p.template_id ?? null,
-          template_nom: templateNom,
-          template_type: templateType,
-          nom_client: p.nom_client ?? null,
-          created_at: p.created_at ?? null,
-          exported_at: p.exported_at ?? null,
-          source_documents: p.source_documents ?? null,
-          generated_file_name: p.generated_file_name ?? null,
-        };
-      });
-
-      const { error: archiveError } = await serviceSupabase
-        .from('propositions_archive')
-        .upsert(archiveRows, { onConflict: 'proposition_id' });
-
-      if (archiveError) {
-        console.error('Erreur insertion archive propositions:', archiveError);
-      }
-    }
-
     const urls: string[] = [];
-    for (const p of toDelete) {
+    for (const p of toPurge) {
       urls.push(...asStringArray(p.source_documents));
-      const generatedUrl = p.duplicated_template_url;
-      if (typeof generatedUrl === 'string' && generatedUrl) urls.push(generatedUrl);
     }
 
     const documentsPaths = Array.from(
@@ -113,44 +76,22 @@ export async function cleanupOldPropositions(
       )
     );
 
-    const templatesPaths = Array.from(
-      new Set(urls.map((u) => extractStoragePathFromPublicUrl(u, 'templates')).filter(Boolean) as string[])
-    );
-
-    const propositionsPaths = Array.from(
-      new Set(
-        urls.map((u) => extractStoragePathFromPublicUrl(u, 'propositions')).filter(Boolean) as string[]
-      )
-    );
-
-    if (idsToDelete.length > 0) {
-      const { error: deleteError } = await serviceSupabase
-        .from('propositions')
-        .delete()
-        .in('id', idsToDelete)
-        .eq('organization_id', organizationId);
-
-      if (deleteError) {
-        console.error('Erreur suppression propositions (cleanup):', deleteError);
-        return;
-      }
-    }
-
     if (documentsPaths.length > 0) {
       const { error: storageError } = await serviceSupabase.storage.from('documents').remove(documentsPaths);
-      if (storageError) console.error('Erreur suppression documents (cleanup):', storageError);
+      if (storageError) console.error('Erreur suppression documents source (purge):', storageError);
     }
 
-    if (templatesPaths.length > 0) {
-      const { error: storageError } = await serviceSupabase.storage.from('templates').remove(templatesPaths);
-      if (storageError) console.error('Erreur suppression templates (cleanup):', storageError);
-    }
+    const idsToUpdate = toPurge.map((p) => p.id);
+    const { error: updateError } = await serviceSupabase
+      .from('propositions')
+      .update({ source_documents: [] })
+      .in('id', idsToUpdate)
+      .eq('organization_id', organizationId);
 
-    if (propositionsPaths.length > 0) {
-      const { error: storageError } = await serviceSupabase.storage.from('propositions').remove(propositionsPaths);
-      if (storageError) console.error('Erreur suppression propositions bucket (cleanup):', storageError);
+    if (updateError) {
+      console.error('Erreur mise à jour source_documents après purge:', updateError);
     }
   } catch (error) {
-    console.error('Erreur globale lors du cleanup des propositions:', error);
+    console.error('Erreur globale lors de la purge des documents source:', error);
   }
 }

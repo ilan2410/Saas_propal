@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
-import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
@@ -568,13 +568,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     console.log('📝 Proposition utilisée:', proposition.id);
 
 
-    // Limiter automatiquement à 15 propositions (suppression des plus anciennes)
-    // Utilisation du helper centralisé
+    // Purge automatiquement les documents source au-delà des 15 propositions les plus récentes
+    // (la proposition elle-même n'est jamais supprimée). Utilisation du helper centralisé.
     try {
       // On utilise 15 ici car la proposition courante est déjà créée/mise à jour et incluse dans le compte
-      await cleanupOldPropositions(serviceSupabase, ctx.organizationId, 15);
+      await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 15);
     } catch (trimError) {
-      console.error('Erreur lors du trim à 15 propositions:', trimError);
+      console.error('Erreur lors de la purge des documents source au-delà de 15 propositions:', trimError);
     }
 
     // Extraire les données avec Claude
