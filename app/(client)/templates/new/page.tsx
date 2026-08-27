@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { TemplateWizard } from '@/components/templates/TemplateWizard';
 import { TemplatePageTourTrigger } from '@/components/onboarding/TemplatePageTourTrigger';
 import type { Secteur } from '@/lib/onboarding/onboarding.types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -15,17 +16,20 @@ export default async function NewTemplatePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) redirect('/login');
+
   // Récupérer l'organisation avec ses champs par défaut
   const { data: organization } = await supabase
     .from('organizations')
     .select('champs_defaut, secteur')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   const { count: templatesCount } = await supabase
     .from('proposition_templates')
     .select('id', { count: 'exact', head: true })
-    .eq('organization_id', user.id);
+    .eq('organization_id', ctx.organizationId);
 
   if ((templatesCount || 0) >= 3) {
     return (

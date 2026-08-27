@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function GET() {
   try {
@@ -10,10 +11,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { data: org } = await supabase
       .from('organizations')
       .select('tarif_par_proposition, tarif_clone_site, credits')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     return NextResponse.json({

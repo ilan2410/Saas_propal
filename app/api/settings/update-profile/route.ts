@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function PATCH(request: Request) {
   try {
@@ -13,7 +14,48 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
+
+    // Commercial : uniquement ses coordonnées personnelles, stockées sur sa propre ligne
+    // organization_members. Toute autre clé du body (champs société, email...) est ignorée :
+    // on ne lit ici QUE prenom/nom/telephone_fixe/telephone_mobile, jamais le reste du body.
+    if (ctx.role !== 'owner') {
+      const { prenom, nom, telephone_fixe, telephone_mobile } = body;
+
+      const memberUpdates = {
+        prenom,
+        nom,
+        telephone_fixe,
+        telephone_mobile,
+        updated_at: new Date().toISOString(),
+      };
+
+      const supabaseAdmin = createServiceClient();
+      const { data: updatedMember, error: updateError } = await supabaseAdmin
+        .from('organization_members')
+        .update(memberUpdates)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: 'Erreur lors de la mise à jour du profil' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(updatedMember);
+    }
+
     const {
       nom,
       email,
@@ -32,7 +74,7 @@ export async function PATCH(request: Request) {
     const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('*')
-      .eq('id', user.id) // En supposant que l'ID de l'organisation est le même que l'ID de l'utilisateur (relation 1:1)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (orgError || !organization) {
@@ -42,8 +84,8 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Vérification de sécurité supplémentaire (bien que la requête précédente filtre déjà par user.id)
-    if (organization.id !== user.id) {
+    // Vérification de sécurité supplémentaire (bien que la requête précédente filtre déjà par ctx.organizationId)
+    if (organization.id !== ctx.organizationId) {
       return NextResponse.json(
         { error: 'Accès non autorisé' },
         { status: 403 }

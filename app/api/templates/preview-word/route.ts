@@ -17,6 +17,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { WordConfig, SpPreferencesProduits, SpClauseConditionnelle, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpQuestion, SpQuestionReponse, CatalogueProduit, SuggestionsSpCompletes } from '@/types';
 
 /**
@@ -35,6 +36,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const templateId = formData.get('templateId');
     const uploadedFile = formData.get('file');
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
       .from('proposition_templates')
       .select('id, file_url, file_config')
       .eq('id', templateId)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
     if (templateError || !template) {
@@ -81,7 +87,7 @@ export async function POST(request: NextRequest) {
     const { data: propWithSp } = await supabase
       .from('propositions')
       .select(baseSelect)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .eq('template_id', templateId)
       .not('suggestions_sp_completes', 'is', null)
       .order('created_at', { ascending: false })
@@ -95,7 +101,7 @@ export async function POST(request: NextRequest) {
       const { data: latestProp } = await supabase
         .from('propositions')
         .select(baseSelect)
-        .eq('organization_id', user.id)
+        .eq('organization_id', ctx.organizationId)
         .eq('template_id', templateId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -178,7 +184,7 @@ export async function POST(request: NextRequest) {
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${user.id},organization_id.is.null`);
+      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
     const catalogue = Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [];
 
     const storedSpCompletes = (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null;

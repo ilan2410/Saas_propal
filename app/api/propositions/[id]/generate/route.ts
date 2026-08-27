@@ -5,6 +5,8 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
+import { resolveOrgContext, buildActingOrgProfile } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -24,13 +26,16 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Récupérer la proposition
-    const { data: proposition, error: propError } = await supabase
-      .from('propositions')
-      .select('*')
-      .eq('id', id)
-      .eq('organization_id', user.id)
-      .single();
+    const { data: proposition, error: propError } = await scopePropositionsQuery(
+      supabase.from('propositions').select('*').eq('id', id),
+      ctx
+    ).single();
 
     if (propError || !proposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
@@ -43,7 +48,7 @@ export async function POST(
       .from('proposition_templates')
       .select('*')
       .eq('id', proposition.template_id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (templateError || !template) {
@@ -65,14 +70,14 @@ export async function POST(
     const { data: organization } = await supabase
       .from('organizations')
       .select('nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, credits, tarif_par_proposition, preferences')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     const { data: catalogueRows } = await supabase
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${user.id},organization_id.is.null`);
+      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
 
     const allQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
     const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
@@ -131,16 +136,21 @@ export async function POST(
       spPreferencesProduits,
     );
 
+    // Profil entreprise transmis au générateur : champs société inchangés, mais
+    // contact_prenom/contact_nom/telephone_fixe/telephone_mobile proviennent de
+    // l'utilisateur agissant (le commercial lui-même pour un sous-compte).
+    const organizationProfile = organization ? buildActingOrgProfile(organization, ctx) : organization;
+
     // Générer le fichier
     const fileUrl = await generatePropositionFile({
       template,
       donnees,
-      organization_id: user.id,
+      organization_id: ctx.organizationId,
       proposition_id: id,
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,
       sp_reference,
-      organization_profile: organization,
+      organization_profile: organizationProfile,
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes

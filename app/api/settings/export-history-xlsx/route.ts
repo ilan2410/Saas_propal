@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import Stripe from 'stripe';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -187,6 +188,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
+
+  if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const serviceSupabase = createServiceClient();
 
   const { searchParams } = new URL(request.url);
@@ -214,19 +224,19 @@ export async function GET(request: Request) {
     .select(
       'id, template_id, created_at, exported_at, source_documents, generated_file_name, template:proposition_templates(nom, file_type)'
     )
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   let propositionsArchiveQuery = serviceSupabase
     .from('propositions_archive')
     .select('proposition_id, template_id, template_nom, template_type, created_at, exported_at, source_documents, generated_file_name')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   let transactionsQuery = serviceSupabase
     .from('stripe_transactions')
     .select('id, stripe_session_id, stripe_payment_intent_id, montant, credits_ajoutes, statut, created_at')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   if (startIso && endIso) {
@@ -247,10 +257,10 @@ export async function GET(request: Request) {
     serviceSupabase
       .from('proposition_templates')
       .select('id, nom, file_type, statut, created_at')
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .order('created_at', { ascending: false }),
     transactionsQuery,
-    serviceSupabase.from('organizations').select('tarif_par_proposition').eq('id', user.id).single(),
+    serviceSupabase.from('organizations').select('tarif_par_proposition').eq('id', ctx.organizationId).single(),
   ]);
 
   if (propError || archError || tplError || txError || orgError) {

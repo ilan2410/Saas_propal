@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
+
+  if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const range = parseAndValidateRange(searchParams);
   if (!range) {
@@ -39,19 +49,19 @@ export async function GET(request: Request) {
     serviceSupabase
       .from('propositions')
       .select('id', { count: 'exact', head: true })
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .gte('created_at', range.startIso)
       .lt('created_at', range.endIso),
     serviceSupabase
       .from('propositions_archive')
       .select('proposition_id', { count: 'exact', head: true })
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .gte('created_at', range.startIso)
       .lt('created_at', range.endIso),
     serviceSupabase
       .from('stripe_transactions')
       .select('id', { count: 'exact', head: true })
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .gte('created_at', range.startIso)
       .lt('created_at', range.endIso),
   ]);

@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar } from 'lucide-react';
+import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar, Users } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
+import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 
 interface ClientSidebarProps {
   user: {
@@ -18,9 +19,13 @@ interface ClientSidebarProps {
     tarif_par_proposition: number;
     logo_url?: string | null;
   };
+  // Câblés par Task 2. `role` pilote le lien "Équipe" (Task 5) et, avec
+  // `permissions`, le masquage des autres liens (Task 9).
+  role?: OrgRole;
+  permissions?: OrgPermissions;
 }
 
-export function ClientSidebar({ user, organization }: ClientSidebarProps) {
+export function ClientSidebar({ user, organization, role, permissions }: ClientSidebarProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -77,16 +82,18 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
             <span className="font-medium">Dashboard</span>
           </Link>
 
-          <Link
-            href="/templates"
-            onClick={closeSidebar}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname.startsWith('/templates') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            <FileText className="w-5 h-5" />
-            <span className="font-medium">Templates</span>
-          </Link>
+          {(role === 'owner' || permissions?.manage_templates) && (
+            <Link
+              href="/templates"
+              onClick={closeSidebar}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                pathname.startsWith('/templates') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <FileText className="w-5 h-5" />
+              <span className="font-medium">Templates</span>
+            </Link>
+          )}
 
           <Link
             href="/propositions"
@@ -99,39 +106,56 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
             <span className="font-medium">Propositions</span>
           </Link>
 
-          <Link
-            href="/catalogue"
-            onClick={closeSidebar}
-            id="nav-catalogue"
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname.startsWith('/catalogue') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            <Package className="w-5 h-5" />
-            <span className="font-medium">Catalogue</span>
-          </Link>
+          {(role === 'owner' || permissions?.manage_catalogue) && (
+            <Link
+              href="/catalogue"
+              onClick={closeSidebar}
+              id="nav-catalogue"
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                pathname.startsWith('/catalogue') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Package className="w-5 h-5" />
+              <span className="font-medium">Catalogue</span>
+            </Link>
+          )}
 
-          <Link
-            href="/credits"
-            onClick={closeSidebar}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname.startsWith('/credits') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            <CreditCard className="w-5 h-5" />
-            <span className="font-medium">Crédits</span>
-          </Link>
-          
-          <Link
-            href="/analytics"
-            onClick={closeSidebar}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname.startsWith('/analytics') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
-            }`}
-          >
-            <ChartBar className="w-5 h-5" />
-            <span className="font-medium">Analytics</span>
-          </Link>
+          {(role === 'owner' || permissions?.view_credits_billing) && (
+            <Link
+              href="/credits"
+              onClick={closeSidebar}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                pathname.startsWith('/credits') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <CreditCard className="w-5 h-5" />
+              <span className="font-medium">Crédits</span>
+            </Link>
+          )}
+
+          {(role === 'owner' || permissions?.view_all_propositions) && (
+            <Link
+              href="/analytics"
+              onClick={closeSidebar}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                pathname.startsWith('/analytics') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <ChartBar className="w-5 h-5" />
+              <span className="font-medium">Analytics</span>
+            </Link>
+          )}
+
+          {role === 'owner' && (
+            <Link
+              href="/settings?tab=equipe"
+              onClick={closeSidebar}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-gray-100 text-gray-600"
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-medium">Équipe</span>
+            </Link>
+          )}
 
           <Link
             href="/settings"
@@ -147,12 +171,14 @@ export function ClientSidebar({ user, organization }: ClientSidebarProps) {
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-[var(--background)]">
-          {/* Solde crédits */}
-          <CreditsDisplay 
-            organizationId={organization.id}
-            initialCredits={organization.credits || 0}
-            tarifParProposition={organization.tarif_par_proposition || 0}
-          />
+          {/* Solde crédits : réservé au propriétaire ou à un commercial avec view_credits_billing. */}
+          {(role === 'owner' || permissions?.view_credits_billing) && (
+            <CreditsDisplay
+              organizationId={organization.id}
+              initialCredits={organization.credits || 0}
+              tarifParProposition={organization.tarif_par_proposition || 0}
+            />
+          )}
 
           {/* Profil */}
           <div className="flex items-center gap-3 mb-3 mt-4">

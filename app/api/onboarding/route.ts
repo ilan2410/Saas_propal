@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const allowedSecteurs = new Set(['telephonie', 'bureautique', 'mixte']);
 
@@ -19,6 +20,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => null);
     const secteur = body?.secteur;
 
@@ -35,7 +41,7 @@ export async function POST(request: NextRequest) {
     const { data: org, error: orgError } = await supabaseAdmin
       .from('organizations')
       .select('secteur')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (orgError) {
@@ -55,7 +61,7 @@ export async function POST(request: NextRequest) {
     const { error: updateError } = await supabaseAdmin
       .from('organizations')
       .update({ secteur })
-      .eq('id', user.id);
+      .eq('id', ctx.organizationId);
 
     if (updateError) {
       return NextResponse.json(

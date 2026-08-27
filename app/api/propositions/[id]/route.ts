@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
   if (!url) return null;
@@ -31,16 +33,22 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Récupérer la proposition avec le template
-    const { data: proposition, error } = await supabase
-      .from('propositions')
-      .select(`
-        *,
-        template:proposition_templates(*)
-      `)
-      .eq('id', id)
-      .eq('organization_id', user.id)
-      .single();
+    const { data: proposition, error } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select(`
+          *,
+          template:proposition_templates(*)
+        `)
+        .eq('id', id),
+      ctx
+    ).single();
 
     if (error || !proposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
@@ -76,12 +84,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: proposition, error: fetchError } = await serviceSupabase
-      .from('propositions')
-      .select('*')
-      .eq('id', id)
-      .eq('organization_id', user.id)
-      .single();
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: proposition, error: fetchError } = await scopePropositionsQuery(
+      serviceSupabase.from('propositions').select('*').eq('id', id),
+      ctx
+    ).single();
 
     if (fetchError || !proposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
@@ -137,7 +148,7 @@ export async function DELETE(
       .from('propositions')
       .delete()
       .eq('id', id)
-      .eq('organization_id', user.id);
+      .eq('organization_id', ctx.organizationId);
 
     if (error) throw error;
 

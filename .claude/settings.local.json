@@ -28,7 +28,13 @@
       "Bash(git show *)",
       "Bash(cp /tmp/generate_route.with_refactor_and_fix.ts \"app/api/propositions/[id]/generate/route.ts\")",
       "Bash(cp /c/tmp_generate_route.with_refactor_and_fix.ts \"app/api/propositions/[id]/generate/route.ts\")",
-      "Bash(rm -f /tmp/package.json.with_both /tmp/package-lock.json.with_both /tmp/generate_route.with_refactor_and_fix.ts /tmp/orig_package.json 2>/dev/null *)"
+      "Bash(rm -f /tmp/package.json.with_both /tmp/package-lock.json.with_both /tmp/generate_route.with_refactor_and_fix.ts /tmp/orig_package.json 2>/dev/null *)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\sdd-workspace\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\")",
+      "Bash(mkdir -p /c/Users/ilan/CascadeProjects/Saas_propal/.superpowers/sdd/on-doit-impl-menter-un-lucky-meadow)",
+      "Bash([ -f \"$WS/progress.md\" ])",
+      "Bash(printf '\\\\n# Subagent-driven-development scratch workspace\\\\n.superpowers/\\\\n' >> .gitignore *)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 1)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 89128cf HEAD)"
     ]
   }
 }

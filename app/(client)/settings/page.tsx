@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import SettingsPage from '@/components/client/SettingsPage';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction } from '@/types';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -14,11 +16,16 @@ export default async function Settings() {
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   // Fetch Organization
   const { data: organization, error: orgError } = await supabase
     .from('organizations')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   if (orgError || !organization) {
@@ -31,21 +38,22 @@ export default async function Settings() {
   const { data: transactions, error: transError } = await supabase
     .from('stripe_transactions')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
-  const { data: propositions } = await supabase
-    .from('propositions')
-    .select(
-      'id, nom_client, template_id, statut, created_at, exported_at, duplicated_template_url, generated_file_name, source_documents'
-    )
-    .eq('organization_id', user.id)
-    .order('created_at', { ascending: false });
+  const { data: propositions } = await scopePropositionsQuery(
+    supabase
+      .from('propositions')
+      .select(
+        'id, nom_client, template_id, statut, created_at, exported_at, duplicated_template_url, generated_file_name, source_documents'
+      ),
+    ctx
+  ).order('created_at', { ascending: false });
 
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('id, nom, file_type, statut, file_config')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
   const validTransactions = (transactions || []) as StripeTransaction[];
@@ -92,6 +100,9 @@ export default async function Settings() {
         storageUsage={null}
         oldestProposition={oldestProposition ? oldestProposition.created_at : null}
         billingStats={billingStats}
+        role={ctx.role}
+        permissions={ctx.permissions}
+        displayName={ctx.displayName}
       />
     </div>
   );

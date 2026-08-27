@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,11 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -29,17 +35,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Nettoyage préventif AVANT la création (pour ne pas supprimer ce qu'on vient de créer si on est à la limite)
-    // Mais ici on veut garder les 15 plus récents. Si on en a 15, on en supprime 1 pour faire de la place.
-    // L'appel async ne bloque pas le retour immédiat, mais c'est mieux d'attendre un peu pour éviter les race conditions
-    // On le fait en "fire and forget" pour la rapidité, ou await pour la sûreté ?
-    // Await est plus sûr pour la cohérence des données.
-    await cleanupOldPropositions(serviceSupabase, user.id, 14); // On garde 14 pour laisser la place au 15ème
+    // Purge préventive AVANT la création : on garde les documents source des 14 propositions
+    // les plus récentes existantes, pour laisser la place à la nouvelle (qui deviendra la 15ème
+    // la plus récente une fois insérée). Les propositions elles-mêmes ne sont jamais supprimées.
+    await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 14);
 
     const { data: proposition, error } = await supabase
       .from('propositions')
       .insert({
-        organization_id: user.id,
+        organization_id: ctx.organizationId,
+        created_by: user.id,
         template_id,
         nom_client,
         source_documents,

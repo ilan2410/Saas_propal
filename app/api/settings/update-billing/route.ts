@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
@@ -16,6 +17,20 @@ export async function PATCH(request: Request) {
         { error: 'Non authentifié' },
         { status: 401 }
       );
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
+    // Écriture qui réécrit l'identité de facturation de l'organisation et la pousse vers Stripe :
+    // réservé au propriétaire (`view_credits_billing` ne donne qu'un droit de consultation).
+    if (ctx.role !== 'owner') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -46,7 +61,7 @@ export async function PATCH(request: Request) {
         adresse_facturation: adresse_ligne1_facturation, 
         updated_at: new Date().toISOString()
       })
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .select('stripe_customer_id, id')
       .single();
 

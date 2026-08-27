@@ -3,6 +3,8 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export default async function ResumePropositionPage({
   params,
@@ -23,10 +25,15 @@ export default async function ResumePropositionPage({
     redirect('/login');
   }
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
   const { data: organization } = await supabase
     .from('organizations')
     .select('secteur')
-    .eq('id', user.id)
+    .eq('id', ctx.organizationId)
     .single();
 
   const secteur = organization?.secteur || 'telephonie';
@@ -34,7 +41,7 @@ export default async function ResumePropositionPage({
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select('*')
-    .eq('organization_id', user.id)
+    .eq('organization_id', ctx.organizationId)
     .eq('statut', 'actif')
     .order('created_at', { ascending: false });
 
@@ -42,12 +49,10 @@ export default async function ResumePropositionPage({
     redirect('/propositions/new');
   }
 
-  const { data: proposition, error } = await supabase
-    .from('propositions')
-    .select('*')
-    .eq('id', id)
-    .eq('organization_id', user.id)
-    .single();
+  const { data: proposition, error } = await scopePropositionsQuery(
+    supabase.from('propositions').select('*').eq('id', id),
+    ctx
+  ).single();
 
   if (error || !proposition) {
     notFound();

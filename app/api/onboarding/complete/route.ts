@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const VALID_TOUR_IDS = [
   'welcome',
@@ -23,6 +24,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+
     const body = await request.json();
     const tour = body?.tour as string;
 
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest) {
     const { data: org, error: fetchError } = await supabase
       .from('organizations')
       .select('onboarding_completed, onboarding_tours_seen, onboarding_completed_at')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (fetchError) {
@@ -63,7 +69,7 @@ export async function POST(request: NextRequest) {
           ? new Date().toISOString()
           : org?.onboarding_completed_at,
       })
-      .eq('id', user.id);
+      .eq('id', ctx.organizationId);
 
     if (updateError) {
       console.error('[onboarding/complete] Update error:', updateError);

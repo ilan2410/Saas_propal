@@ -1,25 +1,26 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ComponentType } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
+import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
-import { 
-  Building, 
-  Shield, 
-  Bell, 
-  CreditCard, 
-  Database, 
-  Monitor, 
-  Upload, 
-  Download, 
+import {
+  Building,
+  Shield,
+  Bell,
+  CreditCard,
+  Database,
+  Monitor,
+  Upload,
+  Download,
   Table,
-  Trash2, 
-  Moon, 
-  Sun, 
-  FileText, 
+  Trash2,
+  Moon,
+  Sun,
+  FileText,
   ExternalLink,
   AlertTriangle,
   Loader2,
@@ -32,8 +33,10 @@ import {
   Percent,
   EyeOff,
   Package,
-  ListOrdered
+  ListOrdered,
+  Users
 } from 'lucide-react';
+import { EquipeTab } from '@/components/client/settings/EquipeTab';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
@@ -65,10 +68,36 @@ interface SettingsPageProps {
       amount: number;
     };
   };
+  // Rôle de l'utilisateur courant (propriétaire ou commercial) ; contrôle la visibilité de l'onglet Équipe
+  // ainsi que le verrouillage des champs société dans l'onglet Profil.
+  role?: OrgRole;
+  // Permissions effectives du commercial (toujours entièrement peuplées pour un propriétaire) ;
+  // contrôle la visibilité des onglets Facturation/Données/Questions SP/Calculs/Remises.
+  permissions?: OrgPermissions;
+  // Coordonnées personnelles de l'utilisateur courant (issues de organizations.contact_* pour un
+  // propriétaire, de organization_members pour un commercial). Utilisé pour initialiser l'onglet Profil
+  // d'un commercial, dont les champs personnels ne viennent pas de `organization`.
+  displayName?: {
+    prenom: string;
+    nom: string;
+    telephone_fixe: string;
+    telephone_mobile: string;
+  };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises';
-const VISIBLE_SETTINGS_TABS: TabId[] = ['profil', 'securite', 'notifications', 'facturation', 'donnees', 'apparence', 'sp-questions', 'sp-calculs', 'sp-remises'];
+type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
+
+function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
+  const isOwner = role === 'owner';
+  const base: TabId[] = ['profil', 'securite', 'notifications', 'apparence'];
+  if (isOwner || permissions?.view_credits_billing) {
+    base.push('facturation', 'donnees');
+  }
+  if (isOwner || permissions?.manage_templates) {
+    base.push('sp-questions', 'sp-calculs', 'sp-remises');
+  }
+  return isOwner ? [...base, 'equipe'] : base;
+}
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
 type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories';
@@ -216,20 +245,29 @@ function SpPreviewBanner({
   return layout;
 }
 
-export default function SettingsPage({ 
-  organization, 
-  userEmail, 
+export default function SettingsPage({
+  organization,
+  userEmail,
   transactions,
   propositions,
   templates,
   propositionsCount,
   oldestProposition,
-  billingStats 
+  billingStats,
+  role,
+  permissions,
+  displayName
 }: SettingsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const visibleTabs = useMemo(() => getVisibleTabs(role, permissions), [role, permissions]);
+  const canViewBilling = role === 'owner' || !!permissions?.view_credits_billing;
+  const canManageTemplates = role === 'owner' || !!permissions?.manage_templates;
   const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
-  const currentTab = VISIBLE_SETTINGS_TABS.includes(requestedTab) ? requestedTab : 'profil';
+  const currentTab = visibleTabs.includes(requestedTab) ? requestedTab : 'profil';
+  // Un commercial n'a pas la main sur les champs société (nom, logo, siret, adresse, code postal,
+  // ville, email) : ils sont gérés par le compte principal (propriétaire) et affichés en lecture seule.
+  const isOwner = role !== 'commercial';
 
   const [isLoading, setIsLoading] = useState(false);
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
@@ -239,18 +277,21 @@ export default function SettingsPage({
   const [questionsSpSubTab, setQuestionsSpSubTab] = useState<QuestionsSpSubTabId>('questions');
 
   // Profile State
+  // Champs société : toujours initialisés depuis `organization` (affichage seul pour un commercial).
+  // Champs contact personnel : pour un propriétaire, `organization.contact_*` ; pour un commercial,
+  // `displayName` (issu de organization_members via ctx.displayName), pas de organization.contact_*.
   const [profileData, setProfileData] = useState({
     nom: organization.nom || '',
-    email: organization.email || userEmail,
+    email: isOwner ? (organization.email || userEmail) : userEmail,
     siret: organization.siret || '',
     adresse: organization.adresse || '',
     code_postal: organization.code_postal || '',
     ville: organization.ville || '',
     logo_url: organization.logo_url || '',
-    contact_prenom: organization.contact_prenom || '',
-    contact_nom: organization.contact_nom || '',
-    telephone_fixe: organization.telephone_fixe || '',
-    telephone_mobile: organization.telephone_mobile || '',
+    contact_prenom: isOwner ? (organization.contact_prenom || '') : (displayName?.prenom || ''),
+    contact_nom: isOwner ? (organization.contact_nom || '') : (displayName?.nom || ''),
+    telephone_fixe: isOwner ? (organization.telephone_fixe || '') : (displayName?.telephone_fixe || ''),
+    telephone_mobile: isOwner ? (organization.telephone_mobile || '') : (displayName?.telephone_mobile || ''),
   });
 
   // Password State
@@ -411,11 +452,11 @@ export default function SettingsPage({
 
   useEffect(() => {
     const tab = searchParams.get('tab') as TabId;
-    const nextTab = tab && VISIBLE_SETTINGS_TABS.includes(tab) ? tab : 'profil';
+    const nextTab = tab && visibleTabs.includes(tab) ? tab : 'profil';
     if (nextTab !== activeTab) {
       setActiveTab(nextTab);
     }
-  }, [searchParams, activeTab]);
+  }, [searchParams, activeTab, visibleTabs]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = appearance.theme;
@@ -494,10 +535,20 @@ export default function SettingsPage({
   const handleUpdateProfile = async () => {
     setIsLoading(true);
     try {
+      // Un commercial ne peut modifier que ses coordonnées personnelles ; on n'envoie donc jamais les
+      // champs société, même si `profileData` les contient (ils y restent pour l'affichage lecture seule).
+      const body = isOwner
+        ? profileData
+        : {
+            prenom: profileData.contact_prenom,
+            nom: profileData.contact_nom,
+            telephone_fixe: profileData.telephone_fixe,
+            telephone_mobile: profileData.telephone_mobile,
+          };
       const res = await fetch('/api/settings/update-profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileData),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) throw new Error('Erreur lors de la mise à jour');
@@ -1152,12 +1203,13 @@ export default function SettingsPage({
           <option value="profil">Profil & Entreprise</option>
           <option value="securite">Sécurité</option>
           <option value="notifications">Notifications</option>
-          <option value="facturation">Facturation</option>
-          <option value="donnees">Données</option>
+          {canViewBilling && <option value="facturation">Facturation</option>}
+          {canViewBilling && <option value="donnees">Données</option>}
           <option value="apparence">Apparence</option>
-          <option value="sp-questions">Questions SP</option>
-          <option value="sp-calculs">Calculs SP</option>
-          <option value="sp-remises">Remises SP</option>
+          {canManageTemplates && <option value="sp-questions">Questions SP</option>}
+          {canManageTemplates && <option value="sp-calculs">Calculs SP</option>}
+          {canManageTemplates && <option value="sp-remises">Remises SP</option>}
+          {role === 'owner' && <option value="equipe">Équipe</option>}
         </select>
       </div>
 
@@ -1166,12 +1218,13 @@ export default function SettingsPage({
         <TabButton id="profil" label="Profil & Entreprise" icon={Building} />
         <TabButton id="securite" label="Sécurité" icon={Shield} />
         <TabButton id="notifications" label="Notifications" icon={Bell} />
-        <TabButton id="facturation" label="Facturation" icon={CreditCard} />
-        <TabButton id="donnees" label="Données" icon={Database} />
+        {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
+        {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
-        <TabButton id="sp-questions" label="Questions SP" icon={Bot} />
-        <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />
-        <TabButton id="sp-remises" label="Remises" icon={Percent} />
+        {canManageTemplates && <TabButton id="sp-questions" label="Questions SP" icon={Bot} />}
+        {canManageTemplates && <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />}
+        {canManageTemplates && <TabButton id="sp-remises" label="Remises" icon={Percent} />}
+        {role === 'owner' && <TabButton id="equipe" label="Équipe" icon={Users} />}
       </div>
 
       {/* Content Area */}
@@ -1193,8 +1246,12 @@ export default function SettingsPage({
                     type="text"
                     value={profileData.nom}
                     onChange={(e) => setProfileData({...profileData, nom: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
+                  {!isOwner && (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -1202,12 +1259,17 @@ export default function SettingsPage({
                     type="email"
                     value={profileData.email}
                     onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
-                  <p className="text-xs text-yellow-600 mt-1 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    Modifier l&apos;email changera aussi vos identifiants de connexion.
-                  </p>
+                  {isOwner ? (
+                    <p className="text-xs text-yellow-600 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Modifier l&apos;email changera aussi vos identifiants de connexion.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Secteur d&apos;activité</label>
@@ -1230,38 +1292,46 @@ export default function SettingsPage({
                       ) : (
                         <span className="text-gray-400 font-bold text-xl">{profileData.nom.substring(0, 2).toUpperCase()}</span>
                       )}
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <label htmlFor="logo-upload" className="cursor-pointer">
-                          <Upload className="w-5 h-5 text-white" />
-                        </label>
-                      </div>
+                      {isOwner && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                          <label htmlFor="logo-upload" className="cursor-pointer">
+                            <Upload className="w-5 h-5 text-white" />
+                          </label>
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1">
-                      <input 
-                        id="logo-upload" 
-                        type="file" 
-                        accept=".png,.jpg,.jpeg,.svg" 
-                        className="hidden" 
-                        onChange={handleUploadLogo}
-                      />
-                      <label 
-                        htmlFor="logo-upload"
-                        className="inline-block px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-                      >
-                        Changer le logo
-                      </label>
-                      {profileData.logo_url && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setProfileData(prev => ({ ...prev, logo_url: '' }));
-                          }}
-                          className="ml-2 text-xs text-red-600 hover:underline"
-                        >
-                          Supprimer le logo
-                        </button>
+                      {isOwner ? (
+                        <>
+                          <input
+                            id="logo-upload"
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.svg"
+                            className="hidden"
+                            onChange={handleUploadLogo}
+                          />
+                          <label
+                            htmlFor="logo-upload"
+                            className="inline-block px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                          >
+                            Changer le logo
+                          </label>
+                          {profileData.logo_url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProfileData(prev => ({ ...prev, logo_url: '' }));
+                              }}
+                              className="ml-2 text-xs text-red-600 hover:underline"
+                            >
+                              Supprimer le logo
+                            </button>
+                          )}
+                          <p className="text-xs text-gray-500 mt-1">PNG, JPG ou SVG. Max 2MB.</p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-400">Géré par le compte principal</p>
                       )}
-                      <p className="text-xs text-gray-500 mt-1">PNG, JPG ou SVG. Max 2MB.</p>
                     </div>
                   </div>
                 </div>
@@ -1321,9 +1391,13 @@ export default function SettingsPage({
                     type="text"
                     value={profileData.siret}
                     onChange={(e) => setProfileData({...profileData, siret: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                     placeholder="123 456 789 00012"
                   />
+                  {!isOwner && (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
@@ -1331,8 +1405,12 @@ export default function SettingsPage({
                     type="text"
                     value={profileData.adresse}
                     onChange={(e) => setProfileData({...profileData, adresse: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
+                  {!isOwner && (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Code Postal</label>
@@ -1340,8 +1418,12 @@ export default function SettingsPage({
                     type="text"
                     value={profileData.code_postal}
                     onChange={(e) => setProfileData({...profileData, code_postal: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
+                  {!isOwner && (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ville</label>
@@ -1349,11 +1431,50 @@ export default function SettingsPage({
                     type="text"
                     value={profileData.ville}
                     onChange={(e) => setProfileData({...profileData, ville: e.target.value})}
-                    className="w-full p-2 border border-gray-300 rounded-md"
+                    disabled={!isOwner}
+                    className="w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
+                  {!isOwner && (
+                    <p className="text-xs text-gray-400 mt-1">Géré par le compte principal</p>
+                  )}
                 </div>
               </div>
             </div>
+
+            {!isOwner && (
+              <div className="border-t border-gray-100 pt-6">
+                <h3 className="text-sm font-medium text-gray-900 mb-1">Changer mon mot de passe</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Ce mot de passe concerne uniquement votre compte personnel.
+                </p>
+                <div className="max-w-md space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+                    <input
+                      type="password"
+                      value={passwordData.password}
+                      onChange={(e) => setPasswordData({...passwordData, password: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Minimum 8 caractères"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
+                    <input
+                      type="password"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Confirmer le nouveau mot de passe"
+                    />
+                  </div>
+                  <Button variant="outline" onClick={handleUpdatePassword} disabled={isLoading}>
+                    {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Mettre à jour le mot de passe
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end pt-4 border-t border-gray-100">
               <Button onClick={handleUpdateProfile} disabled={isLoading}>
@@ -2955,6 +3076,18 @@ export default function SettingsPage({
               </Button>
             </div>
           </div>
+        )}
+
+        {/* SECTION 10: ÉQUIPE (propriétaire uniquement) */}
+        {activeTab === 'equipe' && role === 'owner' && (
+          <EquipeTab
+            initialDefaultPermissions={{
+              view_all_propositions: organization.commercial_default_permissions?.view_all_propositions ?? false,
+              manage_catalogue: organization.commercial_default_permissions?.manage_catalogue ?? false,
+              manage_templates: organization.commercial_default_permissions?.manage_templates ?? false,
+              view_credits_billing: organization.commercial_default_permissions?.view_credits_billing ?? false,
+            }}
+          />
         )}
       </div>
 

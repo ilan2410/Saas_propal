@@ -8,7 +8,9 @@ import {
   AlertCircle,
   Sparkles,
 } from 'lucide-react';
-import { cleanupOldPropositions } from '@/lib/propositions/cleanup';
+import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import {
   PropositionsListClient,
   type PropositionListItem,
@@ -83,20 +85,23 @@ export default async function PropositionsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user?.id) {
+  const ctx = user ? await resolveOrgContext(supabase, user) : null;
+
+  if (ctx) {
     const serviceSupabase = createServiceClient();
-    await cleanupOldPropositions(serviceSupabase, user.id, 15);
+    await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 15);
   }
 
   // Récupérer toutes les propositions avec les templates
-  const { data: propositions } = await supabase
+  const propositionsQuery = supabase
     .from('propositions')
     .select(`
       *,
       template:proposition_templates(nom)
-    `)
-    .eq('organization_id', user?.id)
-    .order('created_at', { ascending: false });
+    `);
+  const { data: propositions } = ctx
+    ? await scopePropositionsQuery(propositionsQuery, ctx).order('created_at', { ascending: false })
+    : await propositionsQuery.eq('organization_id', '').order('created_at', { ascending: false });
 
   const displayedPropositions = (propositions || []).filter((p) => {
     const prop = p as Record<string, unknown>;

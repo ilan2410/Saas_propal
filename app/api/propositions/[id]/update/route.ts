@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export async function PATCH(
   request: NextRequest,
@@ -14,6 +16,11 @@ export async function PATCH(
     } = await supabase.auth.getUser();
 
     if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -62,11 +69,10 @@ export async function PATCH(
     }
 
     // Mettre à jour la proposition
-    const { data: proposition, error } = await supabase
-      .from('propositions')
-      .update(updateData)
-      .eq('id', id)
-      .eq('organization_id', user.id)
+    const { data: proposition, error } = await scopePropositionsQuery(
+      supabase.from('propositions').update(updateData).eq('id', id),
+      ctx
+    )
       .select()
       .single();
 

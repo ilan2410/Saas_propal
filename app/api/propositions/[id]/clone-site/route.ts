@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type SiteActuelle = { nom: string; adresse?: string; code_postal?: string; ville?: string };
 type LigneActuelle = { site?: string; [key: string]: unknown };
@@ -51,6 +53,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json() as { site_nom: string };
     const { site_nom } = body;
 
@@ -59,12 +66,13 @@ export async function POST(
     }
 
     // Load parent proposition
-    const { data: parent } = await supabase
-      .from('propositions')
-      .select('id, organization_id, template_id, nom_client, extracted_data')
-      .eq('id', id)
-      .eq('organization_id', user.id)
-      .single();
+    const { data: parent } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .select('id, organization_id, template_id, nom_client, extracted_data')
+        .eq('id', id),
+      ctx
+    ).single();
 
     if (!parent) {
       return NextResponse.json({ error: 'Proposition parente introuvable' }, { status: 404 });
@@ -74,7 +82,7 @@ export async function POST(
     const { data: org } = await supabase
       .from('organizations')
       .select('credits, tarif_clone_site')
-      .eq('id', user.id)
+      .eq('id', ctx.organizationId)
       .single();
 
     if (!org) {
@@ -95,13 +103,14 @@ export async function POST(
     const extractedDataFiltered = filterExtractedDataForSite(extractedDataFull, site_nom);
 
     // Debit credits
-    await supabase.rpc('debit_credits', { org_id: user.id, amount: tarif });
+    await supabase.rpc('debit_credits', { org_id: ctx.organizationId, amount: tarif });
 
     // Create clone proposition
     const { data: clone, error: insertError } = await supabase
       .from('propositions')
       .insert({
-        organization_id: user.id,
+        organization_id: ctx.organizationId,
+        created_by: user.id,
         template_id: parent.template_id,
         nom_client: parent.nom_client,
         extracted_data: extractedDataFiltered,

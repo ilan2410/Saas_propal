@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB, cohérent avec la limite existante côté formulaire
@@ -15,6 +16,15 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const formData = await request.formData();

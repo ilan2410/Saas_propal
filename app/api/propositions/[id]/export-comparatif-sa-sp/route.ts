@@ -14,6 +14,8 @@ import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-genera
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { buildExportSaSpData } from '@/lib/sp/buildExportSaSpData';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -29,22 +31,26 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   // 1. Récupérer la proposition (avec sp_reponses, extracted_data, filled_data)
-  const { data: proposition, error } = await supabase
-    .from('propositions')
-    .select(`
-      template_id,
-      nom_client,
-      extracted_data,
-      filled_data,
-      suggestions_sp_completes,
-      sp_reponses,
-      organization_id,
-      organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
-    `)
-    .eq('id', id)
-    .eq('organization_id', user.id)
-    .single();
+  const { data: proposition, error } = await scopePropositionsQuery(
+    supabase
+      .from('propositions')
+      .select(`
+        template_id,
+        nom_client,
+        extracted_data,
+        filled_data,
+        suggestions_sp_completes,
+        sp_reponses,
+        organization_id,
+        organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
+      `)
+      .eq('id', id),
+    ctx
+  ).single();
 
   if (error || !proposition) {
     return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
@@ -94,7 +100,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     .from('catalogues_produits')
     .select('*')
     .eq('actif', true)
-    .or(`organization_id.eq.${user.id},organization_id.is.null`);
+    .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
   const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows)
     ? (catalogueRows as CatalogueProduit[])
     : [];

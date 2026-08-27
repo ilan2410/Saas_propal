@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export async function PATCH(
   request: NextRequest,
@@ -17,6 +19,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { suggestions, synthese } = body;
 
@@ -27,16 +34,18 @@ export async function PATCH(
       );
     }
 
-    const { error } = await supabase
-      .from('propositions')
-      .update({
-        suggestions_editees: {
-          suggestions,
-          synthese,
-        },
-      })
-      .eq('id', id)
-      .eq('organization_id', user.id);
+    const { error } = await scopePropositionsQuery(
+      supabase
+        .from('propositions')
+        .update({
+          suggestions_editees: {
+            suggestions,
+            synthese,
+          },
+        })
+        .eq('id', id),
+      ctx
+    );
 
     if (error) {
       console.error('Erreur lors de la mise à jour des suggestions:', error);

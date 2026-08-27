@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -48,11 +49,20 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { error } = await supabase
       .from('proposition_templates')
       .delete()
       .eq('id', id)
-      .eq('organization_id', user.id);
+      .eq('organization_id', ctx.organizationId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -79,6 +89,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
 
     if (body.prompt_template !== undefined) {
@@ -93,7 +112,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           .from('proposition_templates')
           .select('file_url')
           .eq('id', id)
-          .eq('organization_id', user.id)
+          .eq('organization_id', ctx.organizationId)
           .single();
 
         if (oldTemplate?.file_url && oldTemplate.file_url !== body.file_url) {
@@ -119,7 +138,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .from('proposition_templates')
       .update(body)
       .eq('id', id)
-      .eq('organization_id', user.id)
+      .eq('organization_id', ctx.organizationId)
       .select()
       .single();
 

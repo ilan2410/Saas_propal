@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -14,6 +15,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -38,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { data, error } = await query.select().single();
@@ -64,6 +74,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await request.json().catch(() => ({})); // Body optionnel
 
@@ -81,7 +100,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', user.id);
+      query = query.eq('organization_id', ctx.organizationId);
     }
 
     const { error } = await query;

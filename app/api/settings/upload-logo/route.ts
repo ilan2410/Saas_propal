@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { validateUploadedFile } from '@/lib/security/validate-upload';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // SVG volontairement exclu : un SVG peut embarquer du JavaScript, ce qui en fait
 // un vecteur de XSS stockée si le fichier est un jour ouvert/rendu autrement qu'en <img>.
@@ -16,6 +17,22 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Non authentifié' },
         { status: 401 }
+      );
+    }
+
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) {
+      return NextResponse.json(
+        { error: 'Non authentifié' },
+        { status: 401 }
+      );
+    }
+
+    // Le logo est un attribut de la société, géré uniquement par le propriétaire du compte.
+    if (ctx.role !== 'owner') {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
       );
     }
 
@@ -35,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     const ext = validation.extension === 'jpeg' ? 'jpg' : validation.extension;
-    const path = `${user.id}/logo.${ext}`;
+    const path = `${ctx.organizationId}/logo.${ext}`;
     const serviceSupabase = createServiceClient();
 
     // Upload du fichier
@@ -71,7 +88,7 @@ export async function POST(request: Request) {
         logo_url: logoUrlWithTimestamp,
         updated_at: new Date().toISOString()
       })
-      .eq('id', user.id);
+      .eq('id', ctx.organizationId);
 
     if (updateError) {
       console.error('Erreur update organization logo:', updateError);
