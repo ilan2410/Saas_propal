@@ -23,7 +23,35 @@
       "Bash(curl -s -o /dev/null -w \"sa-variables -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/sa-variables\")",
       "Bash(curl -s -o /dev/null -w \"status -> %{http_code}\\\\n\" \"http://localhost:3000/api/templates/00000000-0000-0000-0000-000000000000/status\")",
       "Bash(command -v jq)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 88a3def HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 2)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 6da9a41 HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 3)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 035f9f0 HEAD)",
+      "Bash(git -C \"C:\\\\Users\\\\ilan\\\\CascadeProjects\\\\Saas_propal\" log --oneline -3)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 4)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 7)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" b53a4e4 HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 8)",
+      "Bash(node -e \"console.log\\(require\\('@supabase/supabase-js/package.json'\\).version\\)\")",
+      "Bash(tee /tmp/tsc_out.txt)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 596782e HEAD)",
+      "Bash(xargs grep -l \"class PostgrestFilterBuilder\")",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" e612037 HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 9)",
+      "Bash(git -C \"C:\\\\Users\\\\ilan\\\\CascadeProjects\\\\Saas_propal\" log --oneline -10)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" aae678b HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" 6a611f86723e1c5a823df5eac64e58f2383c85f5 HEAD)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(npx tsc *)",
+      "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" a878623 HEAD)",
+      "Bash(grep -oE \"\\\\.[a-zA-Z_]+$\")",
+      "Bash(git diff *)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }
