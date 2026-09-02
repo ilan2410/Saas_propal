@@ -17,6 +17,7 @@ import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerLoyer, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { buildSpReference } from '@/lib/sp/buildReference';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
@@ -1777,6 +1778,24 @@ export function SpQuestionnaireUI({
     return () => clearTimeout(timer);
   }, [isDone, objectifsConfig, templateId, reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits]);
 
+  // Référence affichée dans le popup resume_ref — même calcul que la variable
+  // Word {{sp_reference}}. On force `etat_final` ici pour toujours afficher la
+  // valeur live (même en mode « figé » et même en repassant le popup) ; la
+  // valeur vue est ensuite enregistrée telle quelle à la validation du popup
+  // (réponse `sp_reference_figee`) et consommée par buildSpReference à la génération.
+  const resumeRefText = showResumeRefPopup
+    ? buildSpReference(
+        spConfigResumeRef ? { ...spConfigResumeRef, moment_calcul: 'etat_final' } : undefined,
+        reponses,
+        questions,
+        catalogue,
+        donneesExtraites,
+        spConfigLoyer,
+        spConfigMoisOfferts,
+        spPreferencesProduits,
+      )
+    : null;
+
   return (
     <div className="space-y-4">
       {/* Objectifs Accomplis — portal popup rendered at document.body to escape stacking context */}
@@ -1858,37 +1877,25 @@ export function SpQuestionnaireUI({
             </div>
 
             {/* Section référence */}
-            {(() => {
-              const fixe = spConfigResumeRef?.partie_fixe?.trim();
-              if (!fixe || !spConfigResumeRef) return null;
-              const partieVariable = spConfigResumeRef.partie_variable;
-              const cartWithMarge = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
-              const cartSansMarge = partieVariable === 'loyer_sans_marge'
-                ? calculateCartSummary(reponses.filter((r) => r.question_id !== 'sp_marge_calculee'), questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits)
-                : null;
-              let montant: number | null | undefined = undefined;
-              if (partieVariable === 'loyer_avec_marge') {
-                montant = cartWithMarge.loyer?.loyer_mensuel;
-              } else if (partieVariable === 'loyer_sans_marge') {
-                montant = cartSansMarge?.loyer?.loyer_mensuel;
-              }
-              const refText = montant != null
-                ? `${fixe}${Math.ceil(montant)}`
-                : fixe;
-              return (
-                <div className="mx-6 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs font-medium text-blue-600 mb-1">Référence de la proposition</p>
-                  <p className="text-sm font-semibold text-blue-900">{refText}</p>
-                </div>
-              );
-            })()}
+            {resumeRefText && (
+              <div className="mx-6 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs font-medium text-blue-600 mb-1">Référence de la proposition</p>
+                <p className="text-sm font-semibold text-blue-900">{resumeRefText}</p>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="px-6 pb-6 pt-2 flex justify-center">
               <Button
                 onClick={() => {
                   setShowResumeRefPopup(false);
-                  recordAnswer(currentExpanded.instanceId, 'vu');
+                  recordAnswer(
+                    currentExpanded.instanceId,
+                    'vu',
+                    resumeRefText
+                      ? [{ question_id: 'sp_reference_figee', valeur: resumeRefText }]
+                      : undefined,
+                  );
                 }}
                 className="px-10 bg-blue-600 hover:bg-blue-700 text-white"
               >

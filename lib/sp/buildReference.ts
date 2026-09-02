@@ -14,8 +14,12 @@ import type {
  * du questionnaire. Reproduit la logique du popup `resume_ref`
  * (cf. SpQuestionnaireUI) : partie fixe + loyer mensuel arrondi au plafond.
  *
- * Évaluée à la génération / l'aperçu, donc le loyer reflète l'état FINAL du
- * panier (toutes les réponses), contrairement au popup figé à sa position.
+ * Selon `config.moment_calcul` :
+ * - `etat_final` (défaut) : le loyer reflète l'état FINAL du panier (toutes les
+ *   réponses), évalué ici à la génération / l'aperçu.
+ * - `fige_popup` : on réutilise la valeur affichée dans le popup `resume_ref`
+ *   pendant le questionnaire (réponse `sp_reference_figee`). Fallback sur
+ *   `etat_final` si aucune valeur figée n'a été enregistrée.
  *
  * Renvoie `null` si la référence n'est pas configurée (partie_fixe vide).
  */
@@ -31,6 +35,12 @@ export function buildSpReference(
 ): string | null {
   const fixe = config?.partie_fixe?.trim();
   if (!fixe || !config) return null;
+
+  if (config.moment_calcul === 'fige_popup') {
+    const figee = reponses.find((r) => r.question_id === 'sp_reference_figee')?.valeur;
+    if (typeof figee === 'string' && figee.length > 0) return figee;
+    // sinon : fallback sur le calcul état final ci-dessous
+  }
 
   const partieVariable = config.partie_variable;
   let montant: number | null | undefined = undefined;

@@ -535,6 +535,15 @@ export interface SpQuestionBoucle {
 export interface SpConfigResumeRef {
   partie_fixe: string;
   partie_variable?: 'loyer_sans_marge' | 'loyer_avec_marge' | null;
+  /**
+   * Moment où la partie variable de {{sp_reference}} est évaluée :
+   * - `etat_final` (défaut, absent) : recalculée à la génération sur l'état
+   *   final de toutes les réponses.
+   * - `fige_popup` : on réutilise la valeur telle qu'affichée dans le popup
+   *   `resume_ref` pendant le questionnaire (réponse `sp_reference_figee`).
+   *   Fallback sur `etat_final` si aucune valeur figée n'a été enregistrée.
+   */
+  moment_calcul?: 'etat_final' | 'fige_popup';
 }
 
 export interface SpQuestion {

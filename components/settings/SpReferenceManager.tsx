@@ -26,6 +26,11 @@ const PARTIE_VARIABLE_OPTIONS: { value: SpConfigResumeRef['partie_variable']; la
   { value: 'loyer_avec_marge', label: 'Loyer mensuel avec marge' },
 ];
 
+const MOMENT_CALCUL_OPTIONS: { value: NonNullable<SpConfigResumeRef['moment_calcul']>; label: string }[] = [
+  { value: 'etat_final', label: 'État final des réponses' },
+  { value: 'fige_popup', label: 'Figé à l’affichage du popup récapitulatif' },
+];
+
 export function SpReferenceManager({ templates }: Props) {
   const wordTemplates = getWordTemplates(templates);
   const [templateId, setTemplateId] = useState<string>(wordTemplates[0]?.id ?? '');
@@ -138,6 +143,29 @@ export function SpReferenceManager({ templates }: Props) {
             ))}
           </select>
         </div>
+
+        {/* Moment du calcul de la partie variable */}
+        {config.partie_variable && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-gray-700">Moment du calcul de la partie variable</label>
+            <p className="text-xs text-gray-400">
+              « État final » : la référence est recalculée à la génération du document sur l&apos;ensemble des réponses.
+              « Figé » : on conserve la valeur telle qu&apos;elle a été affichée dans le popup récapitulatif pendant le questionnaire.
+            </p>
+            <select
+              value={config.moment_calcul ?? 'etat_final'}
+              onChange={(e) => setConfig({
+                ...config,
+                moment_calcul: e.target.value as SpConfigResumeRef['moment_calcul'],
+              })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {MOMENT_CALCUL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Aperçu */}
         {exempleRef && (

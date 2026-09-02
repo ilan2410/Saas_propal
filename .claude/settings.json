@@ -54,7 +54,10 @@
       "Bash(node -e \"console.log\\(require\\('./package.json'\\).scripts\\)\")",
       "Bash(rg -n \"file_config\" app/api/templates/create/route.ts app/api/templates/[id]/route.ts app/api/admin/templates/create/route.ts app/api/admin/templates/[id]/update/route.ts components/templates/EditTemplateForm.tsx)",
       "Bash(rg -n \"file_config\" app/api/templates/update/route.ts app/api/templates/*/route.ts)",
-      "Bash(rg --files app/api/templates)"
+      "Bash(rg --files app/api/templates)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(npx --no-install tsc --noEmit -p tsconfig.json)",
+      "Bash(npx --no-install eslint components/sp/SpQuestionnaireUI.tsx components/settings/SpReferenceManager.tsx lib/sp/buildReference.ts types/index.ts)"
     ],
     "additionalDirectories": [
       "\\tmp"
