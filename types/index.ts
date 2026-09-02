@@ -179,6 +179,12 @@ export interface WordConfig {
   spClausesConditionnelles?: SpClauseConditionnelle[];
   sp_config_loyer?: SpConfigLoyer;
   sp_config_resiliation?: SpConfigResiliation;
+  /**
+   * Situation actuelle : comptabiliser les charges variables (consommations
+   * hors forfait, pénalités de retard, frais ponctuels) dans le total mensuel.
+   * Défaut (absent) : true.
+   */
+  inclure_charges_variables_sa?: boolean;
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
   sp_preferences_produits?: SpPreferencesProduits;

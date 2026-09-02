@@ -125,6 +125,7 @@ function enrichSituationActuelle(
   data: unknown,
   resiliationConfig?: SpConfigResiliation,
   referenceDateInput?: Date | string | null,
+  inclureChargesVariables: boolean = true,
 ): Record<string, unknown> {
   const root = isRecord(data) ? { ...data } : {};
   if (typeof root.resume === 'string') {
@@ -157,12 +158,21 @@ function enrichSituationActuelle(
   const totalAbonnementsCalcule = sumArrayValues(situation.abonnements, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
   const totalLocationsCalcule = sumArrayValues(situation.locations, ['loyer_net_mensuel', 'loyer_brut_mensuel', 'tarif']);
   const totalLignesCalcule = sumArrayValues(situation.lignes, ['tarif_net_mensuel', 'tarif_brut_mensuel', 'tarif']);
+  const totalChargesVariablesCalcule = sumArrayValues(situation.charges_variables, ['montant', 'montant_mensuel', 'montant_ht', 'tarif']);
 
   if (totalAbonnementsCalcule !== null) totaux.total_abonnements_calcule = totalAbonnementsCalcule;
   if (totalLocationsCalcule !== null) totaux.total_locations_calcule = totalLocationsCalcule;
+  if (totalChargesVariablesCalcule !== null) totaux.total_charges_variables_calcule = totalChargesVariablesCalcule;
+
+  // Le template décide si ces charges comptent dans le total mensuel SA. On
+  // fige la décision dans les données pour que tous les consommateurs de
+  // `calculateSaCartSummary` (panier temps réel, exports, suggestions) soient
+  // alignés sans avoir à reconnaître la config du template.
+  totaux.charges_variables_incluses = inclureChargesVariables;
 
   const totalSolutionCalcule =
-    (totalAbonnementsCalcule || 0) + (totalLocationsCalcule || 0) + (totalLignesCalcule || 0);
+    (totalAbonnementsCalcule || 0) + (totalLocationsCalcule || 0) + (totalLignesCalcule || 0)
+    + (inclureChargesVariables ? (totalChargesVariablesCalcule || 0) : 0);
   if (totalSolutionCalcule > 0) {
     totaux.total_solution_actuelle_calcule = Math.round(totalSolutionCalcule * 100) / 100;
   }
@@ -465,6 +475,12 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
     const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
 
+    // Le template décide si les charges variables (consommations hors forfait,
+    // pénalités, frais ponctuels) comptent dans le total mensuel de la SA.
+    // Défaut : incluses.
+    const inclureChargesVariables =
+      (isRecord(template.file_config) ? template.file_config.inclure_charges_variables_sa : undefined) !== false;
+
     // Bureautique : aider l'extraction à produire un nombre cohérent de lignes (si l'utilisateur a indiqué N copieurs)
     if (organization.secteur === 'bureautique' && copieursCount > 1) {
       promptToUse = `${promptToUse.trim()}
@@ -486,6 +502,22 @@ CONTRAINTE ABSOLUE - MONTANTS HORS TAXES DE LA SITUATION ACTUELLE:
 - Renseigne precision_montant à "HT" sur chaque abonnement, location et ligne. Renseigne situation_actuelle.totaux.precision à "HT" dès qu'un montant HT est présent.
 - N'utilise un montant TTC que si aucun montant HT correspondant n'existe ; dans ce seul cas, convertis-le en HT avec le taux de TVA explicitement indiqué sur le document. Si aucun taux n'est indiqué, applique 20 %. La valeur enregistrée et retournée doit malgré tout être HT et sa précision doit être "HT".
 - Avant de retourner le JSON, vérifie qu'aucun montant TTC n'a été placé dans les champs de situation_actuelle.
+
+EXHAUSTIVITÉ DU DÉTAIL DE LA SITUATION ACTUELLE:
+- PRIORITÉ ABSOLUE : total_abonnements_source, total_locations_source et total_solution_actuelle_source doivent reprendre EXACTEMENT le(s) total(aux) HT imprimé(s) sur la ou les factures. Ne modifie, n'arrondis et n'ajuste JAMAIS ces totaux pour les faire coïncider avec une somme de lignes.
+- Détaille le parc ligne par ligne : une entrée par forfait, par ligne mobile ou fixe, par SDA, par option facturée. N'agrège JAMAIS une flotte (ex. « 10 forfaits Premium ») en une seule ligne sans renseigner "quantite" ; si le document nomme chaque ligne individuellement, crée une entrée par ligne.
+- Parcours TOUTES les factures et TOUTES les pages/sections sans t'arrêter en cours de document : un parc mobile ET un accès fibre présents sur la même facture doivent être détaillés tous les deux.
+- Contrôle avant de répondre : compare la somme des montants nets mensuels détaillés (abonnements × quantités + lignes + locations + charges_variables) à total_solution_actuelle_source. Si l'écart est significatif, c'est que des lignes manquent : re-scanne le document et ajoute-les avec leurs montants réels.
+- Si un écart subsiste après un re-scan honnête parce que le document ne détaille réellement pas certains postes, laisse-le : garde les totaux *_source fidèles à la facture, n'invente pas de lignes et ne fabrique pas de montants pour boucler. Un reliquat non détaillé est acceptable ; un total *_source faux ne l'est pas.
+
+CHARGES VARIABLES DE LA SITUATION ACTUELLE (consommations hors forfait, pénalités, frais ponctuels):
+- Extrais TOUJOURS séparément, dans le tableau "situation_actuelle.charges_variables", chaque montant variable ou non récurrent : consommations facturées au-delà du forfait (appels hors forfait, data, hors-zone, roaming), dépassements, pénalités et frais de retard de paiement, frais d'accès ou de mise en service ponctuels, ajustements exceptionnels.
+- Chaque élément : {"libelle": "...", "type": "consommation_hors_forfait|penalite|frais_ponctuel|autre", "montant": "XX.XX", "precision_montant": "HT", "document": "numéro de facture d'origine", "periode": "MM/AAAA ou plage"}.
+- Ne fonds JAMAIS ces montants dans total_abonnements_source, tarif_net_mensuel ou dans les lignes d'abonnement : ils vivent uniquement dans charges_variables.
+- Renseigne "situation_actuelle.totaux.total_charges_variables_source" avec la somme HT de ces charges (0 si aucune).
+${inclureChargesVariables
+  ? '- Le total récurrent inclut ces charges variables : total_solution_actuelle_source = total_abonnements_source + total_locations_source + total_charges_variables_source.'
+  : '- Le total récurrent EXCLUT ces charges variables : total_solution_actuelle_source = total_abonnements_source + total_locations_source, sans les charges variables (qui restent reportées dans charges_variables).'}
 
 INSTRUCTION COMPLÉMENTAIRE - RÉSUMÉ:
 - Ajoute un champ "resume" (string) dans le JSON retourné.
@@ -621,7 +653,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       ?? orgPreferences.sp_config_resiliation;
 
     const propositionCreatedAt = typeof proposition.created_at === 'string' ? proposition.created_at : null;
-    const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, propositionCreatedAt);
+    const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, propositionCreatedAt, inclureChargesVariables);
     const extractedDataFinal =
       organization.secteur === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)

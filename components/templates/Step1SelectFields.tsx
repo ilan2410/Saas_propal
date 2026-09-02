@@ -113,6 +113,23 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
   
   const [activeMerges, setActiveMerges] = useState<string[]>(templateData.merge_config || []);
 
+  // Règle de calcul SA : les charges variables (consommations hors forfait,
+  // pénalités, frais ponctuels) comptent-elles dans le total mensuel ? Défaut : oui.
+  const [inclureChargesVariables, setInclureChargesVariables] = useState<boolean>(
+    fileConfig.inclure_charges_variables_sa !== false
+  );
+
+  const toggleInclureChargesVariables = () => {
+    const next = !inclureChargesVariables;
+    setInclureChargesVariables(next);
+    updateTemplateData({
+      file_config: {
+        ...(templateData.file_config || {}),
+        inclure_charges_variables_sa: next,
+      },
+    });
+  };
+
   const customFieldsList = [...customFieldDefinitions.map((d) => d.fieldPath), ...legacyCustomFields].filter(Boolean);
 
   const allSelectedFieldsForJson = getAllSelectedFields(
@@ -782,6 +799,49 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
             />
           </div>
         )}
+      </div>
+
+      {/* Règles de calcul — Situation actuelle */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-lg">
+            <Settings className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Règles de calcul — Situation actuelle</h3>
+            <p className="text-sm text-gray-600">Comment agréger le coût mensuel actuel du client</p>
+          </div>
+        </div>
+
+        <label
+          className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+            inclureChargesVariables
+              ? 'border-amber-400 bg-amber-50'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+            inclureChargesVariables ? 'bg-amber-500 border-amber-500' : 'border-gray-300'
+          }`}>
+            {inclureChargesVariables && <CheckCircle2 className="w-4 h-4 text-white" />}
+          </div>
+          <input
+            type="checkbox"
+            checked={inclureChargesVariables}
+            onChange={toggleInclureChargesVariables}
+            className="sr-only"
+          />
+          <div className="flex-1">
+            <div className="font-semibold text-gray-900 mb-1">
+              Comptabiliser les charges variables dans le total mensuel
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Consommations hors forfait, pénalités de retard et frais ponctuels. Décoché, ces
+              montants restent extraits et affichés à titre indicatif mais ne sont pas ajoutés au
+              coût mensuel de la situation actuelle.
+            </p>
+          </div>
+        </label>
       </div>
 
       {/* Actions */}

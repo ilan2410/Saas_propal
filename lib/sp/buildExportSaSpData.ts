@@ -248,6 +248,9 @@ function buildSaLinesRaw(donneesExtraites: Record<string, unknown>): SaLineRaw[]
   const summary = calculateSaCartSummary(donneesExtraites);
   return summary.details
     .filter((l) => {
+      // Charges variables : dans le tableau seulement si elles sont comptées
+      // dans le total (sinon elles y figurent à titre purement indicatif).
+      if (l.categorie === 'variable') return summary.chargesVariablesIncluses;
       // Quand aboPrimary (totalFromOfficiel=true), seules les catégories
       // 'abonnement' et 'location' contribuent au totalMensuel : les lignes
       // (fixe/mobile/internet/autre) sont dans details à titre informatif.

@@ -323,6 +323,8 @@ function EditableSaBody({
   lines,
   abonnementsTotal,
   locationsTotal,
+  chargesVariables,
+  chargesVariablesIncluses,
   onUpdateSaData,
   onResetSaData,
 }: {
@@ -330,6 +332,8 @@ function EditableSaBody({
   lines: SaEditableLine[];
   abonnementsTotal: number;
   locationsTotal: number;
+  chargesVariables: number;
+  chargesVariablesIncluses: boolean;
   onUpdateSaData: (situationActuelle: Record<string, unknown>) => void;
   onResetSaData?: () => void;
 }) {
@@ -407,6 +411,27 @@ function EditableSaBody({
       {renderSection('abonnement', 'Abonnements', abonnementsTotal)}
       {renderSection('location', 'Locations matériel', locationsTotal)}
 
+      {chargesVariables > 0 && (
+        <div
+          className={`flex items-center justify-between text-xs ${
+            chargesVariablesIncluses ? 'text-gray-700' : 'text-gray-400 line-through decoration-gray-300'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 font-medium">
+            Charges variables
+            {!chargesVariablesIncluses && (
+              <span className="rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium text-gray-400 no-underline">
+                non comptée
+              </span>
+            )}
+          </span>
+          <span className="tabular-nums">
+            {formatEuro(chargesVariables)}
+            <span className="ml-0.5 text-[10px] text-gray-400">/mois</span>
+          </span>
+        </div>
+      )}
+
       {onResetSaData && (
         <div className="pt-1">
           {confirmReset ? (
@@ -480,12 +505,14 @@ export function SaRealTimeCart({ donneesExtraites, spTotalMensuel, onUpdateSaDat
       internet: [] as SaCartLine[],
       abonnement: [] as SaCartLine[],
       location: [] as SaCartLine[],
+      variable: [] as SaCartLine[],
     };
     for (const l of summary.details) {
       if (l.categorie === 'fixe') acc.fixe.push(l);
       else if (l.categorie === 'mobile') acc.mobile.push(l);
       else if (l.categorie === 'internet') acc.internet.push(l);
       else if (l.categorie === 'location') acc.location.push(l);
+      else if (l.categorie === 'variable') acc.variable.push(l);
       else acc.abonnement.push(l);
     }
     return acc;
@@ -535,6 +562,8 @@ export function SaRealTimeCart({ donneesExtraites, spTotalMensuel, onUpdateSaDat
               lines={editableLines}
               abonnementsTotal={summary.abonnements}
               locationsTotal={summary.locations}
+              chargesVariables={summary.chargesVariables}
+              chargesVariablesIncluses={summary.chargesVariablesIncluses}
               onUpdateSaData={onUpdateSaData!}
               onResetSaData={onResetSaData}
             />
@@ -627,6 +656,46 @@ export function SaRealTimeCart({ donneesExtraites, spTotalMensuel, onUpdateSaDat
                 expanded={expandedCats.has('location')}
                 onToggle={() => toggleCat('location')}
               />
+            </section>
+          )}
+
+          {summary.chargesVariables > 0 && (
+            <section className="space-y-1">
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Charges variables
+                {!summary.chargesVariablesIncluses && (
+                  <span className="rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-gray-400">
+                    non comptée
+                  </span>
+                )}
+              </p>
+              <div
+                className={`flex items-center justify-between text-xs ${
+                  summary.chargesVariablesIncluses ? 'text-gray-700' : 'text-gray-400 line-through decoration-gray-300'
+                }`}
+              >
+                <span>Consommations hors forfait &amp; frais</span>
+                <span className="tabular-nums">
+                  {formatEuro(summary.chargesVariables)}
+                  <span className="ml-0.5 text-[10px] text-gray-400">/mois</span>
+                </span>
+              </div>
+              <div className="ml-3 space-y-0.5">
+                {grouped.variable.map((l, i) => (
+                  <div
+                    key={`${l.libelle}-${i}`}
+                    className="flex items-start justify-between gap-2 text-[11px] text-gray-500 border-l-2 border-amber-100 pl-2"
+                  >
+                    <span className="truncate" title={l.libelle}>
+                      {l.libelle}
+                      {l.operateur && (
+                        <span className="ml-1 text-[10px] text-gray-400">({l.operateur})</span>
+                      )}
+                    </span>
+                    <span className="tabular-nums shrink-0">{formatEuro(l.montant)}</span>
+                  </div>
+                ))}
+              </div>
             </section>
           )}
           </>

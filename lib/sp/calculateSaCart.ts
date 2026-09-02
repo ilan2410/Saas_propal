@@ -3,7 +3,7 @@
 
 export interface SaCartLine {
   libelle: string;
-  categorie: 'fixe' | 'mobile' | 'internet' | 'abonnement' | 'location' | 'autre';
+  categorie: 'fixe' | 'mobile' | 'internet' | 'abonnement' | 'location' | 'variable' | 'autre';
   operateur?: string;
   montant: number;
 }
@@ -14,6 +14,18 @@ export interface SaCartSummary {
   lignesInternet: number;
   abonnements: number;
   locations: number;
+  /**
+   * Somme des charges variables (consommations hors forfait, pénalités de
+   * retard, frais ponctuels). Toujours renseignée, même quand elle n'est pas
+   * comptée dans `totalMensuel` (cf. `chargesVariablesIncluses`).
+   */
+  chargesVariables: number;
+  /**
+   * true si les charges variables sont ajoutées au `totalMensuel`. Piloté par
+   * le template via `situation_actuelle.totaux.charges_variables_incluses`
+   * (défaut : true). Quand false, les lignes restent visibles à titre indicatif.
+   */
+  chargesVariablesIncluses: boolean;
   totalMensuel: number;
   /** true si le total mensuel provient des `totaux.total_solution_actuelle_*` extraits. */
   totalFromOfficiel: boolean;
@@ -91,6 +103,12 @@ export function normalizeSaAmountsToHT(situationActuelle: unknown): Record<strin
     'remise_mensuelle',
     'tarif',
   ]);
+  sa.charges_variables = normalizeItemsToHT(sa.charges_variables, [
+    'montant',
+    'montant_mensuel',
+    'montant_ht',
+    'tarif',
+  ]);
 
   const totaux = isRecord(sa.totaux) ? { ...sa.totaux } : {};
   const precision = typeof totaux.precision === 'string' ? totaux.precision.trim().toUpperCase() : '';
@@ -100,6 +118,8 @@ export function normalizeSaAmountsToHT(situationActuelle: unknown): Record<strin
       'total_abonnements_calcule',
       'total_locations_source',
       'total_locations_calcule',
+      'total_charges_variables_source',
+      'total_charges_variables_calcule',
       'total_solution_actuelle_source',
       'total_solution_actuelle_calcule',
     ]) {
@@ -284,14 +304,55 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     reconcileSource = true;
   }
 
+  // ── 4bis. Charges variables ──────────────────────────────────────
+  // Consommations hors forfait, pénalités de retard, frais ponctuels. Poste
+  // optionnel : ajouté au total mensuel seulement si le template le demande
+  // (`totaux.charges_variables_incluses`, défaut true). Les lignes sont
+  // toujours exposées dans `details` — grisées à l'affichage si non comptées.
+  const chargesVariablesIncluses = totaux.charges_variables_incluses !== false;
+  let chargesVariables = 0;
+  const seenCharge = new Set<string>();
+  const chargesRaw = Array.isArray(sa.charges_variables) ? sa.charges_variables : [];
+  for (const raw of chargesRaw) {
+    if (!isRecord(raw)) continue;
+    const montant = pickMontant(raw, ['montant', 'montant_mensuel', 'montant_ht', 'tarif']);
+    if (montant <= 0) continue;
+    const libelle =
+      getStr(raw, 'libelle') || getStr(raw, 'type') || 'Charge variable';
+    const operateur = getStr(raw, 'operateur') || getStr(raw, 'document');
+    const key = dedupeKey(libelle, montant);
+    if (seenCharge.has(key)) continue;
+    seenCharge.add(key);
+    chargesVariables += montant;
+    details.push({ libelle, categorie: 'variable', operateur, montant: round2(montant) });
+  }
+  if (chargesVariables <= 0) {
+    // Pas de détail ligne à ligne : on retombe sur le total agrégé extrait.
+    const totalCharges =
+      toNumber(totaux.total_charges_variables_source) ||
+      toNumber(totaux.total_charges_variables_calcule);
+    if (totalCharges > 0) {
+      chargesVariables = totalCharges;
+      details.push({
+        libelle: 'Consommations & frais variables',
+        categorie: 'variable',
+        montant: round2(totalCharges),
+      });
+    }
+  }
+  chargesVariables = round2(chargesVariables);
+
   // ── 5. Total final ─────────────────────────────────────────────────
   // Quand `abonnements` est la source primaire, lignes ne sont pas comptées.
   let totalMensuel = aboPrimary
     ? abonnementsTotal + locationsTotal
     : lignesFixes + lignesMobiles + lignesInternet + abonnementsTotal + locationsTotal;
+  if (chargesVariablesIncluses) totalMensuel += chargesVariables;
 
   // Réconciliation au total solution « source » (écart résiduel non couvert
-  // par les écarts abonnements/locations ci-dessus).
+  // par les écarts abonnements/locations ci-dessus). Le prompt d'extraction
+  // aligne `total_solution_actuelle_source` sur le même choix d'inclusion, donc
+  // aucun double comptage ici.
   if (solutionSource > totalMensuel + 0.005) {
     const residual = round2(solutionSource - totalMensuel);
     details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
@@ -308,6 +369,8 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     lignesInternet,
     abonnements: abonnementsTotal,
     locations: locationsTotal,
+    chargesVariables,
+    chargesVariablesIncluses,
     totalMensuel,
     totalFromOfficiel: aboPrimary,
     reconcileSource,

@@ -48,7 +48,13 @@
       "Bash(npx tsc *)",
       "Bash(bash \"C:\\\\Users\\\\ilan\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.3.0\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" \"C:\\\\Users\\\\ilan\\\\.claude\\\\plans\\\\on-doit-impl-menter-un-lucky-meadow.md\" a878623 HEAD)",
       "Bash(grep -oE \"\\\\.[a-zA-Z_]+$\")",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(node -e ' *)",
+      "Bash(rg --files -g '*.test.*' -g '*.spec.*' -g '**/__tests__/**')",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).scripts\\)\")",
+      "Bash(rg -n \"file_config\" app/api/templates/create/route.ts app/api/templates/[id]/route.ts app/api/admin/templates/create/route.ts app/api/admin/templates/[id]/update/route.ts components/templates/EditTemplateForm.tsx)",
+      "Bash(rg -n \"file_config\" app/api/templates/update/route.ts app/api/templates/*/route.ts)",
+      "Bash(rg --files app/api/templates)"
     ],
     "additionalDirectories": [
       "\\tmp"

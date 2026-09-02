@@ -62,6 +62,16 @@ function buildBreakdown(summary: SaCartSummary): MonthlyRow[] {
     amount: summary.locations,
     lines: byCat('location'),
   });
+  // Charges variables : uniquement quand elles sont comptées dans le total,
+  // pour que la somme des postes reste égale au total mensuel affiché.
+  if (summary.chargesVariablesIncluses) {
+    rows.push({
+      key: 'variable',
+      label: 'Consommations & frais variables',
+      amount: summary.chargesVariables,
+      lines: byCat('variable'),
+    });
+  }
 
   return rows.filter((r) => r.amount > 0.005);
 }
