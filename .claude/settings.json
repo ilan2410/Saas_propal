@@ -57,7 +57,9 @@
       "Bash(rg --files app/api/templates)",
       "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
       "Bash(npx --no-install tsc --noEmit -p tsconfig.json)",
-      "Bash(npx --no-install eslint components/sp/SpQuestionnaireUI.tsx components/settings/SpReferenceManager.tsx lib/sp/buildReference.ts types/index.ts)"
+      "Bash(npx --no-install eslint components/sp/SpQuestionnaireUI.tsx components/settings/SpReferenceManager.tsx lib/sp/buildReference.ts types/index.ts)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({path:'.env.local'}\\); const {createClient}=require\\('@supabase/supabase-js'\\); const s=createClient\\(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY\\); s.from\\('propositions'\\).select\\('*'\\).eq\\('id','23028150-0d26-4ae9-b053-2f6b21a4f989'\\).single\\(\\).then\\(\\({data,error}\\)=>{ if\\(error\\){console.error\\(error\\); process.exit\\(1\\);} console.log\\(JSON.stringify\\(Object.keys\\(data\\)\\)\\); }\\);\")",
+      "Bash(grep -n \"base_mensuelle\\\\|quantite\\\\|tarif_net_mensuel\\\\|tarif_brut\\\\|preuve\\\\|groupes_calcul\\\\|abonnements\\\\|lignes\\\\|reduce\\\\|\\\\\\\\* q\\\\|parseMontant\\\\|montant\" lib/sp/resiliation.ts)"
     ],
     "additionalDirectories": [
       "\\tmp"
