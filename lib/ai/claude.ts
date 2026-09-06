@@ -4,7 +4,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import fs from 'fs';
 import { ExtractionResult } from '@/types';
 import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
-import { buildClaudeModelOptions, getClaudeMaxOutputTokens } from '@/lib/ai/claude-models';
+import { buildClaudeEffortConfig, buildClaudeModelOptions, getClaudeMaxOutputTokens, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
 import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAnalysisReport, type CanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
@@ -205,6 +205,7 @@ export async function extractDataFromDocuments(options: {
   champs_actifs: string[];
   prompt_template: string;
   claude_model: string;
+  claude_effort?: string | null;
 }): Promise<Record<string, unknown>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
   const documentContents = await prepareDocumentsForClaude(documents_urls);
@@ -221,6 +222,7 @@ export async function extractDataFromDocuments(options: {
   
   try {
     const modelToUse = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+    const effortConfig = buildClaudeEffortConfig(modelToUse, options.claude_effort);
 
     const message = await anthropic.messages.create({
       model: modelToUse,
@@ -229,6 +231,7 @@ export async function extractDataFromDocuments(options: {
       // se manifeste ici par un JSON.parse en erreur plus bas, sans message explicite.
       max_tokens: 16000,
       ...buildClaudeModelOptions(modelToUse),
+      ...(effortConfig.effort ? { output_config: effortConfig } : {}),
       messages: [
         {
           role: 'user',
@@ -322,6 +325,7 @@ export async function analyzeInvoicesForSa(options: {
   documents_urls: string[];
   active_fields: string[];
   claude_model: string;
+  claude_effort?: string | null;
 }): Promise<InvoiceAnalysisReport> {
   const documentContents = await prepareDocumentsForClaude(options.documents_urls);
   const fields = options.active_fields.map((field) => `- ${field}`).join('\n');
@@ -349,7 +353,10 @@ Le résumé (summary) tient en 3 à 5 phrases : le total HT mensuel de chaque fa
       role: 'user',
       content: [...documentContents, { type: 'text', text: prompt }],
     }],
-    output_config: { format: zodOutputFormat(InvoiceAnalysisAiSchema) },
+    output_config: {
+      format: zodOutputFormat(InvoiceAnalysisAiSchema),
+      ...buildClaudeEffortConfig(options.claude_model, options.claude_effort),
+    },
   });
   const message = await stream.finalMessage();
   if (!message.parsed_output) throw new Error("L'analyse comptable Claude n'a pas retourné de résultat structuré.");
@@ -366,6 +373,20 @@ export async function structureSaAnalysis(options: {
 
 Tous les champs actifs doivent être représentés à partir de field_coverage. Ajoute exactement une entrée mapped_fields pour chaque champ actif, avec le nom strictement identique et la valeur sérialisée dans value_json. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte ou une value_json absente, et 0 pour preavis_mois absent. Une donnée marquée not_found utilise value_json="" et reste absente ou un tableau vide dans la structure. N'invente aucune information. Ne modifie jamais total_ht_mensuel_client ni les montants canoniques: le backend les injectera après ta réponse.
 
+CHAMP resume — rédige un résumé en français, structuré en Markdown léger (titres "## ", listes "- ", **gras** pour les libellés), basé UNIQUEMENT sur le rapport et les calculs fournis. Ne recopie pas les factures, n'invente rien, écris "(non trouvé)" pour une information absente. 1 à 3 puces par section, en gardant exactement ces titres numérotés :
+## 1. Client — raison sociale, SIRET/SIREN, contact, adresse
+## 2. Opérateur & leaser — opérateur(s) télécom, organisme de financement le cas échéant
+## 3. Documents analysés — type, numéro, période de facturation, nombre de mois couverts
+## 4. Sites
+## 5. Lignes & services — nombre, types (fixe/mobile/internet), forfaits notables
+## 6. Abonnements — postes principaux avec montant mensuel HT
+## 7. Locations & matériel
+## 8. Remises
+## 9. Engagements — références, dates de fin, dates limites de résiliation calculées
+## 10. Totaux — total HT mensuel de chaque facture, puis total HT mensuel client avec le détail du calcul
+## 11. INDEMNITÉS DE RÉSILIATION — montant retenu et méthode
+## 12. Synthèse — 3 à 6 puces exploitables pour la proposition commerciale
+
 CHAMPS ACTIFS:
 ${options.active_fields.map((field) => `- ${field}`).join('\n')}
 
@@ -381,7 +402,12 @@ ${JSON.stringify(options.canonical)}`;
     max_tokens: getClaudeMaxOutputTokens(options.claude_model, 32000),
     ...buildClaudeModelOptions(options.claude_model),
     messages: [{ role: 'user', content: prompt }],
-    output_config: { format: zodOutputFormat(StructuredSaAiSchema) },
+    output_config: {
+      format: zodOutputFormat(StructuredSaAiSchema),
+      // Structuration = pur remapping : effort minimal imposé, quel que soit le
+      // réglage du template (qui ne pilote que l'analyse des factures).
+      ...buildClaudeEffortConfig(options.claude_model, STRUCTURING_CLAUDE_EFFORT),
+    },
   });
   const message = await stream.finalMessage();
   if (!message.parsed_output) throw new Error("La structuration Claude n'a pas retourné de résultat structuré.");

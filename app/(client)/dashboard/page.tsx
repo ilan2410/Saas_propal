@@ -20,43 +20,15 @@ import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 
 export const revalidate = 0;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function getPropositionClientName(proposition: Record<string, unknown>): string {
-  const data = proposition.extracted_data || proposition.donnees_extraites;
-  if (isRecord(data)) {
-    if (isRecord(data.client)) {
-      if (typeof data.client.nom === 'string' && data.client.nom) return data.client.nom;
-      if (typeof data.client.name === 'string' && data.client.name) return data.client.name;
-    }
-
-    if (typeof data['client.nom'] === 'string' && data['client.nom']) return data['client.nom'];
-
-    const clientPrenom = data['client.prenom'];
-    const clientNom = data['client.nom'];
-    if (typeof clientPrenom === 'string' && clientPrenom && typeof clientNom === 'string' && clientNom) {
-      return `${clientPrenom} ${clientNom}`;
-    }
-
-    if (typeof data.nom_client === 'string' && data.nom_client) return data.nom_client;
-    if (typeof data.client_nom === 'string' && data.client_nom) return data.client_nom;
-
-    for (const [key, value] of Object.entries(data)) {
-      if (key.toLowerCase().includes('client') && isRecord(value)) {
-        if (typeof value.nom === 'string' && value.nom) return value.nom;
-        if (typeof value.name === 'string' && value.name) return value.name;
-      }
-    }
-  }
-
-  return typeof proposition.nom_client === 'string' && proposition.nom_client
-    ? proposition.nom_client
-    : 'Sans nom';
+  return resolvePropositionClientName(
+    proposition.extracted_data || proposition.donnees_extraites,
+    proposition.nom_client,
+  );
 }
 
 export default async function ClientDashboard() {

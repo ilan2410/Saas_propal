@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { documents_urls, champs_actifs, claude_model, prompt_template, secteur } = body;
+    const { documents_urls, champs_actifs, claude_model, claude_effort, prompt_template, secteur } = body;
+    const effort = typeof claude_effort === 'string' ? claude_effort : undefined;
 
     // Validation
     if (!documents_urls || documents_urls.length === 0) {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     let donneesExtraites: Record<string, unknown>;
     if (useSaPipeline) {
-      const report = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model });
+      const report = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort });
       const coveredFields = new Set(report.field_coverage.map((item) => item.field));
       for (const field of activeFields) {
         if (!coveredFields.has(field)) {
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
         champs_actifs: activeFields,
         prompt_template: prompt_template || '',
         claude_model: model,
+        claude_effort: effort,
       });
     }
 

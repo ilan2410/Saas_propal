@@ -978,7 +978,13 @@ export const SECTEURS = [
   { value: 'mixte', label: 'Mixte (Téléphonie + Bureautique)' },
 ];
 
-export { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
+export {
+  CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
+  CLAUDE_EFFORT_LEVELS,
+  DEFAULT_CLAUDE_EFFORT,
+  supportsClaudeEffort,
+} from '@/lib/ai/claude-models';
 
 // Types
 export type Question = {

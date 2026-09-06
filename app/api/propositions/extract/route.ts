@@ -482,6 +482,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
     const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
 
+    // Niveau d'effort de raisonnement, réglable par template (file_config.claude_effort).
+    // N'a d'effet que sur Sonnet 5 ; sinon ignoré côté lib/ai/claude.
+    const effortToUse =
+      isRecord(template.file_config) && typeof template.file_config.claude_effort === 'string'
+        ? template.file_config.claude_effort
+        : undefined;
+
     // Le template décide si les charges variables (consommations hors forfait,
     // pénalités, frais ponctuels) comptent dans le total mensuel de la SA.
     // Défaut : incluses.
@@ -645,6 +652,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         documents_urls,
         active_fields: activeFields,
         claude_model: modelToUse,
+        claude_effort: effortToUse,
       });
       const coveredFields = new Set(report.field_coverage.map((item) => item.field));
       for (const field of activeFields) {
@@ -672,6 +680,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         champs_actifs: activeFields,
         prompt_template: promptToUse,
         claude_model: modelToUse,
+        claude_effort: effortToUse,
       });
     }
 

@@ -12,6 +12,9 @@ import {
   ALL_FIELDS,
   CLAUDE_MODELS,
   DEFAULT_CLAUDE_MODEL,
+  CLAUDE_EFFORT_LEVELS,
+  DEFAULT_CLAUDE_EFFORT,
+  supportsClaudeEffort,
   getCategoryLabel,
   getQuestionsForSecteur,
   syncSimpleToAdvanced,
@@ -561,6 +564,38 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
               Claude 3.7 Sonnet offre une meilleure précision d&apos;extraction.
             </p>
           </div>
+
+          {supportsClaudeEffort(formData.claude_model) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Effort de raisonnement (Sonnet 5)
+              </label>
+              <select
+                value={
+                  ((formData.file_config as Record<string, unknown>)?.claude_effort as string) ||
+                  DEFAULT_CLAUDE_EFFORT
+                }
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    file_config: {
+                      ...(formData.file_config as Record<string, unknown>),
+                      claude_effort: e.target.value,
+                    },
+                  })
+                }
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {CLAUDE_EFFORT_LEVELS.map((level) => (
+                  <option key={level.value} value={level.value}>{level.label}</option>
+                ))}
+              </select>
+              <p className="text-sm text-gray-500 mt-2">
+                Pilote le volume de raisonnement (facturé au tarif de sortie). «&nbsp;Moyen&nbsp;»
+                réduit nettement le coût par proposition sans perte notable sur l&apos;extraction.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

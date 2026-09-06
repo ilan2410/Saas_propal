@@ -47,6 +47,7 @@ import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -680,45 +681,6 @@ function getFileExtension(url: string): string {
   }
 }
 
-// Extrait le nom du client
-function getClientName(extractedData: unknown): string {
-  try {
-    const data: Record<string, unknown> = isRecord(extractedData) ? extractedData : {};
-    
-    if (isRecord(data.client)) {
-      const nom = data.client.nom;
-      const name = data.client.name;
-      if (typeof nom === 'string' && nom) return nom;
-      if (typeof name === 'string' && name) return name;
-    }
-    
-    const clientNom = data['client.nom'];
-    if (typeof clientNom === 'string' && clientNom) return clientNom;
-
-    const clientPrenom = data['client.prenom'];
-    const clientNom2 = data['client.nom'];
-    if (typeof clientPrenom === 'string' && clientPrenom && typeof clientNom2 === 'string' && clientNom2) {
-      return `${clientPrenom} ${clientNom2}`;
-    }
-    
-    if (typeof data.nom_client === 'string' && data.nom_client) return data.nom_client;
-    if (typeof data.client_nom === 'string' && data.client_nom) return data.client_nom;
-    
-    for (const [key, value] of Object.entries(data)) {
-      if (key.toLowerCase().includes('client') && isRecord(value)) {
-        const nom = value.nom;
-        const name = value.name;
-        if (typeof nom === 'string' && nom) return nom;
-        if (typeof name === 'string' && name) return name;
-      }
-    }
-    
-    return 'Client non spécifié';
-  } catch {
-    return 'Client non spécifié';
-  }
-}
-
 // Composant pour afficher le statut
 function StatusBadge({ statut }: { statut: string }) {
   const configs = {
@@ -847,7 +809,11 @@ export default async function PropositionDetailPage({
     resumeKey
       ? Object.fromEntries(Object.entries(extractedDataRecord).filter(([k]) => normalizeKey(k) !== 'resume'))
       : extractedDataRecord;
-  const clientName = getClientName(extractedDataRecord) || proposition.nom_client || 'Proposition sans nom';
+  const clientName = resolvePropositionClientName(
+    extractedDataRecord,
+    proposition.nom_client,
+    'Proposition sans nom',
+  );
   
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
   const totalFields = countTotalFields(extractedDataForDisplay);
