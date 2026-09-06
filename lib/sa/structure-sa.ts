@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasTotalBlockingIssue } from './invoice-analysis';
 import type { CanonicalSaAnalysis, InvoiceAnalysisReport, NormalizedInvoiceLine } from './invoice-analysis';
 
 type UnknownRecord = Record<string, unknown>;
@@ -400,8 +401,11 @@ export function buildLegacySaData(
   ];
   result._invoice_analysis = report;
   result._structured_sa = structured;
+  // Seules les anomalies qui faussent le total HT mensuel arment l'écran de
+  // vérification. Les incertitudes de champs (prénom partiel, SIREN sans SIRET,
+  // dates extrapolées…) restent listées dans `issues` mais ne bloquent pas.
   result._extraction_control = {
-    status: issues.length === 0 ? 'valid' : 'review_required',
+    status: hasTotalBlockingIssue(issues) ? 'review_required' : 'valid',
     total_ht_mensuel_client: canonical.total_ht_mensuel_client,
     declared_monthly_total_ht: report.declared_monthly_total_ht,
     coverage: canonical.coverage,

@@ -10,13 +10,15 @@ interface Props {
   initialTotal: number;
   initialIssues: ExtractionQualityIssue[];
   onValidated: (data: Record<string, unknown>) => void;
+  /** Ferme le panneau sans rien corriger : la suite reste accessible. */
+  onDismiss?: () => void;
 }
 
 function cloneReport(report: InvoiceAnalysisReport): InvoiceAnalysisReport {
   return JSON.parse(JSON.stringify(report)) as InvoiceAnalysisReport;
 }
 
-export function SaExtractionReview({ propositionId, initialReport, initialTotal, initialIssues, onValidated }: Props) {
+export function SaExtractionReview({ propositionId, initialReport, initialTotal, initialIssues, onValidated, onDismiss }: Props) {
   const [report, setReport] = useState(() => cloneReport(initialReport));
   const [issues, setIssues] = useState(initialIssues);
   const [manualTotal, setManualTotal] = useState('');
@@ -76,8 +78,8 @@ export function SaExtractionReview({ propositionId, initialReport, initialTotal,
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
         <div>
-          <h3 className="font-bold text-amber-950">Vérification de la situation actuelle requise</h3>
-          <p className="text-sm text-amber-800">Corrigez les valeurs signalées ou confirmez manuellement le total HT mensuel avant de continuer.</p>
+          <h3 className="font-bold text-amber-950">Total HT mensuel à vérifier</h3>
+          <p className="text-sm text-amber-800">Le total recalculé ne concorde pas avec les montants des factures. Corrigez le détail ci-dessous, confirmez le total manuellement, ou continuez sans corriger — la suite du parcours reste accessible.</p>
           <p className="mt-2 text-xl font-bold text-amber-950">Total recalculé : {initialTotal.toFixed(2).replace('.', ',')} € HT/mois</p>
         </div>
       </div>
@@ -171,10 +173,17 @@ export function SaExtractionReview({ propositionId, initialReport, initialTotal,
       </div>
 
       {error && <p className="text-sm font-medium text-red-700">{error}</p>}
-      <button type="button" onClick={submit} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-        Recalculer et valider
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={submit} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Recalculer et valider
+        </button>
+        {onDismiss && (
+          <button type="button" onClick={onDismiss} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50">
+            Continuer sans corriger
+          </button>
+        )}
+      </div>
     </div>
   );
 }

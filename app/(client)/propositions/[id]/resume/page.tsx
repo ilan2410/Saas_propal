@@ -110,12 +110,14 @@ export default async function ResumePropositionPage({
   const stepParam = resolvedSearchParams?.step;
   const stepRaw = Array.isArray(stepParam) ? stepParam[0] : stepParam;
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
-  const initialStep = requiresExtractionReview
-    ? 3
-    : Math.max(
-        1,
-        Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
-      );
+  // La revue SA (total HT mensuel douteux) n'est plus bloquante : `inferredStep`
+  // ramène sur l'étape 3 tant que l'utilisateur n'a pas avancé, mais `baseStep`
+  // (max avec current_step persisté) le laisse repartir plus loin s'il a choisi
+  // de continuer sans corriger.
+  const initialStep = Math.max(
+    1,
+    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
+  );
 
   return (
     <div className="space-y-6">

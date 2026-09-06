@@ -329,14 +329,14 @@ export async function analyzeInvoicesForSa(options: {
 
 Lis chaque document intégralement. Sépare les montants HT et TTC, conserve le signe des remises, distingue les frais récurrents des frais ponctuels et détermine le nombre exact de mois couvert par chaque montant à partir des mentions et des dates. Une facture couvrant deux mois doit être divisée par 2.
 
-Pour chaque ligne financière, donne le montant source signé, la quantité, indique si ce montant est unitaire ou total, sa périodicité, le nombre de mois, et une preuve précise avec index du document, page si disponible et texte source. Une remise doit utiliser la catégorie discount et sera normalisée comme un montant négatif.
+Pour chaque ligne financière, donne le montant source signé, la quantité, indique si ce montant est unitaire ou total, sa périodicité, le nombre de mois, et une seule preuve : index du document, page si disponible, et un extrait de texte source court (15 mots maximum) reprenant uniquement le libellé et le montant concernés, jamais la ligne entière ni le contexte autour. Ajoute une deuxième preuve seulement si le montant provient réellement de deux emplacements distincts. Une remise doit utiliser la catégorie discount et sera normalisée comme un montant négatif.
 
-Tu dois également traiter chacun des champs actifs ci-dessous. Ajoute exactement une entrée field_coverage par champ, avec le nom strictement identique. Utilise found avec value_json contenant la valeur sérialisée en JSON, not_found si le document ne contient pas l'information, ou ambiguous si elle est incertaine. Aucun champ ne doit être omis. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte absent, 0 pour un montant ou une page absente, et -1 pour un taux de TVA absent.
+Tu dois également traiter chacun des champs actifs ci-dessous. Ajoute exactement une entrée field_coverage par champ, avec le nom strictement identique. Utilise found avec value_json contenant la valeur sérialisée en JSON, not_found si le document ne contient pas l'information, ou ambiguous si elle est incertaine. Aucun champ ne doit être omis. Laisse le tableau evidence vide pour un champ not_found ; pour un champ found ou ambiguous, fournis au maximum une preuve avec un extrait de 15 mots maximum. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte absent, 0 pour un montant ou une page absente, et -1 pour un taux de TVA absent.
 
 CHAMPS ACTIFS:
 ${fields}
 
-Le résumé doit expliquer les calculs par facture et se terminer par le total HT mensuel client.`;
+Le résumé (summary) tient en 3 à 5 phrases : le total HT mensuel de chaque facture, puis le total HT mensuel client. Pas de reformulation détaillée du parc ni de recopie des lignes.`;
   const stream = anthropic.messages.stream({
     model: options.claude_model,
     // Requête en streaming : pas de risque de timeout HTTP, on laisse donc une

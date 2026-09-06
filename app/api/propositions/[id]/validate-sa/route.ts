@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
-import { InvoiceAnalysisReportSchema, calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
+import { InvoiceAnalysisReportSchema, calculateCanonicalSaAnalysis, hasTotalBlockingIssue } from '@/lib/sa/invoice-analysis';
 import { StructuredSaSchema, buildLegacySaData } from '@/lib/sa/structure-sa';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import type { SpConfigResiliation } from '@/types';
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ? Math.round(body.manual_total_ht * 100) / 100
     : null;
 
-  if (canonical.issues.length > 0 && manualTotal === null) {
+  if (hasTotalBlockingIssue(canonical.issues) && manualTotal === null) {
     return NextResponse.json({
       success: false,
       validation_status: 'review_required',

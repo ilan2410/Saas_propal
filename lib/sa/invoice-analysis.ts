@@ -162,6 +162,24 @@ export interface ExtractionQualityIssue {
   actual?: number | string;
 }
 
+/**
+ * Anomalies qui remettent en cause le TOTAL HT MENSUEL lui-même : ce sont les
+ * seules qui déclenchent l'écran de vérification (`review_required`). Les autres
+ * codes (`ambiguous_field`, `missing_field_coverage`, `missing_structured_field`)
+ * concernent la complétude des champs, pas l'arithmétique du total : ils sont
+ * remontés pour information mais ne bloquent jamais la suite du parcours.
+ */
+export const TOTAL_BLOCKING_ISSUE_CODES: ReadonlySet<ExtractionQualityIssue['code']> = new Set([
+  'monthly_total_mismatch',
+  'invoice_total_mismatch',
+  'missing_amount',
+  'invalid_period',
+]);
+
+export function hasTotalBlockingIssue(issues: readonly ExtractionQualityIssue[]): boolean {
+  return issues.some((issue) => TOTAL_BLOCKING_ISSUE_CODES.has(issue.code));
+}
+
 export interface CanonicalInvoiceResult {
   document_index: number;
   invoice_number: string | null;

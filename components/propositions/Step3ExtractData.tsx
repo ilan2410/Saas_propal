@@ -118,8 +118,8 @@ export function Step3ExtractData({
   };
 
   const handleNext = () => {
-    if (extractionStatus !== 'success' || requiresReview) {
-      alert(requiresReview ? 'Veuillez vérifier et valider les données extraites' : 'Veuillez d\'abord lancer l\'extraction');
+    if (extractionStatus !== 'success') {
+      alert('Veuillez d\'abord lancer l\'extraction');
       return;
     }
     onNext();
@@ -304,6 +304,7 @@ export function Step3ExtractData({
                     setQualityIssues([]);
                     updatePropositionData({ donnees_extraites: nextData });
                   }}
+                  onDismiss={() => setRequiresReview(false)}
                 />
               </div>
             )}
@@ -317,7 +318,7 @@ export function Step3ExtractData({
                 <div className="flex-1">
                   <p className={`text-sm ${requiresReview ? 'text-amber-800' : 'text-green-800'}`}>
                     {requiresReview
-                      ? <><strong>Contrôle requis</strong> - Corrigez les anomalies ci-dessus avant de poursuivre.</>
+                      ? <><strong>Total à vérifier</strong> - Le total HT mensuel recalculé semble incohérent. Vous pouvez le corriger ci-dessus, ou continuer sans corriger : rien ne bloque la suite.</>
                       : <><strong>Données validées</strong> - La situation actuelle est prête pour la suite.</>}
                   </p>
                 </div>
@@ -443,7 +444,7 @@ export function Step3ExtractData({
           </span>
           <button
             onClick={handleNext}
-            disabled={extractionStatus !== 'success' || requiresReview}
+            disabled={extractionStatus !== 'success'}
             className="group px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold text-lg shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-3 hover:scale-105 active:scale-95"
           >
             Terminer
