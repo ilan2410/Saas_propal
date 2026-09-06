@@ -1,29 +1,16 @@
 // Client Claude AI pour l'extraction de données
 import Anthropic from '@anthropic-ai/sdk';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import fs from 'fs';
 import { ExtractionResult } from '@/types';
 import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
+import { buildClaudeModelOptions, getClaudeMaxOutputTokens } from '@/lib/ai/claude-models';
+import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAnalysisReport, type CanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
+import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
-
-// Modèles qui rejettent un `temperature` non-défaut (400 Bad Request)
-const MODELS_WITHOUT_CUSTOM_TEMPERATURE = new Set([
-  'claude-sonnet-5',
-  'claude-opus-4-8',
-  'claude-opus-4-7',
-]);
-
-// Modèles qui activent le "thinking" adaptatif par défaut quand `thinking` n'est pas précisé.
-// Ce thinking consomme une partie du budget max_tokens et peut tronquer la réponse JSON
-// attendue pour l'extraction ; on le désactive explicitement pour retrouver le comportement
-// déterministe précédent (extraction sans raisonnement).
-const MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT = new Set([
-  'claude-sonnet-5',
-  'claude-fable-5',
-  'claude-mythos-5',
-]);
 
 /**
  * Extrait les données de documents avec Claude AI
@@ -63,9 +50,7 @@ export async function extractWithClaude(
     const message = await anthropic.messages.create({
       model: claudeModel,
       max_tokens: 8192,
-      ...(MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT.has(claudeModel)
-        ? { thinking: { type: 'disabled' as const } }
-        : {}),
+      ...buildClaudeModelOptions(claudeModel),
       messages: [
         {
           role: 'user',
@@ -181,6 +166,40 @@ function sanitizeJsonControlCharacters(jsonStr: string): string {
  * @param options - Options d'extraction
  * @returns Données extraites
  */
+export async function prepareDocumentsForClaude(documents_urls: string[]) {
+  const documentContents = await Promise.all(
+    documents_urls.map(async (url, index) => {
+      assertAllowedFetchUrl(url);
+      console.log(`📥 Téléchargement document ${index + 1}:`, url);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Échec téléchargement: ${response.status} ${response.statusText}`);
+      const buffer = await response.arrayBuffer();
+      const base64Data = Buffer.from(buffer).toString('base64');
+      const pathname = new URL(url).pathname.toLowerCase();
+      const isPDF = pathname.endsWith('.pdf');
+      const isJPEG = pathname.match(/\.(jpg|jpeg)$/);
+      const isPNG = pathname.endsWith('.png');
+      const isGIF = pathname.endsWith('.gif');
+      const isWebP = pathname.endsWith('.webp');
+      if (isPDF) {
+        return {
+          type: 'document' as const,
+          source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data },
+        };
+      }
+      const imageMediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null =
+        isJPEG ? 'image/jpeg' : isPNG ? 'image/png' : isGIF ? 'image/gif' : isWebP ? 'image/webp' : null;
+      if (!imageMediaType) throw new Error(`Type de document non supporté: ${pathname}`);
+      return {
+        type: 'image' as const,
+        source: { type: 'base64' as const, media_type: imageMediaType, data: base64Data },
+      };
+    })
+  );
+  console.log(`✅ ${documentContents.length} document(s) préparé(s) pour Claude`);
+  return documentContents;
+}
+
 export async function extractDataFromDocuments(options: {
   documents_urls: string[];
   champs_actifs: string[];
@@ -188,66 +207,7 @@ export async function extractDataFromDocuments(options: {
   claude_model: string;
 }): Promise<Record<string, unknown>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
-
-  // Télécharger les documents depuis les URLs
-  const documentContents = await Promise.all(
-    documents_urls.map(async (url, index) => {
-      // Valider l'URL avant tout fetch côté serveur (protection SSRF)
-      assertAllowedFetchUrl(url);
-
-      console.log(`📥 Téléchargement document ${index + 1}:`, url);
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Échec téléchargement: ${response.status} ${response.statusText}`);
-      }
-      
-      const buffer = await response.arrayBuffer();
-      const bufferSize = buffer.byteLength;
-      console.log(`📦 Taille du fichier: ${(bufferSize / 1024).toFixed(2)} KB`);
-      
-      const base64Data = Buffer.from(buffer).toString('base64');
-      const base64Size = base64Data.length;
-      console.log(`📊 Taille base64: ${(base64Size / 1024).toFixed(2)} KB`);
-      
-      // Vérifier que le base64 commence bien par les magic bytes d'un PDF
-      const pdfMagicBytes = base64Data.substring(0, 20);
-      console.log(`🔍 Début du base64:`, pdfMagicBytes);
-      
-      // Détecter le type de fichier depuis l'URL
-      const isPDF = url.toLowerCase().endsWith('.pdf');
-      const isJPEG = url.toLowerCase().match(/\.(jpg|jpeg)$/);
-      const isPNG = url.toLowerCase().endsWith('.png');
-
-      // Pour les PDFs, utiliser le type "document"
-      if (isPDF) {
-        console.log(`📄 Type détecté: PDF`);
-        return {
-          type: 'document' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: 'application/pdf' as const,
-            data: base64Data,
-          },
-        };
-      }
-      
-      // Pour les images, utiliser le type "image"
-      console.log(`🖼️ Type détecté: Image`);
-      const imageMediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' = 
-        isJPEG ? 'image/jpeg' : isPNG ? 'image/png' : 'image/jpeg';
-      return {
-        type: 'image' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: imageMediaType,
-          data: base64Data,
-        },
-      };
-    })
-  );
-  
-  console.log(`✅ ${documentContents.length} document(s) préparé(s) pour Claude`);
+  const documentContents = await prepareDocumentsForClaude(documents_urls);
 
   // Construire le prompt final
   const finalPrompt = prompt_template
@@ -268,10 +228,7 @@ export async function extractDataFromDocuments(options: {
       // dépasse régulièrement 8192 tokens sur les dossiers multi-sites. Une troncature
       // se manifeste ici par un JSON.parse en erreur plus bas, sans message explicite.
       max_tokens: 16000,
-      ...(MODELS_WITHOUT_CUSTOM_TEMPERATURE.has(modelToUse) ? {} : { temperature: 0 }),
-      ...(MODELS_WITH_ADAPTIVE_THINKING_BY_DEFAULT.has(modelToUse)
-        ? { thinking: { type: 'disabled' as const } }
-        : {}),
+      ...buildClaudeModelOptions(modelToUse),
       messages: [
         {
           role: 'user',
@@ -359,6 +316,76 @@ export async function extractDataFromDocuments(options: {
     }
     throw error;
   }
+}
+
+export async function analyzeInvoicesForSa(options: {
+  documents_urls: string[];
+  active_fields: string[];
+  claude_model: string;
+}): Promise<InvoiceAnalysisReport> {
+  const documentContents = await prepareDocumentsForClaude(options.documents_urls);
+  const fields = options.active_fields.map((field) => `- ${field}`).join('\n');
+  const prompt = `Tu es un analyste expert des factures télécom B2B. Ta priorité absolue est de déterminer exactement le TOTAL HT MENSUEL réellement payé par le client sur l'ensemble des documents.
+
+Lis chaque document intégralement. Sépare les montants HT et TTC, conserve le signe des remises, distingue les frais récurrents des frais ponctuels et détermine le nombre exact de mois couvert par chaque montant à partir des mentions et des dates. Une facture couvrant deux mois doit être divisée par 2.
+
+Pour chaque ligne financière, donne le montant source signé, la quantité, indique si ce montant est unitaire ou total, sa périodicité, le nombre de mois, et une preuve précise avec index du document, page si disponible et texte source. Une remise doit utiliser la catégorie discount et sera normalisée comme un montant négatif.
+
+Tu dois également traiter chacun des champs actifs ci-dessous. Ajoute exactement une entrée field_coverage par champ, avec le nom strictement identique. Utilise found avec value_json contenant la valeur sérialisée en JSON, not_found si le document ne contient pas l'information, ou ambiguous si elle est incertaine. Aucun champ ne doit être omis. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte absent, 0 pour un montant ou une page absente, et -1 pour un taux de TVA absent.
+
+CHAMPS ACTIFS:
+${fields}
+
+Le résumé doit expliquer les calculs par facture et se terminer par le total HT mensuel client.`;
+  const stream = anthropic.messages.stream({
+    model: options.claude_model,
+    // Requête en streaming : pas de risque de timeout HTTP, on laisse donc une
+    // marge large. La sortie JSON (lignes de facture + evidence cité mot pour
+    // mot + field_coverage) dépassait 24000 tokens sur les gros dossiers, ce qui
+    // tronquait le JSON et faisait échouer le parsing structuré du SDK.
+    max_tokens: getClaudeMaxOutputTokens(options.claude_model, 64000),
+    ...buildClaudeModelOptions(options.claude_model),
+    messages: [{
+      role: 'user',
+      content: [...documentContents, { type: 'text', text: prompt }],
+    }],
+    output_config: { format: zodOutputFormat(InvoiceAnalysisAiSchema) },
+  });
+  const message = await stream.finalMessage();
+  if (!message.parsed_output) throw new Error("L'analyse comptable Claude n'a pas retourné de résultat structuré.");
+  return normalizeInvoiceAnalysisOutput(message.parsed_output);
+}
+
+export async function structureSaAnalysis(options: {
+  report: InvoiceAnalysisReport;
+  canonical: CanonicalSaAnalysis;
+  active_fields: string[];
+  claude_model: string;
+}): Promise<StructuredSa> {
+  const prompt = `Tu es un agent de structuration. Tu ne relis pas les factures et tu ne refais aucun calcul. Transforme fidèlement le rapport d'analyse fourni dans le schéma demandé.
+
+Tous les champs actifs doivent être représentés à partir de field_coverage. Ajoute exactement une entrée mapped_fields pour chaque champ actif, avec le nom strictement identique et la valeur sérialisée dans value_json. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte ou une value_json absente, et 0 pour preavis_mois absent. Une donnée marquée not_found utilise value_json="" et reste absente ou un tableau vide dans la structure. N'invente aucune information. Ne modifie jamais total_ht_mensuel_client ni les montants canoniques: le backend les injectera après ta réponse.
+
+CHAMPS ACTIFS:
+${options.active_fields.map((field) => `- ${field}`).join('\n')}
+
+RAPPORT ANALYSTE:
+${JSON.stringify(options.report)}
+
+CALCULS CANONIQUES:
+${JSON.stringify(options.canonical)}`;
+  const stream = anthropic.messages.stream({
+    model: options.claude_model,
+    // Streaming : marge élargie pour éviter la troncature du JSON structuré
+    // (mapped_fields sur tous les champs actifs + structure SA complète).
+    max_tokens: getClaudeMaxOutputTokens(options.claude_model, 32000),
+    ...buildClaudeModelOptions(options.claude_model),
+    messages: [{ role: 'user', content: prompt }],
+    output_config: { format: zodOutputFormat(StructuredSaAiSchema) },
+  });
+  const message = await stream.finalMessage();
+  if (!message.parsed_output) throw new Error("La structuration Claude n'a pas retourné de résultat structuré.");
+  return normalizeStructuredSaOutput(message.parsed_output);
 }
 
 /**

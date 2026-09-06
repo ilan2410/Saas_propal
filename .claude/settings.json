@@ -62,7 +62,8 @@
       "Bash(grep -n \"base_mensuelle\\\\|quantite\\\\|tarif_net_mensuel\\\\|tarif_brut\\\\|preuve\\\\|groupes_calcul\\\\|abonnements\\\\|lignes\\\\|reduce\\\\|\\\\\\\\* q\\\\|parseMontant\\\\|montant\" lib/sp/resiliation.ts)",
       "Bash(git branch *)",
       "Bash(sort -t: -k2)",
-      "Bash(uniq -c -f0)"
+      "Bash(uniq -c -f0)",
+      "Bash(npx vitest *)"
     ],
     "additionalDirectories": [
       "\\tmp"

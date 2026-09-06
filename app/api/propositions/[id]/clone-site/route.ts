@@ -69,7 +69,7 @@ export async function POST(
     const { data: parent } = await scopePropositionsQuery(
       supabase
         .from('propositions')
-        .select('id, organization_id, template_id, nom_client, extracted_data')
+        .select('id, organization_id, template_id, nom_client, extracted_data, filled_data')
         .eq('id', id),
       ctx
     ).single();
@@ -99,7 +99,7 @@ export async function POST(
     }
 
     // Filter extracted_data for this site
-    const extractedDataFull = (parent.extracted_data ?? {}) as Record<string, unknown>;
+    const extractedDataFull = (parent.filled_data ?? parent.extracted_data ?? {}) as Record<string, unknown>;
     const extractedDataFiltered = filterExtractedDataForSite(extractedDataFull, site_nom);
 
     // Debit credits

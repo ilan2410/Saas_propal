@@ -3,7 +3,7 @@
 export type Secteur = 'telephonie' | 'bureautique' | 'mixte';
 export type FileType = 'excel' | 'word' | 'pdf';
 export type TemplateStatus = 'brouillon' | 'teste' | 'actif';
-export type PropositionStatus = 'processing' | 'ready' | 'exported' | 'error';
+export type PropositionStatus = 'draft' | 'processing' | 'ready' | 'extracted' | 'exported' | 'error';
 export type TransactionStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
 export type CatalogueCategorie = 'mobile' | 'internet' | 'fixe' | 'cloud' | 'equipement' | 'autre' | 'cadeau' | 'installation';
 export type CatalogueSecteur = 'telephonie' | 'bureautique';

@@ -33,7 +33,7 @@ export async function POST(
     const { data: proposition } = await scopePropositionsQuery(
       supabase
         .from('propositions')
-        .select('id, organization_id, template_id, parent_proposition_id, extracted_data')
+        .select('id, organization_id, template_id, parent_proposition_id, extracted_data, filled_data')
         .eq('id', id),
       ctx
     ).single();
@@ -88,7 +88,7 @@ export async function POST(
         Cookie: request.headers.get('Cookie') ?? '',
       },
       body: JSON.stringify({
-        situation_actuelle: proposition.extracted_data,
+        situation_actuelle: proposition.filled_data ?? proposition.extracted_data,
         proposition_id: id,
         force_regenerate: true,
         sp_questions_reponses: sp_reponses,

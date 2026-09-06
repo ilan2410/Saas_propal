@@ -82,9 +82,17 @@ export default async function ResumePropositionPage({
   const hasSuggestions = !!proposition.suggestions_generees || !!proposition.suggestions_editees;
   const hasSpCompletes = !!proposition.suggestions_sp_completes;
   const hasDocuments = documents_urls.length > 0;
+  const extractionControl = dataToEdit._extraction_control;
+  const requiresExtractionReview =
+    extractionControl &&
+    typeof extractionControl === 'object' &&
+    !Array.isArray(extractionControl) &&
+    (extractionControl as Record<string, unknown>).status === 'review_required';
 
   let inferredStep = 1;
-  if (hasSpCompletes) {
+  if (requiresExtractionReview) {
+    inferredStep = 3;
+  } else if (hasSpCompletes) {
     inferredStep = 5;
   } else if (hasSuggestions || hasExtractedData || hasFilledData) {
     inferredStep = 4;
@@ -102,10 +110,12 @@ export default async function ResumePropositionPage({
   const stepParam = resolvedSearchParams?.step;
   const stepRaw = Array.isArray(stepParam) ? stepParam[0] : stepParam;
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
-  const initialStep = Math.max(
-    1,
-    Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
-  );
+  const initialStep = requiresExtractionReview
+    ? 3
+    : Math.max(
+        1,
+        Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
+      );
 
   return (
     <div className="space-y-6">
