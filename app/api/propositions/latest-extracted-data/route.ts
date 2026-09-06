@@ -30,16 +30,20 @@ export async function GET(request: NextRequest) {
     const { data: proposition } = await scopePropositionsQuery(
       supabase
         .from('propositions')
-        .select('id, extracted_data')
+        .select('id, extracted_data, filled_data')
         .eq('template_id', templateId)
-        .not('extracted_data', 'is', null),
+        .or('extracted_data.not.is.null,filled_data.not.is.null'),
       ctx
     )
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    const extractedData = isRecord(proposition?.extracted_data) ? { ...proposition.extracted_data } : null;
+    const extracted = isRecord(proposition?.extracted_data) ? proposition.extracted_data : {};
+    const filled = isRecord(proposition?.filled_data) ? proposition.filled_data : {};
+    const extractedData = Object.keys(extracted).length > 0 || Object.keys(filled).length > 0
+      ? { ...extracted, ...filled }
+      : null;
     if (extractedData && isRecord(extractedData.situation_actuelle)) {
       const situationActuelle = { ...extractedData.situation_actuelle };
       const saCart = calculateSaCartSummary({ situation_actuelle: situationActuelle });

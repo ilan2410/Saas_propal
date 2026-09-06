@@ -82,9 +82,17 @@ export default async function ResumePropositionPage({
   const hasSuggestions = !!proposition.suggestions_generees || !!proposition.suggestions_editees;
   const hasSpCompletes = !!proposition.suggestions_sp_completes;
   const hasDocuments = documents_urls.length > 0;
+  const extractionControl = dataToEdit._extraction_control;
+  const requiresExtractionReview =
+    extractionControl &&
+    typeof extractionControl === 'object' &&
+    !Array.isArray(extractionControl) &&
+    (extractionControl as Record<string, unknown>).status === 'review_required';
 
   let inferredStep = 1;
-  if (hasSpCompletes) {
+  if (requiresExtractionReview) {
+    inferredStep = 3;
+  } else if (hasSpCompletes) {
     inferredStep = 5;
   } else if (hasSuggestions || hasExtractedData || hasFilledData) {
     inferredStep = 4;
@@ -102,6 +110,10 @@ export default async function ResumePropositionPage({
   const stepParam = resolvedSearchParams?.step;
   const stepRaw = Array.isArray(stepParam) ? stepParam[0] : stepParam;
   const stepFromQuery = stepRaw ? Number(stepRaw) : NaN;
+  // La revue SA (total HT mensuel douteux) n'est plus bloquante : `inferredStep`
+  // ramène sur l'étape 3 tant que l'utilisateur n'a pas avancé, mais `baseStep`
+  // (max avec current_step persisté) le laisse repartir plus loin s'il a choisi
+  // de continuer sans corriger.
   const initialStep = Math.max(
     1,
     Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)

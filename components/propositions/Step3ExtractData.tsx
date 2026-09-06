@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
+import { SaExtractionReview } from '@/components/propositions/SaExtractionReview';
+import type { ExtractionQualityIssue, InvoiceAnalysisReport } from '@/lib/sa/invoice-analysis';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -48,11 +50,22 @@ export function Step3ExtractData({
   onNext,
   onPrev,
 }: Props) {
+  const initialExtractedData = isPlainObject(propositionData.donnees_extraites)
+    && Object.keys(propositionData.donnees_extraites).length > 0
+    ? propositionData.donnees_extraites
+    : null;
+  const initialControl = initialExtractedData && isPlainObject(initialExtractedData._extraction_control)
+    ? initialExtractedData._extraction_control
+    : null;
   const [isExtracting, setIsExtracting] = useState(false);
-  const [extractionStatus, setExtractionStatus] = useState<'idle' | 'extracting' | 'success' | 'error'>('idle');
-  const [extractedData, setExtractedData] = useState<UnknownRecord | null>(null);
+  const [extractionStatus, setExtractionStatus] = useState<'idle' | 'extracting' | 'success' | 'error'>(initialExtractedData ? 'success' : 'idle');
+  const [extractedData, setExtractedData] = useState<UnknownRecord | null>(initialExtractedData);
   const [error, setError] = useState<string>('');
   const [creditsInfo, setCreditsInfo] = useState<{ restants: number; debite: number } | null>(null);
+  const [requiresReview, setRequiresReview] = useState(initialControl?.status === 'review_required');
+  const [qualityIssues, setQualityIssues] = useState<ExtractionQualityIssue[]>(
+    initialControl && Array.isArray(initialControl.issues) ? initialControl.issues as ExtractionQualityIssue[] : []
+  );
 
   const startExtraction = async () => {
     setIsExtracting(true);
@@ -81,6 +94,8 @@ export function Step3ExtractData({
       const nextExtractedData: UnknownRecord = isPlainObject(result.donnees_extraites) ? result.donnees_extraites : {};
       setExtractedData(nextExtractedData);
       setExtractionStatus('success');
+      setRequiresReview(result.validation_status === 'review_required');
+      setQualityIssues(Array.isArray(result.quality_issues) ? result.quality_issues : []);
 
       if (result.credits_restants !== undefined && result.montant_debite !== undefined) {
         setCreditsInfo({
@@ -116,6 +131,15 @@ export function Step3ExtractData({
       : extractedData && typeof extractedData['résumé'] === 'string'
         ? (extractedData['résumé'] as string)
         : '';
+  const extractionControl = extractedData && isPlainObject(extractedData._extraction_control)
+    ? extractedData._extraction_control
+    : null;
+  const invoiceAnalysis = extractedData && isPlainObject(extractedData._invoice_analysis)
+    ? extractedData._invoice_analysis as unknown as InvoiceAnalysisReport
+    : null;
+  const reviewTotal = extractionControl && typeof extractionControl.total_ht_mensuel_client === 'number'
+    ? extractionControl.total_ht_mensuel_client
+    : 0;
 
   return (
     <div className="space-y-8">
@@ -267,13 +291,35 @@ export function Step3ExtractData({
               )}
             </div>
 
+            {requiresReview && invoiceAnalysis && propositionData.proposition_id && (
+              <div className="mb-8 max-w-5xl mx-auto">
+                <SaExtractionReview
+                  propositionId={propositionData.proposition_id}
+                  initialReport={invoiceAnalysis}
+                  initialTotal={reviewTotal}
+                  initialIssues={qualityIssues}
+                  onValidated={(nextData) => {
+                    setExtractedData(nextData);
+                    setRequiresReview(false);
+                    setQualityIssues([]);
+                    updatePropositionData({ donnees_extraites: nextData });
+                  }}
+                  onDismiss={() => setRequiresReview(false)}
+                />
+              </div>
+            )}
+
             {/* Message de confirmation */}
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 max-w-2xl mx-auto">
+            <div className={`${requiresReview ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-xl p-4 max-w-2xl mx-auto`}>
               <div className="flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                {requiresReview
+                  ? <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  : <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />}
                 <div className="flex-1">
-                  <p className="text-sm text-green-800">
-                    <strong>Prêt pour la validation</strong> - Vous pourrez vérifier et modifier les données extraites à l&apos;étape suivante
+                  <p className={`text-sm ${requiresReview ? 'text-amber-800' : 'text-green-800'}`}>
+                    {requiresReview
+                      ? <><strong>Total à vérifier</strong> - Le total HT mensuel recalculé semble incohérent. Vous pouvez le corriger ci-dessus, ou continuer sans corriger : rien ne bloque la suite.</>
+                      : <><strong>Données validées</strong> - La situation actuelle est prête pour la suite.</>}
                   </p>
                 </div>
               </div>

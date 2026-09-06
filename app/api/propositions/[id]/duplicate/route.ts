@@ -38,7 +38,7 @@ export async function POST(
     }
 
     // Extraire le nom du client
-    const extractedData = originalProposition.extracted_data || originalProposition.donnees_extraites || {};
+    const extractedData = originalProposition.filled_data || originalProposition.extracted_data || originalProposition.donnees_extraites || {};
     let clientName = 'Client';
     
     if (extractedData.client?.nom) {
@@ -57,10 +57,10 @@ export async function POST(
         created_by: user.id,
         template_id: originalProposition.template_id,
         nom_client: `[COPIE] ${clientName}`,
-        statut: originalProposition.extracted_data || originalProposition.donnees_extraites ? 'ready' : 'draft',
+        statut: Object.keys(extractedData).length > 0 ? 'ready' : 'draft',
         source_documents: originalProposition.source_documents || originalProposition.documents_urls || originalProposition.documents_sources_urls || [],
-        extracted_data: originalProposition.extracted_data || originalProposition.donnees_extraites || null,
-        donnees_extraites: originalProposition.extracted_data || originalProposition.donnees_extraites || null,
+        extracted_data: Object.keys(extractedData).length > 0 ? extractedData : null,
+        donnees_extraites: Object.keys(extractedData).length > 0 ? extractedData : null,
         duplicated_template_url: null,
         fichier_genere_url: null,
         created_at: new Date().toISOString(),

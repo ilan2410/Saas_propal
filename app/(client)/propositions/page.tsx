@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
+import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import {
@@ -38,44 +39,6 @@ function countFields(data: unknown): number {
     }
   }
   return count;
-}
-
-function getClientName(extractedData: unknown): string {
-  try {
-    const data: Record<string, unknown> = isRecord(extractedData) ? extractedData : {};
-
-    if (isRecord(data.client)) {
-      const nom = data.client.nom;
-      const name = data.client.name;
-      if (typeof nom === 'string' && nom) return nom;
-      if (typeof name === 'string' && name) return name;
-    }
-
-    const clientNom = data['client.nom'];
-    if (typeof clientNom === 'string' && clientNom) return clientNom;
-
-    const clientPrenom = data['client.prenom'];
-    const clientNom2 = data['client.nom'];
-    if (typeof clientPrenom === 'string' && clientPrenom && typeof clientNom2 === 'string' && clientNom2) {
-      return `${clientPrenom} ${clientNom2}`;
-    }
-
-    if (typeof data.nom_client === 'string' && data.nom_client) return data.nom_client;
-    if (typeof data.client_nom === 'string' && data.client_nom) return data.client_nom;
-
-    for (const [key, value] of Object.entries(data)) {
-      if (key.toLowerCase().includes('client') && isRecord(value)) {
-        const nom = value.nom;
-        const name = value.name;
-        if (typeof nom === 'string' && nom) return nom;
-        if (typeof name === 'string' && name) return name;
-      }
-    }
-
-    return 'Sans nom';
-  } catch {
-    return 'Sans nom';
-  }
 }
 
 export default async function PropositionsPage() {
@@ -133,8 +96,10 @@ export default async function PropositionsPage() {
       (isRecord(prop.template) && typeof prop.template.nom === 'string'
         ? prop.template.nom
         : '') || '',
-    clientName:
-      getClientName(prop.extracted_data || prop.donnees_extraites) || prop.nom_client || 'Sans nom',
+    clientName: resolvePropositionClientName(
+      prop.extracted_data || prop.donnees_extraites,
+      prop.nom_client,
+    ),
     fieldsCount: countFields(prop.extracted_data || prop.donnees_extraites),
     fileUrl: prop.duplicated_template_url || prop.fichier_genere_url || null,
     createdAt: prop.created_at,

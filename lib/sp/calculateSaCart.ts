@@ -70,7 +70,7 @@ function normalizeItemsToHT(items: unknown, amountKeys: string[]): unknown {
     const next = { ...item };
     for (const key of amountKeys) {
       const ttc = toNumber(next[key]);
-      if (ttc > 0) next[key] = round2(ttc / TVA_RATE);
+      if (ttc !== 0) next[key] = round2(ttc / TVA_RATE);
     }
     next.precision_montant = 'HT';
     return next;
@@ -124,7 +124,7 @@ export function normalizeSaAmountsToHT(situationActuelle: unknown): Record<strin
       'total_solution_actuelle_calcule',
     ]) {
       const ttc = toNumber(totaux[key]);
-      if (ttc > 0) totaux[key] = round2(ttc / TVA_RATE);
+      if (ttc !== 0) totaux[key] = round2(ttc / TVA_RATE);
     }
     totaux.precision = 'HT';
   }
@@ -135,7 +135,7 @@ export function normalizeSaAmountsToHT(situationActuelle: unknown): Record<strin
 function pickMontant(item: Record<string, unknown>, keys: string[]): number {
   for (const key of keys) {
     const v = toNumber(item[key]);
-    if (v > 0) return v;
+    if (v !== 0) return v;
   }
   return 0;
 }
@@ -219,7 +219,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   for (const raw of abos) {
     if (!isRecord(raw)) continue;
     const montantUnitaire = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
-    if (montantUnitaire <= 0) continue;
+    if (montantUnitaire === 0) continue;
     const montant = round2(montantUnitaire * pickQuantite(raw));
     const libelle = getStr(raw, 'libelle') || getStr(raw, 'libelle_contrat') || 'Abonnement';
     const operateur = getStr(raw, 'operateur');
@@ -245,7 +245,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   for (const raw of lignes) {
     if (!isRecord(raw)) continue;
     const montant = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
-    if (montant <= 0) continue;
+    if (montant === 0) continue;
     const type = (getStr(raw, 'type') ?? '').toLowerCase();
     const libelle =
       getStr(raw, 'libelle') ||
@@ -291,13 +291,13 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   const solutionSource = toNumber(totaux.total_solution_actuelle_source);
   let reconcileSource = false;
 
-  if (abosSource > abonnementsTotal + 0.005) {
+  if (abosSource !== 0 && Math.abs(abosSource - abonnementsTotal) > 0.005) {
     const residual = round2(abosSource - abonnementsTotal);
     details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
     abonnementsTotal = round2(abosSource);
     reconcileSource = true;
   }
-  if (locsSource > locationsTotal + 0.005) {
+  if (locsSource !== 0 && Math.abs(locsSource - locationsTotal) > 0.005) {
     const residual = round2(locsSource - locationsTotal);
     details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'location', montant: residual });
     locationsTotal = round2(locsSource);
@@ -353,7 +353,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   // par les écarts abonnements/locations ci-dessus). Le prompt d'extraction
   // aligne `total_solution_actuelle_source` sur le même choix d'inclusion, donc
   // aucun double comptage ici.
-  if (solutionSource > totalMensuel + 0.005) {
+  if (solutionSource !== 0 && Math.abs(solutionSource - totalMensuel) > 0.005) {
     const residual = round2(solutionSource - totalMensuel);
     details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
     abonnementsTotal = round2(abonnementsTotal + residual);
@@ -361,6 +361,15 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     reconcileSource = true;
   } else {
     totalMensuel = round2(totalMensuel);
+  }
+
+  const canonicalTotal = toNumber(sa.total_ht_mensuel_client);
+  if (canonicalTotal > 0 && Math.abs(canonicalTotal - totalMensuel) > 0.005) {
+    const residual = round2(canonicalTotal - totalMensuel);
+    details.push({ libelle: SA_RESIDUAL_LABEL, categorie: 'abonnement', montant: residual });
+    abonnementsTotal = round2(abonnementsTotal + residual);
+    totalMensuel = round2(canonicalTotal);
+    reconcileSource = true;
   }
 
   return {

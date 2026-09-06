@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { extractDataFromDocuments, validateClaudeApiKey } from '@/lib/ai/claude';
+import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis, validateClaudeApiKey } from '@/lib/ai/claude';
+import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
+import { buildLegacySaData } from '@/lib/sa/structure-sa';
 import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
@@ -58,20 +60,25 @@ function subtractMonths(date: Date, months: number): Date {
 
 function normalizeMoney(value: unknown): number | null {
   const n = toNumber(value);
-  return n > 0 ? Math.round(n * 100) / 100 : null;
+  return n !== 0 ? Math.round(n * 100) / 100 : null;
 }
 
 function sumArrayValues(items: unknown, keys: string[]): number | null {
   if (!Array.isArray(items)) return null;
+  let found = false;
   const total = items.reduce((acc, item) => {
     if (!isRecord(item)) return acc;
     for (const key of keys) {
       const n = normalizeMoney(item[key]);
-      if (n !== null) return acc + n;
+      if (n !== null) {
+        found = true;
+        const quantity = Math.max(1, toNumber(item.quantite) || 1);
+        return acc + n * quantity;
+      }
     }
     return acc;
   }, 0);
-  return total > 0 ? Math.round(total * 100) / 100 : null;
+  return found ? Math.round(total * 100) / 100 : null;
 }
 
 function normalizeAmountText(value: string): number | null {
@@ -475,6 +482,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
     const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
 
+    // Niveau d'effort de raisonnement, réglable par template (file_config.claude_effort).
+    // N'a d'effet que sur Sonnet 5 ; sinon ignoré côté lib/ai/claude.
+    const effortToUse =
+      isRecord(template.file_config) && typeof template.file_config.claude_effort === 'string'
+        ? template.file_config.claude_effort
+        : undefined;
+
     // Le template décide si les charges variables (consommations hors forfait,
     // pénalités, frais ponctuels) comptent dans le total mensuel de la SA.
     // Défaut : incluses.
@@ -552,6 +566,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           template_id: template_id,
           nom_client: nom_client || null,
           source_documents: documents_urls,
+          filled_data: null,
           statut: 'processing',
           current_step: 3,
         })
@@ -611,12 +626,63 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     // Extraire les données avec Claude
     console.log('🤖 Lancement extraction Claude...');
-    const extractedData = await extractDataFromDocuments({
-      documents_urls,
-      champs_actifs: template.champs_actifs || [],
-      prompt_template: promptToUse,
-      claude_model: modelToUse,
-    });
+    const activeFields = Array.isArray(template.champs_actifs)
+      ? template.champs_actifs.filter((field: unknown): field is string => typeof field === 'string')
+      : [];
+    const hasSituationActuelle = activeFields.some(
+      (field: string) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.')
+    );
+    const hasNonTelecomFields = activeFields.some(
+      (field: string) => !(
+        field === 'fournisseur' ||
+        field.startsWith('fournisseur.') ||
+        field === 'client' ||
+        field.startsWith('client.') ||
+        field === 'situation_actuelle' ||
+        field.startsWith('situation_actuelle.')
+      )
+    );
+    const useSaPipeline =
+      (organization.secteur === 'telephonie' && hasSituationActuelle) ||
+      (organization.secteur === 'mixte' && hasSituationActuelle && !hasNonTelecomFields);
+
+    let extractedData: Record<string, unknown>;
+    if (useSaPipeline) {
+      const report = await analyzeInvoicesForSa({
+        documents_urls,
+        active_fields: activeFields,
+        claude_model: modelToUse,
+        claude_effort: effortToUse,
+      });
+      const coveredFields = new Set(report.field_coverage.map((item) => item.field));
+      for (const field of activeFields) {
+        if (!coveredFields.has(field)) {
+          report.field_coverage.push({
+            field,
+            status: 'ambiguous',
+            value_json: null,
+            evidence: [],
+            reason: 'Ce champ actif a été omis par l’agent analyste et doit être vérifié.',
+          });
+        }
+      }
+      const canonical = calculateCanonicalSaAnalysis(report, activeFields, inclureChargesVariables);
+      const structured = await structureSaAnalysis({
+        report,
+        canonical,
+        active_fields: activeFields,
+        claude_model: modelToUse,
+      });
+      extractedData = buildLegacySaData(structured, report, canonical, inclureChargesVariables);
+    } else {
+      extractedData = await extractDataFromDocuments({
+        documents_urls,
+        champs_actifs: activeFields,
+        prompt_template: promptToUse,
+        claude_model: modelToUse,
+        claude_effort: effortToUse,
+      });
+    }
 
     // Post-traitement bureautique : garantir des arrays d'au moins N éléments
     const ensureBureautiqueArraysCount = (data: unknown, count: number): Record<string, unknown> => {
@@ -658,6 +724,10 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       organization.secteur === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)
         : enrichedExtractedData;
+    const extractionControl = isRecord(extractedDataFinal._extraction_control)
+      ? extractedDataFinal._extraction_control
+      : null;
+    const requiresReview = extractionControl?.status === 'review_required';
     
     console.log('✅ Extraction réussie');
 
@@ -731,8 +801,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       .from('propositions')
       .update({
         extracted_data: extractedDataFinal,
-        statut: 'ready',
-        current_step: 4,
+        statut: requiresReview ? 'extracted' : 'ready',
+        current_step: requiresReview ? 3 : 4,
       })
       .eq('id', proposition.id);
 
@@ -781,6 +851,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       success: true,
       proposition_id: proposition.id,
       donnees_extraites: extractedDataFinal,
+      validation_status: requiresReview ? 'review_required' : 'valid',
+      quality_issues: extractionControl && Array.isArray(extractionControl.issues) ? extractionControl.issues : [],
       credits_restants: updatedOrg?.credits || 0,
       montant_debite: tarif,
     });

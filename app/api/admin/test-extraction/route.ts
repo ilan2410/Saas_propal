@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { extractDataFromDocuments } from '@/lib/ai/claude';
+import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis } from '@/lib/ai/claude';
+import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
+import { buildLegacySaData } from '@/lib/sa/structure-sa';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +17,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { documents_urls, champs_actifs, claude_model, prompt_template, secteur } = body;
+    const { documents_urls, champs_actifs, claude_model, claude_effort, prompt_template, secteur } = body;
+    const effort = typeof claude_effort === 'string' ? claude_effort : undefined;
 
     // Validation
     if (!documents_urls || documents_urls.length === 0) {
@@ -40,12 +43,39 @@ export async function POST(request: NextRequest) {
     });
 
     // Extraire les données avec Claude
-    const donneesExtraites = await extractDataFromDocuments({
-      documents_urls,
-      champs_actifs,
-      prompt_template: prompt_template || '',
-      claude_model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6',
-    });
+    const activeFields = (champs_actifs as unknown[]).filter((field): field is string => typeof field === 'string');
+    const model = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+    const hasSituationActuelle = activeFields.some((field) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.'));
+    const hasNonTelecomFields = activeFields.some((field) => !(
+      field === 'fournisseur' || field.startsWith('fournisseur.') ||
+      field === 'client' || field.startsWith('client.') ||
+      field === 'situation_actuelle' || field.startsWith('situation_actuelle.')
+    ));
+    const useSaPipeline =
+      (secteur === 'telephonie' && hasSituationActuelle) ||
+      (secteur === 'mixte' && hasSituationActuelle && !hasNonTelecomFields);
+
+    let donneesExtraites: Record<string, unknown>;
+    if (useSaPipeline) {
+      const report = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort });
+      const coveredFields = new Set(report.field_coverage.map((item) => item.field));
+      for (const field of activeFields) {
+        if (!coveredFields.has(field)) {
+          report.field_coverage.push({ field, status: 'ambiguous', value_json: null, evidence: [], reason: 'Champ omis par l’agent analyste.' });
+        }
+      }
+      const canonical = calculateCanonicalSaAnalysis(report, activeFields, true);
+      const structured = await structureSaAnalysis({ report, canonical, active_fields: activeFields, claude_model: model });
+      donneesExtraites = buildLegacySaData(structured, report, canonical, true);
+    } else {
+      donneesExtraites = await extractDataFromDocuments({
+        documents_urls,
+        champs_actifs: activeFields,
+        prompt_template: prompt_template || '',
+        claude_model: model,
+        claude_effort: effort,
+      });
+    }
 
     console.log('Extraction réussie:', {
       champsExtraits: Object.keys(donneesExtraites).length,
