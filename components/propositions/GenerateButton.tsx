@@ -45,7 +45,7 @@ export function GenerateButton({ propositionId, variant = 'primary', className =
   };
 
   const baseStyles = {
-    primary: 'px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md hover:shadow-lg',
+    primary: 'px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-medium',
     secondary: 'px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium',
     small: 'px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors',
   };
@@ -59,12 +59,12 @@ export function GenerateButton({ propositionId, variant = 'primary', className =
       >
         {isGenerating ? (
           <>
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" />
             Génération...
           </>
         ) : (
           <>
-            <FileSpreadsheet className="w-5 h-5" />
+            <FileSpreadsheet className="w-4 h-4" />
             {variant === 'small' ? 'Générer' : 'Générer la proposition'}
           </>
         )}

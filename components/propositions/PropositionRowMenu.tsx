@@ -6,9 +6,19 @@ import { Eye, MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 /**
- * Menu overflow « ⋯ » d'une ligne de proposition : ouvrir la fiche, supprimer.
+ * Menu overflow « ⋯ » d'une proposition : ouvrir la fiche, supprimer.
+ * - `showOpenDetail` : masquer « Voir la fiche » (ex. sur la fiche elle-même).
+ * - `afterDeleteHref` : rediriger vers cette URL après suppression ; sinon `router.refresh()`.
  */
-export function PropositionRowMenu({ propositionId }: { propositionId: string }) {
+export function PropositionRowMenu({
+  propositionId,
+  showOpenDetail = true,
+  afterDeleteHref,
+}: {
+  propositionId: string;
+  showOpenDetail?: boolean;
+  afterDeleteHref?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -27,7 +37,11 @@ export function PropositionRowMenu({ propositionId }: { propositionId: string })
       if (!res.ok) {
         throw new Error(data.details || data.error || 'Erreur lors de la suppression');
       }
-      router.refresh();
+      if (afterDeleteHref) {
+        router.push(afterDeleteHref);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -57,17 +71,19 @@ export function PropositionRowMenu({ propositionId }: { propositionId: string })
         className="w-44 border-slate-200 bg-white p-1 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            router.push(`/propositions/${propositionId}`);
-          }}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
-        >
-          <Eye className="h-4 w-4 text-slate-500" />
-          Voir la fiche
-        </button>
+        {showOpenDetail && (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              router.push(`/propositions/${propositionId}`);
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+          >
+            <Eye className="h-4 w-4 text-slate-500" />
+            Voir la fiche
+          </button>
+        )}
         <button
           type="button"
           onClick={handleDelete}
