@@ -49,3 +49,35 @@ export async function validateUploadedFile(
 export function randomStorageFileName(extension: string): string {
   return `${randomUUID()}.${extension}`;
 }
+
+/**
+ * Nom de stockage = `<uuid>-<nom d'origine assaini>.<extension détectée>`.
+ *
+ * Le préfixe UUID garantit l'unicité (aucune collision possible) et empêche
+ * de deviner l'URL ; le suffixe lisible fait que l'UI et le téléchargement
+ * navigateur retrouvent le nom d'origine sans stockage supplémentaire.
+ * Le `originalName` fourni par le client n'est utilisé QUE pour ce suffixe,
+ * après assainissement strict (ASCII, pas de séparateur de chemin).
+ */
+export function safeStorageFileName(originalName: string, extension: string): string {
+  const base = String(originalName ?? '')
+    // Garder le basename : retirer tout ce qui précède un séparateur de chemin.
+    .split(/[/\\]/)
+    .pop()!
+    // Retirer une extension éventuelle (on ajoute l'extension détectée ensuite).
+    .replace(/\.[^.]+$/, '');
+
+  // NFD sépare les lettres accentuées de leurs marques combinantes
+  // (U+0300–U+036F) ; on retire ces marques puis tout ce qui n'est pas ASCII
+  // alphanumérique. « Août » -> « aout ».
+  const slug = base
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-') // tout le reste -> tiret
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, ''); // re-nettoie si la troncature laisse un tiret final
+
+  return `${randomUUID()}-${slug || 'fichier'}.${extension}`;
+}

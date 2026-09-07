@@ -24,6 +24,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
+import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 import { AccordionItem, SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
 import { ActionMenu } from '@/components/propositions/ActionMenu';
@@ -658,16 +659,9 @@ function renderNestedValue(v: unknown): string {
     .join(' | ');
 }
 
-// Extrait le nom du document
+// Extrait le nom du document depuis l'URL de stockage (retire le préfixe UUID).
 function extractDocumentName(url: string): string {
-  try {
-    const filename = url.split('/').pop() || 'Document';
-    const decodedFilename = decodeURIComponent(filename);
-    const cleanName = decodedFilename.replace(/^\d+-/, '');
-    return cleanName;
-  } catch {
-    return 'Document';
-  }
+  return friendlyFileNameFromUrl(url);
 }
 
 // Extrait l'extension du fichier

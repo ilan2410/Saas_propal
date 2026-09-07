@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // Types réellement supportés en aval : envoyés tels quels à Claude
@@ -48,11 +48,14 @@ export async function POST(request: NextRequest) {
     const urls: string[] = [];
 
     // Upload chaque fichier vers Supabase Storage
-    for (const validation of validations) {
+    for (let i = 0; i < validations.length; i++) {
+      const validation = validations[i];
       if (!validation.ok) continue; // garde de type (déjà vérifié ci-dessus)
 
-      // Nom de stockage généré côté serveur : jamais le nom fourni par le client.
-      const fileName = `${ctx.organizationId}/${randomStorageFileName(validation.extension)}`;
+      // Nom de stockage généré côté serveur : préfixe UUID (unicité + non devinable)
+      // suivi du nom d'origine assaini, pour que l'affichage et le téléchargement
+      // retrouvent un nom lisible.
+      const fileName = `${ctx.organizationId}/${safeStorageFileName(files[i]?.name ?? '', validation.extension)}`;
 
       const { error } = await supabase.storage
         .from('documents')
