@@ -1246,6 +1246,7 @@ export function SpQuestionnaireUI({
         products: catalogue,
         reponses: effectiveReponses,
         donneesExtraites,
+        spPreferencesProduits,
       });
       if (eligibles.length === 0) return false;
     }
@@ -1268,7 +1269,7 @@ export function SpQuestionnaireUI({
     if (shown.has(eq.question.id) || shown.has(eq.instanceId)) return true;
 
     return visibleByConditions;
-  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules]);
+  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules, spPreferencesProduits]);
 
   const isQuestionVisible = (eq: ExpandedQuestion): boolean => isQuestionVisibleWith(eq, reponses);
 
@@ -1363,6 +1364,7 @@ export function SpQuestionnaireUI({
         products: catalogue,
         reponses,
         donneesExtraites,
+        spPreferencesProduits,
       });
       if (eligibles.length === 0) {
         autoSkipQuestion(eq, false);
@@ -1685,6 +1687,7 @@ export function SpQuestionnaireUI({
       products: catalogue,
       reponses,
       donneesExtraites,
+      spPreferencesProduits,
     })
     : [];
   const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
