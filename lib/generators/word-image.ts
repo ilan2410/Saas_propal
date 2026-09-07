@@ -46,6 +46,12 @@ export const PLACEHOLDER_PNG = Buffer.from(
 // Détecte les propriétés de données qui contiennent une URL d'image.
 const IMAGE_FIELD_RE = /image_url$/i;
 
+// Taille (px) imposée à chaque image rendue dans le Word — notamment les photos
+// produit du tableau matériel ({{#sp_materiel_detail}} / {{%sp_matd_image_url}}).
+// Réduit pour éviter que les photos débordent de la cellule du tableau.
+// Ratio 3:2 conservé ; ajuster ces deux valeurs pour agrandir/réduire.
+const IMAGE_SIZE_PX: [number, number] = [110, 73];
+
 function looksLikeImageUrl(value: unknown): value is string {
   return typeof value === 'string' && /^https?:\/\//i.test(value);
 }
@@ -149,7 +155,7 @@ export async function renderWordWithImages(
     centered: false,
     fileType: 'docx',
     getImage,
-    getSize: () => [150, 100] as [number, number],
+    getSize: () => IMAGE_SIZE_PX,
   });
   const doc2 = new Docxtemplater(zip2, {
     paragraphLoop: true,
