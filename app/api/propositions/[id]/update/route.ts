@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { isStatutCommercial } from '@/lib/propositions/status';
 
 export async function PATCH(
   request: NextRequest,
@@ -53,6 +54,15 @@ export async function PATCH(
     }
     if (body.statut !== undefined) {
       updateData.statut = body.statut;
+    }
+    if (body.statut_commercial !== undefined) {
+      if (!isStatutCommercial(body.statut_commercial)) {
+        return NextResponse.json(
+          { error: 'Statut commercial invalide' },
+          { status: 400 },
+        );
+      }
+      updateData.statut_commercial = body.statut_commercial;
     }
     if (body.suggestions_sp_completes !== undefined) {
       updateData.suggestions_sp_completes = body.suggestions_sp_completes;

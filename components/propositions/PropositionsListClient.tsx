@@ -1,91 +1,64 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Download,
-  Eye,
-  FileText,
-  Clock,
-  CheckCircle2,
   Calendar,
-  Sparkles,
-  FileSearch,
-  Zap,
-  AlertTriangle,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  Clock,
   Search,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { GenerateButton } from '@/components/propositions/GenerateButton';
-import { DeletePropositionButton } from '@/components/propositions/DeletePropositionButton';
+import { cn } from '@/lib/utils';
+import {
+  getStatutTechnique,
+  STATUT_COMMERCIAL_ORDRE,
+  STATUT_TECHNIQUE_ORDRE,
+  type StatutCommercial,
+} from '@/lib/propositions/status';
+import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
+import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
+import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
 
 export type PropositionListItem = {
   id: string;
   statut: string;
+  statutCommercial: StatutCommercial;
   templateNom: string;
   clientName: string;
   fieldsCount: number;
-  fileUrl: string | null;
   createdAt: string;
-  hasSuggestions: boolean;
 };
 
-// Configuration des statuts
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; color: string; icon: LucideIcon; gradient: string; bgColor: string }
-> = {
-  exported: {
-    label: 'Exportée',
-    color: 'text-emerald-700',
-    icon: CheckCircle2,
-    gradient: 'from-emerald-500 to-emerald-600',
-    bgColor: 'bg-emerald-50 border-emerald-200',
-  },
-  ready: {
-    label: 'Prête',
-    color: 'text-purple-700',
-    icon: Zap,
-    gradient: 'from-purple-500 to-purple-600',
-    bgColor: 'bg-purple-50 border-purple-200',
-  },
-  extracted: {
-    label: 'Extraite',
-    color: 'text-blue-700',
-    icon: FileSearch,
-    gradient: 'from-blue-500 to-blue-600',
-    bgColor: 'bg-blue-50 border-blue-200',
-  },
-  processing: {
-    label: 'En cours',
-    color: 'text-amber-700',
-    icon: Clock,
-    gradient: 'from-amber-500 to-amber-600',
-    bgColor: 'bg-amber-50 border-amber-200',
-  },
-  draft: {
-    label: 'Brouillon',
-    color: 'text-gray-700',
-    icon: FileText,
-    gradient: 'from-gray-500 to-gray-600',
-    bgColor: 'bg-gray-50 border-gray-200',
-  },
-  error: {
-    label: 'Erreur',
-    color: 'text-red-700',
-    icon: AlertTriangle,
-    gradient: 'from-red-500 to-red-600',
-    bgColor: 'bg-red-50 border-red-200',
-  },
+export type PropositionCounts = {
+  toutes: number;
+  brouillons: number;
+  en_cours: number;
+  en_attente_client: number;
+  signee: number;
+  perdue: number;
 };
 
-function getStatusConfig(statut: string) {
-  return STATUS_CONFIG[statut] || STATUS_CONFIG.processing;
-}
+type FilterKey = keyof PropositionCounts;
+type SortKey = 'client' | 'statut' | 'date';
+type SortDir = 'asc' | 'desc';
 
-// Normalise une chaîne pour une recherche insensible à la casse et aux accents
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'toutes', label: 'Toutes' },
+  { key: 'brouillons', label: 'Brouillons' },
+  { key: 'en_cours', label: 'En cours' },
+  { key: 'en_attente_client', label: 'En attente client' },
+  { key: 'signee', label: 'Signées' },
+  { key: 'perdue', label: 'Perdues' },
+];
+
+const RESUMABLE = ['draft', 'ready', 'extracted'];
+
+// Normalise pour une recherche insensible à la casse et aux accents.
 function normalize(value: string): string {
   return value
     .toLowerCase()
@@ -94,192 +67,298 @@ function normalize(value: string): string {
     .trim();
 }
 
-export function PropositionsListClient({ propositions }: { propositions: PropositionListItem[] }) {
-  const [query, setQuery] = useState('');
+function matchesFilter(prop: PropositionListItem, filter: FilterKey): boolean {
+  if (filter === 'toutes') return true;
+  if (filter === 'brouillons') return prop.statut !== 'exported';
+  return prop.statut === 'exported' && prop.statutCommercial === filter;
+}
 
-  const filtered = useMemo(() => {
+// Rang pour le tri « Statut » : non-exportées d'abord (ordre technique),
+// puis exportées par ordre de statut commercial.
+function statutRank(prop: PropositionListItem): number {
+  if (prop.statut !== 'exported') {
+    return STATUT_TECHNIQUE_ORDRE[prop.statut] ?? 2;
+  }
+  return 100 + (STATUT_COMMERCIAL_ORDRE[prop.statutCommercial] ?? 0);
+}
+
+export function PropositionsListClient({
+  propositions,
+  counts,
+}: {
+  propositions: PropositionListItem[];
+  counts: PropositionCounts;
+}) {
+  const router = useRouter();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('toutes');
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
+    key: 'date',
+    dir: 'desc',
+  });
+
+  const visible = useMemo(() => {
     const q = normalize(query);
-    if (!q) return propositions;
-    // Recherche intelligente : chaque mot doit correspondre à un des champs
-    const terms = q.split(/\s+/).filter(Boolean);
-    return propositions.filter((prop) => {
+    const terms = q ? q.split(/\s+/).filter(Boolean) : [];
+
+    const filtered = propositions.filter((prop) => {
+      if (!matchesFilter(prop, filter)) return false;
+      if (!terms.length) return true;
       const haystack = normalize(
         [
           prop.clientName,
           prop.templateNom,
-          getStatusConfig(prop.statut).label,
+          getStatutTechnique(prop.statut).label,
           formatDate(prop.createdAt),
-        ].join(' ')
+        ].join(' '),
       );
       return terms.every((term) => haystack.includes(term));
     });
-  }, [propositions, query]);
+
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (sort.key === 'client') {
+        cmp = normalize(a.clientName).localeCompare(normalize(b.clientName));
+      } else if (sort.key === 'statut') {
+        cmp = statutRank(a) - statutRank(b);
+      } else {
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (cmp === 0) {
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return cmp * dir;
+    });
+  }, [propositions, query, filter, sort]);
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: key === 'date' ? 'desc' : 'asc' },
+    );
+  };
+
+  const goToDetail = (id: string) => router.push(`/propositions/${id}`);
 
   return (
-    <div className="space-y-6">
-      {/* Barre de recherche */}
-      <div className="relative max-w-xl">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-          <Search className="w-5 h-5 text-gray-400" />
+    <div className="space-y-4">
+      {/* Filtres + recherche */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                filter === key
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+              )}
+            >
+              {label}
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                  filter === key
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-100 text-slate-500',
+                )}
+              >
+                {counts[key]}
+              </span>
+            </button>
+          ))}
         </div>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Rechercher par client, template, statut..."
-          className="w-full pl-12 pr-12 py-3 bg-white border border-gray-200 rounded-xl shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all"
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => setQuery('')}
-            className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="Effacer la recherche"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+
+        <div className="relative w-full lg:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher..."
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="Effacer la recherche"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {query && (
-        <p className="text-sm text-gray-500 -mt-2">
-          {filtered.length} résultat{filtered.length > 1 ? 's' : ''} pour «&nbsp;{query}&nbsp;»
-        </p>
-      )}
-
-      {/* Liste des propositions */}
-      {filtered.length > 0 ? (
-        <div className="space-y-4">
-          {filtered.map((prop) => {
-            const status = getStatusConfig(prop.statut);
-            const StatusIcon = status.icon;
-            const clientName = prop.clientName || 'Sans nom';
-
-            return (
-              <div
-                key={prop.id}
-                className="group bg-white rounded-xl border border-gray-200 p-6 hover:shadow-xl hover:border-gray-300 transition-all duration-300"
-              >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  {/* Client Info */}
-                  <div className="flex items-center gap-4 flex-1 min-w-0 w-full">
-                    <Link
-                      href={`/propositions/${prop.id}`}
-                      className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/30 flex-shrink-0 group-hover:scale-110 transition-transform"
-                    >
-                      {clientName[0]?.toUpperCase() || 'C'}
-                    </Link>
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/propositions/${prop.id}`}
-                        className="block"
-                      >
-                        <h3 className="font-bold text-gray-900 text-lg truncate group-hover:text-blue-600 transition-colors hover:underline">
-                          {clientName}
-                        </h3>
-                      </Link>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-sm text-gray-600">
-                          📄 {prop.templateNom || 'Template N/A'}
-                        </span>
-                        {prop.fieldsCount > 0 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                            {prop.fieldsCount} champs
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Calendar className="w-3 h-3" />
-                          {formatDate(prop.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto flex-wrap">
-                    {/* Status Badge */}
-                    <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${status.bgColor} flex-shrink-0`}>
-                      <div className={`w-8 h-8 bg-gradient-to-br ${status.gradient} rounded-lg flex items-center justify-center shadow-lg`}>
-                        <StatusIcon className="w-4 h-4 text-white" />
-                      </div>
-                      <span className={`font-semibold text-sm ${status.color}`}>
-                        {status.label}
-                      </span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 flex-wrap justify-end flex-1 md:flex-none">
-                      {/* Bouton Reprendre (draft) */}
-                      {['draft', 'ready', 'extracted'].includes(prop.statut) && (
-                        <Link
-                          href={`/propositions/${prop.id}/resume`}
-                          className="px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all flex items-center gap-2"
-                        >
-                          <Clock className="w-4 h-4" />
-                          Reprendre
-                        </Link>
-                      )}
-
-                      {/* Bouton Suggestions IA */}
-                      {prop.hasSuggestions && (
-                        <Link
-                          href={`/propositions/${prop.id}/resume?step=4`}
-                          className="px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-2"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                          SP suggerée
-                        </Link>
-                      )}
-
-                      {/* Bouton Générer */}
-                      {['ready', 'extracted'].includes(prop.statut) && (
-                        <GenerateButton propositionId={prop.id} variant="small" />
-                      )}
-
-                      {/* Bouton Télécharger */}
-                      {prop.statut === 'exported' && prop.fileUrl && (
-                        <a
-                          href={prop.fileUrl}
-                          download
-                          className="px-4 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all flex items-center gap-2"
-                          title="Télécharger la proposition"
-                        >
-                          <Download className="w-4 h-4" />
-                          Télécharger
-                        </a>
-                      )}
-
-                      {/* Bouton Voir */}
-                      <Link
-                        href={`/propositions/${prop.id}`}
-                        className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all flex items-center gap-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Détails
-                      </Link>
-
-                      {/* Bouton Supprimer */}
-                      <DeletePropositionButton propositionId={prop.id} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
+          <p className="text-sm text-slate-500">
+            Aucune proposition ne correspond à ces critères.
+          </p>
         </div>
       ) : (
-        /* Aucun résultat de recherche */
-        <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-16 text-center">
-          <div className="max-w-md mx-auto">
-            <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Search className="w-10 h-10 text-gray-400" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Aucun résultat</h3>
-            <p className="text-gray-600">
-              Aucune proposition ne correspond à votre recherche «&nbsp;{query}&nbsp;».
-            </p>
+        <>
+          {/* Tableau (desktop) */}
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <Th
+                    label="Client"
+                    active={sort.key === 'client'}
+                    dir={sort.dir}
+                    onClick={() => toggleSort('client')}
+                  />
+                  <th className="px-4 py-3">Template</th>
+                  <th className="px-4 py-3 text-right">Champs</th>
+                  <Th
+                    label="Statut"
+                    active={sort.key === 'statut'}
+                    dir={sort.dir}
+                    onClick={() => toggleSort('statut')}
+                  />
+                  <Th
+                    label="Date"
+                    active={sort.key === 'date'}
+                    dir={sort.dir}
+                    onClick={() => toggleSort('date')}
+                  />
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visible.map((prop) => (
+                  <tr
+                    key={prop.id}
+                    onClick={() => goToDetail(prop.id)}
+                    className="cursor-pointer transition-colors hover:bg-slate-50"
+                  >
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {prop.clientName || 'Sans nom'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {prop.templateNom || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-500">
+                      {prop.fieldsCount || '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {prop.statut === 'exported' ? (
+                        <StatutCommercialSelect
+                          propositionId={prop.id}
+                          value={prop.statutCommercial}
+                        />
+                      ) : (
+                        <PropositionStatusBadge statut={prop.statut} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-500">
+                      {formatDate(prop.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {RESUMABLE.includes(prop.statut) && (
+                          <Link
+                            href={`/propositions/${prop.id}/resume`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                          >
+                            <Clock className="h-3.5 w-3.5" />
+                            Reprendre
+                          </Link>
+                        )}
+                        <PropositionRowMenu propositionId={prop.id} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+
+          {/* Cartes (mobile) */}
+          <div className="space-y-3 md:hidden">
+            {visible.map((prop) => (
+              <div
+                key={prop.id}
+                onClick={() => goToDetail(prop.id)}
+                className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">
+                      {prop.clientName || 'Sans nom'}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                      {prop.templateNom || '—'}
+                    </p>
+                  </div>
+                  <PropositionRowMenu propositionId={prop.id} />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  {prop.statut === 'exported' ? (
+                    <StatutCommercialSelect
+                      propositionId={prop.id}
+                      value={prop.statutCommercial}
+                    />
+                  ) : (
+                    <PropositionStatusBadge statut={prop.statut} />
+                  )}
+                  <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-400">
+                    <Calendar className="h-3 w-3" />
+                    {formatDate(prop.createdAt)}
+                  </span>
+                </div>
+                {RESUMABLE.includes(prop.statut) && (
+                  <Link
+                    href={`/propositions/${prop.id}/resume`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700"
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Reprendre
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+function Th({
+  label,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+}) {
+  const Icon = !active ? ChevronsUpDown : dir === 'asc' ? ChevronUp : ChevronDown;
+  return (
+    <th className="px-4 py-3">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-slate-700',
+          active ? 'text-slate-700' : 'text-slate-500',
+        )}
+      >
+        {label}
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    </th>
   );
 }

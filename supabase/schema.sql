@@ -121,8 +121,10 @@ CREATE TABLE IF NOT EXISTS propositions (
   -- Éditions manuelles
   champs_modifies JSONB,
   
-  -- Statut
-  statut VARCHAR(20) DEFAULT 'processing' CHECK (statut IN ('processing', 'ready', 'exported', 'error')),
+  -- Statut technique (chaîne de production)
+  statut VARCHAR(20) DEFAULT 'processing' CHECK (statut IN ('draft', 'processing', 'ready', 'extracted', 'exported', 'error')),
+  -- Statut commercial (défini manuellement, pertinent une fois exportée)
+  statut_commercial VARCHAR(20) DEFAULT 'en_cours' CHECK (statut_commercial IN ('en_cours', 'en_attente_client', 'signee', 'perdue')),
   error_message TEXT,
   
   -- Timestamps
@@ -133,6 +135,7 @@ CREATE TABLE IF NOT EXISTS propositions (
 CREATE INDEX IF NOT EXISTS idx_propositions_org ON propositions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_propositions_template ON propositions(template_id);
 CREATE INDEX IF NOT EXISTS idx_propositions_statut ON propositions(statut);
+CREATE INDEX IF NOT EXISTS idx_propositions_statut_commercial ON propositions(statut_commercial);
 CREATE INDEX IF NOT EXISTS idx_propositions_created ON propositions(created_at DESC);
 
 -- ==========================================

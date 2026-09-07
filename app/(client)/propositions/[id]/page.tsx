@@ -7,10 +7,7 @@ import {
   FileText,
   Calendar,
   User,
-  CheckCircle2,
-  XCircle,
   Clock,
-  Zap,
   Package,
   Edit3,
   FileSearch,
@@ -24,11 +21,11 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
-import { AccordionItem, SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
+import { SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
 import { ActionMenu } from '@/components/propositions/ActionMenu';
-import { CopyButton } from '@/components/propositions/CopyButton';
-import { ExportButton } from '@/components/propositions/ExportButton';
+import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
+import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 import type {
@@ -631,25 +628,6 @@ function formatFieldName(key: string): string {
     .trim();
 }
 
-// Formate une valeur potentiellement imbriquée (objet/tableau) en texte lisible
-function renderNestedValue(v: unknown): string {
-  if (v === null || v === undefined) return '-';
-  if (typeof v !== 'object') return String(v);
-  if (Array.isArray(v)) {
-    return v.map((item) => {
-      if (typeof item !== 'object' || item === null) return String(item);
-      return Object.entries(item as Record<string, unknown>)
-        .filter(([, val]) => val !== null && val !== undefined && val !== '')
-        .map(([k, val]) => `${formatFieldName(k)}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`)
-        .join(' | ');
-    }).join('\n');
-  }
-  return Object.entries(v as Record<string, unknown>)
-    .filter(([, val]) => val !== null && val !== undefined && val !== '')
-    .map(([k, val]) => `${formatFieldName(k)}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`)
-    .join(' | ');
-}
-
 // Extrait le nom du document depuis l'URL de stockage (retire le préfixe UUID).
 function extractDocumentName(url: string): string {
   return friendlyFileNameFromUrl(url);
@@ -664,58 +642,6 @@ function getFileExtension(url: string): string {
   } catch {
     return 'FILE';
   }
-}
-
-// Composant pour afficher le statut
-function StatusBadge({ statut }: { statut: string }) {
-  const configs = {
-    draft: {
-      icon: Clock,
-      label: 'Brouillon',
-      className: 'bg-amber-100 text-amber-700 border-amber-200',
-      iconColor: 'text-amber-600'
-    },
-    exported: {
-      icon: CheckCircle2,
-      label: 'Exportée',
-      className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      iconColor: 'text-emerald-600'
-    },
-    error: {
-      icon: XCircle,
-      label: 'Erreur',
-      className: 'bg-red-100 text-red-700 border-red-200',
-      iconColor: 'text-red-600'
-    },
-    extracted: {
-      icon: FileSearch,
-      label: 'Données extraites',
-      className: 'bg-blue-100 text-blue-700 border-blue-200',
-      iconColor: 'text-blue-600'
-    },
-    ready: {
-      icon: Zap,
-      label: 'Prête à générer',
-      className: 'bg-purple-100 text-purple-700 border-purple-200',
-      iconColor: 'text-purple-600'
-    },
-    processing: {
-      icon: Clock,
-      label: 'En cours',
-      className: 'bg-amber-100 text-amber-700 border-amber-200',
-      iconColor: 'text-amber-600'
-    }
-  };
-
-  const config = configs[statut as keyof typeof configs] || configs.processing;
-  const Icon = config.icon;
-
-  return (
-    <span className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full border ${config.className}`}>
-      <Icon className={`w-4 h-4 ${config.iconColor}`} />
-      {config.label}
-    </span>
-  );
 }
 
 function ObjectifsSection({
@@ -887,7 +813,13 @@ export default async function PropositionDetailPage({
                     {clientName}
                   </h1>
                   <div className="flex items-center gap-3 mt-2">
-                    <StatusBadge statut={proposition.statut} />
+                    <PropositionStatusBadge statut={proposition.statut} />
+                    {proposition.statut === 'exported' && (
+                      <StatutCommercialSelect
+                        propositionId={proposition.id}
+                        value={proposition.statut_commercial}
+                      />
+                    )}
                     <span className="text-sm text-gray-500 flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
                       {formatDate(proposition.created_at, 'long')}
