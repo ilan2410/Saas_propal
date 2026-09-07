@@ -889,11 +889,8 @@ function buildSpCompletes(
 
   // ── Lot 4: Variables simples ────────────────────────────────────────────
 
-  // sp_date_limite_souscription: cherche dans les réponses SP
-  const dateLimiteRep = reponses.find((r) => r.question_id === 'sp_date_limite_souscription');
-  if (dateLimiteRep && dateLimiteRep.valeur) {
-    result.sp_date_limite_souscription = String(dateLimiteRep.valeur);
-  }
+  // sp_date_limite_souscription : désormais variable Word dynamique résolue au
+  // rendu (date de création de la proposition [+ N jours]), cf. lib/generators/dynamic-vars.
 
   // sp_duree_trimestres: même valeur que sp_trimestres mais formatée en chaîne
   if (loyer) {

@@ -6,29 +6,24 @@ import {
   Download,
   FileText,
   Calendar,
-  User,
-  CheckCircle2,
-  XCircle,
   Clock,
-  Zap,
   Package,
   Edit3,
-  FileSearch,
   ChevronDown,
   Sparkles,
   ClipboardList,
   Gift,
   TrendingDown,
   MapPin,
-  AlertCircle,
   Wrench,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { AccordionItem, SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
+import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
+import { SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
-import { ActionMenu } from '@/components/propositions/ActionMenu';
-import { CopyButton } from '@/components/propositions/CopyButton';
-import { ExportButton } from '@/components/propositions/ExportButton';
+import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
+import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
+import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 import type {
@@ -211,23 +206,15 @@ function SpResumePanel({
   return (
     <div className="space-y-5">
 
-      {/* ── Bannière date limite ── */}
-      {sp?.sp_date_limite_souscription && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-50 border border-orange-200 text-sm text-orange-700">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>Offre valable jusqu&apos;au <strong>{sp.sp_date_limite_souscription}</strong></span>
-        </div>
-      )}
-
       {/* ── Hero section ── */}
       {sp && (
-        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
 
             {/* Gauche — montant principal */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Total mensuel proposé</p>
-              <p className="text-5xl font-extrabold text-gray-900 leading-none">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">Total mensuel proposé</p>
+              <p className="text-5xl font-extrabold text-slate-900 leading-none">
                 {totalMensuelFinal > 0
                   ? formatEuroValue(totalMensuelFinal)
                   : sp.sp_total_recurrent || sp.sp_total_propose || '-'}
@@ -235,8 +222,8 @@ function SpResumePanel({
 
               {/* Durée engagement */}
               {sp.sp_duree_mois && (
-                <p className="text-sm text-gray-500 mt-3">
-                  Engagement <strong className="text-gray-700">{sp.sp_duree_mois} mois</strong>
+                <p className="text-sm text-slate-500 mt-3">
+                  Engagement <strong className="text-slate-700">{sp.sp_duree_mois} mois</strong>
                   {sp.sp_mois_offerts ? ` · ${sp.sp_mois_offerts} mois offerts` : ''}
                   {sp.sp_duree_trimestres ? ` (${sp.sp_duree_trimestres} trimestres)` : ''}
                 </p>
@@ -262,59 +249,59 @@ function SpResumePanel({
 
             {/* Droite — synthèse détaillée */}
             <div className="flex flex-col gap-2.5 justify-center">
-              <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                <span className="text-gray-600 font-medium">Abonnements</span>
-                <span className="font-semibold text-gray-900">{formatEuroValue(abosTotal)}</span>
+              <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                <span className="text-slate-600 font-medium">Abonnements</span>
+                <span className="font-semibold text-slate-900">{formatEuroValue(abosTotal)}</span>
               </div>
               {abosFixe > 0 && (
                 <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
-                  <span className="text-gray-500">Fixe</span>
-                  <span className="text-gray-600">{formatEuroValue(abosFixe)}</span>
+                  <span className="text-slate-500">Fixe</span>
+                  <span className="text-slate-600">{formatEuroValue(abosFixe)}</span>
                 </div>
               )}
               {abosMobile > 0 && (
                 <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
-                  <span className="text-gray-500">Mobile</span>
-                  <span className="text-gray-600">{formatEuroValue(abosMobile)}</span>
+                  <span className="text-slate-500">Mobile</span>
+                  <span className="text-slate-600">{formatEuroValue(abosMobile)}</span>
                 </div>
               )}
               {abosInternet > 0 && (
                 <div className="flex items-center justify-between text-xs pl-3 -mt-1.5 pb-0.5">
-                  <span className="text-gray-500">Internet</span>
-                  <span className="text-gray-600">{formatEuroValue(abosInternet)}</span>
+                  <span className="text-slate-500">Internet</span>
+                  <span className="text-slate-600">{formatEuroValue(abosInternet)}</span>
                 </div>
               )}
 
               {materielTotalFinal > 0 && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600">Matériel</span>
-                  <span className="font-semibold text-gray-900">{formatEuroValue(materielTotalFinal)}</span>
+                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-600">Matériel</span>
+                  <span className="font-semibold text-slate-900">{formatEuroValue(materielTotalFinal)}</span>
                 </div>
               )}
 
               {showInstallations && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600 flex items-center gap-1.5">
+                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-600 flex items-center gap-1.5">
                     <Wrench className="w-3.5 h-3.5" />
                     Installation
                   </span>
-                  <span className="font-semibold text-gray-900">{formatEuroValue(installationsTotal)}</span>
+                  <span className="font-semibold text-slate-900">{formatEuroValue(installationsTotal)}</span>
                 </div>
               )}
 
               {showFas && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600 flex items-center gap-1.5">
+                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-600 flex items-center gap-1.5">
                     <Wrench className="w-3.5 h-3.5" />
                     {showInstallations ? 'FAS' : 'FAS / Installation'}
                   </span>
-                  <span className="font-semibold text-gray-900">{formatEuroValue(fasTotalFinal)}</span>
+                  <span className="font-semibold text-slate-900">{formatEuroValue(fasTotalFinal)}</span>
                 </div>
               )}
 
               {showCadeaux && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600 flex items-center gap-1.5">
+                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-600 flex items-center gap-1.5">
                     <Gift className="w-3.5 h-3.5" />
                     Cadeaux / avantages
                   </span>
@@ -325,15 +312,15 @@ function SpResumePanel({
               )}
 
               {showRemiseMoisOffert && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-gray-100">
-                  <span className="text-gray-600">Remise mois offerts</span>
+                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-600">Remise mois offerts</span>
                   <span className="font-semibold text-emerald-700">{formatEuroValue(remiseMoisOffertFinal)}</span>
                 </div>
               )}
 
               {showIndemnites && (
                 <div className="flex items-center justify-between text-sm py-2">
-                  <span className="text-gray-600">Indemnités résiliation</span>
+                  <span className="text-slate-600">Indemnités résiliation</span>
                   <span className="font-semibold text-red-600">{formatEuroValue(indemnitesTotalFinal)}</span>
                 </div>
               )}
@@ -348,23 +335,23 @@ function SpResumePanel({
 
           {/* Mobiles */}
           {mobileRows.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Mobiles ({mobileRows.length})</h3>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 className="font-semibold text-slate-900">Mobiles ({mobileRows.length})</h3>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-slate-100">
                 {mobileRows.map((row, index) => (
                   <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
+                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {!!row.sp_produit_fournisseur && (
                           <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
                         )}
-                        <span className="text-xs text-gray-500">Qté : {String(row.sp_quantite ?? '1')}</span>
+                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
+                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
                   </div>
                 ))}
               </div>
@@ -373,23 +360,23 @@ function SpResumePanel({
 
           {/* Fixes */}
           {fixeRows.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Fixes ({fixeRows.length})</h3>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 className="font-semibold text-slate-900">Fixes ({fixeRows.length})</h3>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-slate-100">
                 {fixeRows.map((row, index) => (
                   <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
+                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {!!row.sp_produit_fournisseur && (
                           <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
                         )}
-                        <span className="text-xs text-gray-500">Qté : {String(row.sp_quantite ?? '1')}</span>
+                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
+                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
                   </div>
                 ))}
               </div>
@@ -398,23 +385,23 @@ function SpResumePanel({
 
           {/* Internet */}
           {internetRows.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Internet ({internetRows.length})</h3>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 className="font-semibold text-slate-900">Internet ({internetRows.length})</h3>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-slate-100">
                 {internetRows.map((row, index) => (
                   <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
+                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {!!row.sp_produit_fournisseur && (
                           <span className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
                         )}
-                        <span className="text-xs text-gray-500">Qté : {String(row.sp_quantite ?? '1')}</span>
+                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
                       </div>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
+                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
                   </div>
                 ))}
               </div>
@@ -423,11 +410,11 @@ function SpResumePanel({
 
           {/* Matériel */}
           {materiel.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Matériel ({materiel.length})</h3>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                <h3 className="font-semibold text-slate-900">Matériel ({materiel.length})</h3>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-slate-100">
                 {materiel.map((row, index) => {
                   const nom = String(row.sp_matd_nom ?? row.sp_materiel_nom ?? '-');
                   const ref = row.sp_matd_ref ? String(row.sp_matd_ref) : null;
@@ -441,27 +428,27 @@ function SpResumePanel({
                     <div key={index} className="px-4 py-3 flex items-start gap-3">
                       {!!img && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={String(img)} alt={nom} className="w-10 h-10 rounded-lg object-contain border border-gray-100 shrink-0" />
+                        <img src={String(img)} alt={nom} className="w-10 h-10 rounded-lg object-contain border border-slate-100 shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{nom}</p>
-                            {ref && <p className="text-xs text-gray-400 mt-0.5">Réf. {ref}</p>}
-                            {desc && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{desc}</p>}
+                            <p className="font-medium text-slate-900 truncate">{nom}</p>
+                            {ref && <p className="text-xs text-slate-400 mt-0.5">Réf. {ref}</p>}
+                            {desc && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{desc}</p>}
                             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                               {!!fournisseur && (
                                 <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium">{String(fournisseur)}</span>
                               )}
                               {freq && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${freq === 'Achat unique' ? 'bg-gray-100 text-gray-600' : 'bg-purple-50 text-purple-700'}`}>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${freq === 'Achat unique' ? 'bg-slate-100 text-slate-600' : 'bg-purple-50 text-purple-700'}`}>
                                   {freq}
                                 </span>
                               )}
-                              <span className="text-xs text-gray-500">Qté : {qty}</span>
+                              <span className="text-xs text-slate-500">Qté : {qty}</span>
                             </div>
                           </div>
-                          <p className="text-sm font-semibold text-gray-900 whitespace-nowrap shrink-0">{prix}</p>
+                          <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{prix}</p>
                         </div>
                       </div>
                     </div>
@@ -473,16 +460,16 @@ function SpResumePanel({
 
           {/* FAS / Installation */}
           {showFas && sp && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-gray-500" />
-                <h3 className="font-semibold text-gray-900">FAS</h3>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-slate-500" />
+                <h3 className="font-semibold text-slate-900">FAS</h3>
               </div>
               <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-gray-600">Frais d&apos;accès au service</span>
+                <span className="text-slate-600">Frais d&apos;accès au service</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">ponctuel</span>
-                  <span className="font-semibold text-gray-900">{fasValue}</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
+                  <span className="font-semibold text-slate-900">{fasValue}</span>
                 </div>
               </div>
             </div>
@@ -490,21 +477,21 @@ function SpResumePanel({
 
           {/* Cadeaux / avantages */}
           {cadeaux.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Gift className="w-4 h-4 text-gray-500" />
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-slate-500" />
                   Cadeaux / avantages ({cadeaux.length})
                 </h3>
                 {sp?.sp_total_cadeaux_ht && (
                   <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{sp.sp_total_cadeaux_ht}</span>
                 )}
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-slate-100">
                 {cadeaux.map((cadeau, index) => (
                   <div key={index} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
-                    <span className="font-medium text-gray-900">{cadeau.sp_cadeau_nom}</span>
-                    <span className="text-gray-600 whitespace-nowrap">{cadeau.sp_cadeau_valeur_ht}</span>
+                    <span className="font-medium text-slate-900">{cadeau.sp_cadeau_nom}</span>
+                    <span className="text-slate-600 whitespace-nowrap">{cadeau.sp_cadeau_valeur_ht}</span>
                   </div>
                 ))}
               </div>
@@ -516,20 +503,20 @@ function SpResumePanel({
 
       {/* ── Indemnités & remises ── */}
       {showIndemnites && sp && (
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Indemnités &amp; remises</h3>
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-900 text-sm">Indemnités &amp; remises</h3>
           </div>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-slate-100">
             {indemnitesValue && (
               <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-gray-600">Indemnités de résiliation</span>
+                <span className="text-slate-600">Indemnités de résiliation</span>
                 <span className="font-semibold text-red-600">{indemnitesValue}</span>
               </div>
             )}
             {hasPositiveValue(sp.sp_remise_mois_offert) && (
               <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-gray-600">Remise mois offerts{sp.sp_mois_offerts ? ` (${sp.sp_mois_offerts} mois)` : ''}</span>
+                <span className="text-slate-600">Remise mois offerts{sp.sp_mois_offerts ? ` (${sp.sp_mois_offerts} mois)` : ''}</span>
                 <span className="font-semibold text-emerald-700">-{sp.sp_remise_mois_offert}</span>
               </div>
             )}
@@ -539,22 +526,22 @@ function SpResumePanel({
 
       {/* ── Fournisseur & adresses ── */}
       {showAdresses && sp && (
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-gray-500" />
-            <h3 className="font-semibold text-gray-900 text-sm">Client &amp; adresses</h3>
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-slate-500" />
+            <h3 className="font-semibold text-slate-900 text-sm">Client &amp; adresses</h3>
           </div>
           <div className="p-4 space-y-4">
             {sp.sp_fournisseur_propose && (
               <div>
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-0.5">Fournisseur proposé</p>
-                <p className="text-sm font-semibold text-gray-900">{sp.sp_fournisseur_propose}</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Fournisseur proposé</p>
+                <p className="text-sm font-semibold text-slate-900">{sp.sp_fournisseur_propose}</p>
               </div>
             )}
             {adresseFactu && (
               <div>
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-0.5">Adresse de facturation</p>
-                <p className="text-sm text-gray-800">
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Adresse de facturation</p>
+                <p className="text-sm text-slate-800">
                   {[
                     adresseFactu.societe,
                     adresseFactu.adresse,
@@ -565,8 +552,8 @@ function SpResumePanel({
             )}
             {adresseLivr && sp.sp_livraison_identique === false && (
               <div>
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-0.5">Adresse de livraison</p>
-                <p className="text-sm text-gray-800">
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Adresse de livraison</p>
+                <p className="text-sm text-slate-800">
                   {[
                     adresseLivr.societe,
                     adresseLivr.adresse,
@@ -581,17 +568,17 @@ function SpResumePanel({
 
       {/* ── Questionnaire SP ── */}
       {questionResponses.length > 0 && (
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900">Réponses au questionnaire SP ({questionResponses.length})</h3>
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-900">Réponses au questionnaire SP ({questionResponses.length})</h3>
           </div>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-slate-100">
             {questionResponses.map((reponse, index) => {
               const question = questionsById.get(reponse.question_id);
               return (
                 <div key={`${reponse.question_id}-${index}`} className="p-4">
-                  <p className="text-sm font-semibold text-gray-900">{question?.libelle || formatFieldName(reponse.question_id)}</p>
-                  <p className="text-sm text-gray-600 mt-1">{formatSpValue(reponse.valeur)}</p>
+                  <p className="text-sm font-semibold text-slate-900">{question?.libelle || formatFieldName(reponse.question_id)}</p>
+                  <p className="text-sm text-slate-600 mt-1">{formatSpValue(reponse.valeur)}</p>
                 </div>
               );
             })}
@@ -600,7 +587,7 @@ function SpResumePanel({
       )}
 
       {!sp && reponses.length === 0 && (
-        <div className="text-center py-10 text-gray-500 text-sm">
+        <div className="text-center py-10 text-slate-500 text-sm">
           Aucune donnée SP sauvegardée pour cette proposition.
         </div>
       )}
@@ -639,35 +626,9 @@ function formatFieldName(key: string): string {
     .trim();
 }
 
-// Formate une valeur potentiellement imbriquée (objet/tableau) en texte lisible
-function renderNestedValue(v: unknown): string {
-  if (v === null || v === undefined) return '-';
-  if (typeof v !== 'object') return String(v);
-  if (Array.isArray(v)) {
-    return v.map((item) => {
-      if (typeof item !== 'object' || item === null) return String(item);
-      return Object.entries(item as Record<string, unknown>)
-        .filter(([, val]) => val !== null && val !== undefined && val !== '')
-        .map(([k, val]) => `${formatFieldName(k)}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`)
-        .join(' | ');
-    }).join('\n');
-  }
-  return Object.entries(v as Record<string, unknown>)
-    .filter(([, val]) => val !== null && val !== undefined && val !== '')
-    .map(([k, val]) => `${formatFieldName(k)}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`)
-    .join(' | ');
-}
-
-// Extrait le nom du document
+// Extrait le nom du document depuis l'URL de stockage (retire le préfixe UUID).
 function extractDocumentName(url: string): string {
-  try {
-    const filename = url.split('/').pop() || 'Document';
-    const decodedFilename = decodeURIComponent(filename);
-    const cleanName = decodedFilename.replace(/^\d+-/, '');
-    return cleanName;
-  } catch {
-    return 'Document';
-  }
+  return friendlyFileNameFromUrl(url);
 }
 
 // Extrait l'extension du fichier
@@ -679,58 +640,6 @@ function getFileExtension(url: string): string {
   } catch {
     return 'FILE';
   }
-}
-
-// Composant pour afficher le statut
-function StatusBadge({ statut }: { statut: string }) {
-  const configs = {
-    draft: {
-      icon: Clock,
-      label: 'Brouillon',
-      className: 'bg-amber-100 text-amber-700 border-amber-200',
-      iconColor: 'text-amber-600'
-    },
-    exported: {
-      icon: CheckCircle2,
-      label: 'Exportée',
-      className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      iconColor: 'text-emerald-600'
-    },
-    error: {
-      icon: XCircle,
-      label: 'Erreur',
-      className: 'bg-red-100 text-red-700 border-red-200',
-      iconColor: 'text-red-600'
-    },
-    extracted: {
-      icon: FileSearch,
-      label: 'Données extraites',
-      className: 'bg-blue-100 text-blue-700 border-blue-200',
-      iconColor: 'text-blue-600'
-    },
-    ready: {
-      icon: Zap,
-      label: 'Prête à générer',
-      className: 'bg-purple-100 text-purple-700 border-purple-200',
-      iconColor: 'text-purple-600'
-    },
-    processing: {
-      icon: Clock,
-      label: 'En cours',
-      className: 'bg-amber-100 text-amber-700 border-amber-200',
-      iconColor: 'text-amber-600'
-    }
-  };
-
-  const config = configs[statut as keyof typeof configs] || configs.processing;
-  const Icon = config.icon;
-
-  return (
-    <span className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full border ${config.className}`}>
-      <Icon className={`w-4 h-4 ${config.iconColor}`} />
-      {config.label}
-    </span>
-  );
 }
 
 function ObjectifsSection({
@@ -876,270 +785,145 @@ export default async function PropositionDetailPage({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
-      {/* Header Hero */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Breadcrumb */}
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <Link
             href="/propositions"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 text-sm font-medium transition-colors group"
+            className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-700"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="h-4 w-4" />
             Retour aux propositions
           </Link>
 
-          {/* Header content */}
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex-1 min-w-0">
-              {/* Client avatar + name */}
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-blue-500/30">
-                  {clientName[0]?.toUpperCase() || 'C'}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg font-semibold text-slate-600">
+                {clientName[0]?.toUpperCase() || 'C'}
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-semibold text-slate-900">{clientName}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <PropositionStatusBadge statut={proposition.statut} />
+                  {proposition.statut === 'exported' && (
+                    <StatutCommercialSelect
+                      propositionId={proposition.id}
+                      value={proposition.statut_commercial}
+                    />
+                  )}
+                  <span className="flex items-center gap-1.5 text-sm text-slate-500">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {formatDate(proposition.created_at, 'long')}
+                  </span>
                 </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    {clientName}
-                  </h1>
-                  <div className="flex items-center gap-3 mt-2">
-                    <StatusBadge statut={proposition.statut} />
-                    <span className="text-sm text-gray-500 flex items-center gap-1.5">
-                      <Calendar className="w-4 h-4" />
-                      {formatDate(proposition.created_at, 'long')}
-                    </span>
-                  </div>
-                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {typeof template?.nom === 'string' ? template.nom : 'Template N/A'}
+                  {' · '}
+                  {documentsUrls.length} document{documentsUrls.length > 1 ? 's' : ''}
+                  {' · '}
+                  {totalFields} champ{totalFields > 1 ? 's' : ''}
+                </p>
               </div>
             </div>
 
-            {/* Action buttons */}
-            <div className="flex items-center gap-3">
-              {/* Bouton Reprendre (brouillon) */}
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
               {['draft', 'ready', 'extracted'].includes(proposition.statut) && (
                 <Link
                   href={`/propositions/${proposition.id}/resume`}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all font-semibold shadow-lg shadow-amber-500/30 hover:scale-105"
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
                 >
-                  <Edit3 className="w-5 h-5" />
+                  <Edit3 className="h-4 w-4" />
                   Reprendre
                 </Link>
               )}
 
-              {/* Bouton Générer */}
-              {['ready', 'extracted'].includes(proposition.statut) && 
-               !proposition.duplicated_template_url && 
-               !proposition.fichier_genere_url && (
-                <GenerateButton propositionId={proposition.id} variant="primary" />
-              )}
-              
-              {/* Bouton Télécharger */}
+              {['ready', 'extracted'].includes(proposition.statut) &&
+                !proposition.duplicated_template_url &&
+                !proposition.fichier_genere_url && (
+                  <GenerateButton propositionId={proposition.id} variant="primary" />
+                )}
+
               {(proposition.duplicated_template_url || proposition.fichier_genere_url) && (
                 <a
                   href={proposition.duplicated_template_url || proposition.fichier_genere_url}
                   download
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-lg shadow-emerald-500/30 hover:scale-105"
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
                 >
-                  <Download className="w-5 h-5" />
+                  <Download className="h-4 w-4" />
                   Télécharger
                 </a>
               )}
 
-              {/* Comparatif SA/SP si données SP disponibles */}
               {proposition.suggestions_sp_completes && (
-                <ExportSaSpButtons propositionId={proposition.id} />
+                <ExportSaSpButtons propositionId={proposition.id} variant="outline" />
               )}
 
-              {/* Menu actions */}
-              <ActionMenu propositionId={proposition.id} />
+              <PropositionRowMenu
+                propositionId={proposition.id}
+                showOpenDetail={false}
+                afterDeleteHref="/propositions"
+              />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Stats cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Client */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl group-hover:scale-110 transition-transform">
-                <User className="w-5 h-5 text-blue-600" />
-              </div>
-              <h3 className="font-semibold text-gray-600 text-sm">Client</h3>
-            </div>
-            <p className="text-xl font-bold text-gray-900 truncate">
-              {clientName}
-            </p>
-          </div>
-
-          {/* Template */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 bg-gradient-to-br from-purple-100 to-purple-50 rounded-xl group-hover:scale-110 transition-transform">
-                <FileText className="w-5 h-5 text-purple-600" />
-              </div>
-              <h3 className="font-semibold text-gray-600 text-sm">Template</h3>
-            </div>
-            <p className="text-xl font-bold text-gray-900 truncate">
-              {typeof template?.nom === 'string' ? template.nom : 'N/A'}
-            </p>
-          </div>
-
-          {/* Documents */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl group-hover:scale-110 transition-transform">
-                <Package className="w-5 h-5 text-orange-600" />
-              </div>
-              <h3 className="font-semibold text-gray-600 text-sm">Documents</h3>
-            </div>
-            <p className="text-xl font-bold text-gray-900">
-              {documentsUrls.length}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">fichier(s) source</p>
-          </div>
-
-          {/* Champs extraits */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-xl group-hover:scale-110 transition-transform">
-                <FileSearch className="w-5 h-5 text-emerald-600" />
-              </div>
-              <h3 className="font-semibold text-gray-600 text-sm">Données</h3>
-            </div>
-            <p className="text-xl font-bold text-gray-900">
-              {totalFields}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">champs extraits</p>
-          </div>
-        </div>
-
-        {/* Timeline / Progress (si statut en cours) */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+        {/* Timeline / Progress (si génération en cours) */}
         {proposition.statut === 'processing' && (
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 text-white">
-            <div className="flex items-center gap-3 mb-4">
-              <Clock className="w-6 h-6 animate-spin" />
-              <h3 className="text-lg font-bold">Génération en cours...</h3>
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 animate-spin text-slate-400" />
+              <h3 className="text-sm font-semibold text-slate-900">Génération en cours…</h3>
             </div>
-            <div className="w-full bg-blue-400/30 rounded-full h-2">
-              <div className="bg-white h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full w-3/5 animate-pulse rounded-full bg-slate-900" />
             </div>
-            <p className="text-sm text-blue-100 mt-3">
+            <p className="mt-2 text-xs text-slate-500">
               Votre proposition est en cours de création. Cela peut prendre quelques instants.
             </p>
           </div>
         )}
 
-        {/* Documents sources */}
-        {documentsUrls.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Package className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">
-                      Documents sources
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {documentsUrls.length} fichier(s) utilisé(s) pour l&apos;extraction
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {documentsUrls.map((url: string, index: number) => {
-                  const fileName = extractDocumentName(url);
-                  const fileExt = getFileExtension(url);
-                  
-                  return (
-                    <a
-                      key={index}
-                      href={url}
-                      download
-                      className="group flex items-center gap-4 p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-300"
-                    >
-                      {/* File icon with extension */}
-                      <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex flex-col items-center justify-center text-white shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
-                        <FileText className="w-6 h-6 mb-0.5" />
-                        <span className="text-[9px] font-bold">{fileExt}</span>
-                      </div>
-                      
-                      {/* File info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                          {fileName}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Document source #{index + 1}
-                        </p>
-                      </div>
-                      
-                      {/* Download icon */}
-                      <Download className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0" />
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* Résumé SA */}
         {!!resume.trim() && (
-          <details className="group bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-100 rounded-lg">
-                      <FileText className="w-5 h-5 text-indigo-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">Résumé SA</h2>
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        Synthèse automatique basée sur les documents sources
-                      </p>
-                    </div>
-                  </div>
-
-                  <ChevronDown className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" />
+          <details className="group rounded-xl border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-4 px-5 py-4 list-none [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center gap-3">
+                <FileText className="h-4 w-4 text-slate-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Résumé SA</h2>
+                  <p className="text-xs text-slate-500">
+                    Synthèse automatique basée sur les documents sources
+                  </p>
                 </div>
               </div>
+              <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
-
-            <div className="p-6">
+            <div className="border-t border-slate-100 p-5">
               <SaResumeRenderer text={resume} donneesExtraites={donneesExtraitesForCalc} />
             </div>
           </details>
         )}
 
+        {/* Suggestions IA */}
         {hasSuggestionsGenerees(suggestionsGenerees) && (
-          <details className="group bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <Sparkles className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">Suggestions IA</h2>
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        Comparatif calculé à partir des données de la proposition
-                      </p>
-                    </div>
-                  </div>
-
-                  <ChevronDown className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" />
+          <details className="group rounded-xl border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-4 px-5 py-4 list-none [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center gap-3">
+                <Sparkles className="h-4 w-4 text-slate-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Suggestions IA</h2>
+                  <p className="text-xs text-slate-500">
+                    Comparatif calculé à partir des données de la proposition
+                  </p>
                 </div>
               </div>
+              <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
-
-            <div className="p-6">
+            <div className="border-t border-slate-100 p-5">
               <SuggestionsPanel
                 propositionId={proposition.id}
                 clientName={clientName}
@@ -1150,29 +934,22 @@ export default async function PropositionDetailPage({
           </details>
         )}
 
+        {/* Résumé SP */}
         {(suggestionsSpCompletes || spReponses.length > 0) && (
-          <details className="group bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <ClipboardList className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">Résumé SP</h2>
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        Synthèse de la situation proposée, du panier SP et des réponses au questionnaire
-                      </p>
-                    </div>
-                  </div>
-
-                  <ChevronDown className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" />
+          <details className="group rounded-xl border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-4 px-5 py-4 list-none [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center gap-3">
+                <ClipboardList className="h-4 w-4 text-slate-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Résumé SP</h2>
+                  <p className="text-xs text-slate-500">
+                    Synthèse de la situation proposée, du panier SP et des réponses au questionnaire
+                  </p>
                 </div>
               </div>
+              <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
-
-            <div className="p-6">
+            <div className="border-t border-slate-100 p-5">
               <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} cart={spCart} saTotalMensuel={saTotalMensuel} />
               <ObjectifsSection
                 objectifsConfig={spObjectifsConfig}
@@ -1184,6 +961,45 @@ export default async function PropositionDetailPage({
           </details>
         )}
 
+        {/* Documents sources */}
+        {documentsUrls.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+              <Package className="h-4 w-4 text-slate-400" />
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Documents sources</h2>
+                <p className="text-xs text-slate-500">
+                  {documentsUrls.length} fichier(s) utilisé(s) pour l&apos;extraction
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2">
+              {documentsUrls.map((url: string, index: number) => {
+                const fileName = extractDocumentName(url);
+                const fileExt = getFileExtension(url);
+
+                return (
+                  <a
+                    key={index}
+                    href={url}
+                    download
+                    className="group/doc flex items-center gap-3 rounded-lg border border-slate-200 p-3 transition-colors hover:bg-slate-50"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                      <FileText className="h-4 w-4" />
+                      <span className="text-[8px] font-bold">{fileExt}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900">{fileName}</p>
+                      <p className="text-xs text-slate-500">Document source #{index + 1}</p>
+                    </div>
+                    <Download className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover/doc:text-slate-700" />
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

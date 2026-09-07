@@ -141,7 +141,7 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_duree_mois', label: 'Durée en mois' },
   { key: 'sp_trimestres', label: 'Nombre de trimestres' },
   { key: 'sp_mois_offerts', label: 'Nombre de mois offerts' },
-  { key: 'sp_date_limite_souscription', label: 'Date limite de souscription' },
+  { key: 'sp_date_limite_souscription', label: 'Date limite de souscription (= date de création ; suffixe -N pour +N jours, ex. {{sp_date_limite_souscription-15}})' },
   { key: 'sp_duree_trimestres', label: 'Durée en trimestres' },
   { key: 'sp_total_forfaits_mensuel_ht', label: 'Total forfaits mensuel HT' },
   { key: 'sp_total_materiel_ht', label: 'Total matériel HT' },

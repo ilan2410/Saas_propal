@@ -139,7 +139,7 @@ export function SpModeClientManager({ templates }: Props) {
     return (
       <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
         <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-sm text-amber-800">Aucun template Word trouvé. Le mode client s'applique aux templates Word SP.</p>
+        <p className="text-sm text-amber-800">Aucun template Word trouvé. Le mode client s&apos;applique aux templates Word SP.</p>
       </div>
     );
   }
@@ -151,7 +151,7 @@ export function SpModeClientManager({ templates }: Props) {
         <EyeOff className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800 space-y-1">
           <p className="font-medium">Mode client — présentation en visio</p>
-          <p className="text-blue-700">Lorsqu'il est activé, ce mode masque les informations tarifaires à l'écran partagé avec le client. Le commercial peut déplacer les widgets financiers sur son second écran (non partagé).</p>
+          <p className="text-blue-700">Lorsqu&apos;il est activé, ce mode masque les informations tarifaires à l&apos;écran partagé avec le client. Le commercial peut déplacer les widgets financiers sur son second écran (non partagé).</p>
         </div>
       </div>
 
@@ -176,7 +176,7 @@ export function SpModeClientManager({ templates }: Props) {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-900">Activer le mode client par défaut</p>
-            <p className="text-xs text-gray-500 mt-0.5">Le mode client s'activera automatiquement à l'ouverture du questionnaire SP pour ce template.</p>
+            <p className="text-xs text-gray-500 mt-0.5">Le mode client s&apos;activera automatiquement à l&apos;ouverture du questionnaire SP pour ce template.</p>
           </div>
           <button
             type="button"
@@ -197,7 +197,7 @@ export function SpModeClientManager({ templates }: Props) {
         {config.actif && (
           <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200">
             <Eye className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <p className="text-xs text-amber-700">Le mode client sera actif dès l'ouverture du questionnaire. Le commercial peut le désactiver depuis l'interface si le toggle est autorisé.</p>
+            <p className="text-xs text-amber-700">Le mode client sera actif dès l&apos;ouverture du questionnaire. Le commercial peut le désactiver depuis l&apos;interface si le toggle est autorisé.</p>
           </div>
         )}
       </div>
@@ -319,7 +319,7 @@ export function SpModeClientManager({ templates }: Props) {
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-800">Garde-fou — marge non saisie</p>
-              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s'affiche sur le widget Marge si elle n'a pas encore été saisie quand l'utilisateur dépasse l'étape configurée.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s&apos;affiche sur le widget Marge si elle n&apos;a pas encore été saisie quand l&apos;utilisateur dépasse l&apos;étape configurée.</p>
             </div>
             <button
               type="button"
@@ -368,7 +368,7 @@ export function SpModeClientManager({ templates }: Props) {
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-800">Garde-fou — indemnité non saisie</p>
-              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s'affiche sur le widget Indemnité si elle n'a pas encore été saisie quand l'utilisateur dépasse l'étape configurée.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Un avertissement s&apos;affiche sur le widget Indemnité si elle n&apos;a pas encore été saisie quand l&apos;utilisateur dépasse l&apos;étape configurée.</p>
             </div>
             <button
               type="button"
@@ -416,7 +416,7 @@ export function SpModeClientManager({ templates }: Props) {
       {/* Groupe 4 : UX */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-1">Groupe 4 — Interface commerciale</h3>
-        <p className="text-xs text-gray-500 mb-4">Options d'affichage et de contrôle pour le commercial pendant le questionnaire.</p>
+        <p className="text-xs text-gray-500 mb-4">Options d&apos;affichage et de contrôle pour le commercial pendant le questionnaire.</p>
         <ToggleRow
           label="Afficher un bandeau 'Mode client actif'"
           description="Affiche un bandeau discret en haut du questionnaire lorsque le mode client est activé."

@@ -3,6 +3,7 @@
 import { useMemo, useState, useRef, DragEvent } from 'react';
 import { Upload, X, FileText, Loader2, CheckCircle2, ArrowRight, ArrowLeft, Cloud, File, AlertCircle, Image } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
+import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -231,16 +232,7 @@ export function Step2UploadDocuments({
 
   const canContinue = files.length > 0 || uploadedUrls.length > 0;
 
-  const getFileNameFromUrl = (url: string) => {
-    try {
-      const withoutQuery = url.split('?')[0] || url;
-      const parts = withoutQuery.split('/');
-      const last = parts[parts.length - 1] || 'Document';
-      return decodeURIComponent(last);
-    } catch {
-      return 'Document';
-    }
-  };
+  const getFileNameFromUrl = (url: string) => friendlyFileNameFromUrl(url);
 
   return (
     <div className="space-y-8">

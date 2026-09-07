@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { randomStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
+import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // Types réellement supportés en aval par les générateurs (lib/generators) :
@@ -46,8 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // Nom de stockage généré côté serveur : jamais le nom fourni par le client.
-    const fileName = `${ctx.organizationId}/${randomStorageFileName(validation.extension)}`;
+    // Nom de stockage généré côté serveur : préfixe UUID (unicité + non devinable)
+    // suivi du nom d'origine assaini, pour que l'affichage et le téléchargement
+    // retrouvent un nom lisible.
+    const fileName = `${ctx.organizationId}/${safeStorageFileName(file.name, validation.extension)}`;
 
     // Upload vers Supabase Storage
     const { error } = await supabase.storage

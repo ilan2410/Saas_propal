@@ -1,5 +1,5 @@
-import type { CatalogueProduit, SpQuestion, SpQuestionReponse, SpRegleRemise } from '@/types';
-import { evaluateQuestionVisibility } from './evaluateConditions';
+import type { CatalogueProduit, SpQuestion, SpQuestionReponse, SpRegleRemise, SpPreferencesProduits } from '@/types';
+import { evaluateQuestionVisibility, evaluateGroupes } from './evaluateConditions';
 
 function selectedProductNamesFromResponses(reponses: SpQuestionReponse[]): Set<string> {
   const names = new Set<string>();
@@ -25,14 +25,50 @@ function ruleTargetsProduct(rule: SpRegleRemise, product: CatalogueProduit): boo
   return true;
 }
 
+function addAutoProductNames(
+  selectedNames: Set<string>,
+  spPreferencesProduits: SpPreferencesProduits | undefined,
+  products: CatalogueProduit[],
+  reponses: SpQuestionReponse[],
+  donneesExtraites: Record<string, unknown>,
+) {
+  if (!spPreferencesProduits) return;
+
+  // Produits fixes toujours ajoutés
+  for (const produitId of spPreferencesProduits.produits_fixes_ids ?? []) {
+    const p = products.find((prod) => prod.id === produitId);
+    if (p && p.actif) selectedNames.add(p.nom.trim().toLowerCase());
+  }
+
+  // Règles conditionnelles d'ajout automatique
+  for (const regle of spPreferencesProduits.regles_auto ?? []) {
+    if (!regle.actif) continue;
+    const condMet = evaluateGroupes(
+      regle.groupes_conditions,
+      regle.logique_declencheur,
+      reponses,
+      donneesExtraites,
+      null,
+      products,
+    );
+    if (!condMet) continue;
+    for (const produitId of regle.produits_ids ?? []) {
+      const p = products.find((prod) => prod.id === produitId);
+      if (p && p.actif) selectedNames.add(p.nom.trim().toLowerCase());
+    }
+  }
+}
+
 export function getEligibleDiscountProducts(params: {
   rules: SpRegleRemise[];
   products: CatalogueProduit[];
   reponses: SpQuestionReponse[];
   donneesExtraites: Record<string, unknown>;
+  spPreferencesProduits?: SpPreferencesProduits;
 }): CatalogueProduit[] {
-  const { rules, products, reponses, donneesExtraites } = params;
+  const { rules, products, reponses, donneesExtraites, spPreferencesProduits } = params;
   const selectedNames = selectedProductNamesFromResponses(reponses);
+  addAutoProductNames(selectedNames, spPreferencesProduits, products, reponses, donneesExtraites);
   const activeRules = rules.filter((rule) => rule.actif);
   if (activeRules.length === 0 || selectedNames.size === 0) return [];
 

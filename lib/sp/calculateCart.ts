@@ -464,41 +464,7 @@ export function calculateCartSummary(
     });
   }
 
-  // 2. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
-  for (const rep of reponses) {
-    if (rep.question_id.startsWith('fas_')) continue;
-    if (rep.question_id.startsWith('quantite_')) continue;
-    if (!rep.question_id.startsWith('prix_')) continue;
-
-    // Match a remise_produits parent question
-    const parentId = rep.question_id.replace(/^prix_/, '');
-    const parentBaseId = parentId.replace(/__iter_\d+$/, '');
-    const parentQ = questionById.get(parentBaseId);
-    if (!parentQ || parentQ.affichage !== 'remise_produits') continue;
-
-    const priceMap = parseJsonRecord(rep.valeur);
-    if (!priceMap) continue;
-
-    for (const [key, value] of Object.entries(priceMap)) {
-      const unitPrix = Number(value);
-      if (!Number.isFinite(unitPrix)) continue;
-      const target = findProduct(catalogue, key);
-      if (!target) continue;
-
-      // Override every existing mensual line for this product
-      for (const line of lines) {
-        if (line.type_frequence !== 'mensuel') continue;
-        if (line.produitId === target.id || line.produitNom === target.nom) {
-          const newTotal = unitPrix * line.quantite;
-          // Mémorise le prix d'origine seulement s'il y a réellement une remise.
-          if (newTotal < line.prixTotal - 0.005) line.prixOriginalTotal = line.prixTotal;
-          line.prixTotal = newTotal;
-        }
-      }
-    }
-  }
-
-  // 2b. Inject auto-products from preferences
+  // 2. Inject auto-products from preferences (so remise_produits overrides can apply)
   if (spPreferencesProduits) {
     const alreadyAutoIds = new Set<string>();
 
@@ -573,6 +539,40 @@ export function calculateCartSummary(
           fasTotal: fasOverride || p.prix_installation || 0,
           instanceId,
         });
+      }
+    }
+  }
+
+  // 2b. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
+  for (const rep of reponses) {
+    if (rep.question_id.startsWith('fas_')) continue;
+    if (rep.question_id.startsWith('quantite_')) continue;
+    if (!rep.question_id.startsWith('prix_')) continue;
+
+    // Match a remise_produits parent question
+    const parentId = rep.question_id.replace(/^prix_/, '');
+    const parentBaseId = parentId.replace(/__iter_\d+$/, '');
+    const parentQ = questionById.get(parentBaseId);
+    if (!parentQ || parentQ.affichage !== 'remise_produits') continue;
+
+    const priceMap = parseJsonRecord(rep.valeur);
+    if (!priceMap) continue;
+
+    for (const [key, value] of Object.entries(priceMap)) {
+      const unitPrix = Number(value);
+      if (!Number.isFinite(unitPrix)) continue;
+      const target = findProduct(catalogue, key);
+      if (!target) continue;
+
+      // Override every existing mensual line for this product
+      for (const line of lines) {
+        if (line.type_frequence !== 'mensuel') continue;
+        if (line.produitId === target.id || line.produitNom === target.nom) {
+          const newTotal = unitPrix * line.quantite;
+          // Mémorise le prix d'origine seulement s'il y a réellement une remise.
+          if (newTotal < line.prixTotal - 0.005) line.prixOriginalTotal = line.prixTotal;
+          line.prixTotal = newTotal;
+        }
       }
     }
   }

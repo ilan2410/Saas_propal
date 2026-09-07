@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { createServiceClient } from '@/lib/supabase/server';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { renderWordWithImages } from './word-image';
+import { resolveDynamicWordVar } from './dynamic-vars';
 import { buildSpWordData } from './sp-word-data';
 import {
   isPlainObject,
@@ -114,6 +115,8 @@ interface GenerateOptions {
   donnees: UnknownRecord;
   organization_id: string;
   proposition_id: string;
+  /** Date de création de la proposition → variables Word dynamiques {{sp_date_limite_souscription[-N]}}. */
+  proposition_created_at?: string | Date | null;
   suggestions_sp_completes?: SuggestionsSpCompletes | null;
   /** Clauses conditionnelles déjà rendues : { sp_clause_<cle>: "texte" } */
   sp_clauses_rendered?: Record<string, string>;
@@ -496,11 +499,16 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
   const propositionBase = buildPropositionBaseData(options);
   const finalData = { ...propositionBase, ...mappedData };
 
+  // Date de référence des variables dynamiques {{sp_date_limite_souscription[-N]}}.
+  const propositionCreatedAt = options.proposition_created_at ?? new Date();
+
   let uint8Array: Uint8Array;
   try {
     // Rend le DOCX avec support des images, y compris à l'intérieur des boucles
     // de tableau (ex: {{#sp_materiel_detail}} ... {{%sp_matd_image_url}} ...).
-    uint8Array = await renderWordWithImages(templateBuffer, finalData);
+    uint8Array = await renderWordWithImages(templateBuffer, finalData, {
+      resolveMissingVar: (tag) => resolveDynamicWordVar(tag, { createdAt: propositionCreatedAt }),
+    });
   } catch (error) {
     const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };
     const details =

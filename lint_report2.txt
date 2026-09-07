@@ -1,0 +1,106 @@
+npm notice run saas-propal@0.1.0 lint
+npm notice run eslint
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\(client)\propositions\[id]\page.tsx
+   27:10  warning  'AccordionItem' is defined but never used      @typescript-eslint/no-unused-vars
+   30:10  warning  'CopyButton' is defined but never used         @typescript-eslint/no-unused-vars
+   31:10  warning  'ExportButton' is defined but never used       @typescript-eslint/no-unused-vars
+  643:10  warning  'renderNestedValue' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\(client)\settings\page.tsx
+  38:38  warning  'transError' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\admin\catalogue\tous\page.tsx
+  3:10  warning  'Plus' is defined but never used  @typescript-eslint/no-unused-vars
+  4:8   warning  'Link' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\api\catalogue\bulk\route.ts
+  84:24  warning  '_ignored' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\api\catalogue\import\route.ts
+  162:16  warning  'err' is defined but never used    @typescript-eslint/no-unused-vars
+  169:12  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\api\propositions\generer-suggestions\route.ts
+  154:10  warning  'getQuantityOverride' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\api\settings\export-data\route.ts
+  5:27  warning  'request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\app\api\templates\preview-word\route.ts
+  110:7  warning  'propositionSource' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\catalogue\CatalogueProduitForm.tsx
+  349:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\catalogue\CatalogueView.tsx
+  101:6   warning  React Hook useMemo has unnecessary dependencies: 'itemsPerPage', 'searchQuery', 'selectedCategory', and 'selectedSupplier'. Either exclude them or remove the dependency array                                                                                                           react-hooks/exhaustive-deps
+  375:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  389:25  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\catalogue\ImportProductModal.tsx
+   48:10  warning  'file' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  171:14  warning  'err' is defined but never used            @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\catalogue\ProductLibraryModal.tsx
+   44:6   warning  React Hook useEffect has a missing dependency: 'fetchLibraryProducts'. Either include it or remove the dependency array                                                                                                                                                                  react-hooks/exhaustive-deps
+  354:23  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\client\SettingsPage.tsx
+    32:3   warning  'Plus' is defined but never used                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+   180:3   warning  Unused eslint-disable directive (no problems were reported from '@next/next/no-img-element')
+   182:5   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+   488:6   warning  React Hook useEffect has a missing dependency: 'templates'. Either include it or remove the dependency array                                                                                                                                                                             react-hooks/exhaustive-deps
+   559:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   592:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   648:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   684:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   742:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   898:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+  1041:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+  1139:14  warning  'error' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+  1291:25  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\propositions\MetricCard.tsx
+  12:66  warning  'trend' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\settings\SpLoyerManager.tsx
+  251:25  warning  '_idx' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\settings\SpProduitPreferencesManager.tsx
+  54:10  warning  'getConfig' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\settings\SpQuestionsManager.tsx
+    4:161  warning  'FileText' is defined but never used                  @typescript-eslint/no-unused-vars
+    4:180  warning  'Layers' is defined but never used                    @typescript-eslint/no-unused-vars
+   88:10   warning  'getParentId' is defined but never used               @typescript-eslint/no-unused-vars
+  172:10   warning  'getQuestionsWithChildren' is defined but never used  @typescript-eslint/no-unused-vars
+  310:10   warning  'getVisibleItemIndices' is defined but never used     @typescript-eslint/no-unused-vars
+  310:55   warning  '_collapsedParents' is defined but never used         @typescript-eslint/no-unused-vars
+  809:59   warning  '_idx' is defined but never used                      @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\settings\SpReferenceManager.tsx
+  46:6  warning  React Hook useEffect has a missing dependency: 'selectedTemplate'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\templates\ExcelMultiSheetMapper.tsx
+  85:10  warning  'activeSheetIndex' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\components\templates\Step2UploadTemplate.tsx
+    4:64  warning  'Play' is defined but never used                             @typescript-eslint/no-unused-vars
+  492:10  warning  'wordPreviewHtml' is assigned a value but never used         @typescript-eslint/no-unused-vars
+  494:10  warning  'wordParseMessages' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  538:9   warning  'exempleTableauFieldIds' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\hooks\useOnboardingTour.ts
+  49:1  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-explicit-any')
+
+C:\Users\ilan\CascadeProjects\Saas_propal\lib\generators\word.ts
+  69:17  warning  '_img' is defined but never used       @typescript-eslint/no-unused-vars
+  69:31  warning  '_tagValue' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\ilan\CascadeProjects\Saas_propal\lib\sp\evaluateConditions.ts
+  6:3  warning  'SpConditionLogique' is defined but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 54 problems (0 errors, 54 warnings)
+  0 errors and 2 warnings potentially fixable with the `--fix` option.
+

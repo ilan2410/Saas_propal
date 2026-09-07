@@ -79,7 +79,7 @@ Ces variables s'utilisent avec la syntaxe simple `{{nom_variable}}`.
 
 | Variable | Description | Syntaxe Docxtemplater |
 |----------|-------------|----------------------|
-| `sp_date_limite_souscription` | Date limite de souscription | `{{sp_date_limite_souscription}}` |
+| `sp_date_limite_souscription` | Date limite de souscription — **variable dynamique** résolue au rendu : `{{sp_date_limite_souscription}}` = date de création de la proposition ; `{{sp_date_limite_souscription-N}}` = date de création + N jours (ex. `-15`, `-20`). Format `jj/mm/aaaa`. | `{{sp_date_limite_souscription-15}}` |
 | `sp_duree_trimestres` | Durée en trimestres (texte) | `{{sp_duree_trimestres}}` |
 
 ---

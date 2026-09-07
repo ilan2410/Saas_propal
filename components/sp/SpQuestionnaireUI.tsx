@@ -1053,6 +1053,12 @@ export function SpQuestionnaireUI({
 
   const [showResumeRefPopup, setShowResumeRefPopup] = useState(false);
   const [showLoyerPopup, setShowLoyerPopup] = useState(false);
+  // Loader « le système réfléchit » affiché ~2 s avant l'ouverture d'un popup :
+  // - questionPopupLoading : popups déclenchés par une question (resume_ref / affichage_loyer)
+  // - promoPopupLoading    : popup de confirmation du code promo (déclenché par le bouton)
+  const [questionPopupLoading, setQuestionPopupLoading] = useState(false);
+  const [promoPopupLoading, setPromoPopupLoading] = useState(false);
+  const promoPopupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mode client
   const [modeClientActif, setModeClientActif] = useState(spConfigModeClient?.actif ?? false);
@@ -1106,6 +1112,8 @@ export function SpQuestionnaireUI({
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
     setPromoPopupData(null);
+    if (promoPopupTimerRef.current) { clearTimeout(promoPopupTimerRef.current); promoPopupTimerRef.current = null; }
+    setPromoPopupLoading(false);
     setPromoError('');
     setHistory([]);
     hasReportedCompletion.current = false;
@@ -1116,8 +1124,18 @@ export function SpQuestionnaireUI({
   useEffect(() => {
     return () => {
       if (showTimerRef.current) clearTimeout(showTimerRef.current);
+      if (promoPopupTimerRef.current) clearTimeout(promoPopupTimerRef.current);
     };
   }, []);
+
+  // Annule un loader de code promo en cours (navigation avant/arrière, reset).
+  const cancelPromoPopupLoading = () => {
+    if (promoPopupTimerRef.current) {
+      clearTimeout(promoPopupTimerRef.current);
+      promoPopupTimerRef.current = null;
+    }
+    setPromoPopupLoading(false);
+  };
 
   // Widget drag — mouse events on window to support moving outside the element
   useEffect(() => {
@@ -1246,6 +1264,7 @@ export function SpQuestionnaireUI({
         products: catalogue,
         reponses: effectiveReponses,
         donneesExtraites,
+        spPreferencesProduits,
       });
       if (eligibles.length === 0) return false;
     }
@@ -1268,7 +1287,7 @@ export function SpQuestionnaireUI({
     if (shown.has(eq.question.id) || shown.has(eq.instanceId)) return true;
 
     return visibleByConditions;
-  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules]);
+  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules, spPreferencesProduits]);
 
   const isQuestionVisible = (eq: ExpandedQuestion): boolean => isQuestionVisibleWith(eq, reponses);
 
@@ -1363,6 +1382,7 @@ export function SpQuestionnaireUI({
         products: catalogue,
         reponses,
         donneesExtraites,
+        spPreferencesProduits,
       });
       if (eligibles.length === 0) {
         autoSkipQuestion(eq, false);
@@ -1523,6 +1543,7 @@ export function SpQuestionnaireUI({
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
     setPromoPopupData(null);
+    cancelPromoPopupLoading();
     setPromoError('');
   };
 
@@ -1548,6 +1569,7 @@ export function SpQuestionnaireUI({
     setPendingCatalogueSelection(null);
     setPendingFreeEntry(null);
     setPromoPopupData(null);
+    cancelPromoPopupLoading();
     setPromoError('');
 
     const nextIdx = findNextVisibleIndex(currentIdx, reponses, hiddenByConsequence, shownByConsequence);
@@ -1685,6 +1707,7 @@ export function SpQuestionnaireUI({
       products: catalogue,
       reponses,
       donneesExtraites,
+      spPreferencesProduits,
     })
     : [];
   const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
@@ -1731,17 +1754,26 @@ export function SpQuestionnaireUI({
     onComplete(reponses);
   }, [isSimulation, isDone, onComplete, reponses]);
 
-  // Résumé+Ref popup: trigger when landing on a resume_ref question
+  // Popups déclenchés par une question (resume_ref / affichage_loyer) : on affiche
+  // d'abord un loader ~2 s « le système réfléchit » avant d'ouvrir le popup.
   useEffect(() => {
-    if (!currentQuestion || currentQuestion.affichage !== 'resume_ref' || isTyping) return;
-    setShowResumeRefPopup(true);
-  }, [currentQuestion, isTyping]);
-
-  // Loyer popup: trigger when landing on an affichage_loyer question
-  useEffect(() => {
-    if (!currentQuestion || currentQuestion.affichage !== 'affichage_loyer' || isTyping) return;
-    setShowLoyerPopup(true);
-  }, [currentQuestion, isTyping]);
+    const affichage = currentQuestion?.affichage;
+    const isPopupQuestion = affichage === 'resume_ref' || affichage === 'affichage_loyer';
+    const alreadyOpen =
+      (affichage === 'resume_ref' && showResumeRefPopup) ||
+      (affichage === 'affichage_loyer' && showLoyerPopup);
+    if (!isPopupQuestion || isTyping || alreadyOpen) {
+      setQuestionPopupLoading(false);
+      return;
+    }
+    setQuestionPopupLoading(true);
+    const timer = window.setTimeout(() => {
+      setQuestionPopupLoading(false);
+      if (affichage === 'resume_ref') setShowResumeRefPopup(true);
+      else setShowLoyerPopup(true);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [currentQuestion, isTyping, showResumeRefPopup, showLoyerPopup]);
 
   // Objectifs popup: trigger when questionnaire completes
   useEffect(() => {
@@ -1856,6 +1888,20 @@ export function SpQuestionnaireUI({
               100% { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
             }
           `}</style>
+        </div>,
+        document.body
+      )}
+
+      {/* Loader « le système réfléchit » avant l'ouverture d'un popup (question ou code promo) */}
+      {(questionPopupLoading || promoPopupLoading) && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative z-10 flex flex-col items-center gap-4 rounded-2xl bg-white px-12 py-14 shadow-2xl">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+            <p className="text-sm font-medium text-gray-600">Analyse de vos réponses…</p>
+          </div>
         </div>,
         document.body
       )}
@@ -3015,6 +3061,7 @@ export function SpQuestionnaireUI({
             const dureeMois = dureeFromReponse || margeDureeMoisOverride;
 
             const applyPromo = (code: string) => {
+              if (promoPopupLoading) return;
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
               if (!found) { setPromoError('Code promo invalide'); return; }
               setPromoError('');
@@ -3038,13 +3085,20 @@ export function SpQuestionnaireUI({
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
               }
-              setPromoPopupData({
-                nom: found.nom,
-                valeur: found.valeur,
-                loyerMensuel: loyer?.loyer_mensuel ?? null,
-                margeVal,
-                extras,
-              });
+              // Loader ~2 s « le système réfléchit » avant le popup de confirmation.
+              setPromoPopupLoading(true);
+              if (promoPopupTimerRef.current) clearTimeout(promoPopupTimerRef.current);
+              promoPopupTimerRef.current = setTimeout(() => {
+                promoPopupTimerRef.current = null;
+                setPromoPopupLoading(false);
+                setPromoPopupData({
+                  nom: found.nom,
+                  valeur: found.valeur,
+                  loyerMensuel: loyer?.loyer_mensuel ?? null,
+                  margeVal,
+                  extras,
+                });
+              }, 2000);
             };
 
             return (
@@ -3061,6 +3115,7 @@ export function SpQuestionnaireUI({
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={promoPopupLoading}
                     onClick={() => applyPromo(inputValue)}
                   >
                     Appliquer votre code promo

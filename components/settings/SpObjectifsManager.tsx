@@ -182,7 +182,7 @@ export function SpObjectifsManager({ templates }: Props) {
 
   if (wTemplates.length === 0) {
     return (
-      <p className="text-sm text-gray-500">Aucun template Word disponible. Créez d'abord un template Word.</p>
+      <p className="text-sm text-gray-500">Aucun template Word disponible. Créez d&apos;abord un template Word.</p>
     );
   }
 

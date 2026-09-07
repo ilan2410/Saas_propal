@@ -893,7 +893,8 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_cadeaux_table?: SpCadeauLigne[];
 
   // ── Lot 4: Variables simples ────────────────────────────────────
-  sp_date_limite_souscription?: string;
+  // sp_date_limite_souscription : variable Word dynamique résolue au rendu
+  // ({{sp_date_limite_souscription}} / {{sp_date_limite_souscription-N}}), non stockée ici.
   sp_duree_trimestres?: string;
   sp_total_forfaits_mensuel_ht?: string;
   sp_total_materiel_ht?: string;

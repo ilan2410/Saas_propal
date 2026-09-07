@@ -64,7 +64,8 @@
       "Bash(sort -t: -k2)",
       "Bash(uniq -c -f0)",
       "Bash(npx vitest *)",
-      "Bash(grep -n \"split\\\\|##\\\\|startsWith\\\\|^\\\\s*[-*]\\\\|mark\\\\|line\\\\.\\\\|isHeading\\\\|isBullet\\\\|trimStart\\\\|replace\\(/\\\\*\\\\*\" components/propositions/SaResumeRenderer.tsx)"
+      "Bash(grep -n \"split\\\\|##\\\\|startsWith\\\\|^\\\\s*[-*]\\\\|mark\\\\|line\\\\.\\\\|isHeading\\\\|isBullet\\\\|trimStart\\\\|replace\\(/\\\\*\\\\*\" components/propositions/SaResumeRenderer.tsx)",
+      "Bash(npx next *)"
     ],
     "additionalDirectories": [
       "\\tmp"

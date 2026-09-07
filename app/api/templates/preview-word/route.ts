@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { renderWordWithImages } from '@/lib/generators/word-image';
+import { resolveDynamicWordVar } from '@/lib/generators/dynamic-vars';
 import { buildSpWordData } from '@/lib/generators/sp-word-data';
 import {
   isPlainObject,
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
     //    Priorité : la plus récente proposition AYANT des données SP
     //    (suggestions_sp_completes non nul). À défaut, la plus récente tout
     //    court (les variables SA seront remplies, les tableaux SP resteront vides).
-    const baseSelect = 'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
+    const baseSelect = 'template_id, created_at, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -226,9 +227,17 @@ export async function POST(request: NextRequest) {
     const finalData = { ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData, ...mappedData };
 
     // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
+    // Date de référence des variables dynamiques {{sp_date_limite_souscription[-N]}} :
+    // created_at de la proposition source, sinon maintenant (aperçu sans proposition datée).
+    const previewCreatedAt =
+      typeof (proposition as Record<string, unknown>).created_at === 'string'
+        ? ((proposition as Record<string, unknown>).created_at as string)
+        : new Date();
     let uint8Array: Uint8Array;
     try {
-      uint8Array = await renderWordWithImages(templateBuffer, finalData);
+      uint8Array = await renderWordWithImages(templateBuffer, finalData, {
+        resolveMissingVar: (tag) => resolveDynamicWordVar(tag, { createdAt: previewCreatedAt }),
+      });
     } catch (error) {
       const e = error as {
         message?: string;

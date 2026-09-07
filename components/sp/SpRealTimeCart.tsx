@@ -716,7 +716,7 @@ export function SpRealTimeCart({
       {!collapsed && (
         <div className="px-3 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
           {!hasAnyLine && (
-            <p className="text-xs text-gray-400 italic">Aucun produit sélectionné pour l'instant.</p>
+            <p className="text-xs text-gray-400 italic">Aucun produit sélectionné pour l&apos;instant.</p>
           )}
 
           {hasAnyLine && (

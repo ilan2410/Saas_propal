@@ -1,19 +1,14 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import {
-  Plus,
-  FileText,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Sparkles,
-} from 'lucide-react';
+import { Plus, FileText, Sparkles } from 'lucide-react';
 import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { isStatutCommercial } from '@/lib/propositions/status';
 import {
   PropositionsListClient,
+  type PropositionCounts,
   type PropositionListItem,
 } from '@/components/propositions/PropositionsListClient';
 
@@ -92,6 +87,9 @@ export default async function PropositionsPage() {
   const listItems: PropositionListItem[] = displayedPropositions.map((prop) => ({
     id: prop.id,
     statut: typeof prop.statut === 'string' ? prop.statut : '',
+    statutCommercial: isStatutCommercial(prop.statut_commercial)
+      ? prop.statut_commercial
+      : 'en_cours',
     templateNom:
       (isRecord(prop.template) && typeof prop.template.nom === 'string'
         ? prop.template.nom
@@ -101,112 +99,64 @@ export default async function PropositionsPage() {
       prop.nom_client,
     ),
     fieldsCount: countFields(prop.extracted_data || prop.donnees_extraites),
-    fileUrl: prop.duplicated_template_url || prop.fichier_genere_url || null,
     createdAt: prop.created_at,
-    hasSuggestions: !!prop.suggestions_generees,
   }));
 
-  // Statistiques
-  const stats = {
-    total: displayedPropositions.length || 0,
-    exported: displayedPropositions.filter((p) => p.statut === 'exported').length || 0,
-    pending: displayedPropositions.filter((p) => ['draft', 'ready', 'extracted', 'processing'].includes(p.statut)).length || 0,
-    error: displayedPropositions.filter((p) => p.statut === 'error').length || 0,
+  // Compteurs pour les filtres (pills). « Brouillons » = pas encore exportée ;
+  // les autres se basent sur le statut commercial des propositions exportées.
+  const counts: PropositionCounts = {
+    toutes: listItems.length,
+    brouillons: listItems.filter((p) => p.statut !== 'exported').length,
+    en_cours: listItems.filter((p) => p.statut === 'exported' && p.statutCommercial === 'en_cours').length,
+    en_attente_client: listItems.filter((p) => p.statut === 'exported' && p.statutCommercial === 'en_attente_client').length,
+    signee: listItems.filter((p) => p.statut === 'exported' && p.statutCommercial === 'signee').length,
+    perdue: listItems.filter((p) => p.statut === 'exported' && p.statutCommercial === 'perdue').length,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-              Mes Propositions
-            </h1>
-            <p className="text-gray-600 mt-2 text-lg">
-              Suivez et gérez toutes vos propositions commerciales
+            <h1 className="text-2xl font-semibold text-slate-900">Propositions</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Suivez et statuez vos propositions commerciales
             </p>
           </div>
           <Link
             href="/propositions/new"
-            className="group px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-lg shadow-green-500/30 flex items-center gap-2 hover:scale-105 active:scale-95 w-fit"
+            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 w-fit"
           >
-            <Plus className="w-5 h-5" />
-            Nouvelle Proposition
-            <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+            <Plus className="h-4 w-4" />
+            Nouvelle proposition
           </Link>
-        </div>
-
-        {/* Statistiques */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center shadow-lg shadow-gray-500/30 group-hover:scale-110 transition-transform">
-                <FileText className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-sm font-medium text-gray-600">Total</p>
-            </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-            <p className="text-xs text-gray-500 mt-1">proposition{stats.total > 1 ? 's' : ''} créée{stats.total > 1 ? 's' : ''}</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
-                <CheckCircle2 className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-sm font-medium text-gray-600">Exportées</p>
-            </div>
-            <p className="text-3xl font-bold text-emerald-600">{stats.exported}</p>
-            <p className="text-xs text-gray-500 mt-1">prête{stats.exported > 1 ? 's' : ''} à télécharger</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
-                <Clock className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-sm font-medium text-gray-600">En attente</p>
-            </div>
-            <p className="text-3xl font-bold text-blue-600">{stats.pending}</p>
-            <p className="text-xs text-gray-500 mt-1">en traitement</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-500/30 group-hover:scale-110 transition-transform">
-                <AlertCircle className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-sm font-medium text-gray-600">Erreurs</p>
-            </div>
-            <p className="text-3xl font-bold text-red-600">{stats.error}</p>
-            <p className="text-xs text-gray-500 mt-1">à corriger</p>
-          </div>
         </div>
 
         {/* Liste des propositions */}
         {displayedPropositions.length > 0 ? (
-          <PropositionsListClient propositions={listItems} />
+          <PropositionsListClient propositions={listItems} counts={counts} />
         ) : (
           /* Empty State */
-          <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-16 text-center">
-            <div className="max-w-md mx-auto">
-              <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <FileText className="w-12 h-12 text-gray-400" />
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-16 text-center">
+            <div className="mx-auto max-w-md">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-xl bg-slate-100">
+                <FileText className="h-8 w-8 text-slate-400" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">
+              <h3 className="text-lg font-semibold text-slate-900">
                 Aucune proposition pour le moment
               </h3>
-              <p className="text-gray-600 mb-8 leading-relaxed">
-                Créez votre première proposition commerciale automatiquement à partir d&apos;un template et de vos documents
+              <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                Créez votre première proposition commerciale automatiquement à partir
+                d&apos;un template et de vos documents
               </p>
               <Link
                 href="/propositions/new"
-                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-lg shadow-green-500/30 hover:scale-105 active:scale-95"
+                className="mt-6 inline-flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green-700"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-4 w-4" />
                 Créer ma première proposition
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="h-4 w-4" />
               </Link>
             </div>
           </div>

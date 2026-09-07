@@ -97,7 +97,6 @@ export function buildSpWordData(
     sp_toutes_lignes: normalizeSpArrayRows(sp.sp_toutes_lignes ?? []),
     sp_tout: sp.sp_tout ?? [],
 
-    sp_date_limite_souscription: sp.sp_date_limite_souscription ?? '',
     sp_duree_trimestres: sp.sp_duree_trimestres ?? '',
     sp_total_forfaits_mensuel_ht: sp.sp_total_forfaits_mensuel_ht ?? '',
     sp_total_materiel_ht: sp.sp_total_materiel_ht ?? '',

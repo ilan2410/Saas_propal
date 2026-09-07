@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 
@@ -143,7 +143,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
   const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 26) : 10;
 
   // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
-  const mergeInfo = useMemo(() => {
+  const mergeInfo = (() => {
     const spans = new Map<string, { rowSpan: number; colSpan: number }>();
     const covered = new Set<string>();
 
@@ -163,7 +163,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     });
 
     return { spans, covered };
-  }, [selectedSheet]);
+  })();
 
   // Mapper un champ à une colonne (via clic sur une cellule)
   const handleCellClick = (cellRef: string) => {

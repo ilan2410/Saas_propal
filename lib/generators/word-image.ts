@@ -46,6 +46,12 @@ export const PLACEHOLDER_PNG = Buffer.from(
 // Détecte les propriétés de données qui contiennent une URL d'image.
 const IMAGE_FIELD_RE = /image_url$/i;
 
+// Taille (px) imposée à chaque image rendue dans le Word — notamment les photos
+// produit du tableau matériel ({{#sp_materiel_detail}} / {{%sp_matd_image_url}}).
+// Réduit pour éviter que les photos débordent de la cellule du tableau.
+// Ratio 3:2 conservé ; ajuster ces deux valeurs pour agrandir/réduire.
+const IMAGE_SIZE_PX: [number, number] = [110, 73];
+
 function looksLikeImageUrl(value: unknown): value is string {
   return typeof value === 'string' && /^https?:\/\//i.test(value);
 }
@@ -86,6 +92,12 @@ function injectLoopImageTokens(input: unknown, flat: FlatImageMap, counter: { n:
 export type RenderWordOptions = {
   /** Récupère le buffer d'une image depuis son URL. Par défaut: fetch HTTP. */
   fetchImage?: (url: string) => Promise<Buffer>;
+  /**
+   * Résout une balise absente du dictionnaire de données (variables « dynamiques »
+   * dont un paramètre est encodé dans le nom, ex. `sp_date_limite_souscription-15`).
+   * Renvoie `undefined` pour laisser le comportement par défaut (chaîne vide).
+   */
+  resolveMissingVar?: (tag: string) => string | undefined;
 };
 
 async function defaultFetchImage(url: string): Promise<Buffer> {
@@ -108,6 +120,7 @@ export async function renderWordWithImages(
   options: RenderWordOptions = {},
 ): Promise<Uint8Array> {
   const fetchImage = options.fetchImage ?? defaultFetchImage;
+  const resolveMissingVar = options.resolveMissingVar;
 
   // --- Préparation : injecter les balises image plates par itération ---
   const flatImages: FlatImageMap = {};
@@ -123,11 +136,13 @@ export async function renderWordWithImages(
     linebreaks: true,
     delimiters: { start: '{{', end: '}}' },
     // Ré-émet les balises image `%` non résolues (images hors boucle) afin que
-    // la passe 2 puisse les rendre. Les autres variables manquantes -> "".
+    // la passe 2 puisse les rendre. Sinon : variable dynamique éventuelle, puis "".
     nullGetter: (part?: { value?: string; module?: string }) => {
       const v = part?.value;
-      if (typeof v === 'string' && v.startsWith('%')) return `{{${v}}}`;
-      return '';
+      if (typeof v !== 'string') return '';
+      if (v.startsWith('%')) return `{{${v}}}`;
+      const dynamic = resolveMissingVar?.(v);
+      return dynamic !== undefined ? dynamic : '';
     },
   });
   await doc1.renderAsync(pass1Data);
@@ -149,14 +164,19 @@ export async function renderWordWithImages(
     centered: false,
     fileType: 'docx',
     getImage,
-    getSize: () => [150, 100] as [number, number],
+    getSize: () => IMAGE_SIZE_PX,
   });
   const doc2 = new Docxtemplater(zip2, {
     paragraphLoop: true,
     linebreaks: true,
     modules: [imageModule as unknown as DocxModule],
     delimiters: { start: '{{', end: '}}' },
-    nullGetter: () => '',
+    nullGetter: (part?: { value?: string }) => {
+      const v = part?.value;
+      if (typeof v !== 'string') return '';
+      const dynamic = resolveMissingVar?.(v);
+      return dynamic !== undefined ? dynamic : '';
+    },
   });
   // Données passe 2 : table token → URL + données d'origine (images hors boucle).
   doc2.render({ ...data, ...flatImages });
