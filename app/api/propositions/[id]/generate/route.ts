@@ -147,6 +147,7 @@ export async function POST(
       donnees,
       organization_id: ctx.organizationId,
       proposition_id: id,
+      proposition_created_at: proposition.created_at as string | undefined,
       suggestions_sp_completes: suggestionsSpCompletes,
       sp_clauses_rendered,
       sp_reference,

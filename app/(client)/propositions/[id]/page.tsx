@@ -20,7 +20,6 @@ import {
   Gift,
   TrendingDown,
   MapPin,
-  AlertCircle,
   Wrench,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
@@ -211,14 +210,6 @@ function SpResumePanel({
 
   return (
     <div className="space-y-5">
-
-      {/* ── Bannière date limite ── */}
-      {sp?.sp_date_limite_souscription && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-50 border border-orange-200 text-sm text-orange-700">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>Offre valable jusqu&apos;au <strong>{sp.sp_date_limite_souscription}</strong></span>
-        </div>
-      )}
 
       {/* ── Hero section ── */}
       {sp && (
