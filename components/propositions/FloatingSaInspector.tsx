@@ -59,10 +59,12 @@ export function FloatingSaInspector({
     if (!open || typeof window === 'undefined') return;
     const nextWidth = clamp(DEFAULT_WIDTH, MIN_WIDTH, window.innerWidth - EDGE_MARGIN * 2);
     const nextHeight = clamp(DEFAULT_HEIGHT, MIN_HEIGHT, window.innerHeight - 120);
+    /* eslint-disable react-hooks/set-state-in-effect -- geometry is derived from viewport on panel open */
     setWidth(nextWidth);
     setHeight(nextHeight);
     setLeft(Math.max(window.innerWidth - nextWidth - 32, EDGE_MARGIN));
     setTop(88);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [open]);
 
   useEffect(() => {

@@ -44,7 +44,11 @@ export function SpMargeWidget({
   const prevVisible = useRef(false);
 
   useEffect(() => {
-    if (gardeFouVisible && !prevVisible.current) setDismissed(false);
+    if (gardeFouVisible && !prevVisible.current) {
+      /* eslint-disable react-hooks/set-state-in-effect -- dismissed flag is reset when the guard becomes visible again */
+      setDismissed(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
     prevVisible.current = gardeFouVisible ?? false;
   }, [gardeFouVisible]);
 
