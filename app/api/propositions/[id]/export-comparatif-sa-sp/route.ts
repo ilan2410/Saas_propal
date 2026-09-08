@@ -34,6 +34,13 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (ctx.role !== 'owner' && !ctx.permissions.download_comparatif_sa_sp) {
+    return NextResponse.json(
+      { error: "Vous n'avez pas la permission de télécharger les comparatifs SA/SP." },
+      { status: 403 },
+    );
+  }
+
   // 1. Récupérer la proposition (avec sp_reponses, extracted_data, filled_data)
   const { data: proposition, error } = await scopePropositionsQuery(
     supabase

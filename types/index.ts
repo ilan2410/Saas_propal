@@ -59,6 +59,8 @@ export interface Organization {
     manage_catalogue: boolean;
     manage_templates: boolean;
     view_credits_billing: boolean;
+    download_proposition: boolean;
+    download_comparatif_sa_sp: boolean;
   };
 
   created_at: string;

@@ -95,7 +95,12 @@ export default async function NewPropositionPage() {
         </p>
       </div>
 
-      <PropositionWizard templates={templates} secteur={secteur} />
+      <PropositionWizard
+        templates={templates}
+        secteur={secteur}
+        canDownloadProposition={ctx.role === 'owner' || ctx.permissions.download_proposition}
+        canDownloadComparatifSaSp={ctx.role === 'owner' || ctx.permissions.download_comparatif_sa_sp}
+      />
     </div>
   );
 }

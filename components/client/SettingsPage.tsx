@@ -3086,6 +3086,8 @@ export default function SettingsPage({
               manage_catalogue: organization.commercial_default_permissions?.manage_catalogue ?? false,
               manage_templates: organization.commercial_default_permissions?.manage_templates ?? false,
               view_credits_billing: organization.commercial_default_permissions?.view_credits_billing ?? false,
+              download_proposition: organization.commercial_default_permissions?.download_proposition ?? true,
+              download_comparatif_sa_sp: organization.commercial_default_permissions?.download_comparatif_sa_sp ?? true,
             }}
           />
         )}

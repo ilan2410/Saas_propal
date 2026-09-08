@@ -680,6 +680,9 @@ export default async function PropositionDetailPage({
     redirect('/login');
   }
 
+  const canDownloadProposition = ctx.role === 'owner' || ctx.permissions.download_proposition;
+  const canDownloadComparatifSaSp = ctx.role === 'owner' || ctx.permissions.download_comparatif_sa_sp;
+
   // Récupérer la proposition avec le template
   const { data: proposition, error } = await scopePropositionsQuery(
     supabase
@@ -839,13 +842,15 @@ export default async function PropositionDetailPage({
                 </Link>
               )}
 
-              {['ready', 'extracted'].includes(proposition.statut) &&
+              {canDownloadProposition &&
+                ['ready', 'extracted'].includes(proposition.statut) &&
                 !proposition.duplicated_template_url &&
                 !proposition.fichier_genere_url && (
                   <GenerateButton propositionId={proposition.id} variant="primary" />
                 )}
 
-              {(proposition.duplicated_template_url || proposition.fichier_genere_url) && (
+              {canDownloadProposition &&
+                (proposition.duplicated_template_url || proposition.fichier_genere_url) && (
                 <a
                   href={proposition.duplicated_template_url || proposition.fichier_genere_url}
                   download
@@ -856,7 +861,7 @@ export default async function PropositionDetailPage({
                 </a>
               )}
 
-              {proposition.suggestions_sp_completes && (
+              {canDownloadComparatifSaSp && proposition.suggestions_sp_completes && (
                 <ExportSaSpButtons propositionId={proposition.id} variant="outline" />
               )}
 

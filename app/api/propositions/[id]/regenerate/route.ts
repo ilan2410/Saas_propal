@@ -22,6 +22,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.download_proposition) {
+      return NextResponse.json(
+        { error: "Vous n'avez pas la permission de générer ou télécharger la proposition." },
+        { status: 403 },
+      );
+    }
+
     const body = await request.json() as { sp_reponses: SpQuestionReponse[] };
     const { sp_reponses } = body;
 

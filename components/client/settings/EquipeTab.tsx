@@ -21,13 +21,17 @@ export type PermissionKey =
   | 'view_all_propositions'
   | 'manage_catalogue'
   | 'manage_templates'
-  | 'view_credits_billing';
+  | 'view_credits_billing'
+  | 'download_proposition'
+  | 'download_comparatif_sa_sp';
 
 export const PERMISSION_KEYS: PermissionKey[] = [
   'view_all_propositions',
   'manage_catalogue',
   'manage_templates',
   'view_credits_billing',
+  'download_proposition',
+  'download_comparatif_sa_sp',
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -35,6 +39,8 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_catalogue: 'Gérer le catalogue',
   manage_templates: 'Gérer les templates',
   view_credits_billing: 'Voir crédits & facturation',
+  download_proposition: 'Télécharger la proposition',
+  download_comparatif_sa_sp: 'Télécharger les comparatifs SA/SP',
 };
 
 export type PermissionsRecord = Record<PermissionKey, boolean>;
@@ -63,6 +69,8 @@ const EMPTY_DEFAULTS: PermissionsRecord = {
   manage_catalogue: false,
   manage_templates: false,
   view_credits_billing: false,
+  download_proposition: true,
+  download_comparatif_sa_sp: true,
 };
 
 function ToggleSwitch({

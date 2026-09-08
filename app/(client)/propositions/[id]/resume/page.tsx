@@ -138,6 +138,8 @@ export default async function ResumePropositionPage({
         templates={templates}
         secteur={secteur}
         initialStep={initialStep}
+        canDownloadProposition={ctx.role === 'owner' || ctx.permissions.download_proposition}
+        canDownloadComparatifSaSp={ctx.role === 'owner' || ctx.permissions.download_comparatif_sa_sp}
         initialData={{
           proposition_id: proposition.id,
           template_id: proposition.template_id || '',

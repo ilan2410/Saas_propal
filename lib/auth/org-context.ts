@@ -11,6 +11,8 @@ export interface OrgPermissions {
   manage_catalogue: boolean;
   manage_templates: boolean;
   view_credits_billing: boolean;
+  download_proposition: boolean;
+  download_comparatif_sa_sp: boolean;
 }
 
 export interface OrgContext {
@@ -32,6 +34,21 @@ const ALL_PERMISSIONS_TRUE: OrgPermissions = {
   manage_catalogue: true,
   manage_templates: true,
   view_credits_billing: true,
+  download_proposition: true,
+  download_comparatif_sa_sp: true,
+};
+
+// Valeur retenue pour un commercial quand ni l'override membre ni le défaut
+// organisation ne fixent la clé. Les permissions de téléchargement sont
+// accordées par défaut (ne pas casser les workflows existants) ; les autres
+// restent fermées.
+export const PERMISSION_DEFAULTS: OrgPermissions = {
+  view_all_propositions: false,
+  manage_catalogue: false,
+  manage_templates: false,
+  view_credits_billing: false,
+  download_proposition: true,
+  download_comparatif_sa_sp: true,
 };
 
 const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
@@ -39,6 +56,8 @@ const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
   'manage_catalogue',
   'manage_templates',
   'view_credits_billing',
+  'download_proposition',
+  'download_comparatif_sa_sp',
 ];
 
 export async function resolveOrgContext(
@@ -81,7 +100,7 @@ export async function resolveOrgContext(
     const overrides = member.permissions_override ?? {};
 
     const permissions = PERMISSION_KEYS.reduce((acc, key) => {
-      acc[key] = overrides?.[key] ?? defaults?.[key] ?? false;
+      acc[key] = overrides?.[key] ?? defaults?.[key] ?? PERMISSION_DEFAULTS[key];
       return acc;
     }, {} as OrgPermissions);
 

@@ -9,12 +9,18 @@ interface Props {
   propositionData: Partial<PropositionData>;
   onComplete: () => void;
   onPrev: () => void;
+  /** Permission de générer / télécharger la proposition (défaut : autorisé). */
+  canDownloadProposition?: boolean;
+  /** Permission de télécharger les comparatifs SA/SP (défaut : autorisé). */
+  canDownloadComparatifSaSp?: boolean;
 }
 
 export function Step5Generate({
   propositionData,
   onComplete,
   onPrev,
+  canDownloadProposition = true,
+  canDownloadComparatifSaSp = true,
 }: Props) {
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [fileUrl, setFileUrl] = useState<string>('');
@@ -41,7 +47,9 @@ export function Step5Generate({
                   Proposition {sp.site_nom}
                 </span>
               </div>
-              {sp.file_url ? (
+              {!canDownloadProposition ? (
+                <span className="text-xs text-gray-400">Téléchargement non autorisé</span>
+              ) : sp.file_url ? (
                 <a
                   href={sp.file_url}
                   target="_blank"
@@ -110,18 +118,32 @@ export function Step5Generate({
         {generationStatus === 'idle' && (
           <div className="text-center">
             <div className="text-6xl mb-4">📄</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Prêt à générer</h3>
-            <p className="text-gray-600 mb-6">
-              Cliquez sur le bouton ci-dessous pour générer votre proposition
-            </p>
+            {canDownloadProposition ? (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Prêt à générer</h3>
+                <p className="text-gray-600 mb-6">
+                  Cliquez sur le bouton ci-dessous pour générer votre proposition
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Génération non autorisée</h3>
+                <p className="text-gray-600 mb-6">
+                  Vous n&apos;avez pas la permission de générer ou télécharger la proposition.
+                  Contactez le responsable de votre organisation.
+                </p>
+              </>
+            )}
             <div className="flex flex-wrap gap-3 justify-center">
-              <button
-                onClick={startGeneration}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Générer la proposition
-              </button>
-              {propositionData.suggestions_sp_completes && propositionData.proposition_id && (
+              {canDownloadProposition && (
+                <button
+                  onClick={startGeneration}
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Générer la proposition
+                </button>
+              )}
+              {canDownloadComparatifSaSp && propositionData.suggestions_sp_completes && propositionData.proposition_id && (
                 <>
                   <a
                     href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=excel`}
@@ -170,7 +192,7 @@ export function Step5Generate({
                 <Download className="w-5 h-5" />
                 Télécharger la proposition
               </a>
-              {propositionData.suggestions_sp_completes && propositionData.proposition_id && (
+              {canDownloadComparatifSaSp && propositionData.suggestions_sp_completes && propositionData.proposition_id && (
                 <>
                   <a
                     href={`/api/propositions/${propositionData.proposition_id}/export-comparatif-sa-sp?format=excel`}
