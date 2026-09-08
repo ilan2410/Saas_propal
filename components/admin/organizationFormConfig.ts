@@ -728,8 +728,20 @@ export interface ArrayFieldDefinition {
   }[];
 }
 
+const SA_LIGNES_TELEPHONIQUES_ARRAY_FIELD: ArrayFieldDefinition = {
+  id: 'sa_lignes_telephoniques',
+  label: 'Lignes téléphoniques détectées (SA)',
+  description: 'Tous les numéros mobiles et fixes détectés dans la situation actuelle',
+  rowFields: [
+    { id: 'sa_type_ligne', label: 'Type', type: 'string' },
+    { id: 'sa_numero', label: 'Numéro de téléphone', type: 'string' },
+    { id: 'sa_prix_mensuel_ht', label: 'Prix mensuel HT', type: 'string' },
+  ],
+};
+
 export const ARRAY_FIELDS: Record<string, ArrayFieldDefinition[]> = {
   telephonie: [
+    SA_LIGNES_TELEPHONIQUES_ARRAY_FIELD,
     {
       id: 'lignes_mobiles',
       label: '📱 Lignes mobiles',
@@ -871,6 +883,7 @@ export const ARRAY_FIELDS: Record<string, ArrayFieldDefinition[]> = {
     },
   ],
   mixte: [
+    SA_LIGNES_TELEPHONIQUES_ARRAY_FIELD,
     {
       id: 'lignes_mobiles',
       label: '📱 Lignes mobiles',

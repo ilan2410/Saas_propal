@@ -7,6 +7,8 @@ const PERMISSION_KEYS = [
   'manage_catalogue',
   'manage_templates',
   'view_credits_billing',
+  'download_proposition',
+  'download_comparatif_sa_sp',
 ] as const;
 
 // PATCH /api/settings/team/members/[id] — édition des infos + permissions d'un commercial (propriétaire uniquement)

@@ -11,6 +11,8 @@ interface Props {
   updatePropositionData: (data: Partial<PropositionData>) => void;
   onNext: () => void;
   onPrev: () => void;
+  /** Permission de télécharger les comparatifs SA/SP (défaut : autorisé). */
+  canDownloadComparatifSaSp?: boolean;
 }
 
 type AnyLigne = SpLigneMobile | SpLigneFixe | SpInternet;
@@ -144,7 +146,7 @@ function LigneTable({
   );
 }
 
-export function Step5EditSp({ propositionData, updatePropositionData, onNext, onPrev }: Props) {
+export function Step5EditSp({ propositionData, updatePropositionData, onNext, onPrev, canDownloadComparatifSaSp = true }: Props) {
   const [sp, setSp] = useState<SuggestionsSpCompletes | null>(
     propositionData.suggestions_sp_completes ?? null
   );
@@ -406,7 +408,7 @@ export function Step5EditSp({ propositionData, updatePropositionData, onNext, on
       )}
 
       {/* Export comparatif SA/SP */}
-      {propositionData.proposition_id && (
+      {canDownloadComparatifSaSp && propositionData.proposition_id && (
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Export comparatif SA / SP</h3>
           <div className="flex flex-wrap gap-3">

@@ -278,7 +278,11 @@ export function buildLegacySaData(
           ...common,
           type: line.category === 'variable' ? 'consommation_hors_forfait' : 'frais_ponctuel',
           montant_source: line.amount_ht,
-          montant: line.recurring ? line.monthly_amount_ht : 0,
+          // Le montant affiché doit toujours être le montant réellement
+          // facturé : `recurring` reste indicatif (case "Récurrent" dans le
+          // panneau de révision) mais ne doit plus jamais mettre le montant à
+          // zéro, sous peine de faire disparaître une charge réelle du total.
+          montant: line.monthly_amount_ht,
           recurrent: line.recurring,
         });
       } else {
@@ -294,13 +298,18 @@ export function buildLegacySaData(
     }
   }
 
+  // Le total facturé au client ne doit jamais dépendre de `recurring` (champ
+  // IA indicatif, non fiable) : seule la catégorie de la ligne détermine si
+  // elle compte dans le total mensuel réel. Un `one_time` reste exclu par
+  // nature ; les charges `variable` (hors forfait) sont gouvernées par le
+  // paramètre `includeVariableCharges` ci-dessus, jamais par `recurring`.
   const canonicalLines = canonical.invoices.flatMap((invoice) => invoice.lines);
   const totalLocations = Math.round(canonicalLines.reduce((sum, line) =>
-    line.recurring && line.category === 'location' ? sum + line.monthly_amount_ht : sum, 0) * 100) / 100;
+    line.category === 'location' ? sum + line.monthly_amount_ht : sum, 0) * 100) / 100;
   const totalVariables = Math.round(canonicalLines.reduce((sum, line) =>
-    line.recurring && line.category === 'variable' ? sum + line.monthly_amount_ht : sum, 0) * 100) / 100;
+    line.category === 'variable' ? sum + line.monthly_amount_ht : sum, 0) * 100) / 100;
   const totalAbonnements = Math.round(canonicalLines.reduce((sum, line) =>
-    line.recurring && !['location', 'variable', 'one_time'].includes(line.category)
+    !['location', 'variable', 'one_time'].includes(line.category)
       ? sum + line.monthly_amount_ht
       : sum, 0) * 100) / 100;
 

@@ -63,6 +63,10 @@ interface Props {
   secteur: string;
   initialData?: Partial<PropositionData>;
   initialStep?: number;
+  /** Permission de générer / télécharger la proposition (défaut : autorisé). */
+  canDownloadProposition?: boolean;
+  /** Permission de télécharger les comparatifs SA/SP (défaut : autorisé). */
+  canDownloadComparatifSaSp?: boolean;
 }
 
 // Dialog for warning when re-editing a completed site
@@ -98,7 +102,14 @@ function ReEditWarningDialog({ siteNom, tarifCloneSite, onConfirm, onCancel }: R
   );
 }
 
-export function PropositionWizard({ templates, secteur, initialData, initialStep }: Props) {
+export function PropositionWizard({
+  templates,
+  secteur,
+  initialData,
+  initialStep,
+  canDownloadProposition = true,
+  canDownloadComparatifSaSp = true,
+}: Props) {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(Math.max(1, Number(initialStep || 1)));
   const [propositionData, setPropositionData] = useState<Partial<PropositionData>>({
@@ -469,7 +480,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
                       <p className="text-sm text-gray-600">
                         La proposition pour <span className="font-semibold">{currentSite.site_nom}</span> a été générée.
                       </p>
-                      {currentSite.file_url && (
+                      {canDownloadProposition && currentSite.file_url && (
                         <a href={currentSite.file_url} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700">
                           Télécharger
@@ -498,7 +509,7 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
 
               // Normal (single-site) mode
               if (propositionData.suggestions_sp_completes) {
-                return <Step5EditSp propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
+                return <Step5EditSp propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} canDownloadComparatifSaSp={canDownloadComparatifSaSp} />;
               }
               return <Step5SpQuestions propositionData={propositionData} updatePropositionData={updatePropositionData} onNext={nextStep} onPrev={prevStep} />;
             })()}
@@ -510,6 +521,8 @@ export function PropositionWizard({ templates, secteur, initialData, initialStep
               propositionData={propositionData}
               onComplete={handleComplete}
               onPrev={prevStep}
+              canDownloadProposition={canDownloadProposition}
+              canDownloadComparatifSaSp={canDownloadComparatifSaSp}
             />
           </div>
         )}

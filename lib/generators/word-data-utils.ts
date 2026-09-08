@@ -6,6 +6,7 @@
  */
 
 import { buildSituationActuelleLines } from '@/lib/sp/buildExportSaSpData';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
 
 export type UnknownRecord = Record<string, unknown>;
@@ -51,6 +52,7 @@ function looksLikeSaCommercialRow(item: UnknownRecord, arrayKey: string): boolea
     'location_materiel',
     'abonnements',
     'locations',
+    'charges_variables',
   ]);
   if (commercialArrays.has(arrayKey)) return true;
 
@@ -64,6 +66,7 @@ function looksLikeSaCommercialRow(item: UnknownRecord, arrayKey: string): boolea
     'tarif_brut_mensuel',
     'loyer_net_mensuel',
     'loyer_brut_mensuel',
+    'montant',
   ].some((key) => item[key] !== undefined && item[key] !== null && item[key] !== '');
 }
 
@@ -119,6 +122,11 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
     'loyer_net_mensuel',
     'loyer_brut_mensuel',
     'prix_mensuel_ht',
+    // Lignes de `situation_actuelle.charges_variables` (consommations hors
+    // forfait, pénalités, frais ponctuels) : le montant réel y est porté par
+    // le champ `montant`, pas `tarif` — sans ce fallback {{tarif}}/
+    // {{prix_mensuel_ht}} restaient vides pour ce tableau dans Word.
+    'montant',
   ]) ?? '';
   const tarifFormatted = formatEuro(tarif);
 
@@ -137,6 +145,54 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
 function normalizeSaArray(key: string, value: unknown): unknown {
   if (!Array.isArray(value)) return value;
   return value.map((item) => normalizeSaArrayItem(item, key));
+}
+
+function buildSaTelephoneLines(baseData: UnknownRecord): UnknownRecord[] {
+  const sa = isPlainObject(baseData.situation_actuelle) ? baseData.situation_actuelle : {};
+  const sources: Array<{ key: string; rows: unknown[] }> = [
+    { key: 'lignes_mobiles', rows: Array.isArray(baseData.lignes_mobiles) ? baseData.lignes_mobiles : [] },
+    { key: 'lignes_fixes', rows: Array.isArray(baseData.lignes_fixes) ? baseData.lignes_fixes : [] },
+    { key: 'lignes', rows: Array.isArray(sa.lignes) ? sa.lignes : [] },
+    { key: 'lignes_mobiles', rows: Array.isArray(sa.lignes_mobiles) ? sa.lignes_mobiles : [] },
+    { key: 'lignes_fixes', rows: Array.isArray(sa.lignes_fixes) ? sa.lignes_fixes : [] },
+    { key: 'lignes', rows: Array.isArray(baseData.lignes) ? baseData.lignes : [] },
+  ];
+  const seen = new Set<string>();
+  const lines: UnknownRecord[] = [];
+
+  for (const source of sources) {
+    for (const row of source.rows) {
+      if (!isPlainObject(row)) continue;
+      const rawType = normalizeText(inferSaLineType(row, source.key) ?? '');
+      const type = rawType.includes('mobile') ? 'Mobile' : rawType.includes('fixe') ? 'Fixe' : '';
+      if (!type) continue;
+      const numero = normalizePhoneNumber(sanitizeNumero(pickFirstDefined(row, ['numero_ligne', 'numero']), row, source.key));
+      if (!numero) continue;
+      const dedupeKey = numero.replace(/\D/g, '') || normalizeText(numero);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const prix = pickFirstDefined(row, [
+        'tarif_net_mensuel',
+        'tarif_brut_mensuel',
+        'tarif',
+        'prix_mensuel_ht',
+      ]);
+      lines.push({
+        sa_type_ligne: type,
+        sa_numero: numero,
+        sa_prix_mensuel_ht: formatEuro(prix),
+      });
+    }
+  }
+
+  return lines;
+}
+
+/** Clé de déduplication pour une ligne `{{#lignes}}` : libellé + prix affiché. */
+function lineDedupeKey(designation: string, prixMensuelHt: unknown): string {
+  const label = designation.toLowerCase().trim().replace(/\s+/g, ' ');
+  const prix = typeof prixMensuelHt === 'string' ? prixMensuelHt.trim() : String(prixMensuelHt ?? '');
+  return `${label}|${prix}`;
 }
 
 function scoreSaArray(value: unknown): number {
@@ -337,6 +393,8 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   // 2. Tableaux imbriqués sous situation_actuelle
   hoistArrays(baseData.situation_actuelle);
 
+  out.sa_lignes_telephoniques = buildSaTelephoneLines(baseData);
+
   const currentLines = Array.isArray(out.lignes) ? out.lignes : [];
   const fallbackSaLines = buildSituationActuelleLines(baseData, 0).lines.map((line, index) => {
     const existing = isPlainObject(currentLines[index]) ? currentLines[index] : {};
@@ -355,6 +413,43 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   });
   if (scoreSaArray(fallbackSaLines) >= scoreSaArray(out.lignes)) {
     out.lignes = fallbackSaLines;
+  }
+
+  // Fusionne les charges variables (consommations hors forfait, pénalités,
+  // frais ponctuels) directement dans le tableau {{#lignes}} — pas de
+  // tableau Word séparé — avec les mêmes clés que les autres lignes SA
+  // ({{designation}}, {{prix_mensuel_ht}}). N'ajoute que ce qui n'y figure
+  // pas déjà (le chemin `buildSituationActuelleLines` ci-dessus peut les
+  // avoir déjà incluses) et respecte le même critère d'inclusion que le
+  // total SA : si le template exclut ces charges du total, elles ne sont pas
+  // non plus imprimées dans le tableau de lignes.
+  const cartSummary = calculateSaCartSummary(baseData);
+  if (cartSummary.chargesVariablesIncluses) {
+    const existingLignes = Array.isArray(out.lignes) ? (out.lignes as UnknownRecord[]) : [];
+    const existingKeys = new Set(
+      existingLignes
+        .filter(isPlainObject)
+        .map((l) => lineDedupeKey(pickFirstString(l, ['designation', 'libelle']) ?? '', l.prix_mensuel_ht)),
+    );
+    const variableLines = cartSummary.details
+      .filter((line) => line.categorie === 'variable')
+      .map((line) => {
+        const prixFormatted = formatEuro(line.montant);
+        return {
+          designation: line.libelle,
+          libelle: line.libelle,
+          numero: '',
+          numero_ligne: '',
+          quantite: 1,
+          prix_mensuel_ht: prixFormatted,
+          tarif: prixFormatted,
+          type: 'variable',
+        };
+      })
+      .filter((line) => !existingKeys.has(lineDedupeKey(line.designation, line.prix_mensuel_ht)));
+    if (variableLines.length > 0) {
+      out.lignes = [...existingLignes, ...variableLines];
+    }
   }
 
   return deepApplyTitleCase(out) as UnknownRecord;

@@ -31,6 +31,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (ctx.role !== 'owner' && !ctx.permissions.download_proposition) {
+      return NextResponse.json(
+        { error: "Vous n'avez pas la permission de générer ou télécharger la proposition." },
+        { status: 403 },
+      );
+    }
+
     // Récupérer la proposition
     const { data: proposition, error: propError } = await scopePropositionsQuery(
       supabase.from('propositions').select('*').eq('id', id),

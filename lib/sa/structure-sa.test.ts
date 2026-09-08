@@ -58,4 +58,37 @@ describe('buildLegacySaData', () => {
     expect(summary.details).toContainEqual(expect.objectContaining({ libelle: 'Remise', montant: -37.2 }));
     expect((data.client as Record<string, unknown>).raison_sociale).toBe('Client test');
   });
+
+  // Régression : une charge hors forfait marquée `recurring: false` par
+  // l'IA d'extraction (ex. proposition ETS LOUBET, 19,94€ perdus) doit
+  // malgré tout être facturée réellement et comptée dans le total mensuel.
+  it("compte une charge variable dans le total même quand l'IA l'a marquée non récurrente", () => {
+    const reportWithVariable: InvoiceAnalysisReport = {
+      ...report,
+      declared_monthly_total_ht: 321.4,
+      invoices: [{
+        ...report.invoices[0],
+        printed_total_ht: 321.4,
+        lines: [
+          ...report.invoices[0].lines,
+          {
+            id: 'hors-forfait', label: 'Consommation hors forfait', category: 'variable',
+            amount_ht_signed: 19.94, amount_ttc_signed: null, vat_rate: null, quantity: 1,
+            amount_scope: 'line_total', recurring: false, billing_months: 1,
+            source_periodicity: 'mensuel', related_line_id: null, operator: 'Orange', site: null,
+            phone_number: null, contract_reference: null, evidence,
+          },
+        ],
+      }],
+    };
+
+    const canonical = calculateCanonicalSaAnalysis(reportWithVariable, activeFields, true);
+    const data = buildLegacySaData(structured, reportWithVariable, canonical, true);
+    const situation = data.situation_actuelle as Record<string, unknown>;
+    const summary = calculateSaCartSummary(data);
+
+    expect(situation.total_ht_mensuel_client).toBe(321.4);
+    expect(summary.totalMensuel).toBe(321.4);
+    expect(summary.details).toContainEqual(expect.objectContaining({ libelle: 'Consommation hors forfait', montant: 19.94 }));
+  });
 });

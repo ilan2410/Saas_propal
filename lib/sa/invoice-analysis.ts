@@ -290,8 +290,14 @@ export function calculateCanonicalSaAnalysis(
       });
     }
 
+    // Le total mensuel doit correspondre exactement à ce que le client paie
+    // ce mois-ci : toute ligne présente sur la facture y entre, à l'exception
+    // des frais ponctuels (one_time) et, si l'utilisateur l'exclut
+    // explicitement, des charges variables (hors forfait). Le champ IA
+    // `recurring` n'est qu'indicatif : il ne doit jamais faire disparaître un
+    // montant réellement facturé (cf. proposition avec 19,94€ de hors forfait
+    // perdus car marqués `recurring: false`).
     const monthlyTotal = normalizedLines.reduce((sum, line) => {
-      if (!line.recurring) return sum;
       if (line.category === 'one_time') return sum;
       if (line.category === 'variable' && !includeVariableCharges) return sum;
       return sum + line.monthly_amount_ht;

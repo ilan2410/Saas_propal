@@ -156,12 +156,14 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_lignes_mobiles',
     label: 'Tableau lignes mobiles',
-    fullBlock: `{{#sp_lignes_mobiles}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_mobiles}}`,
+    fullBlock: `{{#sp_lignes_mobiles}}\n{{sp_type_ligne}}  {{sp_produit}}  {{sp_numero}}  {{sp_prix_propose}}\n{{/sp_lignes_mobiles}}`,
+    hint: 'Contient uniquement les lignes mobiles du panier SP : type, produit, numéro associé et prix proposé.',
   },
   {
     arrayId: 'sp_lignes_fixes',
     label: 'Tableau lignes fixes',
-    fullBlock: `{{#sp_lignes_fixes}}\n{{sp_nom_ligne}}  {{sp_produit}}  {{sp_prix_actuel}}  {{sp_prix_propose}}  {{sp_economie}}  {{sp_analyse}}\n{{/sp_lignes_fixes}}`,
+    fullBlock: `{{#sp_lignes_fixes}}\n{{sp_type_ligne}}  {{sp_produit}}  {{sp_numero}}  {{sp_prix_propose}}\n{{/sp_lignes_fixes}}`,
+    hint: 'Contient uniquement les lignes fixes du panier SP : type, produit, numéro associé et prix proposé.',
   },
   {
     arrayId: 'sp_internet',
@@ -2486,15 +2488,7 @@ export function Step2UploadTemplate({
             </button>
 
             <div className="flex items-center gap-3">
-              {onSave && (
-                <button
-                  type="button"
-                  onClick={() => handleSaveWordTemplate(true)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  💾 Sauvegarder
-                </button>
-              )}
+              
               <button
                 id="btn-validate-template"
                 type="button"
