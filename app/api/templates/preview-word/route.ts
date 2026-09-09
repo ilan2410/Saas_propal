@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
     try {
       uint8Array = await renderWordWithImages(templateBuffer, finalData, {
         resolveMissingVar: (tag) => resolveDynamicWordVar(tag, { createdAt: previewCreatedAt }),
+        uppercaseVariables: wordCfg.forcerMajusculesVariables === true,
       });
     } catch (error) {
       const e = error as {

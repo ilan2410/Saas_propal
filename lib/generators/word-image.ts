@@ -18,6 +18,7 @@
 import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
+import { makeUppercaseParser } from './word-case';
 
 type ImageModuleOptions = {
   centered?: boolean;
@@ -98,6 +99,11 @@ export type RenderWordOptions = {
    * Renvoie `undefined` pour laisser le comportement par défaut (chaîne vide).
    */
   resolveMissingVar?: (tag: string) => string | undefined;
+  /**
+   * Si vrai : toutes les variables texte ({{...}}) du document généré sont rendues
+   * en MAJUSCULES. Le texte fixe du modèle n'est pas modifié. Défaut : false.
+   */
+  uppercaseVariables?: boolean;
 };
 
 async function defaultFetchImage(url: string): Promise<Buffer> {
@@ -121,6 +127,10 @@ export async function renderWordWithImages(
 ): Promise<Uint8Array> {
   const fetchImage = options.fetchImage ?? defaultFetchImage;
   const resolveMissingVar = options.resolveMissingVar;
+  const uppercaseVariables = options.uppercaseVariables ?? false;
+  // Appliquée aussi aux variables résolues via `resolveMissingVar` (le parser ne
+  // voit que les clés présentes dans les données), pour un rendu homogène.
+  const applyCase = (s: string) => (uppercaseVariables ? s.toLocaleUpperCase('fr-FR') : s);
 
   // --- Préparation : injecter les balises image plates par itération ---
   const flatImages: FlatImageMap = {};
@@ -135,6 +145,8 @@ export async function renderWordWithImages(
     paragraphLoop: true,
     linebreaks: true,
     delimiters: { start: '{{', end: '}}' },
+    // C'est la passe qui substitue le texte : le parser majuscules s'applique ici.
+    ...(uppercaseVariables ? { parser: makeUppercaseParser() } : {}),
     // Ré-émet les balises image `%` non résolues (images hors boucle) afin que
     // la passe 2 puisse les rendre. Sinon : variable dynamique éventuelle, puis "".
     nullGetter: (part?: { value?: string; module?: string }) => {
@@ -142,7 +154,7 @@ export async function renderWordWithImages(
       if (typeof v !== 'string') return '';
       if (v.startsWith('%')) return `{{${v}}}`;
       const dynamic = resolveMissingVar?.(v);
-      return dynamic !== undefined ? dynamic : '';
+      return dynamic !== undefined ? applyCase(dynamic) : '';
     },
   });
   await doc1.renderAsync(pass1Data);
@@ -175,7 +187,7 @@ export async function renderWordWithImages(
       const v = part?.value;
       if (typeof v !== 'string') return '';
       const dynamic = resolveMissingVar?.(v);
-      return dynamic !== undefined ? dynamic : '';
+      return dynamic !== undefined ? applyCase(dynamic) : '';
     },
   });
   // Données passe 2 : table token → URL + données d'origine (images hors boucle).

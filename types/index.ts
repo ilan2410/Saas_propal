@@ -171,6 +171,11 @@ export interface ExcelConfig {
 export interface WordConfig {
   formatVariables: string;
   fieldMappings: Record<string, string>;
+  /**
+   * Si vrai : toutes les variables ({{...}}) du document Word généré sont rendues
+   * en MAJUSCULES. Le texte fixe du modèle n'est pas modifié. Défaut (absent) : false.
+   */
+  forcerMajusculesVariables?: boolean;
   tableauxDynamiques?: unknown[];
   imagesARemplacer?: Record<string, string>;
   // SP

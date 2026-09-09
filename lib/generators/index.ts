@@ -508,6 +508,7 @@ async function generateWordFile(options: GenerateOptions): Promise<string> {
     // de tableau (ex: {{#sp_materiel_detail}} ... {{%sp_matd_image_url}} ...).
     uint8Array = await renderWordWithImages(templateBuffer, finalData, {
       resolveMissingVar: (tag) => resolveDynamicWordVar(tag, { createdAt: propositionCreatedAt }),
+      uppercaseVariables: fileConfig.forcerMajusculesVariables === true,
     });
   } catch (error) {
     const e = error as unknown as { message?: string; properties?: { errors?: Array<{ properties?: { explanation?: string } }> } };

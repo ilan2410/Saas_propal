@@ -130,6 +130,23 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
     });
   };
 
+  // Rendu Word : forcer toutes les variables ({{...}}) du document généré en
+  // MAJUSCULES. Le texte fixe du modèle n'est pas modifié. Défaut : non.
+  const [forcerMajusculesVariables, setForcerMajusculesVariables] = useState<boolean>(
+    fileConfig.forcerMajusculesVariables === true
+  );
+
+  const toggleForcerMajusculesVariables = () => {
+    const next = !forcerMajusculesVariables;
+    setForcerMajusculesVariables(next);
+    updateTemplateData({
+      file_config: {
+        ...(templateData.file_config || {}),
+        forcerMajusculesVariables: next,
+      },
+    });
+  };
+
   const customFieldsList = [...customFieldDefinitions.map((d) => d.fieldPath), ...legacyCustomFields].filter(Boolean);
 
   const allSelectedFieldsForJson = getAllSelectedFields(
@@ -843,6 +860,50 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
           </div>
         </label>
       </div>
+
+      {/* Options du document Word */}
+      {templateData.file_type === 'word' && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
+              <Settings className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Options du document Word</h3>
+              <p className="text-sm text-gray-600">Mise en forme des variables dans la proposition générée</p>
+            </div>
+          </div>
+
+          <label
+            className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+              forcerMajusculesVariables
+                ? 'border-blue-400 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+              forcerMajusculesVariables ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
+            }`}>
+              {forcerMajusculesVariables && <CheckCircle2 className="w-4 h-4 text-white" />}
+            </div>
+            <input
+              type="checkbox"
+              checked={forcerMajusculesVariables}
+              onChange={toggleForcerMajusculesVariables}
+              className="sr-only"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900 mb-1">
+                Forcer les variables en MAJUSCULES dans le document généré
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Toutes les balises <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{variable}}'}</code> sont
+                rendues en majuscules. Le texte fixe de votre modèle Word n&apos;est pas modifié.
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-8 border-t-2 border-gray-200">
