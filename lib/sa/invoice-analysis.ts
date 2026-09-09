@@ -212,6 +212,18 @@ function amountHt(line: InvoiceAnalysisLine): number | null {
   return line.amount_ttc_signed / (1 + rate / 100);
 }
 
+function normalizeSearchText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizeInvoiceLineCategory(line: InvoiceAnalysisLine): InvoiceAnalysisLine['category'] {
+  if (line.category !== 'one_time') return line.category;
+  const text = normalizeSearchText([line.label, ...line.evidence.map((item) => item.text)].join(' '));
+  return /\b(?:appels? vers |vers )?(?:les )?(?:services?|numeros?) speciaux\b|\bsva\b|\bhors[- ]forfait\b/.test(text)
+    ? 'variable'
+    : line.category;
+}
+
 function parseFrenchDate(value: string | null): Date | null {
   if (!value) return null;
   const match = value.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/);
@@ -262,7 +274,8 @@ export function calculateCanonicalSaAnalysis(
         issues.push({ code: 'missing_amount', path: `invoices.${invoiceIndex}.lines.${lineIndex}`, message: `Montant HT introuvable pour ${line.label}.` });
         return;
       }
-      const signedAmount = line.category === 'discount' ? -Math.abs(rawAmount) : rawAmount;
+      const category = normalizeInvoiceLineCategory(line);
+      const signedAmount = category === 'discount' ? -Math.abs(rawAmount) : rawAmount;
       const quantity = Number.isFinite(line.quantity) && line.quantity > 0 ? line.quantity : 1;
       const lineTotal = line.amount_scope === 'unit' ? signedAmount * quantity : signedAmount;
       const lineMatchesInvoiceTotal = invoice.printed_total_ht !== null
@@ -277,7 +290,7 @@ export function calculateCanonicalSaAnalysis(
       const monthlyAmount = lineTotal / months;
       hasComparableLines = true;
       printedComparableTotal += lineTotal;
-      normalizedLines.push({ ...line, billing_months: months, amount_ht: round2(signedAmount), monthly_amount_ht: round2(monthlyAmount) });
+      normalizedLines.push({ ...line, category, billing_months: months, amount_ht: round2(signedAmount), monthly_amount_ht: round2(monthlyAmount) });
     });
 
     if (invoice.printed_total_ht !== null && hasComparableLines && Math.abs(round2(printedComparableTotal) - round2(invoice.printed_total_ht)) > 0.02) {

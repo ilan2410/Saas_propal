@@ -56,7 +56,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ? Math.round(body.manual_total_ht * 100) / 100
     : null;
 
-  if (hasTotalBlockingIssue(canonical.issues) && manualTotal === null) {
+  // `force` : l'utilisateur assume le détail qu'il a corrigé même s'il reste
+  // incohérent avec la facture (ex. total imprimé illisible ou erroné). Sans ce
+  // drapeau, ses corrections seraient perdues faute de pouvoir être validées.
+  const force = body.force === true;
+  const stillBlocking = hasTotalBlockingIssue(canonical.issues);
+  if (stillBlocking && manualTotal === null && !force) {
     return NextResponse.json({
       success: false,
       validation_status: 'review_required',
@@ -64,6 +69,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       quality_issues: canonical.issues,
     }, { status: 422 });
   }
+  const validationStatus = manualTotal !== null
+    ? 'valid_manual'
+    : stillBlocking
+      ? 'valid_forced'
+      : 'valid';
 
   if (manualTotal !== null) canonical.total_ht_mensuel_client = manualTotal;
   const structured = {
@@ -136,7 +146,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const control = isRecord(filledData._extraction_control) ? filledData._extraction_control : {};
   filledData._extraction_control = {
     ...control,
-    status: manualTotal === null ? 'valid' : 'valid_manual',
+    status: validationStatus,
     issues: canonical.issues,
     manual_override: manualTotal === null ? null : {
       total_ht_mensuel_client: manualTotal,
@@ -158,7 +168,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   return NextResponse.json({
     success: true,
-    validation_status: manualTotal === null ? 'valid' : 'valid_manual',
+    validation_status: validationStatus,
     donnees_extraites: filledData,
     total_ht_mensuel_client: canonical.total_ht_mensuel_client,
   });

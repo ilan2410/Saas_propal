@@ -22,9 +22,9 @@
 // `_sa_line_uid`. Si la SA est basée-lignes, on n'écrit que dans `lignes` (déjà
 // compté) afin de ne pas faire basculer le régime de comptage.
 
-import { calculateSaCartSummary, SA_RESIDUAL_LABEL } from './calculateSaCart';
+import { calculateSaCartSummary, SA_RESIDUAL_LABEL, SA_VARIABLE_AGGREGATE_LABEL } from './calculateSaCart';
 
-export type SaSection = 'abonnement' | 'location';
+export type SaSection = 'abonnement' | 'location' | 'variable';
 export type SaLigneType = 'fixe' | 'mobile' | 'internet';
 
 export interface SaEditableLine {
@@ -62,14 +62,35 @@ export type SaEditOp =
   | { kind: 'update'; id: string; patch: SaLinePatch }
   | { kind: 'delete'; id: string };
 
+/**
+ * Ancres de réconciliation de `calculateSaCartSummary` situées dans `totaux`.
+ * Retirées pour obtenir la somme « pure » des lignes, puis réécrites dessus.
+ */
 const SOURCE_KEYS = [
   'total_abonnements_source',
   'total_locations_source',
+  'total_charges_variables_source',
+  'total_charges_variables_calcule',
   'total_solution_actuelle_source',
 ] as const;
 
+/**
+ * Ancre de réconciliation située à la racine de `situation_actuelle`
+ * (écrite par le pipeline SA). Sans elle dans la liste, toute édition du panier
+ * était annulée : le total repartait vers la valeur d'origine via une ligne
+ * résiduelle invisible.
+ */
+const CANONICAL_TOTAL_KEY = 'total_ht_mensuel_client';
+
 const ABO_PRICE_KEYS = ['tarif_net_mensuel', 'tarif_brut_mensuel'];
 const LOC_PRICE_KEYS = ['loyer_net_mensuel', 'loyer_brut_mensuel'];
+const CHARGE_PRICE_KEYS = ['montant', 'montant_mensuel', 'montant_ht', 'tarif'];
+
+const DEFAULT_LABELS: Record<SaSection, string> = {
+  abonnement: 'Abonnement',
+  location: 'Location',
+  variable: 'Charge variable',
+};
 
 // ── Helpers (alignés sur calculateSaCart.ts) ─────────────────────────
 
@@ -129,12 +150,16 @@ function isAboPrimary(sa: Record<string, unknown>): boolean {
   return records(sa.abonnements).length > 0;
 }
 
-/** Résumé « pur » : calculé en ignorant les totaux « source » (= somme des lignes). */
+/**
+ * Résumé « pur » : calculé en ignorant TOUTES les ancres de réconciliation
+ * (totaux « source » + total canonique) → strictement la somme des lignes.
+ */
 function pureSummary(sa: Record<string, unknown>) {
   const saCopy = clone(sa);
   if (isRecord(saCopy.totaux)) {
     for (const k of SOURCE_KEYS) delete (saCopy.totaux as Record<string, unknown>)[k];
   }
+  delete saCopy[CANONICAL_TOTAL_KEY];
   return calculateSaCartSummary({ situation_actuelle: saCopy });
 }
 
@@ -179,13 +204,15 @@ function readLine(
   const designation =
     section === 'location'
       ? getStr(item, 'libelle') || getStr(item, 'materiel') || getStr(item, 'libelle_contrat')
-      : getStr(item, 'libelle') || getStr(item, 'forfait') || getStr(item, 'libelle_contrat');
+      : section === 'variable'
+        ? getStr(item, 'libelle') || getStr(item, 'type')
+        : getStr(item, 'libelle') || getStr(item, 'forfait') || getStr(item, 'libelle_contrat');
   const remise = toNumber(item.remise_mensuelle);
   return {
     id,
     section,
-    designation: designation || (section === 'location' ? 'Location' : 'Abonnement'),
-    numero: resolveNumero(item, sa),
+    designation: designation || DEFAULT_LABELS[section],
+    numero: section === 'variable' ? '' : resolveNumero(item, sa),
     quantite: Math.max(1, toNumber(item.quantite) || 1),
     montant,
     isResidual: item._sa_residual === true,
@@ -255,6 +282,28 @@ export function getSaEditableLines(situationActuelle: unknown): SaEditableLine[]
     });
   }
 
+  // ── Section Charges variables ──
+  // Détaillées ligne à ligne quand la facture les distingue ; sinon une seule
+  // ligne agrégée reprenant `totaux.total_charges_variables_*`.
+  let hasChargeDetail = false;
+  records(sa.charges_variables).forEach((item, i) => {
+    const montant = pickMontant(item, CHARGE_PRICE_KEYS);
+    if (montant <= 0) return;
+    hasChargeDetail = true;
+    lines.push(readLine(item, `charges_variables:${i}`, 'variable', montant, sa));
+  });
+  if (!hasChargeDetail && summary.chargesVariables > 0.005) {
+    lines.push({
+      id: 'aggregate:variable',
+      section: 'variable',
+      designation: SA_VARIABLE_AGGREGATE_LABEL,
+      numero: '',
+      quantite: 1,
+      montant: summary.chargesVariables,
+      isResidual: true,
+    });
+  }
+
   return lines;
 }
 
@@ -297,22 +346,70 @@ function materializeResiduals(sa: Record<string, unknown>): void {
       _sa_residual: true,
     });
   }
+
+  // Charges variables connues seulement par leur total agrégé (`totaux.total_charges_variables_*`,
+  // sans détail ligne à ligne) : on les matérialise, sinon `syncSources` les
+  // remettrait à zéro en recalculant depuis les lignes.
+  const hasChargeDetail = records(sa.charges_variables).some(
+    (item) => pickMontant(item, CHARGE_PRICE_KEYS) > 0,
+  );
+  if (!hasChargeDetail && summary.chargesVariables > 0.005) {
+    ensureArray(sa, 'charges_variables').push({
+      libelle: SA_VARIABLE_AGGREGATE_LABEL,
+      montant: summary.chargesVariables,
+      precision_montant: 'HT',
+      _sa_uid: uid(),
+      _sa_residual: true,
+    });
+  }
 }
 
+/**
+ * Recale toutes les valeurs dérivées sur la somme des lignes :
+ *  - les ancres de réconciliation (sinon l'édition est annulée au recalcul) ;
+ *  - les variables Word `total_abonnements` / `total_loyer_mensuel` /
+ *    `total_materiel`, avec les mêmes formules que `enrichSituationActuelle`
+ *    (app/api/propositions/extract/route.ts) pour que la proposition et les
+ *    comparatifs SA/SP reflètent l'édition.
+ */
 function syncSources(sa: Record<string, unknown>): void {
   const pure = pureSummary(sa);
   if (!isRecord(sa.totaux)) sa.totaux = {};
   const totaux = sa.totaux as Record<string, unknown>;
   totaux.total_abonnements_source = pure.abonnements;
+  totaux.total_abonnements_calcule = pure.abonnements;
   totaux.total_locations_source = pure.locations;
+  totaux.total_locations_calcule = pure.locations;
+  totaux.total_charges_variables_source = pure.chargesVariables;
+  totaux.total_charges_variables_calcule = pure.chargesVariables;
   totaux.total_solution_actuelle_source = pure.totalMensuel;
+  totaux.total_solution_actuelle_calcule = pure.totalMensuel;
+
+  sa[CANONICAL_TOTAL_KEY] = pure.totalMensuel;
+  sa.total_abonnements = round2(
+    pure.lignesFixes + pure.lignesMobiles + pure.lignesInternet + pure.abonnements,
+  );
+  sa.total_loyer_mensuel = pure.totalMensuel;
+  sa.total_materiel = pure.locations;
 }
 
 function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
   const quantite = Math.max(1, Math.round(input.quantite) || 1);
   const montant = Math.max(0, input.montant) || 0;
-  const designation = input.designation.trim() || (input.section === 'location' ? 'Location' : 'Abonnement');
+  const designation = input.designation.trim() || DEFAULT_LABELS[input.section];
   const numero = (input.numero ?? '').trim();
+
+  if (input.section === 'variable') {
+    // Pas de quantité : `calculateSaCartSummary` ne multiplie pas les charges.
+    ensureArray(sa, 'charges_variables').push({
+      libelle: designation,
+      type: 'autre',
+      montant,
+      precision_montant: 'HT',
+      _sa_uid: uid(),
+    });
+    return;
+  }
 
   if (input.section === 'location') {
     ensureArray(sa, 'locations').push({
@@ -354,7 +451,7 @@ function resolveId(
   sa: Record<string, unknown>,
   id: string,
 ): { array: string; index: number } | null {
-  for (const arrayName of ['abonnements', 'lignes', 'locations']) {
+  for (const arrayName of ['abonnements', 'lignes', 'locations', 'charges_variables']) {
     if (id.startsWith(`${arrayName}:`)) {
       const index = Number(id.slice(arrayName.length + 1));
       const arr = rawArray(sa[arrayName]);
@@ -362,6 +459,11 @@ function resolveId(
         ? { array: arrayName, index }
         : null;
     }
+  }
+  if (id === 'aggregate:variable') {
+    // Matérialisée par `materializeResiduals` juste avant la mutation.
+    const cv = rawArray(sa.charges_variables).findIndex((it) => isRecord(it) && it._sa_residual === true);
+    return cv >= 0 ? { array: 'charges_variables', index: cv } : null;
   }
   if (id === 'residual:abo') {
     const ab = rawArray(sa.abonnements).findIndex((it) => isRecord(it) && it._sa_residual === true);
@@ -382,13 +484,19 @@ function applyPatchToItem(
   patch: SaLinePatch,
   array: string,
 ): void {
+  const isCharge = array === 'charges_variables';
   if (patch.designation !== undefined) item.libelle = patch.designation;
-  if (patch.numero !== undefined) item.numero_ligne = patch.numero;
-  if (patch.quantite !== undefined) item.quantite = Math.max(1, Math.round(patch.quantite) || 1);
+  if (patch.numero !== undefined && !isCharge) item.numero_ligne = patch.numero;
+  if (patch.quantite !== undefined && !isCharge) item.quantite = Math.max(1, Math.round(patch.quantite) || 1);
   if (patch.montant !== undefined) {
     const value = Math.max(0, patch.montant) || 0;
     if (array === 'locations') item.loyer_net_mensuel = value;
-    else item.tarif_net_mensuel = value;
+    else if (isCharge) {
+      item.montant = value;
+      // Les clés alternatives masqueraient la nouvelle valeur (`pickMontant`
+      // ignore les montants nuls et passerait à la suivante).
+      for (const key of CHARGE_PRICE_KEYS.slice(1)) delete item[key];
+    } else item.tarif_net_mensuel = value;
   }
   // Une fois éditée, une ligne résiduelle devient une ligne normale.
   if (item._sa_residual === true) delete item._sa_residual;
@@ -433,7 +541,7 @@ function deleteLine(sa: Record<string, unknown>, id: string): void {
   const toRemove: Array<{ array: string; index: number }> = [{ ...target }];
   forEachTwin(sa, linkUid, target, (array, index) => toRemove.push({ array, index }));
   // Supprimer par index décroissant, array par array.
-  for (const arrayName of ['abonnements', 'lignes', 'locations']) {
+  for (const arrayName of ['abonnements', 'lignes', 'locations', 'charges_variables']) {
     const indexes = toRemove
       .filter((t) => t.array === arrayName)
       .map((t) => t.index)

@@ -117,4 +117,25 @@ describe('calculateCanonicalSaAnalysis', () => {
     expect(result.invoices[1].monthly_total_ht).toBe(38.65);
     expect(result.total_ht_mensuel_client).toBe(301.46);
   });
+
+  it('traite les appels vers services spéciaux comme une charge variable malgré une catégorie one_time', () => {
+    const value = report();
+    value.invoices[0].lines.push({
+      ...line('special-calls', 'vers services spéciaux (achats ponctuels)', 25.48),
+      category: 'one_time',
+      recurring: false,
+      source_periodicity: 'one_time',
+      evidence: [{ document_index: 0, page: 3, text: 'vers services spéciaux 25,48' }],
+    });
+    value.invoices[0].printed_total_ht = 288.29;
+    value.declared_monthly_total_ht = 326.94;
+
+    const included = calculateCanonicalSaAnalysis(value, value.field_coverage.map((item) => item.field), true);
+    const excluded = calculateCanonicalSaAnalysis(value, value.field_coverage.map((item) => item.field), false);
+
+    expect(included.invoices[0].lines.at(-1)?.category).toBe('variable');
+    expect(included.total_ht_mensuel_client).toBe(326.94);
+    expect(included.issues).not.toContainEqual(expect.objectContaining({ code: 'monthly_total_mismatch' }));
+    expect(excluded.total_ht_mensuel_client).toBe(301.46);
+  });
 });

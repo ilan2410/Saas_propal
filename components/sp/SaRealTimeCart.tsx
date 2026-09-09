@@ -168,6 +168,20 @@ interface LineDraft {
   montant: string;
 }
 
+/** Libellé par défaut d'une ligne ajoutée sans désignation. */
+const DEFAULT_ADD_LABEL: Record<SaSection, string> = {
+  abonnement: 'Abonnement',
+  location: 'Location',
+  variable: 'Charge variable',
+};
+
+/** Suffixe du bouton « Ajouter … » de chaque section. */
+const ADD_BUTTON_LABEL: Record<SaSection, string> = {
+  abonnement: 'un abonnement',
+  location: 'une location',
+  variable: 'une charge variable',
+};
+
 function EditableLineRow({
   line,
   onUpdate,
@@ -177,6 +191,9 @@ function EditableLineRow({
   onUpdate: (patch: { designation: string; numero: string; quantite: number; montant: number }) => void;
   onDelete: () => void;
 }) {
+  // Une charge variable n'a ni numéro de ligne ni quantité (le total ne les
+  // multiplie pas) : on n'expose que le libellé et le montant.
+  const simple = line.section === 'variable';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<LineDraft>({
     designation: line.designation,
@@ -241,8 +258,12 @@ function EditableLineRow({
       {editing && (
         <div className="mt-1 flex flex-col gap-1 border-l-2 border-amber-200 pl-2">
           <TextField label="Désignation" value={draft.designation} onChange={(v) => setDraft((d) => ({ ...d, designation: v }))} />
-          <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} />
-          <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
+          {!simple && (
+            <>
+              <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} />
+              <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
+            </>
+          )}
           <NumField label="Prix mensuel HT" value={draft.montant} onChange={(v) => setDraft((d) => ({ ...d, montant: v }))} />
           <div className="flex items-center justify-end gap-1 pt-0.5">
             <button type="button" onClick={() => setEditing(false)} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-100">
@@ -267,6 +288,7 @@ function AddLineForm({
   onAdd: (input: SaAddInput) => void;
   onCancel: () => void;
 }) {
+  const simple = section === 'variable';
   const [type, setType] = useState<SaLigneType>('mobile');
   const [draft, setDraft] = useState<LineDraft>({ designation: '', numero: '', quantite: '1', montant: '' });
 
@@ -279,7 +301,7 @@ function AddLineForm({
     onAdd({
       section,
       type: section === 'abonnement' ? type : undefined,
-      designation: draft.designation.trim() || (section === 'location' ? 'Location' : 'Abonnement'),
+      designation: draft.designation.trim() || DEFAULT_ADD_LABEL[section],
       numero: draft.numero.trim() || undefined,
       quantite: Math.max(1, Math.round(Number(draft.quantite)) || 1),
       montant,
@@ -302,9 +324,18 @@ function AddLineForm({
           </select>
         </label>
       )}
-      <TextField label="Désignation" value={draft.designation} onChange={(v) => setDraft((d) => ({ ...d, designation: v }))} placeholder="ex : Forfait Pro" />
-      <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} placeholder="optionnel" />
-      <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
+      <TextField
+        label="Désignation"
+        value={draft.designation}
+        onChange={(v) => setDraft((d) => ({ ...d, designation: v }))}
+        placeholder={simple ? 'ex : Hors forfait' : 'ex : Forfait Pro'}
+      />
+      {!simple && (
+        <>
+          <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} placeholder="optionnel" />
+          <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
+        </>
+      )}
       <NumField label="Prix mensuel HT" value={draft.montant} onChange={(v) => setDraft((d) => ({ ...d, montant: v }))} />
       <div className="flex items-center justify-end gap-1 pt-0.5">
         <button type="button" onClick={onCancel} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-100">
@@ -352,7 +383,7 @@ function EditableSaBody({
       return next;
     });
 
-  const renderSection = (section: SaSection, label: string, total: number) => {
+  const renderSection = (section: SaSection, label: string, total: number, notCounted = false) => {
     const sectionLines = lines.filter((l) => l.section === section);
     const isOpen = expanded.has(section);
     return (
@@ -360,15 +391,22 @@ function EditableSaBody({
         <button
           type="button"
           onClick={() => toggle(section)}
-          className="w-full flex items-center justify-between text-xs text-gray-700 hover:text-gray-900"
+          className={`w-full flex items-center justify-between text-xs ${
+            notCounted ? 'text-gray-400' : 'text-gray-700 hover:text-gray-900'
+          }`}
         >
           <span className="flex items-center gap-1 font-medium">
             <ChevronDown className={`h-3 w-3 text-gray-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-            {label}
+            <span className={notCounted ? 'line-through decoration-gray-300' : ''}>{label}</span>
+            {notCounted && (
+              <span className="rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium text-gray-400">
+                non comptée
+              </span>
+            )}
           </span>
-          <span className="tabular-nums">
+          <span className={`tabular-nums ${notCounted ? 'line-through decoration-gray-300' : ''}`}>
             {formatEuro(total)}
-            <span className="ml-0.5 text-[10px] text-gray-400">/mois</span>
+            <span className="ml-0.5 text-[10px] text-gray-400 no-underline">/mois</span>
           </span>
         </button>
 
@@ -397,7 +435,7 @@ function EditableSaBody({
                 onClick={() => setAdding(section)}
                 className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-amber-700 hover:bg-amber-50"
               >
-                <Plus className="w-3 h-3" /> Ajouter {section === 'location' ? 'une location' : 'un abonnement'}
+                <Plus className="w-3 h-3" /> Ajouter {ADD_BUTTON_LABEL[section]}
               </button>
             )}
           </div>
@@ -410,27 +448,7 @@ function EditableSaBody({
     <>
       {renderSection('abonnement', 'Abonnements', abonnementsTotal)}
       {renderSection('location', 'Locations matériel', locationsTotal)}
-
-      {chargesVariables > 0 && (
-        <div
-          className={`flex items-center justify-between text-xs ${
-            chargesVariablesIncluses ? 'text-gray-700' : 'text-gray-400 line-through decoration-gray-300'
-          }`}
-        >
-          <span className="flex items-center gap-1.5 font-medium">
-            Charges variables
-            {!chargesVariablesIncluses && (
-              <span className="rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium text-gray-400 no-underline">
-                non comptée
-              </span>
-            )}
-          </span>
-          <span className="tabular-nums">
-            {formatEuro(chargesVariables)}
-            <span className="ml-0.5 text-[10px] text-gray-400">/mois</span>
-          </span>
-        </div>
-      )}
+      {renderSection('variable', 'Charges variables', chargesVariables, !chargesVariablesIncluses)}
 
       {onResetSaData && (
         <div className="pt-1">

@@ -66,7 +66,11 @@
       "Bash(npx vitest *)",
       "Bash(grep -n \"split\\\\|##\\\\|startsWith\\\\|^\\\\s*[-*]\\\\|mark\\\\|line\\\\.\\\\|isHeading\\\\|isBullet\\\\|trimStart\\\\|replace\\(/\\\\*\\\\*\" components/propositions/SaResumeRenderer.tsx)",
       "Bash(npx next *)",
-      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,1\\)\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,1\\)\\)\")",
+      "Bash(echo \"TSC: $?\")",
+      "Bash(echo \"ESLINT: $?\")",
+      "Bash(echo \"TSC_EXIT=$?\")",
+      "Bash(echo \"ESLINT_EXIT=$?\")"
     ],
     "additionalDirectories": [
       "\\tmp"

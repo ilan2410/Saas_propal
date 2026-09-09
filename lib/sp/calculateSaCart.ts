@@ -38,6 +38,9 @@ export interface SaCartSummary {
 /** Libellé de la ligne ajoutée pour combler l'écart Source − Calculé. */
 export const SA_RESIDUAL_LABEL = 'Autres éléments (non détaillés)';
 
+/** Libellé de la ligne agrégée utilisée quand les charges variables ne sont pas détaillées. */
+export const SA_VARIABLE_AGGREGATE_LABEL = 'Consommations & frais variables';
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -334,7 +337,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     if (totalCharges > 0) {
       chargesVariables = totalCharges;
       details.push({
-        libelle: 'Consommations & frais variables',
+        libelle: SA_VARIABLE_AGGREGATE_LABEL,
         categorie: 'variable',
         montant: round2(totalCharges),
       });

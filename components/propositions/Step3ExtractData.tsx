@@ -18,7 +18,7 @@ import {
 import { PropositionData } from './PropositionWizard';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 import { SaExtractionReview } from '@/components/propositions/SaExtractionReview';
-import type { ExtractionQualityIssue, InvoiceAnalysisReport } from '@/lib/sa/invoice-analysis';
+import type { InvoiceAnalysisReport } from '@/lib/sa/invoice-analysis';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -63,9 +63,6 @@ export function Step3ExtractData({
   const [error, setError] = useState<string>('');
   const [creditsInfo, setCreditsInfo] = useState<{ restants: number; debite: number } | null>(null);
   const [requiresReview, setRequiresReview] = useState(initialControl?.status === 'review_required');
-  const [qualityIssues, setQualityIssues] = useState<ExtractionQualityIssue[]>(
-    initialControl && Array.isArray(initialControl.issues) ? initialControl.issues as ExtractionQualityIssue[] : []
-  );
 
   const startExtraction = async () => {
     setIsExtracting(true);
@@ -95,7 +92,6 @@ export function Step3ExtractData({
       setExtractedData(nextExtractedData);
       setExtractionStatus('success');
       setRequiresReview(result.validation_status === 'review_required');
-      setQualityIssues(Array.isArray(result.quality_issues) ? result.quality_issues : []);
 
       if (result.credits_restants !== undefined && result.montant_debite !== undefined) {
         setCreditsInfo({
@@ -140,6 +136,11 @@ export function Step3ExtractData({
   const reviewTotal = extractionControl && typeof extractionControl.total_ht_mensuel_client === 'number'
     ? extractionControl.total_ht_mensuel_client
     : 0;
+  const saTotaux =
+    extractedData && isPlainObject(extractedData.situation_actuelle) && isPlainObject(extractedData.situation_actuelle.totaux)
+      ? extractedData.situation_actuelle.totaux
+      : null;
+  const includeVariableCharges = saTotaux ? saTotaux.charges_variables_incluses !== false : true;
 
   return (
     <div className="space-y-8">
@@ -297,11 +298,10 @@ export function Step3ExtractData({
                   propositionId={propositionData.proposition_id}
                   initialReport={invoiceAnalysis}
                   initialTotal={reviewTotal}
-                  initialIssues={qualityIssues}
+                  includeVariableCharges={includeVariableCharges}
                   onValidated={(nextData) => {
                     setExtractedData(nextData);
                     setRequiresReview(false);
-                    setQualityIssues([]);
                     updatePropositionData({ donnees_extraites: nextData });
                   }}
                   onDismiss={() => setRequiresReview(false)}
