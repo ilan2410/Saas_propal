@@ -323,7 +323,7 @@ export function SpLoyerManager({ templates }: Props) {
                             <tr className="text-left text-xs text-gray-500 border-b">
                               <th className="pb-2 pr-2 font-medium">Durée (mois)</th>
                               <th className="pb-2 pr-2 font-medium">Taux loyer</th>
-                              <th className="pb-2 pr-2 font-medium">Mois offerts</th>
+                              <th className="pb-2 pr-2 font-medium">Mois offerts (loyer mensuel)</th>
                               <th className="pb-2 pr-2 font-medium">Trimestres</th>
                               <th className="pb-2 w-8"></th>
                             </tr>

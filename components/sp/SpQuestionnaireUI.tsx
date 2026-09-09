@@ -14,7 +14,7 @@ import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/ev
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerLoyer, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { buildSpReference } from '@/lib/sp/buildReference';
@@ -2911,10 +2911,17 @@ export function SpQuestionnaireUI({
               spConfigMoisOfferts,
               spPreferencesProduits,
             );
-            const baseAvantMarge =
-              baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites;
-            const baseLoyer = baseAvantMarge + margeNum;
-            const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
+            const remisePourCalculLoyer = calculerRemiseMoisOffert(
+              bareme,
+              baseSummary.abonnements.totalMensuel,
+              dureeMois,
+            );
+            const baseCalculLoyer =
+              baseSummary.totalPonctuel + remisePourCalculLoyer + baseSummary.indemnites + margeNum;
+            const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois);
+            const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
+            const baseLoyer =
+              baseSummary.totalPonctuel + remiseMoisOffert + baseSummary.indemnites + margeNum;
 
             return (
               <div className="space-y-3">
@@ -2960,12 +2967,12 @@ export function SpQuestionnaireUI({
                         <span className="text-gray-600">Total ponctuel (matériel + FAS + installations + cadeaux)</span>
                         <span className="tabular-nums">{baseSummary.totalPonctuel.toFixed(2)} €</span>
                       </div>
-                      {baseSummary.remiseMoisOffert > 0 && (
+                      {remiseMoisOffert > 0 && (
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">
-                            Remise mois offert ({baseSummary.loyer?.mois_offerts ?? 0} × {baseSummary.abonnements.totalMensuel.toFixed(2)} €)
+                            Remise mois offert ({loyer?.mois_offerts ?? 0} × {loyer?.loyer_mensuel.toFixed(2)} €)
                           </span>
-                          <span className="tabular-nums">{baseSummary.remiseMoisOffert.toFixed(2)} €</span>
+                          <span className="tabular-nums">{remiseMoisOffert.toFixed(2)} €</span>
                         </div>
                       )}
                       {baseSummary.indemnites > 0 && (
@@ -2992,7 +2999,7 @@ export function SpQuestionnaireUI({
                           <span className="text-gray-600">
                             Loyer mensuel HT
                             <span className="block text-[10px] text-gray-400">
-                              ({baseLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
+                              ({baseCalculLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
                             </span>
                           </span>
                           <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
@@ -3071,8 +3078,9 @@ export function SpQuestionnaireUI({
               const margeVal = String(margeNum);
               const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
               const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
-              const baseLoyer = baseSummary.totalPonctuel + baseSummary.remiseMoisOffert + baseSummary.indemnites + margeNum;
-              const loyer = calculerLoyer(bareme, baseLoyer, dureeMois);
+              const remisePourCalculLoyer = calculerRemiseMoisOffert(bareme, baseSummary.abonnements.totalMensuel, dureeMois);
+              const baseCalculLoyer = baseSummary.totalPonctuel + remisePourCalculLoyer + baseSummary.indemnites + margeNum;
+              const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois);
               const extras: SpQuestionReponse[] = [
                 { question_id: 'sp_marge_calculee', valeur: margeVal },
                 // Détail du code promo (pour affichage panier + export comparatif)

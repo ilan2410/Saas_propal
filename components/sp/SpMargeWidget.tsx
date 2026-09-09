@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerLoyer, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 
 interface SpMargeWidgetProps {
   reponses: SpQuestionReponse[];
@@ -94,8 +94,13 @@ export function SpMargeWidget({
         spConfigMoisOfferts,
         spPreferencesProduits,
       );
-      const baseLoyer = summary.totalPonctuel + summary.remiseMoisOffert + summary.indemnites + margeNum;
-      const loyer = bareme ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
+      const remisePourCalculLoyer = bareme
+        ? calculerRemiseMoisOffert(bareme, summary.abonnements.totalMensuel, dureeMois)
+        : 0;
+      const baseCalculLoyer = summary.totalPonctuel + remisePourCalculLoyer + summary.indemnites + margeNum;
+      const loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
+      const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
+      const baseLoyer = summary.totalPonctuel + remiseMoisOffert + summary.indemnites + margeNum;
       return { loyer, dureeMois, baseLoyer, margeNum };
     },
     [resolveDureeMois, spConfigLoyer, reponses, donneesExtraites, catalogue, questions, spConfigMoisOfferts, spPreferencesProduits],

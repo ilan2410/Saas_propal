@@ -320,7 +320,7 @@ export function calculateCartSummary(
   catalogue: CatalogueProduit[],
   donneesExtraites: Record<string, unknown> = {},
   spConfigLoyer?: SpConfigLoyer,
-  spConfigMoisOfferts?: SpConfigMoisOfferts,
+  _spConfigMoisOfferts?: SpConfigMoisOfferts,
   spPreferencesProduits?: SpPreferencesProduits,
 ): SpCartSummary {
   const lines: CartLine[] = [];
@@ -655,15 +655,8 @@ export function calculateCartSummary(
     }
   }
   // 5. Composantes additionnelles : remise mois offert, indemnités, marge
-  const categoriesMoisOfferts = spConfigMoisOfferts?.categories_inclues ?? ['fixe', 'mobile'];
-  let totalRecurrentMoisOfferts = 0;
-  if (categoriesMoisOfferts.includes('fixe')) totalRecurrentMoisOfferts += abos.fixe;
-  if (categoriesMoisOfferts.includes('mobile')) totalRecurrentMoisOfferts += abos.mobile;
-  if (categoriesMoisOfferts.includes('internet')) totalRecurrentMoisOfferts += abos.internet;
-  if (categoriesMoisOfferts.includes('autres_mensuels')) totalRecurrentMoisOfferts += autresMensuels;
-
-  const remiseMoisOffert = bareme
-    ? calculerRemiseMoisOffert(bareme, totalRecurrentMoisOfferts, dureeMois)
+  const remisePourCalculLoyer = bareme
+    ? calculerRemiseMoisOffert(bareme, abos.totalMensuel, dureeMois)
     : 0;
 
   const indemnites = resolveIndemnites(reponses, questions, donneesExtraites);
@@ -671,8 +664,10 @@ export function calculateCartSummary(
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? Number(margeRep.valeur) || 0 : 0;
 
+  const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnites + marge;
+  const loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
+  const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
   const baseLoyer = totalPonctuel + remiseMoisOffert + indemnites + marge;
-  const loyer = bareme ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
 
   // Détail du code promo appliqué sur la marge (si renseigné lors du questionnaire)
   const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');

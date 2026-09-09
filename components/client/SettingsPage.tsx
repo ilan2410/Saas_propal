@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion, SpConfigMoisOfferts } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion } from '@/types';
 import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -42,7 +42,6 @@ import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPref
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 import { SpLoyerManager } from '@/components/settings/SpLoyerManager';
 import { SpResiliationManager } from '@/components/settings/SpResiliationManager';
-import { SpMoisOffertsManager, getDefaultSpConfigMoisOfferts } from '@/components/settings/SpMoisOffertsManager';
 import { SpCodesPromoManager } from '@/components/settings/SpCodesPromoManager';
 import { SpObjectifsManager } from '@/components/settings/SpObjectifsManager';
 import { SpCategoriesOrderManager } from '@/components/settings/SpCategoriesOrderManager';
@@ -99,7 +98,7 @@ function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
   return isOwner ? [...base, 'equipe'] : base;
 }
 type CalculsSubTabId = 'loyer' | 'resiliation';
-type RemisesSubTabId = 'regles_remise' | 'mois_offerts' | 'codes_promo';
+type RemisesSubTabId = 'regles_remise' | 'codes_promo';
 type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories';
 type NotificationKey =
   | 'email_proposition_generee'
@@ -406,9 +405,6 @@ export default function SettingsPage({
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>(organization.preferences?.sp_regles_remise ?? []);
   const [discountProducts, setDiscountProducts] = useState<CatalogueProduit[]>([]);
   const [discountQuestions, setDiscountQuestions] = useState<SpQuestion[]>([]);
-  const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts>(
-    organization.preferences?.sp_config_mois_offerts ?? getDefaultSpConfigMoisOfferts(),
-  );
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>(organization.preferences?.sp_codes_promo ?? []);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>(organization.preferences?.sp_codes_promo_mode ?? 'addition');
   const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(organization.preferences?.sp_codes_promo_masquer_saisie ?? false);
@@ -1079,25 +1075,6 @@ export default function SettingsPage({
       router.refresh();
     } catch {
       toast.error('Erreur lors de la sauvegarde des remises');
-    } finally {
-      setIsDiscountSaving(false);
-    }
-  };
-
-  const handleSaveMoisOfferts = async () => {
-    if (isDiscountSaving) return;
-    setIsDiscountSaving(true);
-    try {
-      const res = await fetch('/api/settings/update-preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sp_config_mois_offerts: spConfigMoisOfferts }),
-      });
-      if (!res.ok) throw new Error('Erreur');
-      toast.success('Configuration des mois offerts enregistrée');
-      router.refresh();
-    } catch {
-      toast.error('Erreur lors de la sauvegarde des mois offerts');
     } finally {
       setIsDiscountSaving(false);
     }
@@ -3008,17 +2985,6 @@ export default function SettingsPage({
               </button>
               <button
                 type="button"
-                onClick={() => setRemisesSubTab('mois_offerts')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  remisesSubTab === 'mois_offerts'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Remise mois offert
-              </button>
-              <button
-                type="button"
                 onClick={() => setRemisesSubTab('codes_promo')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                   remisesSubTab === 'codes_promo'
@@ -3038,12 +3004,6 @@ export default function SettingsPage({
                 onChange={setDiscountRules}
               />
             )}
-            {remisesSubTab === 'mois_offerts' && (
-              <SpMoisOffertsManager
-                value={spConfigMoisOfferts}
-                onChange={setSpConfigMoisOfferts}
-              />
-            )}
             {remisesSubTab === 'codes_promo' && (
               <SpCodesPromoManager
                 codes={codesPromo}
@@ -3057,22 +3017,14 @@ export default function SettingsPage({
 
             <div className="flex gap-2 pt-4 border-t border-gray-100">
               <Button
-                onClick={
-                  remisesSubTab === 'regles_remise'
-                    ? handleSaveDiscountRules
-                    : remisesSubTab === 'mois_offerts'
-                      ? handleSaveMoisOfferts
-                      : handleSaveCodesPromo
-                }
+                onClick={remisesSubTab === 'regles_remise' ? handleSaveDiscountRules : handleSaveCodesPromo}
                 disabled={isDiscountSaving}
               >
                 {isDiscountSaving
                   ? 'Sauvegarde...'
                   : remisesSubTab === 'regles_remise'
                     ? 'Enregistrer les règles'
-                    : remisesSubTab === 'mois_offerts'
-                      ? 'Enregistrer la configuration'
-                      : 'Enregistrer les codes promo'}
+                    : 'Enregistrer les codes promo'}
               </Button>
             </div>
           </div>

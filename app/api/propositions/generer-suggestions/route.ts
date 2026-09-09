@@ -465,7 +465,7 @@ function buildSpCompletes(
   priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
   loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
-  spConfigMoisOfferts?: SpConfigMoisOfferts,
+  _spConfigMoisOfferts?: SpConfigMoisOfferts,
   spCategoriesOrder?: SpCategorie[],
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
@@ -603,15 +603,6 @@ function buildSpCompletes(
 
   const totalRecurrent = totalRecurrentLignes + totalMaterielRecurrent;
   const totalPonctuel = totalMaterielPonctuel;
-  const categoriesMoisOfferts = spConfigMoisOfferts?.categories_inclues ?? ['fixe', 'mobile'];
-  const totalFixeMoisOfferts = sp_lignes_fixes.reduce((s, l) => s + l._prix_propose_raw, 0);
-  const totalMobileMoisOfferts = sp_lignes_mobiles.reduce((s, l) => s + l._prix_propose_raw, 0);
-  const totalInternetMoisOfferts = sp_internet.reduce((s, l) => s + l._prix_propose_raw, 0);
-  let totalRecurrentMoisOfferts = 0;
-  if (categoriesMoisOfferts.includes('fixe')) totalRecurrentMoisOfferts += totalFixeMoisOfferts;
-  if (categoriesMoisOfferts.includes('mobile')) totalRecurrentMoisOfferts += totalMobileMoisOfferts;
-  if (categoriesMoisOfferts.includes('internet')) totalRecurrentMoisOfferts += totalInternetMoisOfferts;
-  if (categoriesMoisOfferts.includes('autres_mensuels')) totalRecurrentMoisOfferts += totalMaterielRecurrent;
 
   // ── Loyer calculation ──
   // Résolution de la durée :
@@ -640,7 +631,7 @@ function buildSpCompletes(
   const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
-  const remiseMoisOffert = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrentMoisOfferts, dureeMois) : 0;
+  const remisePourCalculLoyer = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
   // Indemnités : prioriser réponse SP, sinon raw.sp_total_indemnites
   let indemnitesNum = 0;
   const indemRep = reponses.find((r) => r.question_id === 'sp_total_indemnites');
@@ -653,8 +644,9 @@ function buildSpCompletes(
     const m = String(raw.sp_total_indemnites).match(/-?\d+(?:[.,]\d+)?/);
     indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
   }
-  const baseLoyer = totalPonctuel + remiseMoisOffert + indemnitesNum + marge;
-  const loyer = dureeMois > 0 ? calculerLoyer(bareme, baseLoyer, dureeMois) : null;
+  const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnitesNum + marge;
+  const loyer = dureeMois > 0 ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
+  const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
 
   // Montant SP mensuel effectif : loyer si configuré, sinon abonnements.
   const totalProposeEffectif = loyer?.loyer_mensuel ?? totalPropose;
