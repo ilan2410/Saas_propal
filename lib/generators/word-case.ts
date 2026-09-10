@@ -6,13 +6,35 @@
 //   - les sections / boucles {{#x}} {{^x}} (valeur non-string : tableau, booléen) ;
 //   - les balises image `{{%x}}` (passe 1 sans module image : tag préfixé par `%`)
 //     ni les valeurs qui sont des balises ré-émises `{{...}}` (plomberie interne
-//     de word-image.ts pour les images).
+//     de word-image.ts pour les images) ;
+//   - les adresses email présentes dans la valeur : elles gardent leur casse
+//     d'origine, seul le texte autour est mis en MAJUSCULES.
 //
 // Réplique le parser par défaut de docxtemplater (`scope[tag]`, `.` -> scope) afin
 // de ne rien changer d'autre au comportement (chaînage des scopes, clés absentes
 // laissées au `nullGetter`, etc.).
 
 const REEMITTED_TAG_RE = /^\{\{.*\}\}$/;
+
+// Exclusion automatique des adresses email : elles ne sont jamais mises en
+// MAJUSCULES (une casse forcée peut casser des adresses sensibles à la casse et
+// nuit à la lisibilité). On isole chaque email dans la valeur et on ne met en
+// majuscules que le texte autour.
+const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/g;
+
+function uppercaseExceptEmails(value: string, locale: string): string {
+  let result = '';
+  let lastIndex = 0;
+  EMAIL_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = EMAIL_RE.exec(value)) !== null) {
+    result += value.slice(lastIndex, match.index).toLocaleUpperCase(locale);
+    result += match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  result += value.slice(lastIndex).toLocaleUpperCase(locale);
+  return result;
+}
 
 export function makeUppercaseParser(locale = 'fr-FR') {
   return function parser(tag: string) {
@@ -28,7 +50,7 @@ export function makeUppercaseParser(locale = 'fr-FR') {
 
         if (typeof value !== 'string' || isImagePlumbing) return value;
         if (REEMITTED_TAG_RE.test(value.trim())) return value;
-        return value.toLocaleUpperCase(locale);
+        return uppercaseExceptEmails(value, locale);
       },
     };
   };

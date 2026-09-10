@@ -49,4 +49,22 @@ describe('makeUppercaseParser', () => {
     const scope = { a: 1 };
     expect(parser('.').get(scope)).toBe(scope);
   });
+
+  it('laisse une adresse email intacte (valeur = email seul)', () => {
+    expect(parser('email').get({ email: 'Jean.Dupont@Exemple.fr' })).toBe(
+      'Jean.Dupont@Exemple.fr',
+    );
+  });
+
+  it('met le texte en majuscules mais préserve la casse des emails inclus', () => {
+    expect(
+      parser('phrase').get({ phrase: 'Écrivez à contact@ma-societe.fr aujourd\'hui' }),
+    ).toBe('ÉCRIVEZ À contact@ma-societe.fr AUJOURD\'HUI');
+  });
+
+  it('préserve plusieurs emails dans une même valeur', () => {
+    expect(
+      parser('v').get({ v: 'de a@x.fr vers b@y.com merci' }),
+    ).toBe('DE a@x.fr VERS b@y.com MERCI');
+  });
 });

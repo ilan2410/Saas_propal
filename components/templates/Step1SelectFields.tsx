@@ -899,6 +899,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
               <p className="text-sm text-gray-600 leading-relaxed">
                 Toutes les balises <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{variable}}'}</code> sont
                 rendues en majuscules. Le texte fixe de votre modèle Word n&apos;est pas modifié.
+                Les adresses email gardent leur casse d&apos;origine.
               </p>
             </div>
           </label>
