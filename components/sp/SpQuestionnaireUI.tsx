@@ -1058,7 +1058,10 @@ export function SpQuestionnaireUI({
   // - promoPopupLoading    : popup de confirmation du code promo (déclenché par le bouton)
   const [questionPopupLoading, setQuestionPopupLoading] = useState(false);
   const [promoPopupLoading, setPromoPopupLoading] = useState(false);
+  // Étape du loader code promo : 0 = « Analyse de vos réponses… », 1 = « Application du code promo… »
+  const [promoLoaderStep, setPromoLoaderStep] = useState<0 | 1>(0);
   const promoPopupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const promoPopupStepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mode client
   const [modeClientActif, setModeClientActif] = useState(spConfigModeClient?.actif ?? false);
@@ -1113,7 +1116,9 @@ export function SpQuestionnaireUI({
     setPendingFreeEntry(null);
     setPromoPopupData(null);
     if (promoPopupTimerRef.current) { clearTimeout(promoPopupTimerRef.current); promoPopupTimerRef.current = null; }
+    if (promoPopupStepTimerRef.current) { clearTimeout(promoPopupStepTimerRef.current); promoPopupStepTimerRef.current = null; }
     setPromoPopupLoading(false);
+    setPromoLoaderStep(0);
     setPromoError('');
     setHistory([]);
     hasReportedCompletion.current = false;
@@ -1125,6 +1130,7 @@ export function SpQuestionnaireUI({
     return () => {
       if (showTimerRef.current) clearTimeout(showTimerRef.current);
       if (promoPopupTimerRef.current) clearTimeout(promoPopupTimerRef.current);
+      if (promoPopupStepTimerRef.current) clearTimeout(promoPopupStepTimerRef.current);
     };
   }, []);
 
@@ -1134,7 +1140,12 @@ export function SpQuestionnaireUI({
       clearTimeout(promoPopupTimerRef.current);
       promoPopupTimerRef.current = null;
     }
+    if (promoPopupStepTimerRef.current) {
+      clearTimeout(promoPopupStepTimerRef.current);
+      promoPopupStepTimerRef.current = null;
+    }
     setPromoPopupLoading(false);
+    setPromoLoaderStep(0);
   };
 
   // Widget drag — mouse events on window to support moving outside the element
@@ -1900,7 +1911,11 @@ export function SpQuestionnaireUI({
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
             </div>
-            <p className="text-sm font-medium text-gray-600">Analyse de vos réponses…</p>
+            <p className="text-sm font-medium text-gray-600">
+              {promoPopupLoading && promoLoaderStep === 1
+                ? 'Application du code promo…'
+                : 'Analyse de vos réponses…'}
+            </p>
           </div>
         </div>,
         document.body
@@ -1959,8 +1974,14 @@ export function SpQuestionnaireUI({
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5">
-              <h2 className="text-lg font-bold text-white">Loyer mensuel</h2>
-              <p className="text-sm text-blue-100 mt-0.5">Montant calculé sur la base de vos réponses</p>
+              <h2 className="text-lg font-bold text-white">
+                {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+              </h2>
+              {currentQuestion?.description && (
+                <p className="text-sm text-blue-100 mt-0.5">
+                  {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+                </p>
+              )}
             </div>
             <div className="px-6 py-6 flex flex-col items-center gap-1">
               {(() => {
@@ -2013,7 +2034,11 @@ export function SpQuestionnaireUI({
             <div className="px-6 py-6 flex flex-col items-center gap-1">
               {promoPopupData.loyerMensuel != null ? (
                 <>
-                  <p className="text-xs text-gray-400">Nouveau loyer mensuel</p>
+                  <p className="text-xs text-gray-400">
+                    {currentExpanded.question?.description
+                      ? resolveTemplateText(currentExpanded.question.description, donneesExtraites, reponses, currentExpanded.iterationIndex)
+                      : 'Nouveau loyer mensuel'}
+                  </p>
                   <p className="text-4xl font-bold text-gray-900">
                     {promoPopupData.loyerMensuel.toFixed(2).replace('.', ',')} €
                   </p>
@@ -3093,12 +3118,21 @@ export function SpQuestionnaireUI({
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
               }
-              // Loader ~2 s « le système réfléchit » avant le popup de confirmation.
-              setPromoPopupLoading(true);
+              // Loader ~4 s avant le popup de confirmation :
+              //   0–2 s : « Analyse de vos réponses… »
+              //   2–4 s : « Application du code promo… »
               if (promoPopupTimerRef.current) clearTimeout(promoPopupTimerRef.current);
+              if (promoPopupStepTimerRef.current) clearTimeout(promoPopupStepTimerRef.current);
+              setPromoLoaderStep(0);
+              setPromoPopupLoading(true);
+              promoPopupStepTimerRef.current = setTimeout(() => {
+                promoPopupStepTimerRef.current = null;
+                setPromoLoaderStep(1);
+              }, 2000);
               promoPopupTimerRef.current = setTimeout(() => {
                 promoPopupTimerRef.current = null;
                 setPromoPopupLoading(false);
+                setPromoLoaderStep(0);
                 setPromoPopupData({
                   nom: found.nom,
                   valeur: found.valeur,
@@ -3106,7 +3140,7 @@ export function SpQuestionnaireUI({
                   margeVal,
                   extras,
                 });
-              }, 2000);
+              }, 4000);
             };
 
             return (

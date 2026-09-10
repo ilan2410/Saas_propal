@@ -4,7 +4,7 @@ import { generatePropositionFile } from '@/lib/generators';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
-import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences } from '@/types';
+import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpTableProductOrders } from '@/types';
 import { resolveOrgContext, buildActingOrgProfile } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
@@ -115,6 +115,7 @@ export async function POST(
       spConfigMoisOfferts,
       spPreferencesProduits,
       orgPreferences.sp_categories_order,
+      templateFileCfg.sp_table_product_orders as SpTableProductOrders | undefined,
     );
 
     // Clauses conditionnelles → variables Word {{sp_clause_<cle>}}

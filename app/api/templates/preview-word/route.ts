@@ -197,8 +197,8 @@ export async function POST(request: NextRequest) {
       ? (fileConfig.sp_config_loyer as SpConfigLoyer)
       : undefined;
     const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
-    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits, orgPreferences.sp_categories_order);
     const wordCfg = fileConfig as unknown as WordConfig;
+    const spCompletes = repairSpCompletesFromQuestionnaire(storedSpCompletes, spReponses, templateQuestions, catalogue, baseData, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits, orgPreferences.sp_categories_order, wordCfg.sp_table_product_orders);
     const spData = buildSpWordData(spCompletes, wordCfg.spTableauxFusionnes);
     // Tableaux SA remontés à plat (ex: {{#lignes}}) — priment sur les clés plates SA.
     const saData = buildSaWordData(baseData);

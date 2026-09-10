@@ -29,7 +29,7 @@ const SP_STANDARD_VARIABLES = [
   // Tables filtrées (Lot 4)
   'sp_situation_proposee_complet', 'sp_situation_proposee_forfaits', 'sp_situation_proposee_forfaits_sans_remise',
   'sp_materiel_detail',
-  'sp_bdc_operateur_table', 'sp_bdc_internet_table', 'sp_bdc_materiel_table',
+  'sp_bdc_operateur_table', 'sp_bdc_operateur_numeros_table', 'sp_bdc_internet_table', 'sp_bdc_materiel_table',
   'sp_cadeaux_table',
   // Variables simples (Lot 4)
   'sp_date_limite_souscription', 'sp_duree_trimestres',

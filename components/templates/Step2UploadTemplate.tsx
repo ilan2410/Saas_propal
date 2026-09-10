@@ -200,6 +200,12 @@ const SP_TABLE_BLOCKS = [
     fullBlock: `{{#sp_bdc_operateur_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_mensuel_ht_sans_remise}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_table}}`,
   },
   {
+    arrayId: 'sp_bdc_operateur_numeros_table',
+    label: 'Tableau BDC opérateur avec numéros',
+    fullBlock: `{{#sp_bdc_operateur_numeros_table}}\n{{sp_bdc_op_type}}  {{sp_bdc_op_nom}}  {{sp_bdc_op_produit}}  {{sp_bdc_op_fournisseur}}  {{sp_bdc_op_quantite}}  {{sp_bdc_op_prix_mensuel_ht}}  {{sp_bdc_op_prix_mensuel_ht_sans_remise}}  {{sp_bdc_op_prix_actuel}}  {{sp_bdc_op_economie}}\n{{/sp_bdc_operateur_numeros_table}}`,
+    hint: 'Dans ce tableau, le numéro associé dans le panier SP est automatiquement ajouté à sp_bdc_op_nom, séparé par un tiret.',
+  },
+  {
     arrayId: 'sp_bdc_internet_table',
     label: 'Tableau internet BDC',
     fullBlock: `{{#sp_bdc_internet_table}}\n{{sp_bdc_int_nom}}  {{sp_bdc_int_produit}}  {{sp_bdc_int_fournisseur}}  {{sp_bdc_int_quantite}}  {{sp_bdc_int_prix_mensuel_ht}}  {{sp_bdc_int_prix_mensuel_ht_sans_remise}}  {{sp_bdc_int_prix_actuel}}\n{{/sp_bdc_internet_table}}`,

@@ -88,6 +88,7 @@ export function buildSpWordData(
     sp_situation_proposee_forfaits_sans_remise: normalizeSpArrayRows(sp.sp_situation_proposee_forfaits_sans_remise ?? []),
     sp_materiel_detail: sp.sp_materiel_detail ?? [],
     sp_bdc_operateur_table: sp.sp_bdc_operateur_table ?? [],
+    sp_bdc_operateur_numeros_table: sp.sp_bdc_operateur_numeros_table ?? [],
     sp_bdc_internet_table: sp.sp_bdc_internet_table ?? [],
     sp_bdc_materiel_table: sp.sp_bdc_materiel_table ?? [],
     sp_cadeaux_table: sp.sp_cadeaux_table ?? [],

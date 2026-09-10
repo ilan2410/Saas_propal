@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie, SpTableProductOrders } from '@/types';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
+import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
+import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
 import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
@@ -467,6 +469,7 @@ function buildSpCompletes(
   loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
   _spConfigMoisOfferts?: SpConfigMoisOfferts,
   spCategoriesOrder?: SpCategorie[],
+  spTableProductOrders?: SpTableProductOrders,
 ): SuggestionsSpCompletes {
   const rawMobiles = Array.isArray(raw.sp_lignes_mobiles) ? raw.sp_lignes_mobiles as UnknownRecord[] : [];
   const rawFixes = Array.isArray(raw.sp_lignes_fixes) ? raw.sp_lignes_fixes as UnknownRecord[] : [];
@@ -747,22 +750,35 @@ function buildSpCompletes(
   });
 
   // sp_situation_proposee_forfaits: mobiles + fixes + internet
-  result.sp_situation_proposee_forfaits = toutes.map(toSituationLigne);
+  const situationForfaitsLines = orderProductsByPreference(
+    toutes,
+    getTableProductOrder(spTableProductOrders, 'sp_situation_proposee_forfaits'),
+    (line) => line.sp_produit_id,
+  );
+  result.sp_situation_proposee_forfaits = situationForfaitsLines.map(toSituationLigne);
   result.sp_situation_proposee_forfaits_sans_remise = buildForfaitsSansRemiseTable(toutes, catalogueMap);
 
   // sp_situation_proposee_complet: tout (forfaits + matériel)
-  result.sp_situation_proposee_complet = [
-    ...toutes.map(toSituationLigne),
-    ...sp_materiel.map(toSituationMateriel),
-  ];
+  const situationCompletLines = orderProductsByPreference(
+    [...toutes, ...sp_materiel],
+    getTableProductOrder(spTableProductOrders, 'sp_situation_proposee_complet'),
+    (line) => 'sp_materiel_nom' in line ? line.sp_materiel_produit_id : line.sp_produit_id,
+  );
+  result.sp_situation_proposee_complet = situationCompletLines.map((line) =>
+    'sp_materiel_nom' in line ? toSituationMateriel(line) : toSituationLigne(line)
+  );
 
   // sp_materiel_detail: matériel enrichi avec infos catalogue (hors cadeaux — ceux-ci vont dans sp_cadeaux_table)
-  result.sp_materiel_detail = sp_materiel
-    .filter((m) => {
+  const materielDetailLines = orderProductsByPreference(
+    sp_materiel.filter((m) => {
       if (m.sp_materiel_produit_id === FREE_ENTRY_MARKER) return true;
       const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
       return cat?.categorie !== 'cadeau';
-    })
+    }),
+    getTableProductOrder(spTableProductOrders, 'sp_materiel_detail'),
+    (line) => line.sp_materiel_produit_id,
+  );
+  result.sp_materiel_detail = materielDetailLines
     .map((m): SpMaterielDetail => {
     const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
     const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
@@ -792,35 +808,56 @@ function buildSpCompletes(
   };
 
   // sp_bdc_operateur_table: forfaits (mobile/fixe) filtrés par destinations.bdc_operateur
-  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = orderProductBuckets(
+  const filteredBdcOperateurLines = orderProductBuckets(
     { internet: [], fixe: sp_lignes_fixes, mobile: sp_lignes_mobiles },
     spCategoriesOrder,
-  )
-    .filter((l) => {
-      if (!l.sp_produit_id) return true; // pas de ref catalogue → inclure par défaut
-      const cat = catalogueMap.get(l.sp_produit_id);
-      return cat?.destinations?.bdc_operateur !== false;
-    })
-    .map((l): SpBdcOperateurLigne => ({
-      sp_bdc_op_type: l.sp_type_ligne,
-      sp_bdc_op_nom: l.sp_nom_ligne,
-      sp_bdc_op_produit: l.sp_produit,
-      sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
-      sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
-      sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
-      sp_bdc_op_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
-      sp_bdc_op_prix_actuel: l.sp_prix_actuel,
-      sp_bdc_op_economie: l.sp_economie,
-      _prix_mensuel_raw: l._prix_propose_raw,
-    }));
+  ).filter((l) => {
+    if (!l.sp_produit_id) return true; // pas de ref catalogue → inclure par défaut
+    const cat = catalogueMap.get(l.sp_produit_id);
+    return cat?.destinations?.bdc_operateur !== false;
+  });
+  const bdcOperateurOrder = getTableProductOrder(spTableProductOrders, 'sp_bdc_operateur_table');
+  const bdcOperateurLines = orderProductsByPreference(
+    filteredBdcOperateurLines,
+    bdcOperateurOrder,
+    (line) => line.sp_produit_id,
+  );
+  const bdcOperateurNumerosLines = orderProductsByPreference(
+    filteredBdcOperateurLines,
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_operateur_numeros_table') ?? bdcOperateurOrder,
+    (line) => line.sp_produit_id,
+  );
+  const toBdcOperateurLine = (
+    l: SpLigneMobile | SpLigneFixe,
+    includeNumber: boolean,
+  ): SpBdcOperateurLigne => ({
+    sp_bdc_op_type: l.sp_type_ligne,
+    sp_bdc_op_nom: includeNumber
+      ? formatBdcOperatorNameWithNumber(l.sp_nom_ligne, l.sp_numero)
+      : l.sp_nom_ligne,
+    sp_bdc_op_produit: l.sp_produit,
+    sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
+    sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
+    sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
+    sp_bdc_op_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
+    sp_bdc_op_prix_actuel: l.sp_prix_actuel,
+    sp_bdc_op_economie: l.sp_economie,
+    _prix_mensuel_raw: l._prix_propose_raw,
+  });
+  const sp_bdc_operateur_table = bdcOperateurLines.map((line) => toBdcOperateurLine(line, false));
+  const sp_bdc_operateur_numeros_table = bdcOperateurNumerosLines.map((line) => toBdcOperateurLine(line, true));
 
   // sp_bdc_internet_table: internet filtré par destinations.bdc_operateur
-  const sp_bdc_internet_table: SpBdcInternetLigne[] = sp_internet
-    .filter((l) => {
+  const bdcInternetLines = orderProductsByPreference(
+    sp_internet.filter((l) => {
       if (!l.sp_produit_id) return true;
       const cat = catalogueMap.get(l.sp_produit_id);
       return cat?.destinations?.bdc_operateur !== false;
-    })
+    }),
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_internet_table'),
+    (line) => line.sp_produit_id,
+  );
+  const sp_bdc_internet_table: SpBdcInternetLigne[] = bdcInternetLines
     .map((l): SpBdcInternetLigne => ({
       sp_bdc_int_nom: l.sp_nom_ligne,
       sp_bdc_int_produit: l.sp_produit,
@@ -833,13 +870,17 @@ function buildSpCompletes(
     }));
 
   // sp_bdc_materiel_table: matériel filtré par destinations.bdc_materiel
-  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = sp_materiel
-    .filter((m) => {
+  const bdcMaterielLines = orderProductsByPreference(
+    sp_materiel.filter((m) => {
       if (!m.sp_materiel_produit_id) return true;
       if (m.sp_materiel_produit_id === FREE_ENTRY_MARKER) return true;
       const cat = catalogueMap.get(m.sp_materiel_produit_id);
       return cat?.destinations?.bdc_materiel !== false;
-    })
+    }),
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_materiel_table'),
+    (line) => line.sp_materiel_produit_id,
+  );
+  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = bdcMaterielLines
     .map((m): SpBdcMaterielLigne => {
       const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
       const cat = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
@@ -875,6 +916,7 @@ function buildSpCompletes(
     }));
 
   result.sp_bdc_operateur_table = sp_bdc_operateur_table;
+  result.sp_bdc_operateur_numeros_table = sp_bdc_operateur_numeros_table;
   result.sp_bdc_internet_table = sp_bdc_internet_table;
   result.sp_bdc_materiel_table = sp_bdc_materiel_table;
   result.sp_cadeaux_table = sp_cadeaux_table;
@@ -1131,6 +1173,7 @@ export async function POST(request: NextRequest) {
       loyerDureeConfig,
       spConfigMoisOfferts,
       spCategoriesOrder,
+      wordCfg.sp_table_product_orders,
     );
 
     if (montantIndemnites !== null) {

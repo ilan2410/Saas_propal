@@ -168,6 +168,17 @@ export interface ExcelConfig {
   tableauxDynamiques?: unknown[];
 }
 
+export type SpSortableTableId =
+  | 'sp_situation_proposee_complet'
+  | 'sp_situation_proposee_forfaits'
+  | 'sp_materiel_detail'
+  | 'sp_bdc_operateur_table'
+  | 'sp_bdc_operateur_numeros_table'
+  | 'sp_bdc_internet_table'
+  | 'sp_bdc_materiel_table';
+
+export type SpTableProductOrders = Partial<Record<SpSortableTableId, string[]>>;
+
 export interface WordConfig {
   formatVariables: string;
   fieldMappings: Record<string, string>;
@@ -195,6 +206,7 @@ export interface WordConfig {
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
   sp_preferences_produits?: SpPreferencesProduits;
+  sp_table_product_orders?: SpTableProductOrders;
 }
 
 export interface PDFConfig {
@@ -895,6 +907,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   sp_situation_proposee_forfaits_sans_remise?: SpSituationProposeeLigne[];
   sp_materiel_detail?: SpMaterielDetail[];
   sp_bdc_operateur_table?: SpBdcOperateurLigne[];
+  sp_bdc_operateur_numeros_table?: SpBdcOperateurLigne[];
   sp_bdc_internet_table?: SpBdcInternetLigne[];
   sp_bdc_materiel_table?: SpBdcMaterielLigne[];
   sp_cadeaux_table?: SpCadeauLigne[];

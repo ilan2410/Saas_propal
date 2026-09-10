@@ -2533,7 +2533,7 @@ export default function SettingsPage({
                 }`}
               >
                 <ListOrdered className="w-3.5 h-3.5" />
-                Ordre des catégories
+                Ordre d&apos;affichage
               </button>
             </div>
 
@@ -2542,7 +2542,7 @@ export default function SettingsPage({
             {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
             {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
-            {questionsSpSubTab === 'ordre_categories' && <SpCategoriesOrderManager />}
+            {questionsSpSubTab === 'ordre_categories' && <SpCategoriesOrderManager templates={templates} />}
             {questionsSpSubTab === 'apparence' && (
               <div className="space-y-6">
                 <div className="border border-gray-100 rounded-xl p-5 space-y-4">

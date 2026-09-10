@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { createClient } from '@/lib/supabase/server';
 import { buildPropositionBaseData, fillExcelWorkbook } from '@/lib/generators';
-import { repairMaterialDetailFromQuestionnaire } from '@/lib/sp/repairMaterialDetail';
+import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -16,6 +16,7 @@ import type {
   SpConfigLoyer,
   SpConfigResumeRef,
   OrganizationPreferences,
+  WordConfig,
 } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
@@ -153,14 +154,23 @@ export async function POST(request: NextRequest) {
     const spPreferencesProduits = isPlainObject(fileConfig.sp_preferences_produits)
       ? (fileConfig.sp_preferences_produits as unknown as SpPreferencesProduits)
       : undefined;
+    const orgPreferences = (isPlainObject(org.preferences) ? org.preferences : {}) as OrganizationPreferences;
+    const spConfigLoyer = (fileConfig.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
+      ? (fileConfig.sp_config_loyer as SpConfigLoyer)
+      : undefined;
+    const wordConfig = fileConfig as unknown as WordConfig;
 
-    const spCompletes = repairMaterialDetailFromQuestionnaire(
+    const spCompletes = repairSpCompletesFromQuestionnaire(
       (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null,
       spReponses,
       templateQuestions,
       catalogue,
       donnees,
+      spConfigLoyer,
+      orgPreferences.sp_config_mois_offerts,
       spPreferencesProduits,
+      orgPreferences.sp_categories_order,
+      wordConfig.sp_table_product_orders,
     );
 
     // Clauses conditionnelles → variables sp_clause_<cle>
@@ -170,10 +180,6 @@ export async function POST(request: NextRequest) {
     const sp_clauses_rendered = renderClauses(clauses, spCompletes, spReponses, donnees, catalogue);
 
     // Référence proposition → sp_reference
-    const orgPreferences = (isPlainObject(org.preferences) ? org.preferences : {}) as OrganizationPreferences;
-    const spConfigLoyer = (fileConfig.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
-      ? (fileConfig.sp_config_loyer as SpConfigLoyer)
-      : undefined;
     const sp_reference = buildSpReference(
       fileConfig.sp_config_resume_ref as SpConfigResumeRef | undefined,
       spReponses,

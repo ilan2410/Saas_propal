@@ -1,5 +1,7 @@
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
+import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
+import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
 import type {
   CatalogueProduit,
   SpBdcInternetLigne,
@@ -18,6 +20,7 @@ import type {
   SpQuestion,
   SpQuestionReponse,
   SpSituationProposeeLigne,
+  SpTableProductOrders,
   SuggestionsSpCompletes,
 } from '@/types';
 
@@ -170,6 +173,7 @@ export function repairSpCompletesFromQuestionnaire(
   spConfigMoisOfferts?: SpConfigMoisOfferts,
   spPreferencesProduits?: SpPreferencesProduits,
   spCategoriesOrder?: SpCategorie[],
+  spTableProductOrders?: SpTableProductOrders,
 ): SuggestionsSpCompletes | null {
   if (!sp || reponses.length === 0 || questions.length === 0 || catalogue.length === 0) return sp;
 
@@ -215,7 +219,12 @@ export function repairSpCompletesFromQuestionnaire(
     };
   });
 
-  const sp_materiel_detail: SpMaterielDetail[] = materielCartLines.map((line) => {
+  const materielDetailLines = orderProductsByPreference(
+    materielCartLines,
+    getTableProductOrder(spTableProductOrders, 'sp_materiel_detail'),
+    (line) => line.produitId,
+  );
+  const sp_materiel_detail: SpMaterielDetail[] = materielDetailLines.map((line) => {
     const isLibre = !line.produitId;
     const cat = !isLibre && line.produitId ? catalogueMap.get(line.produitId) : undefined;
     const freq = isLibre ? 'unique' : (cat?.type_frequence ?? 'mensuel');
@@ -273,32 +282,53 @@ export function repairSpCompletesFromQuestionnaire(
   };
 
   // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
-  const sp_bdc_operateur_table: SpBdcOperateurLigne[] = orderProductBuckets(
+  const filteredBdcOperateurLines = orderProductBuckets(
     { internet: [], fixe: fixes, mobile: mobiles },
     spCategoriesOrder,
-  )
-    .filter((l) => {
-      if (!l.sp_produit_id) return true;
-      return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
-    })
-    .map((l): SpBdcOperateurLigne => ({
-      sp_bdc_op_type: l.sp_type_ligne,
-      sp_bdc_op_nom: l.sp_nom_ligne,
-      sp_bdc_op_produit: l.sp_produit,
-      sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
-      sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
-      sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
-      sp_bdc_op_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
-      sp_bdc_op_prix_actuel: l.sp_prix_actuel,
-      sp_bdc_op_economie: l.sp_economie,
-      _prix_mensuel_raw: l._prix_propose_raw,
-    }));
+  ).filter((l) => {
+    if (!l.sp_produit_id) return true;
+    return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
+  });
+  const bdcOperateurOrder = getTableProductOrder(spTableProductOrders, 'sp_bdc_operateur_table');
+  const bdcOperateurLines = orderProductsByPreference(
+    filteredBdcOperateurLines,
+    bdcOperateurOrder,
+    (line) => line.sp_produit_id,
+  );
+  const bdcOperateurNumerosLines = orderProductsByPreference(
+    filteredBdcOperateurLines,
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_operateur_numeros_table') ?? bdcOperateurOrder,
+    (line) => line.sp_produit_id,
+  );
+  const toBdcOperateurLine = (
+    l: SpLigneMobile | SpLigneFixe,
+    includeNumber: boolean,
+  ): SpBdcOperateurLigne => ({
+    sp_bdc_op_type: l.sp_type_ligne,
+    sp_bdc_op_nom: includeNumber
+      ? formatBdcOperatorNameWithNumber(l.sp_nom_ligne, l.sp_numero)
+      : l.sp_nom_ligne,
+    sp_bdc_op_produit: l.sp_produit,
+    sp_bdc_op_fournisseur: l.sp_produit_fournisseur,
+    sp_bdc_op_quantite: l.sp_quantite?.trim() || '1',
+    sp_bdc_op_prix_mensuel_ht: l.sp_prix_propose,
+    sp_bdc_op_prix_mensuel_ht_sans_remise: formatEuro(prixMensuelSansRemise(l)),
+    sp_bdc_op_prix_actuel: l.sp_prix_actuel,
+    sp_bdc_op_economie: l.sp_economie,
+    _prix_mensuel_raw: l._prix_propose_raw,
+  });
+  const sp_bdc_operateur_table = bdcOperateurLines.map((line) => toBdcOperateurLine(line, false));
+  const sp_bdc_operateur_numeros_table = bdcOperateurNumerosLines.map((line) => toBdcOperateurLine(line, true));
 
-  const sp_bdc_internet_table: SpBdcInternetLigne[] = internet
-    .filter((l) => {
+  const bdcInternetLines = orderProductsByPreference(
+    internet.filter((l) => {
       if (!l.sp_produit_id) return true;
       return catalogueMap.get(l.sp_produit_id)?.destinations?.bdc_operateur !== false;
-    })
+    }),
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_internet_table'),
+    (line) => line.sp_produit_id,
+  );
+  const sp_bdc_internet_table: SpBdcInternetLigne[] = bdcInternetLines
     .map((l): SpBdcInternetLigne => ({
       sp_bdc_int_nom: l.sp_nom_ligne,
       sp_bdc_int_produit: l.sp_produit,
@@ -310,11 +340,15 @@ export function repairSpCompletesFromQuestionnaire(
       _prix_mensuel_raw: l._prix_propose_raw,
     }));
 
-  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = sp_materiel
-    .filter((m) => {
+  const bdcMaterielLines = orderProductsByPreference(
+    sp_materiel.filter((m) => {
       if (!m.sp_materiel_produit_id) return true;
       return catalogueMap.get(m.sp_materiel_produit_id)?.destinations?.bdc_materiel !== false;
-    })
+    }),
+    getTableProductOrder(spTableProductOrders, 'sp_bdc_materiel_table'),
+    (line) => line.sp_materiel_produit_id,
+  );
+  const sp_bdc_materiel_table: SpBdcMaterielLigne[] = bdcMaterielLines
     .map((m): SpBdcMaterielLigne => {
       const cat = m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
       const freq = cat?.type_frequence ?? 'mensuel';
@@ -346,6 +380,16 @@ export function repairSpCompletesFromQuestionnaire(
   const totalBdcMat = sp_bdc_materiel_table.reduce((s, l) => s + l._prix_raw, 0);
   const totalCadeaux = sp_cadeaux_table.reduce((s, l) => s + l._valeur_raw, 0);
   const remiseBreakdown = buildRemiseBreakdown(toutes, catalogueMap);
+  const situationForfaitsLines = orderProductsByPreference(
+    toutes,
+    getTableProductOrder(spTableProductOrders, 'sp_situation_proposee_forfaits'),
+    (line) => line.sp_produit_id,
+  );
+  const situationCompletLines = orderProductsByPreference(
+    [...toutes, ...sp_materiel],
+    getTableProductOrder(spTableProductOrders, 'sp_situation_proposee_complet'),
+    (line) => 'sp_materiel_nom' in line ? line.sp_materiel_produit_id : line.sp_produit_id,
+  );
 
   const repaired: SuggestionsSpCompletes = {
     ...sp,
@@ -360,13 +404,13 @@ export function repairSpCompletesFromQuestionnaire(
     sp_toutes_lignes: toutes,
     sp_materiel,
     sp_materiel_detail,
-    sp_situation_proposee_forfaits: toutes.map(toSituationLigne),
+    sp_situation_proposee_forfaits: situationForfaitsLines.map(toSituationLigne),
     sp_situation_proposee_forfaits_sans_remise: buildForfaitsSansRemiseTable(toutes, catalogueMap),
-    sp_situation_proposee_complet: [
-      ...toutes.map(toSituationLigne),
-      ...sp_materiel.map(toSituationMateriel),
-    ],
+    sp_situation_proposee_complet: situationCompletLines.map((line) =>
+      'sp_materiel_nom' in line ? toSituationMateriel(line) : toSituationLigne(line)
+    ),
     sp_bdc_operateur_table,
+    sp_bdc_operateur_numeros_table,
     sp_bdc_internet_table,
     sp_bdc_materiel_table,
     sp_cadeaux_table,
