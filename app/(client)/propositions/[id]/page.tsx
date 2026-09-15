@@ -465,13 +465,28 @@ function SpResumePanel({
                 <Wrench className="w-4 h-4 text-slate-500" />
                 <h3 className="font-semibold text-slate-900">FAS</h3>
               </div>
-              <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-slate-600">Frais d&apos;accès au service</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
-                  <span className="font-semibold text-slate-900">{fasValue}</span>
+              {cart ? (
+                cart.lines.filter((line) => line.fasTotal > 0).map((line) => (
+                  <div
+                    key={`fas-${line.instanceId}`}
+                    className="px-4 py-3 flex items-center justify-between text-sm border-b border-slate-100 last:border-b-0"
+                  >
+                    <span className="text-slate-600">{line.produitNom}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
+                      <span className="font-semibold text-slate-900">{formatEuroValue(line.fasTotal)}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-3 flex items-center justify-between text-sm">
+                  <span className="text-slate-600">Frais d&apos;accès au service</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
+                    <span className="font-semibold text-slate-900">{fasValue}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
