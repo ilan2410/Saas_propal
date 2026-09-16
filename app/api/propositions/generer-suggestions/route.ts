@@ -649,7 +649,8 @@ function buildSpCompletes(
   }
   const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnitesNum + marge;
   const loyer = dureeMois > 0 ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
-  const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
+  // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
+  const remiseMoisOffert = remisePourCalculLoyer;
 
   // Montant SP mensuel effectif : loyer si configuré, sinon abonnements.
   const totalProposeEffectif = loyer?.loyer_mensuel ?? totalPropose;

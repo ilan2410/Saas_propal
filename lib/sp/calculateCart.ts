@@ -666,7 +666,8 @@ export function calculateCartSummary(
 
   const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnites + marge;
   const loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
-  const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
+  // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
+  const remiseMoisOffert = remisePourCalculLoyer;
   const baseLoyer = totalPonctuel + remiseMoisOffert + indemnites + marge;
 
   // Détail du code promo appliqué sur la marge (si renseigné lors du questionnaire)

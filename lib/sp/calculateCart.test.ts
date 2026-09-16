@@ -41,7 +41,7 @@ function question(id: string): SpQuestion {
 }
 
 describe('calculateCartSummary — mois offerts', () => {
-  it('multiplie le loyer affiché par le nombre de mois offerts sans recalculer ce loyer', () => {
+  it('multiplie le total des abonnements mensuels par le nombre de mois offerts', () => {
     const catalogue = [
       product('mensuel', 'Abonnements', 'fixe', 'mensuel', 162.4),
       product('ponctuel', 'Éléments ponctuels', 'equipement', 'unique', 2835),
@@ -71,7 +71,7 @@ describe('calculateCartSummary — mois offerts', () => {
 
     expect(summary.abonnements.totalMensuel).toBe(162.4);
     expect(summary.loyer?.loyer_mensuel).toBe(216);
-    expect(summary.remiseMoisOffert).toBe(3888);
-    expect(summary.baseLoyer).toBe(11223);
+    expect(summary.remiseMoisOffert).toBeCloseTo(2923.2);
+    expect(summary.baseLoyer).toBeCloseTo(10258.2);
   });
 });
