@@ -866,14 +866,12 @@ export default async function PropositionDetailPage({
 
               {canDownloadProposition &&
                 (proposition.duplicated_template_url || proposition.fichier_genere_url) && (
-                <a
-                  href={proposition.duplicated_template_url || proposition.fichier_genere_url}
-                  download
-                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-                >
-                  <Download className="h-4 w-4" />
-                  Télécharger
-                </a>
+                <GenerateButton
+                  propositionId={proposition.id}
+                  variant="primary"
+                  label="Télécharger"
+                  icon={<Download className="h-4 w-4" />}
+                />
               )}
 
               {canDownloadComparatifSaSp && proposition.suggestions_sp_completes && (

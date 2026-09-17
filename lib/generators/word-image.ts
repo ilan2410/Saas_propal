@@ -47,14 +47,69 @@ export const PLACEHOLDER_PNG = Buffer.from(
 // Détecte les propriétés de données qui contiennent une URL d'image.
 const IMAGE_FIELD_RE = /image_url$/i;
 
-// Taille (px) imposée à chaque image rendue dans le Word — notamment les photos
-// produit du tableau matériel ({{#sp_materiel_detail}} / {{%sp_matd_image_url}}).
-// Réduit pour éviter que les photos débordent de la cellule du tableau.
-// Ratio 3:2 conservé ; ajuster ces deux valeurs pour agrandir/réduire.
-const IMAGE_SIZE_PX: [number, number] = [110, 73];
+// Boîte maximale (px) pour chaque image rendue dans le Word — notamment les
+// photos produit du tableau matériel ({{#sp_materiel_detail}} / {{%sp_matd_image_url}}).
+// Les images sont mises à l'échelle pour tenir dans cette boîte en conservant
+// leur ratio d'origine (pas de déformation) ; ajuster ces deux valeurs pour
+// agrandir/réduire la taille maximale.
+const IMAGE_MAX_SIZE_PX: [number, number] = [110, 73];
 
 function looksLikeImageUrl(value: unknown): value is string {
   return typeof value === 'string' && /^https?:\/\//i.test(value);
+}
+
+/** Lit les dimensions (largeur, hauteur) d'un buffer PNG/JPEG/GIF/WebP. `null` si non reconnu. */
+function readImageDimensions(buf: Buffer): [number, number] | null {
+  try {
+    // PNG : signature 8 octets puis chunk IHDR (largeur/hauteur en big-endian sur 4 octets chacun).
+    if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47) {
+      return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+    }
+    // GIF : "GIF87a"/"GIF89a" puis largeur/hauteur en little-endian sur 2 octets chacun.
+    if (buf.length >= 10 && buf.toString('ascii', 0, 3) === 'GIF') {
+      return [buf.readUInt16LE(6), buf.readUInt16LE(8)];
+    }
+    // WebP : conteneur RIFF/WEBP, on ne gère que VP8X (le plus courant pour des photos produit).
+    if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+      const chunk = buf.toString('ascii', 12, 16);
+      if (chunk === 'VP8X') {
+        return [buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1];
+      }
+      if (chunk === 'VP8 ') {
+        return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+      }
+    }
+    // JPEG : parcours des marqueurs jusqu'au SOFn (largeur/hauteur en big-endian).
+    if (buf.length >= 4 && buf.readUInt16BE(0) === 0xffd8) {
+      let offset = 2;
+      while (offset + 9 < buf.length) {
+        if (buf.readUInt8(offset) !== 0xff) break;
+        const marker = buf.readUInt8(offset + 1);
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+          offset += 2;
+          continue;
+        }
+        const segmentLength = buf.readUInt16BE(offset + 2);
+        const isSofMarker = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+        if (isSofMarker) {
+          return [buf.readUInt16BE(offset + 7), buf.readUInt16BE(offset + 5)];
+        }
+        offset += 2 + segmentLength;
+      }
+    }
+  } catch {
+    // Buffer tronqué/corrompu : on retombe sur la taille par défaut.
+  }
+  return null;
+}
+
+/** Taille (px) d'une image mise à l'échelle pour tenir dans `box` en conservant son ratio. */
+function computeContainSize(img: Buffer, box: [number, number]): [number, number] {
+  const dims = readImageDimensions(img);
+  if (!dims || !dims[0] || !dims[1]) return box;
+  const [width, height] = dims;
+  const scale = Math.min(box[0] / width, box[1] / height);
+  return [Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
 }
 
 type FlatImageMap = Record<string, string>;
@@ -176,7 +231,7 @@ export async function renderWordWithImages(
     centered: false,
     fileType: 'docx',
     getImage,
-    getSize: () => IMAGE_SIZE_PX,
+    getSize: (img) => computeContainSize(img, IMAGE_MAX_SIZE_PX),
   });
   const doc2 = new Docxtemplater(zip2, {
     paragraphLoop: true,

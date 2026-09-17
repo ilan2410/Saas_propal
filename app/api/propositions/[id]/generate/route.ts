@@ -174,6 +174,23 @@ export async function POST(
 
     if (updateError) throw updateError;
 
+    // Nettoyage de l'ancien fichier généré (le bouton "Télécharger" régénère à
+    // chaque clic pour reprendre le template Word courant, sans quoi les fichiers
+    // s'accumuleraient dans le storage à chaque téléchargement).
+    const previousFileUrl = proposition.duplicated_template_url as string | undefined;
+    if (previousFileUrl && previousFileUrl !== fileUrl) {
+      try {
+        const urlParts = previousFileUrl.split('/templates/');
+        if (urlParts.length > 1) {
+          const filePath = decodeURIComponent(urlParts[1]);
+          await supabase.storage.from('templates').remove([filePath]);
+        }
+      } catch (err) {
+        console.error('Erreur nettoyage ancien fichier généré:', err);
+        // On continue : le nouveau fichier est déjà généré et enregistré.
+      }
+    }
+
     // Note: les crédits sont débités lors de l'extraction (extract/route.ts),
     // pas ici. On ne déduit donc pas une seconde fois au téléchargement/génération.
 

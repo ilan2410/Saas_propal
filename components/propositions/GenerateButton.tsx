@@ -3,14 +3,19 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileSpreadsheet, Loader2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 interface GenerateButtonProps {
   propositionId: string;
   variant?: 'primary' | 'secondary' | 'small';
   className?: string;
+  /** Libellé affiché au repos (défaut : "Générer la proposition" / "Générer" en `small`). */
+  label?: string;
+  /** Icône affichée au repos (défaut : FileSpreadsheet). */
+  icon?: ReactNode;
 }
 
-export function GenerateButton({ propositionId, variant = 'primary', className = '' }: GenerateButtonProps) {
+export function GenerateButton({ propositionId, variant = 'primary', className = '', label, icon }: GenerateButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -64,8 +69,8 @@ export function GenerateButton({ propositionId, variant = 'primary', className =
           </>
         ) : (
           <>
-            <FileSpreadsheet className="w-4 h-4" />
-            {variant === 'small' ? 'Générer' : 'Générer la proposition'}
+            {icon ?? <FileSpreadsheet className="w-4 h-4" />}
+            {label ?? (variant === 'small' ? 'Générer' : 'Générer la proposition')}
           </>
         )}
       </button>
