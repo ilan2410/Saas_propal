@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
 import { createImplicitClient } from '@/lib/supabase/client';
 
@@ -61,6 +62,13 @@ export default function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={56}
+              height={56}
+              className="mx-auto mb-4"
+            />
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Créer un compte
             </h1>
@@ -146,6 +154,16 @@ export default function RegisterPage() {
               </Link>
             </p>
           </div>
+        </div>
+
+        <div className="mt-6 text-center text-xs text-gray-500 flex items-center justify-center gap-3">
+          <Link href="/confidentialite" className="hover:text-gray-700">
+            Politique de confidentialité
+          </Link>
+          <span>·</span>
+          <Link href="/cgu" className="hover:text-gray-700">
+            CGU
+          </Link>
         </div>
       </div>
     </div>

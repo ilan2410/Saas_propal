@@ -23,6 +23,7 @@ import {
 import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
 import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
 import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
+import { PropositionNotesActions } from '@/components/propositions/PropositionNotesActions';
 
 export type PropositionListItem = {
   id: string;
@@ -31,6 +32,7 @@ export type PropositionListItem = {
   templateNom: string;
   clientName: string;
   fieldsCount: number;
+  notesCount: number;
   createdAt: string;
 };
 
@@ -263,6 +265,7 @@ export function PropositionsListClient({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} />
                         {RESUMABLE.includes(prop.statut) && (
                           <Link
                             href={`/propositions/${prop.id}/resume`}
@@ -299,7 +302,10 @@ export function PropositionsListClient({
                       {prop.templateNom || '—'}
                     </p>
                   </div>
-                  <PropositionRowMenu propositionId={prop.id} />
+                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                    <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} />
+                    <PropositionRowMenu propositionId={prop.id} />
+                  </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   {prop.statut === 'exported' ? (

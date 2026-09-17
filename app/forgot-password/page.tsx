@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { createImplicitClient } from '@/lib/supabase/client';
 import { Loader2, ArrowLeft, Mail } from 'lucide-react';
 
@@ -50,6 +51,13 @@ export default function ForgotPasswordPage() {
           </div>
 
           <div className="text-center mb-8">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={56}
+              height={56}
+              className="mx-auto mb-4"
+            />
             <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Mail className="w-7 h-7 text-blue-600" />
             </div>

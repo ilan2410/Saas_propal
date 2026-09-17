@@ -34,9 +34,11 @@ import {
   EyeOff,
   Package,
   ListOrdered,
-  Users
+  Users,
+  CalendarDays
 } from 'lucide-react';
 import { EquipeTab } from '@/components/client/settings/EquipeTab';
+import { CalendriersTab } from '@/components/client/settings/CalendriersTab';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
@@ -84,11 +86,11 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
+type TabId = 'profil' | 'securite' | 'notifications' | 'calendriers' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
 
 function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
   const isOwner = role === 'owner';
-  const base: TabId[] = ['profil', 'securite', 'notifications', 'apparence'];
+  const base: TabId[] = ['profil', 'securite', 'notifications', 'calendriers', 'apparence'];
   if (isOwner || permissions?.view_credits_billing) {
     base.push('facturation', 'donnees');
   }
@@ -1180,6 +1182,7 @@ export default function SettingsPage({
           <option value="profil">Profil & Entreprise</option>
           <option value="securite">Sécurité</option>
           <option value="notifications">Notifications</option>
+          <option value="calendriers">Calendriers</option>
           {canViewBilling && <option value="facturation">Facturation</option>}
           {canViewBilling && <option value="donnees">Données</option>}
           <option value="apparence">Apparence</option>
@@ -1195,6 +1198,7 @@ export default function SettingsPage({
         <TabButton id="profil" label="Profil & Entreprise" icon={Building} />
         <TabButton id="securite" label="Sécurité" icon={Shield} />
         <TabButton id="notifications" label="Notifications" icon={Bell} />
+        <TabButton id="calendriers" label="Calendriers" icon={CalendarDays} />
         {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
         {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
@@ -1206,6 +1210,7 @@ export default function SettingsPage({
 
       {/* Content Area */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm min-h-[400px]">
+        {activeTab === 'calendriers' && <CalendriersTab />}
         
         {/* SECTION 1: PROFIL */}
         {activeTab === 'profil' && (
