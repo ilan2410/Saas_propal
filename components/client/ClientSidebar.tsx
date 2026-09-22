@@ -42,6 +42,12 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={organization.logo_url || '/logo.png'}
+            alt="Logo"
+            className="h-7 w-7 object-contain shrink-0"
+          />
           <span className="font-bold text-gray-900 truncate max-w-[200px]">{organization.nom}</span>
         </div>
       </div>
@@ -65,7 +71,8 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
             // eslint-disable-next-line @next/next/no-img-element
             <img src={organization.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
           ) : (
-            <h1 className="text-2xl font-bold text-blue-600">Propositions</h1>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain" />
           )}
           <p className="text-sm text-gray-500 mt-1 truncate" title={organization.nom}>{organization.nom}</p>
         </div>

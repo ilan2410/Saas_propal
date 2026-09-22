@@ -70,7 +70,9 @@
       "Bash(echo \"TSC: $?\")",
       "Bash(echo \"ESLINT: $?\")",
       "Bash(echo \"TSC_EXIT=$?\")",
-      "Bash(echo \"ESLINT_EXIT=$?\")"
+      "Bash(echo \"ESLINT_EXIT=$?\")",
+      "Bash(cp \"C:/Users/ilan/CascadeProjects/Saas_propal/file_000000001ba881f5b293b5430903f82c.png\" \"C:/Users/ilan/CascadeProjects/Saas_propal/public/logo.png\")",
+      "Bash(cp \"C:/Users/ilan/CascadeProjects/Saas_propal/file_000000001ba881f5b293b5430903f82c.png\" \"C:/Users/ilan/CascadeProjects/Saas_propal/app/icon.png\")"
     ],
     "additionalDirectories": [
       "\\tmp"

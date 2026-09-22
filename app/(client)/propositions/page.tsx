@@ -55,11 +55,32 @@ export default async function PropositionsPage() {
     .from('propositions')
     .select(`
       *,
-      template:proposition_templates(nom)
+      template:proposition_templates(nom),
+      proposition_notes(count)
     `);
-  const { data: propositions } = ctx
+  const propositionsResult = ctx
     ? await scopePropositionsQuery(propositionsQuery, ctx).order('created_at', { ascending: false })
     : await propositionsQuery.eq('organization_id', '').order('created_at', { ascending: false });
+
+  let propositions = propositionsResult.data;
+  if (
+    propositionsResult.error
+    && (propositionsResult.error.code === 'PGRST200' || propositionsResult.error.message.includes('proposition_notes'))
+  ) {
+    const fallbackQuery = supabase
+      .from('propositions')
+      .select(`
+        *,
+        template:proposition_templates(nom)
+      `);
+    const fallbackResult = ctx
+      ? await scopePropositionsQuery(fallbackQuery, ctx).order('created_at', { ascending: false })
+      : await fallbackQuery.eq('organization_id', '').order('created_at', { ascending: false });
+    if (fallbackResult.error) throw fallbackResult.error;
+    propositions = fallbackResult.data;
+  } else if (propositionsResult.error) {
+    throw propositionsResult.error;
+  }
 
   const displayedPropositions = (propositions || []).filter((p) => {
     const prop = p as Record<string, unknown>;
@@ -99,6 +120,9 @@ export default async function PropositionsPage() {
       prop.nom_client,
     ),
     fieldsCount: countFields(prop.extracted_data || prop.donnees_extraites),
+    notesCount: Array.isArray(prop.proposition_notes)
+      ? Number(prop.proposition_notes[0]?.count ?? 0)
+      : 0,
     createdAt: prop.created_at,
   }));
 

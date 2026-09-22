@@ -52,6 +52,7 @@ prompt.md
 
 # fichier md
 *.md
+!PRODUCT.md
 
 # MCP config (contient des clés API en clair)
 /.mcp.json

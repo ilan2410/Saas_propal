@@ -23,6 +23,8 @@ export function AdminSidebar({ user }: { user: { email?: string | null } }) {
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Logo" className="h-7 w-7 object-contain" />
           <span className="font-bold text-gray-900">Admin Panel</span>
         </div>
       </div>
@@ -41,9 +43,13 @@ export function AdminSidebar({ user }: { user: { email?: string | null } }) {
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         md:translate-x-0
       `}>
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-blue-600">Admin Panel</h1>
-          <p className="text-sm text-gray-500 mt-1">Propositions SaaS</p>
+        <div className="p-6 flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Logo" className="h-9 w-9 object-contain" />
+          <div>
+            <h1 className="text-lg font-bold text-blue-600 leading-tight">Admin Panel</h1>
+            <p className="text-sm text-gray-500">Proboost</p>
+          </div>
         </div>
 
         <nav className="px-4 space-y-2">

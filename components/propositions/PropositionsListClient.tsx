@@ -15,6 +15,7 @@ import {
 import { formatDate } from '@/lib/utils/formatting';
 import { cn } from '@/lib/utils';
 import {
+  getStatutCommercial,
   getStatutTechnique,
   STATUT_COMMERCIAL_ORDRE,
   STATUT_TECHNIQUE_ORDRE,
@@ -23,6 +24,7 @@ import {
 import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
 import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
 import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
+import { PropositionNotesActions } from '@/components/propositions/PropositionNotesActions';
 
 export type PropositionListItem = {
   id: string;
@@ -31,6 +33,7 @@ export type PropositionListItem = {
   templateNom: string;
   clientName: string;
   fieldsCount: number;
+  notesCount: number;
   createdAt: string;
 };
 
@@ -80,6 +83,12 @@ function statutRank(prop: PropositionListItem): number {
     return STATUT_TECHNIQUE_ORDRE[prop.statut] ?? 2;
   }
   return 100 + (STATUT_COMMERCIAL_ORDRE[prop.statutCommercial] ?? 0);
+}
+
+function noteStatusLabel(prop: PropositionListItem): string {
+  return prop.statut === 'exported'
+    ? getStatutCommercial(prop.statutCommercial).label
+    : getStatutTechnique(prop.statut).label;
 }
 
 export function PropositionsListClient({
@@ -263,6 +272,7 @@ export function PropositionsListClient({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} />
                         {RESUMABLE.includes(prop.statut) && (
                           <Link
                             href={`/propositions/${prop.id}/resume`}
@@ -299,7 +309,10 @@ export function PropositionsListClient({
                       {prop.templateNom || '—'}
                     </p>
                   </div>
-                  <PropositionRowMenu propositionId={prop.id} />
+                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                    <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} />
+                    <PropositionRowMenu propositionId={prop.id} />
+                  </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   {prop.statut === 'exported' ? (
