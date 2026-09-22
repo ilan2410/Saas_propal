@@ -1,31 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { propositionNoteInputSchema } from './validation';
+import {
+  calendarSettingsSchema,
+  propositionNoteCreateSchema,
+  propositionNoteEntrySchema,
+  propositionNoteUpdateSchema,
+} from './validation';
 
-describe('propositionNoteInputSchema', () => {
-  it('accepts an independent note without calendar target', () => {
-    const result = propositionNoteInputSchema.safeParse({ kind: 'note', content: 'Rappeler le client', targets: [] });
-    expect(result.success).toBe(true);
+describe('structured proposition note validation', () => {
+  it('creates a note from a title only', () => {
+    expect(propositionNoteCreateSchema.safeParse({ title: 'Suivi client' }).success).toBe(true);
+    expect(propositionNoteCreateSchema.safeParse({ title: '   ' }).success).toBe(false);
   });
 
-  it('accepts an independent reminder without calendar target', () => {
-    const result = propositionNoteInputSchema.safeParse({
-      kind: 'reminder',
-      title: 'Envoyer la proposition',
-      startsAt: '2026-09-17T09:00:00.000Z',
+  it('accepts a note without reminder or calendar target', () => {
+    expect(propositionNoteUpdateSchema.safeParse({
+      title: 'Suivi client',
+      reminderEnabled: false,
+      alertEnabled: false,
+      targets: [],
+    }).success).toBe(true);
+  });
+
+  it('requires scheduling fields when the reminder is active', () => {
+    expect(propositionNoteUpdateSchema.safeParse({ title: 'Rappel', reminderEnabled: true }).success).toBe(false);
+    expect(propositionNoteUpdateSchema.safeParse({
+      title: 'Rappel',
+      reminderEnabled: true,
+      startsAt: '2026-09-21T09:00:00.000Z',
       timezone: 'Europe/Paris',
       durationMinutes: 30,
       alertEnabled: false,
       targets: [],
-    });
-    expect(result.success).toBe(true);
+    }).success).toBe(true);
   });
 
-  it('requires reminder scheduling fields and rejects targets on a simple note', () => {
-    expect(propositionNoteInputSchema.safeParse({ kind: 'reminder', title: 'Rappel' }).success).toBe(false);
-    expect(propositionNoteInputSchema.safeParse({
-      kind: 'note',
-      content: 'Texte',
-      targets: [{ connectionId: '8dc8542d-e3d4-4fc7-9243-7fd2c9ba2ec1', provider: 'google', calendarId: 'primary' }],
-    }).success).toBe(false);
+  it('normalizes a mini-note to one line', () => {
+    const result = propositionNoteEntrySchema.parse({ content: '  Factures\n envoyées   au client  ' });
+    expect(result.content).toBe('Factures envoyées au client');
+  });
+
+  it('accepts known title variables and rejects unknown ones', () => {
+    expect(calendarSettingsSchema.safeParse({ noteTitleTemplate: 'Suivi {client} - {date}' }).success).toBe(true);
+    expect(calendarSettingsSchema.safeParse({ noteTitleTemplate: 'Suivi {inconnue}' }).success).toBe(false);
   });
 });

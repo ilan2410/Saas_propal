@@ -1,20 +1,27 @@
 import { createHash } from 'node:crypto';
-import type { CalendarEventInput, PropositionNote } from './types';
+import { serializeCalendarEntries } from './note-description';
+import type { CalendarEventInput, PropositionNote, PropositionNoteEntry } from './types';
 
-export function noteToCalendarEvent(note: PropositionNote, clientName: string): CalendarEventInput {
+export function noteToCalendarEvent(
+  note: PropositionNote,
+  clientName: string,
+  entries: PropositionNoteEntry[] = [],
+): CalendarEventInput {
   if (note.kind !== 'reminder' || !note.title || !note.starts_at || !note.timezone || !note.duration_minutes) {
     throw new Error('Invalid reminder');
   }
-  const context = [
-    `Client : ${clientName || 'Sans nom'}`,
-    `Proposition : ${note.proposition_id}`,
-    '',
-    note.content ?? '',
-  ];
+  const description = note.structure_version === 2
+    ? serializeCalendarEntries(entries)
+    : [
+        `Client : ${clientName || 'Sans nom'}`,
+        `Proposition : ${note.proposition_id}`,
+        '',
+        note.content ?? '',
+      ].join('\n');
   return {
     noteId: note.id,
     title: note.title,
-    description: context.join('\n'),
+    description,
     startsAt: note.starts_at,
     timezone: note.timezone,
     durationMinutes: note.duration_minutes,

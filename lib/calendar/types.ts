@@ -2,11 +2,24 @@ export type CalendarProvider = 'google' | 'microsoft';
 export type PropositionNoteKind = 'note' | 'reminder';
 export type CalendarSyncStatus = 'pending' | 'synced' | 'error' | 'disconnected';
 
+export interface PropositionNoteEntry {
+  id: string;
+  note_id: string;
+  organization_id: string;
+  author_user_id: string;
+  entry_date: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  author_name?: string;
+}
+
 export interface PropositionNote {
   id: string;
   organization_id: string;
   proposition_id: string;
   author_user_id: string;
+  structure_version: number;
   kind: PropositionNoteKind;
   title: string | null;
   content: string | null;

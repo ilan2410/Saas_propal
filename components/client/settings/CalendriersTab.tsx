@@ -1,11 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, ExternalLink, Loader2, RefreshCw, Unplug } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Braces, CalendarDays, CheckCircle2, ExternalLink, Loader2, RefreshCw, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { CalendarProvider } from '@/lib/calendar/types';
+import {
+  NOTE_TITLE_VARIABLES,
+  formatNoteTitleDate,
+  renderNoteTitleTemplate,
+} from '@/lib/propositions/note-title-template';
 
 interface ConnectionView {
   id: string;
@@ -44,9 +49,14 @@ export function CalendriersTab() {
   const detectedTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris', []);
   const [connections, setConnections] = useState<ConnectionView[]>([]);
   const [timezone, setTimezone] = useState(detectedTimezone);
+  const [noteTitleTemplate, setNoteTitleTemplate] = useState('');
+  const [canEditNoteTitleTemplate, setCanEditNoteTitleTemplate] = useState(false);
+  const [commercialName, setCommercialName] = useState('Utilisateur');
   const [loading, setLoading] = useState(true);
   const [savingTimezone, setSavingTimezone] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [disconnecting, setDisconnecting] = useState<CalendarProvider | null>(null);
+  const templateInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +69,9 @@ export function CalendriersTab() {
       const [connectionsData, settingsData] = await Promise.all([connectionsResponse.json(), settingsResponse.json()]);
       setConnections(connectionsData.connections ?? []);
       setTimezone(settingsData.timezone || detectedTimezone);
+      setNoteTitleTemplate(settingsData.noteTitleTemplate || '');
+      setCanEditNoteTitleTemplate(Boolean(settingsData.canEditNoteTitleTemplate));
+      setCommercialName(settingsData.commercialName || 'Utilisateur');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Chargement impossible');
     } finally {
@@ -81,6 +94,45 @@ export function CalendriersTab() {
       window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
     }
   }, []);
+
+  const titlePreview = useMemo(() => renderNoteTitleTemplate(noteTitleTemplate, {
+    client: 'Dupont Telecom',
+    date: formatNoteTitleDate(new Date(), timezone),
+    commercial: commercialName,
+    template: 'Offre Mobile',
+    statut: 'En cours',
+  }), [commercialName, noteTitleTemplate, timezone]);
+
+  const insertVariable = (token: string) => {
+    const input = templateInputRef.current;
+    const start = input?.selectionStart ?? noteTitleTemplate.length;
+    const end = input?.selectionEnd ?? start;
+    const next = `${noteTitleTemplate.slice(0, start)}${token}${noteTitleTemplate.slice(end)}`.slice(0, 255);
+    setNoteTitleTemplate(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const saveNoteTitleTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      const response = await fetch('/api/calendar/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteTitleTemplate }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Enregistrement impossible');
+      setNoteTitleTemplate(data.noteTitleTemplate ?? noteTitleTemplate.trim());
+      toast.success('Modèle de titre enregistré pour l’entreprise');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Enregistrement impossible');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const saveTimezone = async () => {
     setSavingTimezone(true);
@@ -165,6 +217,34 @@ export function CalendriersTab() {
       </div>
 
       <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700"><strong>À savoir :</strong> déconnecter un fournisseur ne supprime ni les rappels PropoBoost ni les événements déjà présents dans ce calendrier.</div>
+      <div className="space-y-4 border-t border-gray-100 pt-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><Braces className="h-4 w-4" /></span>
+          <div><h3 className="text-sm font-semibold text-gray-900">Titre automatique des notes</h3><p className="mt-1 max-w-2xl text-sm text-gray-600">Combinez du texte libre et des variables. Le titre généré restera modifiable lors de la création d’une note.</p></div>
+        </div>
+
+        <div className="max-w-2xl space-y-3">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-gray-700">Modèle de l’entreprise</span>
+            <input ref={templateInputRef} value={noteTitleTemplate} onChange={(event) => setNoteTitleTemplate(event.target.value)} maxLength={255} disabled={!canEditNoteTitleTemplate} placeholder="Ex. Suivi {client} - {date}" className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-600" />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            {NOTE_TITLE_VARIABLES.map((variable) => (
+              <button key={variable.key} type="button" disabled={!canEditNoteTitleTemplate} onClick={() => insertVariable(variable.token)} className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-violet-300 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-60" title={variable.label}>{variable.token}<span className="ml-1.5 font-normal text-gray-500">{variable.label}</span></button>
+            ))}
+          </div>
+
+          <div className="rounded-lg bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium text-gray-500">Aperçu</p>
+            <p className="mt-1 min-h-5 break-words text-sm font-medium text-gray-900">{titlePreview || 'Aucun titre automatique configuré'}</p>
+          </div>
+
+          {canEditNoteTitleTemplate ? (
+            <div className="flex justify-end"><Button type="button" onClick={() => void saveNoteTitleTemplate()} disabled={savingTemplate}>{savingTemplate && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer le modèle</Button></div>
+          ) : <p className="text-xs text-gray-500">Ce modèle est défini par l’administrateur de votre entreprise.</p>}
+        </div>
+      </div>
     </div>
   );
 }

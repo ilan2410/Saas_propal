@@ -15,6 +15,7 @@ import {
 import { formatDate } from '@/lib/utils/formatting';
 import { cn } from '@/lib/utils';
 import {
+  getStatutCommercial,
   getStatutTechnique,
   STATUT_COMMERCIAL_ORDRE,
   STATUT_TECHNIQUE_ORDRE,
@@ -82,6 +83,12 @@ function statutRank(prop: PropositionListItem): number {
     return STATUT_TECHNIQUE_ORDRE[prop.statut] ?? 2;
   }
   return 100 + (STATUT_COMMERCIAL_ORDRE[prop.statutCommercial] ?? 0);
+}
+
+function noteStatusLabel(prop: PropositionListItem): string {
+  return prop.statut === 'exported'
+    ? getStatutCommercial(prop.statutCommercial).label
+    : getStatutTechnique(prop.statut).label;
 }
 
 export function PropositionsListClient({
@@ -265,7 +272,7 @@ export function PropositionsListClient({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} />
+                        <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} />
                         {RESUMABLE.includes(prop.statut) && (
                           <Link
                             href={`/propositions/${prop.id}/resume`}
@@ -303,7 +310,7 @@ export function PropositionsListClient({
                     </p>
                   </div>
                   <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-                    <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} />
+                    <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} />
                     <PropositionRowMenu propositionId={prop.id} />
                   </div>
                 </div>

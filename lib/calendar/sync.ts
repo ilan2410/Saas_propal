@@ -4,7 +4,8 @@ import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { getCalendarAccess, loadCalendarConnection } from './connection';
 import { calendarEventHash, noteToCalendarEvent } from './hash';
 import { resolveCalendarConflict } from './conflict';
-import type { CalendarTarget, ExternalCalendarEvent, PropositionNote } from './types';
+import { parseCalendarDescription, reconcileCalendarLines, todayInTimeZone } from './note-description';
+import type { CalendarTarget, ExternalCalendarEvent, PropositionNote, PropositionNoteEntry } from './types';
 
 interface EventLink {
   id: string;
@@ -31,18 +32,32 @@ async function loadReminderContext(service: SupabaseClient, noteId: string) {
   const { data: note, error } = await service.from('proposition_notes').select('*').eq('id', noteId).single();
   if (error || !note) throw new Error('note_not_found');
   const typedNote = note as PropositionNote;
-  const { data: proposition } = await service
-    .from('propositions')
-    .select('nom_client, extracted_data')
-    .eq('id', typedNote.proposition_id)
-    .single();
+  const [{ data: proposition }, { data: entries }] = await Promise.all([
+    service
+      .from('propositions')
+      .select('nom_client, extracted_data')
+      .eq('id', typedNote.proposition_id)
+      .single(),
+    service
+      .from('proposition_note_entries')
+      .select('*')
+      .eq('note_id', typedNote.id)
+      .order('created_at', { ascending: true }),
+  ]);
   return {
     note: typedNote,
+    entries: (entries ?? []) as PropositionNoteEntry[],
     clientName: resolvePropositionClientName(proposition?.extracted_data, proposition?.nom_client),
   };
 }
 
-async function syncLink(service: SupabaseClient, link: EventLink, note: PropositionNote, clientName: string) {
+async function syncLink(
+  service: SupabaseClient,
+  link: EventLink,
+  note: PropositionNote,
+  entries: PropositionNoteEntry[],
+  clientName: string,
+) {
   const attemptedAt = new Date().toISOString();
   try {
     if (!link.connection_id) throw new Error('calendar_connection_disconnected');
@@ -51,7 +66,7 @@ async function syncLink(service: SupabaseClient, link: EventLink, note: Proposit
       throw new Error('calendar_connection_forbidden');
     }
     const { accessToken, adapter } = await getCalendarAccess(service, connection);
-    const event = noteToCalendarEvent(note, clientName);
+    const event = noteToCalendarEvent(note, clientName, entries);
     const result = link.external_event_id
       ? await adapter.updateEvent(accessToken, link.calendar_id, link.external_event_id, event)
       : await adapter.createEvent(accessToken, link.calendar_id, event);
@@ -84,11 +99,11 @@ async function syncLink(service: SupabaseClient, link: EventLink, note: Proposit
 
 export async function syncReminder(noteId: string, excludeLinkId?: string) {
   const service = createServiceClient();
-  const { note, clientName } = await loadReminderContext(service, noteId);
+  const { note, entries, clientName } = await loadReminderContext(service, noteId);
   if (note.kind !== 'reminder') return [];
   const { data } = await service.from('calendar_event_links').select('*').eq('note_id', noteId);
   const links = (data ?? []) as EventLink[];
-  return Promise.all(links.filter((link) => link.id !== excludeLinkId).map((link) => syncLink(service, link, note, clientName)));
+  return Promise.all(links.filter((link) => link.id !== excludeLinkId).map((link) => syncLink(service, link, note, entries, clientName)));
 }
 
 async function deleteLinkEvent(service: SupabaseClient, link: EventLink, authorUserId: string): Promise<boolean> {
@@ -180,6 +195,37 @@ function externalContent(description: string | null): string | null {
   return separator >= 0 ? description.slice(separator + 2).trim() || null : description.trim() || null;
 }
 
+async function reconcileStructuredEntries(
+  service: SupabaseClient,
+  note: PropositionNote,
+  entries: PropositionNoteEntry[],
+  description: string | null,
+) {
+  const fallbackDate = todayInTimeZone(note.timezone || 'Europe/Paris');
+  const reconciliation = reconcileCalendarLines(entries, parseCalendarDescription(description, fallbackDate));
+  const results = await Promise.all([
+    ...reconciliation.updates.map((entry) => service
+      .from('proposition_note_entries')
+      .update({ entry_date: entry.entryDate, content: entry.content })
+      .eq('id', entry.id)),
+    ...reconciliation.creates.map((entry) => service
+      .from('proposition_note_entries')
+      .insert({
+        note_id: note.id,
+        organization_id: note.organization_id,
+        author_user_id: note.author_user_id,
+        entry_date: entry.entryDate,
+        content: entry.content,
+      })),
+  ]);
+  const writeError = results.find((result) => result.error)?.error;
+  if (writeError) throw writeError;
+  if (reconciliation.deletes.length) {
+    const { error } = await service.from('proposition_note_entries').delete().in('id', reconciliation.deletes);
+    if (error) throw error;
+  }
+}
+
 export async function reconcileExternalEvent(linkId: string, event: ExternalCalendarEvent | null) {
   const service = createServiceClient();
   const { data: linkData } = await service.from('calendar_event_links').select('*').eq('id', linkId).single();
@@ -189,20 +235,25 @@ export async function reconcileExternalEvent(linkId: string, event: ExternalCale
     await deleteReminderEverywhere(link.note_id, link.id);
     return;
   }
-  const { note, clientName } = await loadReminderContext(service, link.note_id);
+  const { note, entries, clientName } = await loadReminderContext(service, link.note_id);
   const winner = resolveCalendarConflict(note.updated_at, event.updatedAt, link.last_synced_note_updated_at, link.external_updated_at);
   if (winner === 'external') {
     const { data: updated } = await service.from('proposition_notes').update({
-      title: event.title,
-      content: externalContent(event.description),
+      title: event.title.trim() || note.title,
+      content: note.structure_version === 2 ? null : externalContent(event.description),
       starts_at: event.startsAt,
       duration_minutes: event.durationMinutes,
       alert_enabled: event.alertEnabled,
       alert_minutes: event.alertMinutes,
     }).eq('id', note.id).select('*').single();
     if (!updated) return;
+    if (note.structure_version === 2) {
+      await reconcileStructuredEntries(service, note, entries, event.description);
+      await syncReminder(note.id);
+      return;
+    }
     const updatedNote = updated as PropositionNote;
-    const eventInput = noteToCalendarEvent(updatedNote, clientName);
+    const eventInput = noteToCalendarEvent(updatedNote, clientName, entries);
     await service.from('calendar_event_links').update({
       external_updated_at: event.updatedAt,
       external_etag: event.etag,
@@ -215,7 +266,7 @@ export async function reconcileExternalEvent(linkId: string, event: ExternalCale
     return;
   }
   if (winner === 'internal') {
-    await syncLink(service, link, note, clientName);
+    await syncLink(service, link, note, entries, clientName);
     return;
   }
   await service.from('calendar_event_links').update({

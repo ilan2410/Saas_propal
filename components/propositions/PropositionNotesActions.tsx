@@ -6,13 +6,22 @@ import { AlertCircle, CalendarClock, Loader2, MessageSquarePlus, Pencil, Refresh
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { PropositionNoteDialog, type NoteView } from './PropositionNoteDialog';
+import { PropositionNoteDialog, type NoteTitleTemplateContext, type NoteView } from './PropositionNoteDialog';
+import { formatEntryDate } from '@/lib/calendar/note-description';
 
 function noteDate(value: string) {
   return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export function PropositionNotesActions({ propositionId, initialCount }: { propositionId: string; initialCount: number }) {
+export function PropositionNotesActions({
+  propositionId,
+  initialCount,
+  titleContext,
+}: {
+  propositionId: string;
+  initialCount: number;
+  titleContext: NoteTitleTemplateContext;
+}) {
   const router = useRouter();
   const [count, setCount] = useState(initialCount);
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -94,8 +103,8 @@ export function PropositionNotesActions({ propositionId, initialCount }: { propo
         type="button"
         onClick={(event) => { event.stopPropagation(); openCreator(); }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
-        aria-label="Ajouter une note ou un rappel"
-        title="Ajouter une note ou un rappel"
+        aria-label="Ajouter une note"
+        title="Ajouter une note"
       >
         <MessageSquarePlus className="h-4 w-4" />
       </button>
@@ -116,7 +125,7 @@ export function PropositionNotesActions({ propositionId, initialCount }: { propo
           </PopoverTrigger>
           <PopoverContent align="end" className="max-h-[70vh] w-[min(24rem,calc(100vw-2rem))] overflow-hidden border-slate-200 bg-white p-0 shadow-xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div><p className="text-sm font-semibold text-slate-900">Notes et rappels</p><p className="text-xs text-slate-500">{count} élément{count > 1 ? 's' : ''}</p></div>
+              <div><p className="text-sm font-semibold text-slate-900">Notes de suivi</p><p className="text-xs text-slate-500">{count} note{count > 1 ? 's' : ''}</p></div>
               <button type="button" onClick={openCreator} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-slate-900 px-2.5 text-xs font-medium text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"><MessageSquarePlus className="h-3.5 w-3.5" /> Ajouter</button>
             </div>
             <div className="max-h-[55vh] overflow-y-auto p-2">
@@ -137,11 +146,19 @@ export function PropositionNotesActions({ propositionId, initialCount }: { propo
                           </span>
                           <div className="min-w-0 flex-1">
                             {note.title && <p className="text-sm font-semibold text-slate-900">{note.title}</p>}
-                            {note.content && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{note.content}</p>}
+                            {note.structure_version === 2 ? (
+                              note.proposition_note_entries.length > 0 ? (
+                                <div className="mt-1.5 space-y-1">
+                                  {note.proposition_note_entries.slice(-2).map((entry) => <p key={entry.id} className="truncate text-xs text-slate-600"><strong className="font-medium text-slate-800">{entry.author_name}</strong> : {formatEntryDate(entry.entry_date)} - {entry.content}</p>)}
+                                  {note.proposition_note_entries.length > 2 && <p className="text-[11px] font-medium text-blue-700">+ {note.proposition_note_entries.length - 2} autre{note.proposition_note_entries.length > 3 ? 's' : ''}</p>}
+                                </div>
+                              ) : <p className="mt-1 text-xs text-slate-500">Aucun suivi ajouté</p>
+                            ) : note.content ? <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{note.content}</p> : null}
                             {note.kind === 'reminder' && note.starts_at && <p className="mt-2 text-xs font-medium text-amber-700">{noteDate(note.starts_at)} · {note.duration_minutes} min</p>}
                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                              <span>{noteDate(note.created_at)}</span>
+                              <span>{note.structure_version === 2 ? `${note.proposition_note_entries.length} ligne${note.proposition_note_entries.length > 1 ? 's' : ''}` : noteDate(note.created_at)}</span>
                               {canViewAuthors && <><span aria-hidden="true">·</span><span>{note.author_name}</span></>}
+                              {note.structure_version !== 2 && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">Historique</span>}
                               {note.calendar_event_links.length > 0 && <span className={cn('rounded-full px-1.5 py-0.5 font-medium', hasError ? 'bg-rose-50 text-rose-700' : pending ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700')}>{hasError ? 'Erreur calendrier' : pending ? 'Synchronisation…' : `${note.calendar_event_links.length} agenda${note.calendar_event_links.length > 1 ? 's' : ''}`}</span>}
                             </div>
                           </div>
@@ -161,7 +178,7 @@ export function PropositionNotesActions({ propositionId, initialCount }: { propo
         </Popover>
       )}
 
-      <PropositionNoteDialog propositionId={propositionId} open={dialogOpen} onOpenChange={setDialogOpen} initialNote={editing} onSaved={saved} />
+      <PropositionNoteDialog propositionId={propositionId} open={dialogOpen} onOpenChange={setDialogOpen} initialNote={editing} titleContext={titleContext} onSaved={saved} />
     </>
   );
 }
