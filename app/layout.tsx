@@ -29,7 +29,7 @@ export default async function RootLayout({
   const density = cookieStore.get("appearance_density")?.value;
 
   return (
-    <html lang="en" data-theme={theme} data-density={density}>
+    <html lang="fr" data-theme={theme} data-density={density}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

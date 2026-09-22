@@ -16,6 +16,12 @@ interface CalendarSubscription {
   expires_at: string;
 }
 
+export const MICROSOFT_MAILBOX_SUBSCRIPTION = '__mailbox__';
+
+export function subscriptionCalendarId(provider: CalendarProvider, calendarId: string): string {
+  return provider === 'microsoft' ? MICROSOFT_MAILBOX_SUBSCRIPTION : calendarId;
+}
+
 function webhookUrl(provider: CalendarProvider): string {
   const baseUrl = process.env.NEXT_PUBLIC_URL;
   if (!baseUrl) throw new Error('NEXT_PUBLIC_URL is missing');
@@ -64,7 +70,6 @@ async function createGoogleSubscription(
 async function createMicrosoftSubscription(
   service: SupabaseClient,
   connection: CalendarConnection,
-  calendarId: string,
   accessToken: string,
 ) {
   const clientState = randomBytes(32).toString('base64url');
@@ -76,7 +81,7 @@ async function createMicrosoftSubscription(
       changeType: 'updated,deleted',
       notificationUrl: webhookUrl('microsoft'),
       lifecycleNotificationUrl: webhookUrl('microsoft'),
-      resource: `/me/calendars/${calendarId}/events`,
+      resource: '/me/events',
       expirationDateTime: expiresAt,
       clientState,
     }),
@@ -84,7 +89,7 @@ async function createMicrosoftSubscription(
   const { error } = await service.from('calendar_subscriptions').upsert({
     connection_id: connection.id,
     provider: 'microsoft',
-    calendar_id: calendarId,
+    calendar_id: MICROSOFT_MAILBOX_SUBSCRIPTION,
     external_subscription_id: data.id,
     external_resource_id: null,
     client_state: clientState,
@@ -100,21 +105,36 @@ export async function ensureCalendarSubscription(
   connectionId: string,
   calendarId: string,
 ) {
+  const connection = await loadCalendarConnection(service, connectionId);
+  const subscriptionId = subscriptionCalendarId(connection.provider, calendarId);
   const { data: current } = await service
     .from('calendar_subscriptions')
     .select('*')
     .eq('connection_id', connectionId)
-    .eq('calendar_id', calendarId)
+    .eq('calendar_id', subscriptionId)
     .eq('status', 'active')
     .gt('expires_at', new Date(Date.now() + 60 * 60_000).toISOString())
     .maybeSingle();
   if (current) return;
-  const connection = await loadCalendarConnection(service, connectionId);
   const { accessToken } = await getCalendarAccess(service, connection);
   if (connection.provider === 'google') {
     await createGoogleSubscription(service, connection, calendarId, accessToken);
   } else {
-    await createMicrosoftSubscription(service, connection, calendarId, accessToken);
+    await service
+      .from('calendar_subscriptions')
+      .delete()
+      .eq('connection_id', connection.id)
+      .eq('provider', 'microsoft')
+      .neq('calendar_id', MICROSOFT_MAILBOX_SUBSCRIPTION);
+    await createMicrosoftSubscription(service, connection, accessToken);
+    const { data: subscription } = await service
+      .from('calendar_subscriptions')
+      .select('*')
+      .eq('connection_id', connection.id)
+      .eq('provider', 'microsoft')
+      .eq('calendar_id', MICROSOFT_MAILBOX_SUBSCRIPTION)
+      .single();
+    if (subscription) await processCalendarSubscription(service, subscription);
   }
 }
 
@@ -150,12 +170,15 @@ export async function renewCalendarSubscription(service: SupabaseClient, subscri
 export async function processCalendarSubscription(service: SupabaseClient, subscription: CalendarSubscription) {
   const connection = await loadCalendarConnection(service, subscription.connection_id);
   const { accessToken, adapter } = await getCalendarAccess(service, connection);
-  const { data } = await service
+  let linksQuery = service
     .from('calendar_event_links')
     .select('*')
     .eq('connection_id', connection.id)
-    .eq('calendar_id', subscription.calendar_id)
     .not('external_event_id', 'is', null);
+  if (subscription.provider === 'google') {
+    linksQuery = linksQuery.eq('calendar_id', subscription.calendar_id);
+  }
+  const { data } = await linksQuery;
   for (const link of data ?? []) {
     const event = await adapter.getEvent(accessToken, link.calendar_id, link.external_event_id);
     await reconcileExternalEvent(link.id, event);
