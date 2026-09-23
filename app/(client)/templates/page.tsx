@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Plus, FileText, Settings, TrendingUp, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { DuplicateTemplateDialog } from '@/components/templates/DuplicateTemplateDialog';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -292,9 +293,17 @@ export default async function TemplatesPage() {
                       <Clock className="w-3 h-3" />
                       {formatDate(template.created_at)}
                     </span>
-                    <span className="text-sm text-blue-600 font-medium group-hover:gap-2 flex items-center gap-1 transition-all">
-                      Modifier
-                      <TrendingUp className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    <span className="flex items-center gap-2">
+                      <DuplicateTemplateDialog
+                        templateId={template.id}
+                        templateName={template.nom}
+                        fileType={template.file_type}
+                        variant="icon"
+                      />
+                      <span className="text-sm text-blue-600 font-medium group-hover:gap-2 flex items-center gap-1 transition-all">
+                        Modifier
+                        <TrendingUp className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </span>
                     </span>
                   </div>
                 </Link>

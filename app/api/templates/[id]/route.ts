@@ -58,6 +58,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Récupérer le template pour connaître le fichier à nettoyer
+    const { data: template } = await supabase
+      .from('proposition_templates')
+      .select('file_url')
+      .eq('id', id)
+      .eq('organization_id', ctx.organizationId)
+      .single();
+
     const { error } = await supabase
       .from('proposition_templates')
       .delete()
@@ -66,6 +74,59 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Nettoyage des données associées (best-effort : la ligne est déjà supprimée)
+
+    // 1. Fichier dans le bucket Storage
+    if (template?.file_url) {
+      try {
+        const urlParts = String(template.file_url).split('/templates/');
+        if (urlParts.length > 1) {
+          await supabase.storage
+            .from('templates')
+            .remove([decodeURIComponent(urlParts[1])]);
+        }
+      } catch (err) {
+        console.error('Erreur suppression fichier template:', err);
+      }
+    }
+
+    // 2. Questions SP + objectifs SP (JSONB sur l'organisation, filtrés par template_id)
+    try {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('sp_questions, preferences')
+        .eq('id', ctx.organizationId)
+        .single();
+
+      if (org) {
+        const questions = (org.sp_questions ?? []) as { template_id?: string }[];
+        const remainingQuestions = questions.filter((q) => q.template_id !== id);
+
+        const prefs = (org.preferences ?? {}) as Record<string, unknown>;
+        const objectifs = Array.isArray(prefs.sp_objectifs_config)
+          ? (prefs.sp_objectifs_config as { template_id?: string }[])
+          : [];
+        const remainingObjectifs = objectifs.filter((o) => o.template_id !== id);
+
+        const updates: Record<string, unknown> = {};
+        if (remainingQuestions.length !== questions.length) {
+          updates.sp_questions = remainingQuestions;
+        }
+        if (remainingObjectifs.length !== objectifs.length) {
+          updates.preferences = { ...prefs, sp_objectifs_config: remainingObjectifs };
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await supabase
+            .from('organizations')
+            .update(updates)
+            .eq('id', ctx.organizationId);
+        }
+      }
+    } catch (err) {
+      console.error('Erreur nettoyage réglages SP du template:', err);
     }
 
     return NextResponse.json({ success: true });

@@ -26,40 +26,6 @@ export default async function NewTemplatePage() {
     .eq('id', ctx.organizationId)
     .single();
 
-  const { count: templatesCount } = await supabase
-    .from('proposition_templates')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', ctx.organizationId);
-
-  if ((templatesCount || 0) >= 3) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <Link
-            href="/templates"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Retour aux templates
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Limite atteinte</h1>
-          <p className="text-gray-600 mt-2">
-            Vous avez déjà 3 templates. Supprimez-en un avant d&apos;en créer un nouveau.
-          </p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-8">
-          <Link
-            href="/templates"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Voir mes templates
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   const NEW_DEFAULT_PROMPT = `Tu es un expert en analyse de documents commerciaux (factures téléphonie, contrats, etc.).
 
 Analyse le(s) document(s) fourni(s) et extrais les informations demandées au format JSON.
