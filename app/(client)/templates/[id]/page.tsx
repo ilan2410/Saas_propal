@@ -149,6 +149,7 @@ export default async function TemplateDetailPage({ params }: Props) {
           templateId={template.id}
           templateName={template.nom}
           fileUrl={template.file_url}
+          fileType={template.file_type}
           currentStatus={template.statut}
         />
 

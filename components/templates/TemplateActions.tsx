@@ -3,25 +3,27 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  Edit, 
-  Trash2, 
-  Play, 
-  Download, 
-  CheckCircle, 
-  Clock, 
+import {
+  Edit,
+  Trash2,
+  Play,
+  Download,
+  CheckCircle,
+  Clock,
   Loader2,
   ChevronDown
 } from 'lucide-react';
+import { DuplicateTemplateDialog } from './DuplicateTemplateDialog';
 
 interface Props {
   templateId: string;
   templateName: string;
   fileUrl: string | null;
+  fileType: string;
   currentStatus: string;
 }
 
-export function TemplateActions({ templateId, templateName, fileUrl, currentStatus }: Props) {
+export function TemplateActions({ templateId, templateName, fileUrl, fileType, currentStatus }: Props) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -121,6 +123,13 @@ export function TemplateActions({ templateId, templateName, fileUrl, currentStat
         <Edit className="w-4 h-4" />
         Modifier
       </Link>
+
+      <DuplicateTemplateDialog
+        templateId={templateId}
+        templateName={templateName}
+        fileType={fileType}
+        variant="button"
+      />
 
       {/* Menu de changement de statut */}
       <div className="relative">

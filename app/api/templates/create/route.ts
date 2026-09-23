@@ -40,25 +40,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Le type de fichier est requis', details: 'file_type manquant' }, { status: 400 });
     }
 
-    const { count: templatesCount, error: countError } = await supabase
-      .from('proposition_templates')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', ctx.organizationId);
-
-    if (countError) {
-      return NextResponse.json(
-        { error: 'Erreur lors de la vérification des templates', details: countError.message },
-        { status: 500 }
-      );
-    }
-
-    if ((templatesCount || 0) >= 3) {
-      return NextResponse.json(
-        { error: 'Limite atteinte', details: 'Vous ne pouvez pas avoir plus de 3 templates. Supprimez-en un pour en créer un nouveau.' },
-        { status: 409 }
-      );
-    }
-
     // Créer le template dans la BDD
     const champsActifs = Array.isArray(body.champs_actifs)
       ? (body.champs_actifs.filter((v): v is string => typeof v === 'string') as string[])
