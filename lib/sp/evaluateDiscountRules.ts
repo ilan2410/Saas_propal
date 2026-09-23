@@ -1,5 +1,32 @@
-import type { CatalogueProduit, SpQuestion, SpQuestionReponse, SpRegleRemise, SpPreferencesProduits } from '@/types';
+import type { CatalogueProduit, SpConfigRemises, SpQuestion, SpQuestionReponse, SpRegleRemise, SpPreferencesProduits } from '@/types';
 import { evaluateQuestionVisibility, evaluateGroupes } from './evaluateConditions';
+
+export function resolveRemiseProduit(
+  product: CatalogueProduit,
+  config?: SpConfigRemises,
+): CatalogueProduit {
+  const remise = config?.produits?.[product.id];
+  if (config?.actif === false || remise?.mode === 'aucune') {
+    return { ...product, remise_type: undefined, remise_valeur: undefined };
+  }
+  if (remise?.mode === 'personnalisee') {
+    return {
+      ...product,
+      remise_type: remise.remise_type,
+      remise_valeur: Number.isFinite(remise.remise_valeur) ? remise.remise_valeur : undefined,
+    };
+  }
+  return product;
+}
+
+export function calculerPrixRemiseProduit(product: CatalogueProduit): number | null {
+  if (product.prix_mensuel == null || product.remise_valeur == null) return null;
+  if (product.remise_type === 'fixe') return Math.max(0, product.prix_mensuel - product.remise_valeur);
+  if (product.remise_type === 'pourcentage') {
+    return Math.max(0, product.prix_mensuel * (1 - product.remise_valeur / 100));
+  }
+  return null;
+}
 
 function selectedProductNamesFromResponses(reponses: SpQuestionReponse[]): Set<string> {
   const names = new Set<string>();
@@ -65,19 +92,22 @@ export function getEligibleDiscountProducts(params: {
   reponses: SpQuestionReponse[];
   donneesExtraites: Record<string, unknown>;
   spPreferencesProduits?: SpPreferencesProduits;
+  spConfigRemises?: SpConfigRemises;
 }): CatalogueProduit[] {
-  const { rules, products, reponses, donneesExtraites, spPreferencesProduits } = params;
+  const { rules, products, reponses, donneesExtraites, spPreferencesProduits, spConfigRemises } = params;
+  if (spConfigRemises?.actif === false) return [];
   const selectedNames = selectedProductNamesFromResponses(reponses);
   addAutoProductNames(selectedNames, spPreferencesProduits, products, reponses, donneesExtraites);
   const activeRules = rules.filter((rule) => rule.actif);
-  if (activeRules.length === 0 || selectedNames.size === 0) return [];
+  if (selectedNames.size === 0) return [];
 
-  return products.filter((product) => {
+  return products.map((product) => resolveRemiseProduit(product, spConfigRemises)).filter((product) => {
     if (!product.actif) return false;
     if (product.type_frequence !== 'mensuel') return false;
     if (product.remise_valeur == null || !Number.isFinite(product.remise_valeur)) return false;
     if (!selectedNames.has(product.nom.trim().toLowerCase())) return false;
 
+    if (activeRules.length === 0) return true;
     return activeRules.some((rule) => {
       if (!ruleTargetsProduct(rule, product)) return false;
       const fakeQuestion: SpQuestion = {

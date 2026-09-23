@@ -206,6 +206,8 @@ export interface WordConfig {
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
   sp_preferences_produits?: SpPreferencesProduits;
+  sp_config_remises?: SpConfigRemises;
+  sp_config_codes_promo?: SpConfigCodesPromo;
   sp_table_product_orders?: SpTableProductOrders;
 }
 
@@ -406,6 +408,12 @@ export interface SpCodePromo {
   valeur: number;
 }
 
+export interface SpConfigCodesPromo {
+  codes: SpCodePromo[];
+  mode: 'addition' | 'soustraction';
+  masquer_saisie: boolean;
+}
+
 /** Détail d'un code promo appliqué sur la marge SP (pour affichage/export). */
 export interface SpCodePromoInfo {
   nom: string;
@@ -483,6 +491,20 @@ export interface SpRegleRemise {
   produits_ids?: string[];
   categories?: string[];
   fournisseurs?: string[];
+}
+
+export type SpModeRemiseTemplate = 'catalogue' | 'personnalisee' | 'aucune';
+
+export interface SpRemiseProduitTemplate {
+  mode: SpModeRemiseTemplate;
+  remise_type?: 'fixe' | 'pourcentage';
+  remise_valeur?: number;
+}
+
+export interface SpConfigRemises {
+  actif: boolean;
+  produits: Record<string, SpRemiseProduitTemplate>;
+  regles: SpRegleRemise[];
 }
 
 export interface SpRegleProduitAuto {
@@ -945,6 +967,25 @@ export interface SpBareme {
   taux_durees: SpTauxDuree[];
 }
 
+export type SpArrondiLoyer = 'superieur' | 'standard' | 'inferieur' | 'aucun';
+
+export interface SpFormuleLoyer {
+  diviseur: number;
+  arrondi: SpArrondiLoyer;
+  decimales: number;
+}
+
+export interface SpComposantesBaseLoyer {
+  materiel: boolean;
+  cadeaux: boolean;
+  installations: boolean;
+  fas: boolean;
+  autres_ponctuels: boolean;
+  mois_offerts: boolean;
+  indemnites: boolean;
+  marge: boolean;
+}
+
 export interface SpConfigLoyer {
   baremes: SpBareme[];
   /** Durée du contrat en mois utilisée par défaut pour le calcul du loyer (fallback). */
@@ -953,6 +994,9 @@ export interface SpConfigLoyer {
   duree_depends_question?: boolean;
   /** ID de la question SP dont la réponse fournit la durée du contrat (en mois). */
   duree_question_id?: string;
+  mois_offerts_actifs?: boolean;
+  formule?: SpFormuleLoyer;
+  composantes_base?: SpComposantesBaseLoyer;
 }
 
 export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';

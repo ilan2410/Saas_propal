@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database, GripHorizontal, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
@@ -27,6 +27,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>('addition');
   const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(false);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
+  const [spConfigRemises, setSpConfigRemises] = useState<SpConfigRemises | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [objectifsConfig, setObjectifsConfig] = useState<SpObjectifConfig[]>([]);
@@ -67,11 +68,12 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       }
       setFournisseurs(fData.fournisseurs ?? []);
       setCatalogue(cData.produits ?? []);
-      setDiscountRules(prefsData?.preferences?.sp_regles_remise ?? []);
-      setCodesPromo(prefsData?.preferences?.sp_codes_promo ?? []);
-      setCodesPromoMode(prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
-      setCodesPromoMasquerSaisie(prefsData?.preferences?.sp_codes_promo_masquer_saisie ?? false);
       const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
+      setCodesPromo(fileConfig?.sp_config_codes_promo?.codes ?? prefsData?.preferences?.sp_codes_promo ?? []);
+      setCodesPromoMode(fileConfig?.sp_config_codes_promo?.mode ?? prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
+      setCodesPromoMasquerSaisie(fileConfig?.sp_config_codes_promo?.masquer_saisie ?? prefsData?.preferences?.sp_codes_promo_masquer_saisie ?? false);
+      setSpConfigRemises(fileConfig?.sp_config_remises);
+      setDiscountRules(fileConfig?.sp_config_remises?.regles ?? prefsData?.preferences?.sp_regles_remise ?? []);
       setSpConfigLoyer(fileConfig?.sp_config_loyer ?? prefsData?.preferences?.sp_config_loyer);
       setSpConfigResiliation(fileConfig?.sp_config_resiliation ?? prefsData?.preferences?.sp_config_resiliation);
       setSpConfigMoisOfferts(prefsData?.preferences?.sp_config_mois_offerts);
@@ -266,6 +268,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               catalogue={catalogue}
               fournisseurs={fournisseurs}
               discountRules={discountRules}
+              spConfigRemises={spConfigRemises}
               onComplete={(reponses) => { void handleSimulationComplete(reponses); }}
               isSimulation={true}
               simulationPropositionId={exportReadyPropositionId ?? undefined}

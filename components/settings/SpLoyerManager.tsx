@@ -16,7 +16,12 @@ import type {
   WordConfig,
 } from '@/types';
 import { SpConditionEditor } from './SpConditionEditor';
-import { DEFAULT_BAREME, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import {
+  DEFAULT_BAREME,
+  DEFAULT_COMPOSANTES_BASE_LOYER,
+  DEFAULT_CONFIG_LOYER,
+  DEFAULT_FORMULE_LOYER,
+} from '@/lib/sp/calculLoyer';
 import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Props {
@@ -28,10 +33,18 @@ function getWordTemplates(templates: PropositionTemplate[]) {
 }
 
 function getLoyerConfig(template: PropositionTemplate | undefined): SpConfigLoyer {
-  if (!template) return DEFAULT_CONFIG_LOYER;
-  const cfg = template.file_config as WordConfig | undefined;
-  if (cfg?.sp_config_loyer?.baremes) return cfg.sp_config_loyer;
-  return DEFAULT_CONFIG_LOYER;
+  const cfg = template?.file_config as WordConfig | undefined;
+  const saved = cfg?.sp_config_loyer?.baremes ? cfg.sp_config_loyer : DEFAULT_CONFIG_LOYER;
+  return {
+    ...saved,
+    baremes: saved.baremes.map((bareme) => ({
+      ...bareme,
+      taux_durees: bareme.taux_durees.map((taux) => ({ ...taux })),
+    })),
+    mois_offerts_actifs: saved.mois_offerts_actifs ?? true,
+    formule: { ...DEFAULT_FORMULE_LOYER, ...saved.formule },
+    composantes_base: { ...DEFAULT_COMPOSANTES_BASE_LOYER, ...saved.composantes_base },
+  };
 }
 
 export function SpLoyerManager({ templates }: Props) {
@@ -126,6 +139,23 @@ export function SpLoyerManager({ templates }: Props) {
     });
   };
 
+  const updateFormule = (patch: Partial<NonNullable<SpConfigLoyer['formule']>>) => {
+    setLoyerConfig((prev) => ({
+      ...prev,
+      formule: { ...DEFAULT_FORMULE_LOYER, ...prev.formule, ...patch },
+    }));
+  };
+
+  const toggleComposante = (key: keyof NonNullable<SpConfigLoyer['composantes_base']>) => {
+    setLoyerConfig((prev) => {
+      const composantes = { ...DEFAULT_COMPOSANTES_BASE_LOYER, ...prev.composantes_base };
+      return {
+        ...prev,
+        composantes_base: { ...composantes, [key]: !composantes[key] },
+      };
+    });
+  };
+
   const handleSave = async () => {
     if (!templateId || isSaving) return;
     setIsSaving(true);
@@ -172,12 +202,13 @@ export function SpLoyerManager({ templates }: Props) {
       </div>
 
       {/* Durée du contrat (loyer) */}
-      <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
-        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-          Durée du contrat (loyer)
-        </h4>
+      <div className="rounded-lg border border-gray-200 p-4 space-y-4 bg-gray-50/50">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Durée du contrat</h4>
+          <p className="text-xs text-gray-500 mt-1">Elle détermine le taux et le nombre de trimestres appliqués par le barème.</p>
+        </div>
 
-        <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+        <label className="flex items-start gap-3 text-sm text-gray-800 cursor-pointer">
           <input
             type="checkbox"
             checked={loyerConfig.duree_depends_question ?? false}
@@ -190,56 +221,146 @@ export function SpLoyerManager({ templates }: Props) {
             className="mt-0.5"
           />
           <span>
-            La durée du loyer dépend d&apos;une question SP
-            <span className="block text-xs text-gray-500 font-normal">
-              Si coché, la valeur de la réponse à la question sélectionnée sera utilisée comme durée (en mois). Sinon, la durée par défaut s&apos;applique.
+            Déterminer la durée depuis une question SP
+            <span className="block text-xs text-gray-500 font-normal mt-0.5">
+              La première durée en mois trouvée dans la réponse sera utilisée.
             </span>
           </span>
         </label>
 
-        {loyerConfig.duree_depends_question && (
-          <div className="flex items-center gap-2 ml-6">
-            <label className="text-xs text-gray-600 shrink-0">Question :</label>
-            <select
-              value={loyerConfig.duree_question_id ?? ''}
-              onChange={(e) =>
-                setLoyerConfig((prev) => ({
-                  ...prev,
-                  duree_question_id: e.target.value || undefined,
-                }))
-              }
-              className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-            >
-              <option value="">— Sélectionner une question —</option>
-              {spQuestions.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.libelle || q.id}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className={`grid gap-4 ${loyerConfig.duree_depends_question ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
+          {loyerConfig.duree_depends_question && (
+            <label className="space-y-1 text-xs text-gray-600">
+              <span className="block">Question SP</span>
+              <select
+                value={loyerConfig.duree_question_id ?? ''}
+                onChange={(e) =>
+                  setLoyerConfig((prev) => ({
+                    ...prev,
+                    duree_question_id: e.target.value || undefined,
+                  }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+              >
+                <option value="">Sélectionner une question</option>
+                {spQuestions.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.libelle || q.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600 shrink-0">
-            Durée par défaut (mois) :
+          <label className="space-y-1 text-xs text-gray-600">
+            <span className="block">
+              {loyerConfig.duree_depends_question ? 'Durée de secours' : 'Durée du contrat'}
+            </span>
+            <span className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={loyerConfig.duree_mois_par_defaut ?? 63}
+                onChange={(e) =>
+                  setLoyerConfig((prev) => ({
+                    ...prev,
+                    duree_mois_par_defaut: Number(e.target.value) || 63,
+                  }))
+                }
+                className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+              />
+              <span className="text-sm text-gray-500">mois</span>
+            </span>
+            {loyerConfig.duree_depends_question && (
+              <span className="block text-xs text-gray-500">Utilisée si la question n’a pas de réponse exploitable.</span>
+            )}
           </label>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-4 bg-gray-50/50">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Formule du loyer</h4>
+          <p className="text-xs text-gray-500 mt-1">Loyer mensuel = base financée × taux du barème ÷ diviseur.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <label className="space-y-1 text-xs text-gray-600">
+            <span className="block">Diviseur</span>
+            <input
+              type="number"
+              min={0.0001}
+              step="0.1"
+              value={loyerConfig.formule?.diviseur ?? DEFAULT_FORMULE_LOYER.diviseur}
+              onChange={(e) => updateFormule({ diviseur: Number(e.target.value) || 3 })}
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+            />
+          </label>
+          <label className="space-y-1 text-xs text-gray-600">
+            <span className="block">Arrondi</span>
+            <select
+              value={loyerConfig.formule?.arrondi ?? DEFAULT_FORMULE_LOYER.arrondi}
+              onChange={(e) => updateFormule({ arrondi: e.target.value as NonNullable<SpConfigLoyer['formule']>['arrondi'] })}
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+            >
+              <option value="superieur">Au supérieur</option>
+              <option value="standard">Au plus proche</option>
+              <option value="inferieur">À l’inférieur</option>
+              <option value="aucun">Aucun</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-gray-600">
+            <span className="block">Décimales</span>
+            <input
+              type="number"
+              min={0}
+              max={4}
+              step={1}
+              disabled={loyerConfig.formule?.arrondi === 'aucun'}
+              value={loyerConfig.formule?.decimales ?? DEFAULT_FORMULE_LOYER.decimales}
+              onChange={(e) => updateFormule({ decimales: Math.min(4, Math.max(0, Number(e.target.value) || 0)) })}
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white disabled:bg-gray-100"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-4 bg-gray-50/50">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Base financée</h4>
+          <p className="text-xs text-gray-500 mt-1">Cochez chaque composante à inclure dans la base utilisée par la formule.</p>
+        </div>
+        <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
           <input
-            type="number"
-            min={1}
-            step={1}
-            value={loyerConfig.duree_mois_par_defaut ?? 63}
-            onChange={(e) =>
-              setLoyerConfig((prev) => ({
-                ...prev,
-                duree_mois_par_defaut: Number(e.target.value) || 63,
-              }))
-            }
-            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+            type="checkbox"
+            checked={loyerConfig.mois_offerts_actifs ?? true}
+            onChange={(e) => setLoyerConfig((prev) => ({ ...prev, mois_offerts_actifs: e.target.checked }))}
+            className="mt-0.5"
           />
-          <span className="text-xs text-gray-500">
-            (utilisée en fallback si pas de question / pas de réponse)
+          <span>
+            Inclure le financement des mois offerts
+            <span className="block text-xs text-gray-500 mt-0.5">Les valeurs restent enregistrées dans les barèmes lorsque cette option est désactivée.</span>
           </span>
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {([
+            ['materiel', 'Matériel'],
+            ['cadeaux', 'Cadeaux'],
+            ['installations', 'Installations'],
+            ['fas', 'Frais d’accès au service (FAS)'],
+            ['autres_ponctuels', 'Autres éléments ponctuels'],
+            ['indemnites', 'Indemnités de résiliation'],
+            ['marge', 'Marge'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={loyerConfig.composantes_base?.[key] ?? true}
+                onChange={() => toggleComposante(key)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
         </div>
       </div>
 
@@ -248,7 +369,7 @@ export function SpLoyerManager({ templates }: Props) {
         {loyerConfig.baremes
           .slice()
           .sort((a, b) => a.ordre - b.ordre)
-          .map((bareme, _idx) => {
+          .map((bareme) => {
             const isOpen = expandedBaremes.has(bareme.id);
             return (
               <div key={bareme.id} className="rounded-lg border border-gray-200 overflow-hidden">

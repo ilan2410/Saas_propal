@@ -9,7 +9,13 @@ import type {
   SpCodePromoInfo,
   SpPreferencesProduits,
 } from '@/types';
-import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, type ResultatLoyer } from './calculLoyer';
+import {
+  calculerBaseLoyer,
+  calculerLoyer,
+  calculerRemiseMoisOffert,
+  DEFAULT_CONFIG_LOYER,
+  type ResultatLoyer,
+} from './calculLoyer';
 import { findApplicableBareme } from './evaluateBareme';
 import { collectQuestionVariableValues } from './questionVariables';
 import { evaluateGroupes } from './evaluateConditions';
@@ -664,11 +670,22 @@ export function calculateCartSummary(
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? Number(margeRep.valeur) || 0 : 0;
 
-  const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnites + marge;
-  const loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
+  const baseCalculLoyer = calculerBaseLoyer({
+    materiel,
+    cadeaux,
+    installations,
+    fas,
+    autres_ponctuels: autresPonctuels,
+    mois_offerts: remisePourCalculLoyer,
+    indemnites,
+    marge,
+  }, config);
+  const loyer = bareme
+    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule)
+    : null;
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
-  const baseLoyer = totalPonctuel + remiseMoisOffert + indemnites + marge;
+  const baseLoyer = baseCalculLoyer;
 
   // Détail du code promo appliqué sur la marge (si renseigné lors du questionnaire)
   const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');

@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import type { SpCodePromo } from '@/types';
+import { supportsSp } from '@/lib/templates/supportsSp';
+import type { PropositionTemplate, SpCodePromo, SpConfigCodesPromo, WordConfig } from '@/types';
 
-interface Props {
+interface EditorProps {
   codes: SpCodePromo[];
   onChange: (codes: SpCodePromo[]) => void;
   mode: 'addition' | 'soustraction';
@@ -18,7 +20,7 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function SpCodesPromoManager({ codes, onChange, mode, onModeChange, masquerSaisie = false, onMasquerSaisieChange }: Props) {
+function SpCodesPromoEditor({ codes, onChange, mode, onModeChange, masquerSaisie = false, onMasquerSaisieChange }: EditorProps) {
   // Edition d'un code existant
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNom, setEditNom] = useState('');
@@ -263,7 +265,7 @@ export function SpCodesPromoManager({ codes, onChange, mode, onModeChange, masqu
                     <button
                       type="button"
                       onClick={() => removeCode(code.id)}
-                      className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-gray-100"
                       title="Supprimer"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -275,6 +277,88 @@ export function SpCodesPromoManager({ codes, onChange, mode, onModeChange, masqu
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+interface Props {
+  templates: PropositionTemplate[];
+  fallbackConfig: SpConfigCodesPromo;
+}
+
+function getConfig(template: PropositionTemplate | undefined, fallbackConfig: SpConfigCodesPromo): SpConfigCodesPromo {
+  const fileConfig = template?.file_config as WordConfig | undefined;
+  const saved = fileConfig?.sp_config_codes_promo;
+  return saved
+    ? { codes: saved.codes ?? [], mode: saved.mode ?? 'addition', masquer_saisie: saved.masquer_saisie ?? false }
+    : { ...fallbackConfig, codes: [...fallbackConfig.codes] };
+}
+
+export function SpCodesPromoManager({ templates, fallbackConfig }: Props) {
+  const wordTemplates = templates.filter((template) => supportsSp(template.file_type));
+  const [templateId, setTemplateId] = useState(wordTemplates[0]?.id ?? '');
+  const [config, setConfig] = useState<SpConfigCodesPromo>(() => getConfig(wordTemplates[0], fallbackConfig));
+  const [savedConfigs, setSavedConfigs] = useState<Record<string, SpConfigCodesPromo>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const selectedTemplate = wordTemplates.find((template) => template.id === templateId);
+
+  const handleTemplateChange = (id: string) => {
+    setTemplateId(id);
+    const template = wordTemplates.find((item) => item.id === id);
+    setConfig(savedConfigs[id] ?? getConfig(template, fallbackConfig));
+  };
+
+  const handleSave = async () => {
+    if (!selectedTemplate || isSaving) return;
+    setIsSaving(true);
+    try {
+      const currentFileConfig = (selectedTemplate.file_config ?? {}) as WordConfig;
+      const res = await fetch(`/api/templates/${selectedTemplate.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_config: { ...currentFileConfig, sp_config_codes_promo: config } }),
+      });
+      if (!res.ok) throw new Error('Erreur serveur');
+      setSavedConfigs((prev) => ({ ...prev, [selectedTemplate.id]: config }));
+      toast.success('Codes promo du template enregistrés');
+    } catch {
+      toast.error('Erreur lors de la sauvegarde des codes promo');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (wordTemplates.length === 0) {
+    return <p className="text-sm text-gray-500">Aucun template SP disponible.</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm font-medium text-gray-700" htmlFor="promo-template">Template :</label>
+        <select
+          id="promo-template"
+          value={templateId}
+          onChange={(event) => handleTemplateChange(event.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+        >
+          {wordTemplates.map((template) => <option key={template.id} value={template.id}>{template.nom}</option>)}
+        </select>
+      </div>
+
+      <SpCodesPromoEditor
+        key={templateId}
+        codes={config.codes}
+        onChange={(codes) => setConfig((prev) => ({ ...prev, codes }))}
+        mode={config.mode}
+        onModeChange={(mode) => setConfig((prev) => ({ ...prev, mode }))}
+        masquerSaisie={config.masquer_saisie}
+        onMasquerSaisieChange={(masquer_saisie) => setConfig((prev) => ({ ...prev, masquer_saisie }))}
+      />
+
+      <div className="flex justify-end pt-2 border-t border-gray-100">
+        <Button onClick={handleSave} disabled={isSaving}>{isSaving ? 'Sauvegarde...' : 'Enregistrer les codes promo du template'}</Button>
+      </div>
     </div>
   );
 }

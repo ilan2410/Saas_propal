@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpBareme, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie, SpTableProductOrders } from '@/types';
+import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie, SpTableProductOrders } from '@/types';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
-import { calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
@@ -463,10 +463,9 @@ function buildSpCompletes(
   wordCfg: WordConfig,
   templateQuestions: SpQuestion[],
   catalogueProduits?: CatalogueProduit[],
-  loyerBaremes?: SpBareme[],
+  spConfigLoyer?: SpConfigLoyer,
   priceOverrides: Map<string, number> = new Map(),
   fasTotal = 0,
-  loyerDureeConfig?: { depends_question?: boolean; question_id?: string; defaut?: number },
   _spConfigMoisOfferts?: SpConfigMoisOfferts,
   spCategoriesOrder?: SpCategorie[],
   spTableProductOrders?: SpTableProductOrders,
@@ -593,19 +592,25 @@ function buildSpCompletes(
   // Material: split by type_frequence
   let totalMaterielRecurrent = 0;
   let totalMaterielPonctuel = 0;
+  let totalCadeauxPonctuel = 0;
+  let totalInstallationsPonctuel = 0;
+  let totalAutresPonctuel = 0;
   for (const m of sp_materiel) {
     const isLibre = m.sp_materiel_produit_id === FREE_ENTRY_MARKER;
     const catalogueItem = !isLibre && m.sp_materiel_produit_id ? catalogueMap.get(m.sp_materiel_produit_id) : undefined;
     const freq = isLibre ? 'unique' : (catalogueItem?.type_frequence ?? 'mensuel');
     if (freq === 'unique') {
-      totalMaterielPonctuel += m._prix_mensuel_raw; // one-time cost
+      if (catalogueItem?.categorie === 'cadeau') totalCadeauxPonctuel += m._prix_mensuel_raw;
+      else if (catalogueItem?.categorie === 'installation') totalInstallationsPonctuel += m._prix_mensuel_raw;
+      else if (isLibre || catalogueItem?.categorie === 'equipement') totalMaterielPonctuel += m._prix_mensuel_raw;
+      else totalAutresPonctuel += m._prix_mensuel_raw;
     } else {
       totalMaterielRecurrent += m._prix_mensuel_raw;
     }
   }
 
   const totalRecurrent = totalRecurrentLignes + totalMaterielRecurrent;
-  const totalPonctuel = totalMaterielPonctuel;
+  const totalPonctuel = totalMaterielPonctuel + totalCadeauxPonctuel + totalInstallationsPonctuel + totalAutresPonctuel;
 
   // ── Loyer calculation ──
   // Résolution de la durée :
@@ -613,8 +618,8 @@ function buildSpCompletes(
   //   2. Sinon : ancien mécanisme `raw.sp_duree_mois` (consequence renseigner_variable).
   //   3. Fallback : duree_mois_par_defaut configurée sur le template.
   let dureeMois = 0;
-  if (loyerDureeConfig?.depends_question && loyerDureeConfig.question_id) {
-    const targetId = loyerDureeConfig.question_id;
+  if (spConfigLoyer?.duree_depends_question && spConfigLoyer.duree_question_id) {
+    const targetId = spConfigLoyer.duree_question_id;
     const dureeRep = reponses.find(
       (r) => r.question_id === targetId || r.question_id.startsWith(`${targetId}__iter_`),
     );
@@ -628,10 +633,12 @@ function buildSpCompletes(
   if (!dureeMois) {
     dureeMois = toNumber(raw.sp_duree_mois) ?? 0;
   }
-  if (!dureeMois && loyerDureeConfig?.defaut && loyerDureeConfig.defaut > 0) {
-    dureeMois = loyerDureeConfig.defaut;
+  if (!dureeMois && spConfigLoyer?.duree_mois_par_defaut && spConfigLoyer.duree_mois_par_defaut > 0) {
+    dureeMois = spConfigLoyer.duree_mois_par_defaut;
   }
-  const bareme = loyerBaremes ? findApplicableBareme(loyerBaremes, reponses, {}, catalogueProduits) : null;
+  const bareme = spConfigLoyer?.baremes
+    ? findApplicableBareme(spConfigLoyer.baremes, reponses, {}, catalogueProduits)
+    : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
   const remisePourCalculLoyer = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
@@ -647,8 +654,19 @@ function buildSpCompletes(
     const m = String(raw.sp_total_indemnites).match(/-?\d+(?:[.,]\d+)?/);
     indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
   }
-  const baseCalculLoyer = totalPonctuel + remisePourCalculLoyer + indemnitesNum + marge;
-  const loyer = dureeMois > 0 ? calculerLoyer(bareme, baseCalculLoyer, dureeMois) : null;
+  const baseCalculLoyer = calculerBaseLoyer({
+    materiel: totalMaterielPonctuel,
+    cadeaux: totalCadeauxPonctuel,
+    installations: totalInstallationsPonctuel,
+    fas: fasTotal,
+    autres_ponctuels: totalAutresPonctuel,
+    mois_offerts: remisePourCalculLoyer,
+    indemnites: indemnitesNum,
+    marge,
+  }, spConfigLoyer);
+  const loyer = dureeMois > 0
+    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule)
+    : null;
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
 
@@ -1070,31 +1088,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Load loyer baremes: template file_config first, org preferences as fallback
-    let loyerBaremes: SpBareme[] | undefined;
-    let loyerDureeConfig: { depends_question?: boolean; question_id?: string; defaut?: number } | undefined;
+    // Load loyer config: template file_config first, org preferences as fallback
+    let spConfigLoyer: SpConfigLoyer | undefined;
     let spConfigMoisOfferts: SpConfigMoisOfferts | undefined;
 
-    const tmplCfg = wordCfg as WordConfig & {
-      sp_config_loyer?: {
-        baremes?: SpBareme[];
-        duree_mois_par_defaut?: number;
-        duree_depends_question?: boolean;
-        duree_question_id?: string;
-      };
-    };
-    if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer!.baremes!.length > 0) {
-      loyerBaremes = tmplCfg.sp_config_loyer!.baremes;
-    }
-    if (tmplCfg.sp_config_loyer) {
-      loyerDureeConfig = {
-        depends_question: tmplCfg.sp_config_loyer.duree_depends_question,
-        question_id: tmplCfg.sp_config_loyer.duree_question_id,
-        defaut: tmplCfg.sp_config_loyer.duree_mois_par_defaut,
-      };
+    const tmplCfg = wordCfg as WordConfig;
+    if (Array.isArray(tmplCfg.sp_config_loyer?.baremes) && tmplCfg.sp_config_loyer.baremes.length > 0) {
+      spConfigLoyer = tmplCfg.sp_config_loyer;
     }
 
-    if (!loyerBaremes) {
+    if (!spConfigLoyer) {
       const { data: orgData } = await supabase
         .from('organizations')
         .select('preferences')
@@ -1106,14 +1109,16 @@ export async function POST(request: NextRequest) {
       if (isPlainObject(orgCfg)) {
         const cfg = orgCfg as UnknownRecord;
         if (Array.isArray(cfg.baremes) && (cfg.baremes as unknown[]).length > 0) {
-          loyerBaremes = cfg.baremes as SpBareme[];
+          spConfigLoyer = cfg as unknown as SpConfigLoyer;
         } else if (Array.isArray(cfg.taux_durees)) {
-          loyerBaremes = [{
-            id: 'migrated',
-            nom: 'Barème migré',
-            ordre: 0,
-            taux_durees: cfg.taux_durees as SpTauxDuree[],
-          }];
+          spConfigLoyer = {
+            baremes: [{
+              id: 'migrated',
+              nom: 'Barème migré',
+              ordre: 0,
+              taux_durees: cfg.taux_durees as SpTauxDuree[],
+            }],
+          };
         }
       }
     }
@@ -1168,10 +1173,9 @@ export async function POST(request: NextRequest) {
       wordCfg,
       templateQuestions,
       catalogue as CatalogueProduit[],
-      loyerBaremes,
+      spConfigLoyer,
       priceOverrides,
       typeof sp_fas_total === 'number' && sp_fas_total > 0 ? sp_fas_total : 0,
-      loyerDureeConfig,
       spConfigMoisOfferts,
       spCategoriesOrder,
       wordCfg.sp_table_product_orders,

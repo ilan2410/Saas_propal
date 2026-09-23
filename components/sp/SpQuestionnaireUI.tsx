@@ -9,12 +9,12 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { buildSpReference } from '@/lib/sp/buildReference';
@@ -29,6 +29,7 @@ export interface SpQuestionnaireUIProps {
   donneesExtraites: Record<string, unknown>;
   catalogue: CatalogueProduit[];
   discountRules?: SpRegleRemise[];
+  spConfigRemises?: SpConfigRemises;
   fournisseurs: string[];
   onComplete: (reponses: SpQuestionReponse[]) => void;
   onReponsesChange?: (reponses: SpQuestionReponse[]) => void;
@@ -931,6 +932,7 @@ export function SpQuestionnaireUI({
   donneesExtraites: donneesExtraitesProp,
   catalogue,
   discountRules = [],
+  spConfigRemises,
   fournisseurs,
   onComplete,
   onReponsesChange,
@@ -1276,6 +1278,7 @@ export function SpQuestionnaireUI({
         reponses: effectiveReponses,
         donneesExtraites,
         spPreferencesProduits,
+        spConfigRemises,
       });
       if (eligibles.length === 0) return false;
     }
@@ -1298,7 +1301,7 @@ export function SpQuestionnaireUI({
     if (shown.has(eq.question.id) || shown.has(eq.instanceId)) return true;
 
     return visibleByConditions;
-  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules, spPreferencesProduits]);
+  }, [hiddenByConsequence, shownByConsequence, questions, donneesExtraites, catalogue, discountRules, spPreferencesProduits, spConfigRemises]);
 
   const isQuestionVisible = (eq: ExpandedQuestion): boolean => isQuestionVisibleWith(eq, reponses);
 
@@ -1394,6 +1397,7 @@ export function SpQuestionnaireUI({
         reponses,
         donneesExtraites,
         spPreferencesProduits,
+        spConfigRemises,
       });
       if (eligibles.length === 0) {
         autoSkipQuestion(eq, false);
@@ -1719,6 +1723,7 @@ export function SpQuestionnaireUI({
       reponses,
       donneesExtraites,
       spPreferencesProduits,
+      spConfigRemises,
     })
     : [];
   const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
@@ -2936,17 +2941,25 @@ export function SpQuestionnaireUI({
               spConfigMoisOfferts,
               spPreferencesProduits,
             );
+            const configLoyer = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
             const remisePourCalculLoyer = calculerRemiseMoisOffert(
               bareme,
               baseSummary.abonnements.totalMensuel,
               dureeMois,
             );
-            const baseCalculLoyer =
-              baseSummary.totalPonctuel + remisePourCalculLoyer + baseSummary.indemnites + margeNum;
-            const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois);
-            const remiseMoisOffert = loyer ? loyer.loyer_mensuel * loyer.mois_offerts : 0;
-            const baseLoyer =
-              baseSummary.totalPonctuel + remiseMoisOffert + baseSummary.indemnites + margeNum;
+            const baseCalculLoyer = calculerBaseLoyer({
+              materiel: baseSummary.materiel,
+              cadeaux: baseSummary.cadeaux,
+              installations: baseSummary.installations,
+              fas: baseSummary.fas,
+              autres_ponctuels: baseSummary.autresPonctuels,
+              mois_offerts: remisePourCalculLoyer,
+              indemnites: baseSummary.indemnites,
+              marge: margeNum,
+            }, configLoyer);
+            const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
+            const remiseMoisOffert = configLoyer.mois_offerts_actifs === false ? 0 : remisePourCalculLoyer;
+            const baseLoyer = baseCalculLoyer;
 
             return (
               <div className="space-y-3">
@@ -3024,7 +3037,7 @@ export function SpQuestionnaireUI({
                           <span className="text-gray-600">
                             Loyer mensuel HT
                             <span className="block text-[10px] text-gray-400">
-                              ({baseCalculLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / 3
+                              ({baseCalculLoyer.toFixed(2)} × {(loyer.taux_utilise * 100).toFixed(2)}%) / {configLoyer.formule?.diviseur ?? 3}
                             </span>
                           </span>
                           <span className="font-semibold text-blue-800">{loyer.loyer_mensuel.toFixed(2)} €</span>
@@ -3103,9 +3116,19 @@ export function SpQuestionnaireUI({
               const margeVal = String(margeNum);
               const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
               const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+              const configLoyer = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
               const remisePourCalculLoyer = calculerRemiseMoisOffert(bareme, baseSummary.abonnements.totalMensuel, dureeMois);
-              const baseCalculLoyer = baseSummary.totalPonctuel + remisePourCalculLoyer + baseSummary.indemnites + margeNum;
-              const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois);
+              const baseCalculLoyer = calculerBaseLoyer({
+                materiel: baseSummary.materiel,
+                cadeaux: baseSummary.cadeaux,
+                installations: baseSummary.installations,
+                fas: baseSummary.fas,
+                autres_ponctuels: baseSummary.autresPonctuels,
+                mois_offerts: remisePourCalculLoyer,
+                indemnites: baseSummary.indemnites,
+                marge: margeNum,
+              }, configLoyer);
+              const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
               const extras: SpQuestionReponse[] = [
                 { question_id: 'sp_marge_calculee', valeur: margeVal },
                 // Détail du code promo (pour affichage panier + export comparatif)

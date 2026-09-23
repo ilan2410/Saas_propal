@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigLoyer, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigCodesPromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 import { FloatingClientCoordonnees } from '@/components/propositions/FloatingClientCoordonnees';
@@ -71,7 +71,9 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [preferences, setPreferences] = useState<OrganizationPreferences>({});
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [spConfigCodesPromo, setSpConfigCodesPromo] = useState<SpConfigCodesPromo | undefined>(undefined);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
+  const [spConfigRemises, setSpConfigRemises] = useState<SpConfigRemises | undefined>(undefined);
   const [spConfigResiliation, setSpConfigResiliation] = useState<SpConfigResiliation | undefined>(undefined);
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
@@ -111,6 +113,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       setPreferences(pData.preferences ?? {});
       const fileCfg = tData.template?.file_config as WordConfig | undefined;
       if (fileCfg?.sp_config_loyer?.baremes) setSpConfigLoyer(fileCfg.sp_config_loyer);
+      setSpConfigCodesPromo(fileCfg?.sp_config_codes_promo);
+      setSpConfigRemises(fileCfg?.sp_config_remises);
       setSpConfigResiliation(fileCfg?.sp_config_resiliation ?? pData.preferences?.sp_config_resiliation);
       setSpConfigMoisOfferts(pData.preferences?.sp_config_mois_offerts);
       setSpConfigResumeRef(fileCfg?.sp_config_resume_ref);
@@ -529,7 +533,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   questions={questions}
                   donneesExtraites={propositionData.donnees_extraites ?? {}}
                   catalogue={catalogue}
-                  discountRules={preferences.sp_regles_remise ?? []}
+                  discountRules={spConfigRemises?.regles ?? preferences.sp_regles_remise ?? []}
+                  spConfigRemises={spConfigRemises}
                   fournisseurs={fournisseurs}
                   initialReponses={propositionData.sp_reponses}
                   onReponsesChange={handleReponsesChange}
@@ -543,9 +548,9 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigResumeRef={spConfigResumeRef}
                   spConfigModeClient={spConfigModeClient}
                   spPreferencesProduits={spPreferencesProduits}
-                  spCodesPromo={preferences.sp_codes_promo ?? []}
-                  spCodesPromoMode={preferences.sp_codes_promo_mode ?? 'addition'}
-                  spCodesPromoMasquerSaisie={preferences.sp_codes_promo_masquer_saisie ?? false}
+                  spCodesPromo={spConfigCodesPromo?.codes ?? preferences.sp_codes_promo ?? []}
+                  spCodesPromoMode={spConfigCodesPromo?.mode ?? preferences.sp_codes_promo_mode ?? 'addition'}
+                  spCodesPromoMasquerSaisie={spConfigCodesPromo?.masquer_saisie ?? preferences.sp_codes_promo_masquer_saisie ?? false}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
                   templateId={templateId}
                   design={preferences.sp_customization?.questionnaire_design ?? 'wizard'}

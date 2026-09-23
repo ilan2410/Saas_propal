@@ -789,10 +789,10 @@ export default async function PropositionDetailPage({
 
     const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
     const templateFileCfg = isRecord(template?.file_config) ? (template.file_config as Record<string, unknown>) : {};
-    const spConfigLoyer: SpConfigLoyer | undefined = isRecord(prefs.sp_config_loyer)
-      ? prefs.sp_config_loyer
-      : isRecord(templateFileCfg.sp_config_loyer)
-        ? (templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer)
+    const spConfigLoyer: SpConfigLoyer | undefined = isRecord(templateFileCfg.sp_config_loyer)
+      ? (templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer)
+      : isRecord(prefs.sp_config_loyer)
+        ? prefs.sp_config_loyer
         : undefined;
     const spPreferencesProduits: SpPreferencesProduits | undefined = isRecord(templateFileCfg.sp_preferences_produits)
       ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits)

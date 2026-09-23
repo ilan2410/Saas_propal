@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, SpRegleRemise, SpCodePromo, CatalogueProduit, SpQuestion } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, CatalogueProduit, SpQuestion } from '@/types';
 import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -29,7 +29,6 @@ import {
   FileDown,
   Bot,
   Calculator,
-  Plus,
   Percent,
   EyeOff,
   Package,
@@ -404,22 +403,8 @@ export default function SettingsPage({
   const [isSpBgSaving, setIsSpBgSaving] = useState(false);
   const [isSpBgUploading, setIsSpBgUploading] = useState(false);
 
-  const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>(organization.preferences?.sp_regles_remise ?? []);
   const [discountProducts, setDiscountProducts] = useState<CatalogueProduit[]>([]);
   const [discountQuestions, setDiscountQuestions] = useState<SpQuestion[]>([]);
-  const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>(organization.preferences?.sp_codes_promo ?? []);
-  const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>(organization.preferences?.sp_codes_promo_mode ?? 'addition');
-  const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(organization.preferences?.sp_codes_promo_masquer_saisie ?? false);
-  const [isDiscountSaving, setIsDiscountSaving] = useState(false);
-
-  useEffect(() => {
-    setCodesPromo(organization.preferences?.sp_codes_promo ?? []);
-  }, [organization.preferences?.sp_codes_promo]);
-
-  useEffect(() => {
-    setCodesPromoMode(organization.preferences?.sp_codes_promo_mode ?? 'addition');
-  }, [organization.preferences?.sp_codes_promo_mode]);
-
   // Appearance State
   const [appearance, setAppearance] = useState<{
     theme: ThemePreference;
@@ -483,7 +468,7 @@ export default function SettingsPage({
     };
     loadProducts();
     return () => { cancelled = true; };
-  }, [activeTab]);
+  }, [activeTab, templates]);
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
@@ -1062,45 +1047,6 @@ export default function SettingsPage({
     });
     toast.info('Valeurs par défaut restaurées (pensez à enregistrer)');
   };
-
-  const handleSaveDiscountRules = async () => {
-    if (isDiscountSaving) return;
-    setIsDiscountSaving(true);
-    try {
-      const res = await fetch('/api/settings/update-preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sp_regles_remise: discountRules }),
-      });
-      if (!res.ok) throw new Error('Erreur');
-      toast.success('Règles de remise enregistrées');
-      router.refresh();
-    } catch {
-      toast.error('Erreur lors de la sauvegarde des remises');
-    } finally {
-      setIsDiscountSaving(false);
-    }
-  };
-
-  const handleSaveCodesPromo = async () => {
-    if (isDiscountSaving) return;
-    setIsDiscountSaving(true);
-    try {
-      const res = await fetch('/api/settings/update-preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sp_codes_promo: codesPromo, sp_codes_promo_mode: codesPromoMode, sp_codes_promo_masquer_saisie: codesPromoMasquerSaisie }),
-      });
-      if (!res.ok) throw new Error('Erreur');
-      toast.success('Codes promo enregistrés');
-      router.refresh();
-    } catch {
-      toast.error('Erreur lors de la sauvegarde des codes promo');
-    } finally {
-      setIsDiscountSaving(false);
-    }
-  };
-
 
   const handleUpdateAppearance = async () => {
     setIsLoading(true);
@@ -2986,7 +2932,7 @@ export default function SettingsPage({
                     : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                 }`}
               >
-                Règles de remise
+                Remises opérateurs
               </button>
               <button
                 type="button"
@@ -3003,35 +2949,23 @@ export default function SettingsPage({
 
             {remisesSubTab === 'regles_remise' && (
               <SpDiscountRulesManager
-                rules={discountRules}
+                templates={templates}
+                fallbackRules={organization.preferences?.sp_regles_remise ?? []}
                 products={discountProducts}
                 questions={discountQuestions}
-                onChange={setDiscountRules}
               />
             )}
             {remisesSubTab === 'codes_promo' && (
               <SpCodesPromoManager
-                codes={codesPromo}
-                onChange={setCodesPromo}
-                mode={codesPromoMode}
-                onModeChange={setCodesPromoMode}
-                masquerSaisie={codesPromoMasquerSaisie}
-                onMasquerSaisieChange={setCodesPromoMasquerSaisie}
+                templates={templates}
+                fallbackConfig={{
+                  codes: organization.preferences?.sp_codes_promo ?? [],
+                  mode: organization.preferences?.sp_codes_promo_mode ?? 'addition',
+                  masquer_saisie: organization.preferences?.sp_codes_promo_masquer_saisie ?? false,
+                }}
               />
             )}
 
-            <div className="flex gap-2 pt-4 border-t border-gray-100">
-              <Button
-                onClick={remisesSubTab === 'regles_remise' ? handleSaveDiscountRules : handleSaveCodesPromo}
-                disabled={isDiscountSaving}
-              >
-                {isDiscountSaving
-                  ? 'Sauvegarde...'
-                  : remisesSubTab === 'regles_remise'
-                    ? 'Enregistrer les règles'
-                    : 'Enregistrer les codes promo'}
-              </Button>
-            </div>
           </div>
         )}
 
