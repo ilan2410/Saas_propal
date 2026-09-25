@@ -682,7 +682,7 @@ export function SpRealTimeCart({
   }, [search, catalogue]);
 
   const hasAnyLine = summary.lines.length > 0;
-  const grandTotalMensuel = summary.loyer?.loyer_mensuel ?? summary.abonnements.totalMensuel;
+  const grandTotalMensuel = summary.totalMensuelFinal;
 
   return (
     <div
@@ -784,6 +784,18 @@ export function SpRealTimeCart({
                   onUpdateNumero={handleUpdateNumero}
                   onDeleteLine={handleDeleteLine}
                   />
+                )}
+                {summary.codePromo?.cible === 'abonnements' && (
+                  <div className="flex items-center justify-between text-[11px] text-emerald-700">
+                    <span>
+                      Code promo{' '}
+                      <span className="font-mono font-medium">{summary.codePromo.nom}</span>
+                    </span>
+                    <span className="tabular-nums">
+                      {summary.codePromo.mode === 'soustraction' ? '−' : '+'}
+                      {formatEuro(summary.codePromo.valeur)}
+                    </span>
+                  </div>
                 )}
                 <div className="pt-1 border-t border-gray-100">
                   <Line label="Total mensuel" value={summary.abonnements.totalMensuel} suffix="/mois" bold />
@@ -908,7 +920,7 @@ export function SpRealTimeCart({
                         <Line label="Indemnités" value={summary.indemnites} muted />
                       )}
                       {summary.marge !== 0 &&
-                        (summary.codePromo ? (
+                        (summary.codePromo && summary.codePromo.cible !== 'abonnements' ? (
                           <div>
                             <button
                               type="button"

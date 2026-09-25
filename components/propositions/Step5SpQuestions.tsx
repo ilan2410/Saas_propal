@@ -550,6 +550,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spPreferencesProduits={spPreferencesProduits}
                   spCodesPromo={spConfigCodesPromo?.codes ?? preferences.sp_codes_promo ?? []}
                   spCodesPromoMode={spConfigCodesPromo?.mode ?? preferences.sp_codes_promo_mode ?? 'addition'}
+                  spCodesPromoCible={spConfigCodesPromo?.cible ?? 'totalite'}
                   spCodesPromoMasquerSaisie={spConfigCodesPromo?.masquer_saisie ?? preferences.sp_codes_promo_masquer_saisie ?? false}
                   objectifsConfig={preferences.sp_objectifs_config ?? []}
                   templateId={templateId}

@@ -3,6 +3,7 @@ import type {
   SpComposantesBaseLoyer,
   SpConfigLoyer,
   SpFormuleLoyer,
+  SpModeTotalMensuel,
   SpTauxDuree,
 } from '@/types';
 
@@ -38,12 +39,15 @@ export const DEFAULT_COMPOSANTES_BASE_LOYER: SpComposantesBaseLoyer = {
   marge: true,
 };
 
+export const DEFAULT_MODE_TOTAL_MENSUEL: SpModeTotalMensuel = 'tout_compris';
+
 export const DEFAULT_CONFIG_LOYER: SpConfigLoyer = {
   baremes: [DEFAULT_BAREME],
   duree_mois_par_defaut: 63,
   mois_offerts_actifs: true,
   formule: DEFAULT_FORMULE_LOYER,
   composantes_base: DEFAULT_COMPOSANTES_BASE_LOYER,
+  mode_total_mensuel: DEFAULT_MODE_TOTAL_MENSUEL,
 };
 
 export interface ComposantesBaseLoyer {
@@ -141,6 +145,23 @@ export function calculerRemiseMoisOffert(
   const entry = taux_durees.find((t) => t.duree_mois === dureeMois);
   if (!entry) return 0;
   return totalRecurrentMensuel * entry.mois_offerts;
+}
+
+// ── Total mensuel affiché au client ──────────────────────────────────
+
+/**
+ * Combine le total des abonnements et le loyer mensuel en un seul montant
+ * à afficher au client, selon le mode configuré :
+ * - 'tout_compris' (défaut) : loyer si présent, sinon abonnements (comportement historique).
+ * - 'separe' : abonnements + loyer.
+ */
+export function resolveTotalMensuelFinal(
+  totalAbonnementsMensuel: number,
+  loyerMensuel: number | null | undefined,
+  mode: SpModeTotalMensuel = DEFAULT_MODE_TOTAL_MENSUEL,
+): number {
+  if (mode === 'separe') return totalAbonnementsMensuel + (loyerMensuel ?? 0);
+  return loyerMensuel ?? totalAbonnementsMensuel;
 }
 
 // ── Format helpers ───────────────────────────────────────────────────

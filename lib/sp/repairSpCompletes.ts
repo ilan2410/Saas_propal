@@ -423,6 +423,7 @@ export function repairSpCompletesFromQuestionnaire(
     sp_total_cadeaux_ht: formatEuro(totalCadeaux),
     sp_total_recurrent: formatEuro(cart.abonnements.totalMensuel),
     sp_total_ponctuel: formatEuro(cart.totalPonctuel),
+    sp_total_mensuel_final: formatEuro(cart.totalMensuelFinal),
     sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : sp.sp_total_indemnites,
     sp_remise_mois_offert: cart.remiseMoisOffert > 0 ? formatEuro(cart.remiseMoisOffert) : sp.sp_remise_mois_offert,
     sp_total_remise: remiseBreakdown.total > 0.005 ? formatEuro(-remiseBreakdown.total) : sp.sp_total_remise,

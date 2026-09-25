@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogueCategorie, CatalogueProduit, SpQuestion } from '@/types';
 import { calculateCartSummary } from './calculateCart';
-import { calculerBaseLoyer, calculerLoyer, DEFAULT_BAREME } from './calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, resolveTotalMensuelFinal, DEFAULT_BAREME } from './calculLoyer';
 import { calculerPrixRemiseProduit, getEligibleDiscountProducts, resolveRemiseProduit } from './evaluateDiscountRules';
 
 function product(
@@ -102,6 +102,111 @@ describe('calculateCartSummary — mois offerts', () => {
     expect(summary.remiseMoisOffert).toBe(1800);
     expect(summary.baseLoyer).toBe(1000);
     expect(summary.loyer?.loyer_mensuel).toBe(21);
+  });
+});
+
+describe('resolveTotalMensuelFinal', () => {
+  it('mode tout_compris (défaut) : renvoie le loyer quand il existe', () => {
+    expect(resolveTotalMensuelFinal(70, 24)).toBe(24);
+  });
+
+  it('mode tout_compris : renvoie les abonnements en repli quand il n’y a pas de loyer', () => {
+    expect(resolveTotalMensuelFinal(70, null, 'tout_compris')).toBe(70);
+    expect(resolveTotalMensuelFinal(70, undefined, 'tout_compris')).toBe(70);
+  });
+
+  it('mode separe : additionne abonnements et loyer', () => {
+    expect(resolveTotalMensuelFinal(70, 24, 'separe')).toBe(94);
+  });
+
+  it('mode separe : revient aux abonnements seuls quand il n’y a pas de loyer', () => {
+    expect(resolveTotalMensuelFinal(70, null, 'separe')).toBe(70);
+  });
+});
+
+describe('calculateCartSummary — totalMensuelFinal', () => {
+  const catalogue = [
+    product('mensuel', 'Abonnements', 'fixe', 'mensuel', 70),
+    product('ponctuel', 'Matériel', 'equipement', 'unique', 1000),
+  ];
+  const questions = catalogue.map(({ id }) => question(id));
+  const reponses = catalogue.map(({ id, nom }) => ({ question_id: id, valeur: nom }));
+  const baseConfig = {
+    baremes: [{
+      id: 'default',
+      nom: 'Défaut',
+      ordre: 0,
+      taux_durees: [{ duree_mois: 63, taux_loyer: 0.063, mois_offerts: 18, trimestres: 21 }],
+    }],
+    duree_mois_par_defaut: 63,
+    mois_offerts_actifs: false,
+  };
+
+  it('mode tout_compris (défaut) : le total final ignore les abonnements quand un loyer existe', () => {
+    const summary = calculateCartSummary(reponses, questions, catalogue, {}, baseConfig);
+    expect(summary.abonnements.totalMensuel).toBe(70);
+    expect(summary.loyer?.loyer_mensuel).toBe(21);
+    expect(summary.totalMensuelFinal).toBe(21);
+  });
+
+  it('mode separe : le total final additionne abonnements et loyer', () => {
+    const summary = calculateCartSummary(reponses, questions, catalogue, {}, {
+      ...baseConfig,
+      mode_total_mensuel: 'separe',
+    });
+    expect(summary.totalMensuelFinal).toBe(91);
+  });
+});
+
+describe('calculateCartSummary — code promo ciblant les abonnements', () => {
+  const catalogue = [
+    product('mensuel', 'Abonnements', 'fixe', 'mensuel', 70),
+    product('ponctuel', 'Matériel', 'equipement', 'unique', 1000),
+  ];
+  const questions = catalogue.map(({ id }) => question(id));
+  const baseReponses = catalogue.map(({ id, nom }) => ({ question_id: id, valeur: nom }));
+  const config = {
+    baremes: [{
+      id: 'default',
+      nom: 'Défaut',
+      ordre: 0,
+      taux_durees: [{ duree_mois: 63, taux_loyer: 0.063, mois_offerts: 18, trimestres: 21 }],
+    }],
+    duree_mois_par_defaut: 63,
+    mois_offerts_actifs: false,
+    mode_total_mensuel: 'separe' as const,
+  };
+
+  it('applique la remise directement sur le total des abonnements, sans toucher la marge/le loyer', () => {
+    const reponses = [
+      ...baseReponses,
+      { question_id: 'sp_remise_abonnements_promo', valeur: '-20' },
+    ];
+    const summary = calculateCartSummary(reponses, questions, catalogue, {}, config);
+    expect(summary.abonnements.totalMensuel).toBe(50);
+    expect(summary.loyer?.loyer_mensuel).toBe(21);
+    expect(summary.totalMensuelFinal).toBe(71);
+  });
+
+  it('expose le détail du code promo avec sa cible', () => {
+    const reponses = [
+      ...baseReponses,
+      { question_id: 'sp_remise_abonnements_promo', valeur: '-20' },
+      { question_id: 'sp_code_promo_nom', valeur: 'BIENVENUE20' },
+      { question_id: 'sp_code_promo_valeur', valeur: '20' },
+      { question_id: 'sp_code_promo_mode', valeur: 'soustraction' },
+      { question_id: 'sp_code_promo_cible', valeur: 'abonnements' },
+      { question_id: 'sp_abonnements_avant_promo', valeur: '70' },
+    ];
+    const summary = calculateCartSummary(reponses, questions, catalogue, {}, config);
+    expect(summary.codePromo).toEqual({
+      nom: 'BIENVENUE20',
+      valeur: 20,
+      mode: 'soustraction',
+      cible: 'abonnements',
+      margeAvant: 0,
+      abonnementsAvant: 70,
+    });
   });
 });
 

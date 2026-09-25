@@ -12,7 +12,8 @@ import type {
 /**
  * Construit la valeur de la variable Word {{sp_reference}} à partir des réponses
  * du questionnaire. Reproduit la logique du popup `resume_ref`
- * (cf. SpQuestionnaireUI) : partie fixe + loyer mensuel arrondi au plafond.
+ * (cf. SpQuestionnaireUI) : partie fixe + total mensuel final (abonnements et/ou
+ * loyer selon `SpConfigLoyer.mode_total_mensuel`) arrondi au plafond.
  *
  * Selon `config.moment_calcul` :
  * - `etat_final` (défaut) : le loyer reflète l'état FINAL du panier (toutes les
@@ -46,13 +47,13 @@ export function buildSpReference(
   let montant: number | null | undefined = undefined;
   if (partieVariable === 'loyer_avec_marge') {
     const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
-    montant = cart.loyer?.loyer_mensuel;
+    montant = cart.totalMensuelFinal;
   } else if (partieVariable === 'loyer_sans_marge') {
     const cart = calculateCartSummary(
       reponses.filter((r) => r.question_id !== 'sp_marge_calculee'),
       questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits,
     );
-    montant = cart.loyer?.loyer_mensuel;
+    montant = cart.totalMensuelFinal;
   }
 
   return montant != null ? `${fixe}${Math.ceil(montant)}` : fixe;

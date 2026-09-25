@@ -186,12 +186,13 @@ export async function generateComparatifSaSpWord(input: ExportSaSpInput): Promis
           ? (() => {
               const promo = input.codePromo;
               const signe = promo.mode === 'soustraction' ? '−' : '+';
+              const cibleAbonnements = promo.cible === 'abonnements';
               const promoCell = (text: string, align?: string) =>
                 `<td style="border:1px solid ${borderColor};padding:4px 8px;font-size:9pt;font-style:italic;color:#666;${align ? `text-align:${align};` : ''}">${esc(text)}</td>`;
               return `
       <tr>
-        <td colspan="4" style="border:1px solid ${borderColor};padding:4px 8px;font-size:9pt;font-style:italic;color:#666;">Marge avant code promo</td>
-        ${promoCell(eur(promo.margeAvant), 'right')}
+        <td colspan="4" style="border:1px solid ${borderColor};padding:4px 8px;font-size:9pt;font-style:italic;color:#666;">${cibleAbonnements ? 'Abonnements avant code promo' : 'Marge avant code promo'}</td>
+        ${promoCell(eur(cibleAbonnements ? (promo.abonnementsAvant ?? 0) : promo.margeAvant), 'right')}
       </tr>
       <tr>
         <td colspan="4" style="border:1px solid ${borderColor};padding:4px 8px;font-size:9pt;font-style:italic;color:#666;">Code promo « ${esc(promo.nom)} »</td>

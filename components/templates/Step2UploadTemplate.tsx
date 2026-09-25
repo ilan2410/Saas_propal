@@ -126,6 +126,7 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_fas_total', label: 'Total FAS (Frais d\'installation/mise en service)' },
   { key: 'sp_total_recurrent', label: 'Total récurrent HT' },
   { key: 'sp_total_ponctuel', label: 'Total ponctuel HT' },
+  { key: 'sp_total_mensuel_final', label: 'Total mensuel final HT (abonnements et/ou loyer selon le réglage "Total mensuel affiché")' },
   { key: 'sp_total_indemnites', label: 'Total des indemnités HT' },
   { key: 'sp_remise_mois_offert', label: 'Remise mois offert HT' },
   { key: 'sp_total_remise', label: 'Total des remises produits HT' },

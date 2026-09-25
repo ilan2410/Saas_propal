@@ -190,7 +190,7 @@ function SpResumePanel({
   const remiseMoisOffertFinal = cart ? cart.remiseMoisOffert : parseEuroValue(sp?.sp_remise_mois_offert);
 
   const totalMensuelFinal = cart
-    ? (cart.loyer?.loyer_mensuel ?? cart.abonnements.totalMensuel)
+    ? cart.totalMensuelFinal
     : (parseEuroValue(sp?.sp_loyer_mensuel) > 0 ? parseEuroValue(sp?.sp_loyer_mensuel) : abosTotal);
 
   const showFas = fasTotalFinal > 0;
