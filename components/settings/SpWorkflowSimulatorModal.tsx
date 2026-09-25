@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Play, RotateCcw, Loader2, Database, GripHorizontal, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
-import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
+import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
@@ -25,6 +25,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   const [discountRules, setDiscountRules] = useState<SpRegleRemise[]>([]);
   const [codesPromo, setCodesPromo] = useState<SpCodePromo[]>([]);
   const [codesPromoMode, setCodesPromoMode] = useState<'addition' | 'soustraction'>('addition');
+  const [codesPromoCible, setCodesPromoCible] = useState<SpCibleCodePromo>('totalite');
   const [codesPromoMasquerSaisie, setCodesPromoMasquerSaisie] = useState<boolean>(false);
   const [spConfigLoyer, setSpConfigLoyer] = useState<SpConfigLoyer | undefined>(undefined);
   const [spConfigRemises, setSpConfigRemises] = useState<SpConfigRemises | undefined>(undefined);
@@ -71,6 +72,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       const fileConfig = templateData?.template?.file_config as WordConfig | undefined;
       setCodesPromo(fileConfig?.sp_config_codes_promo?.codes ?? prefsData?.preferences?.sp_codes_promo ?? []);
       setCodesPromoMode(fileConfig?.sp_config_codes_promo?.mode ?? prefsData?.preferences?.sp_codes_promo_mode ?? 'addition');
+      setCodesPromoCible(fileConfig?.sp_config_codes_promo?.cible ?? 'totalite');
       setCodesPromoMasquerSaisie(fileConfig?.sp_config_codes_promo?.masquer_saisie ?? prefsData?.preferences?.sp_codes_promo_masquer_saisie ?? false);
       setSpConfigRemises(fileConfig?.sp_config_remises);
       setDiscountRules(fileConfig?.sp_config_remises?.regles ?? prefsData?.preferences?.sp_regles_remise ?? []);
@@ -283,6 +285,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               spPreferencesProduits={spPreferencesProduits}
               spCodesPromo={codesPromo}
               spCodesPromoMode={codesPromoMode}
+              spCodesPromoCible={codesPromoCible}
               spCodesPromoMasquerSaisie={codesPromoMasquerSaisie}
               objectifsConfig={objectifsConfig}
               templateId={templateId}

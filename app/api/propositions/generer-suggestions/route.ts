@@ -4,7 +4,7 @@ import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, Sp
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
@@ -670,8 +670,8 @@ function buildSpCompletes(
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
 
-  // Montant SP mensuel effectif : loyer si configuré, sinon abonnements.
-  const totalProposeEffectif = loyer?.loyer_mensuel ?? totalPropose;
+  // Montant SP mensuel effectif : loyer et/ou abonnements selon `mode_total_mensuel`.
+  const totalProposeEffectif = resolveTotalMensuelFinal(totalPropose, loyer?.loyer_mensuel, spConfigLoyer?.mode_total_mensuel);
   const economieTotaleEffectif = totalActuel > 0 ? economieTotale : totalActuelEffectif - totalProposeEffectif;
 
   const remiseBreakdown = buildRemiseBreakdown(toutes, catalogueMap);

@@ -20,7 +20,7 @@ const SP_STANDARD_VARIABLES = [
   'Adresse_livraison_SP_ville', 'Adresse_livraison_SP_contact', 'Adresse_livraison_SP_ligne_fixe',
   'Adresse_livraison_SP_ligne_mobile', 'Adresse_livraison_SP_email', 'Adresse_livraison_SP_siret',
   // Récurrent / Ponctuel
-  'sp_fas_total', 'sp_total_recurrent', 'sp_total_ponctuel', 'sp_total_indemnites',
+  'sp_fas_total', 'sp_total_recurrent', 'sp_total_ponctuel', 'sp_total_mensuel_final', 'sp_total_indemnites',
   'sp_remise_mois_offert', 'sp_total_installation', 'sp_total_materiel_achat',
   'sp_total_remise', 'sp_remise_fixe', 'sp_remise_mobile', 'sp_remise_abonnement', 'sp_remise_internet',
   // Loyer / Marge

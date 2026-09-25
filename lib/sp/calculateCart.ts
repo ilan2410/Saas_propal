@@ -13,6 +13,7 @@ import {
   calculerBaseLoyer,
   calculerLoyer,
   calculerRemiseMoisOffert,
+  resolveTotalMensuelFinal,
   DEFAULT_CONFIG_LOYER,
   type ResultatLoyer,
 } from './calculLoyer';
@@ -58,6 +59,8 @@ export interface SpCartSummary {
   baseLoyer: number;
   dureeMois: number;
   loyer: ResultatLoyer | null;
+  /** Montant mensuel à afficher au client (combine abonnements et loyer selon `SpConfigLoyer.mode_total_mensuel`). */
+  totalMensuelFinal: number;
   lines: CartLine[];
   /** Code promo appliqué sur la marge (null si aucun). */
   codePromo: SpCodePromoInfo | null;
@@ -632,7 +635,11 @@ export function calculateCartSummary(
       }
     }
   }
-  abos.totalMensuel = abos.fixe + abos.mobile + abos.internet + autresMensuels;
+  // Remise/majoration d'un code promo ciblant directement les abonnements (1:1 €,
+  // sans passer par la marge/le loyer). Cf. SpConfigCodesPromo.cible === 'abonnements'.
+  const remisePromoAbonnementsRep = reponses.find((r) => r.question_id === 'sp_remise_abonnements_promo');
+  const remisePromoAbonnements = remisePromoAbonnementsRep ? Number(remisePromoAbonnementsRep.valeur) || 0 : 0;
+  abos.totalMensuel = abos.fixe + abos.mobile + abos.internet + autresMensuels + remisePromoAbonnements;
 
   const totalPonctuel = materiel + cadeaux + installations + fas + autresPonctuels;
 
@@ -686,19 +693,29 @@ export function calculateCartSummary(
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
   const baseLoyer = baseCalculLoyer;
+  const totalMensuelFinal = resolveTotalMensuelFinal(
+    abos.totalMensuel,
+    loyer?.loyer_mensuel,
+    config.mode_total_mensuel,
+  );
 
-  // Détail du code promo appliqué sur la marge (si renseigné lors du questionnaire)
+  // Détail du code promo appliqué (si renseigné lors du questionnaire)
   const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');
   let codePromo: SpCodePromoInfo | null = null;
   if (codePromoNomRep && String(codePromoNomRep.valeur).trim()) {
     const valeurRep = reponses.find((r) => r.question_id === 'sp_code_promo_valeur');
     const modeRep = reponses.find((r) => r.question_id === 'sp_code_promo_mode');
+    const cibleRep = reponses.find((r) => r.question_id === 'sp_code_promo_cible');
     const margeAvantRep = reponses.find((r) => r.question_id === 'sp_marge_avant_promo');
+    const abonnementsAvantRep = reponses.find((r) => r.question_id === 'sp_abonnements_avant_promo');
+    const cibleValeur = String(cibleRep?.valeur ?? '');
     codePromo = {
       nom: String(codePromoNomRep.valeur),
       valeur: valeurRep ? Number(valeurRep.valeur) || 0 : 0,
       mode: String(modeRep?.valeur) === 'soustraction' ? 'soustraction' : 'addition',
+      cible: cibleValeur === 'abonnements' || cibleValeur === 'loyer' ? cibleValeur : 'totalite',
       margeAvant: margeAvantRep ? Number(margeAvantRep.valeur) || 0 : 0,
+      ...(abonnementsAvantRep ? { abonnementsAvant: Number(abonnementsAvantRep.valeur) || 0 } : {}),
     };
   }
 
@@ -717,6 +734,7 @@ export function calculateCartSummary(
     baseLoyer,
     dureeMois,
     loyer,
+    totalMensuelFinal,
     lines,
     codePromo,
   };

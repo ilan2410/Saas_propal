@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
+import { Eye, MoreHorizontal, Trash2, Loader2, Paperclip } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { PropositionAttachmentsDialog } from '@/components/propositions/PropositionAttachments';
 
 /**
  * Menu overflow « ⋯ » d'une proposition : ouvrir la fiche, supprimer.
@@ -14,13 +15,16 @@ export function PropositionRowMenu({
   propositionId,
   showOpenDetail = true,
   afterDeleteHref,
+  onAttachmentCountChange,
 }: {
   propositionId: string;
   showOpenDetail?: boolean;
   afterDeleteHref?: string;
+  onAttachmentCountChange?: (count: number) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
@@ -50,6 +54,7 @@ export function PropositionRowMenu({
   };
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
@@ -86,6 +91,17 @@ export function PropositionRowMenu({
         )}
         <button
           type="button"
+          onClick={() => {
+            setOpen(false);
+            setAttachmentsOpen(true);
+          }}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+        >
+          <Paperclip className="h-4 w-4 text-slate-500" />
+          Pièces jointes
+        </button>
+        <button
+          type="button"
           onClick={handleDelete}
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-rose-600 hover:bg-rose-50"
         >
@@ -94,5 +110,12 @@ export function PropositionRowMenu({
         </button>
       </PopoverContent>
     </Popover>
+    <PropositionAttachmentsDialog
+      propositionId={propositionId}
+      open={attachmentsOpen}
+      onOpenChange={setAttachmentsOpen}
+      onCountChange={onAttachmentCountChange}
+    />
+    </>
   );
 }

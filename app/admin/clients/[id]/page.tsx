@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, CreditCard, FileText, BarChart, Plus, Settings, Eye } from 'lucide-react';
 import { AdminClientActions } from '@/components/admin/AdminClientActions';
+import { TeleprosManager } from '@/components/settings/TeleprosManager';
 import {
   formatCurrency,
   formatDate,
@@ -176,6 +177,10 @@ export default async function ClientDetailPage({
             </dd>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <TeleprosManager endpoint={`/api/admin/organizations/${id}/telepros`} compact />
       </div>
 
       {/* Templates */}

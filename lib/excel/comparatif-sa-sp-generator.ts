@@ -312,8 +312,12 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   if (input.codePromo) {
     const promo = input.codePromo;
     const signe = promo.mode === 'soustraction' ? '-' : '+';
+    const cibleAbonnements = promo.cible === 'abonnements';
     const promoRows: Array<[string, string]> = [
-      ['Marge avant code promo', eur(promo.margeAvant)],
+      [
+        cibleAbonnements ? 'Abonnements avant code promo' : 'Marge avant code promo',
+        eur(cibleAbonnements ? (promo.abonnementsAvant ?? 0) : promo.margeAvant),
+      ],
       [`Code promo « ${promo.nom} »`, `${signe}${eur(promo.valeur)}`],
     ];
     promoRows.forEach(([label, value]) => {

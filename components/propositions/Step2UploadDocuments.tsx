@@ -121,6 +121,9 @@ export function Step2UploadDocuments({
       files.forEach((file) => {
         formData.append('files', file);
       });
+      if (propositionData.proposition_id) {
+        formData.append('proposition_id', propositionData.proposition_id);
+      }
 
       // L'API backend enverra directement les fichiers à l'ia (PDF et images supportés nativement)
       const response = await fetch('/api/propositions/upload-documents', {

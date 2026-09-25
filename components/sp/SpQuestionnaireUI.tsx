@@ -9,12 +9,12 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { buildSpReference } from '@/lib/sp/buildReference';
@@ -49,6 +49,7 @@ export interface SpQuestionnaireUIProps {
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spCodesPromo?: SpCodePromo[];
   spCodesPromoMode?: 'addition' | 'soustraction';
+  spCodesPromoCible?: SpCibleCodePromo;
   spCodesPromoMasquerSaisie?: boolean;
   objectifsConfig?: SpObjectifConfig[];
   templateId?: string;
@@ -950,6 +951,7 @@ export function SpQuestionnaireUI({
   spConfigMoisOfferts,
   spCodesPromo = [],
   spCodesPromoMode = 'addition',
+  spCodesPromoCible = 'totalite',
   spCodesPromoMasquerSaisie = false,
   objectifsConfig = [],
   templateId,
@@ -1016,6 +1018,8 @@ export function SpQuestionnaireUI({
     nom: string;
     valeur: number;
     loyerMensuel: number | null;
+    totalMensuelFinal: number | null;
+    abonnementsTotalMensuel: number;
     margeVal: string;
     extras: SpQuestionReponse[];
   } | null>(null);
@@ -1801,10 +1805,7 @@ export function SpQuestionnaireUI({
 
     const totalActuelSa = calculateSaCartSummary(donneesExtraites).totalMensuel;
     const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
-    const totalPropose =
-      cart.loyer?.loyer_mensuel && cart.loyer.loyer_mensuel > 0
-        ? cart.loyer.loyer_mensuel
-        : cart.abonnements.totalMensuel;
+    const totalPropose = cart.totalMensuelFinal;
     const economieMensuelle = totalActuelSa - totalPropose;
     const partialSp = {
       sp_est_economie: economieMensuelle > 0 ? 'Oui' : 'Non',
@@ -1992,12 +1993,21 @@ export function SpQuestionnaireUI({
               {(() => {
                 const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
                 const loyer = cart.loyer?.loyer_mensuel;
-                return loyer != null ? (
-                  <p className="text-4xl font-bold text-gray-900">
-                    {loyer.toFixed(2).replace('.', ',')} €
-                  </p>
-                ) : (
-                  <p className="text-sm text-gray-400 italic">Loyer non calculé</p>
+                if (loyer == null) {
+                  return <p className="text-sm text-gray-400 italic">Loyer non calculé</p>;
+                }
+                const inclutAbonnements = Math.abs(cart.totalMensuelFinal - loyer) > 0.005;
+                return (
+                  <>
+                    <p className="text-4xl font-bold text-gray-900">
+                      {cart.totalMensuelFinal.toFixed(2).replace('.', ',')} €
+                    </p>
+                    {inclutAbonnements && (
+                      <p className="text-xs text-gray-400">
+                        dont {cart.abonnements.totalMensuel.toFixed(2).replace('.', ',')} € abonnements + {loyer.toFixed(2).replace('.', ',')} € loyer
+                      </p>
+                    )}
+                  </>
                 );
               })()}
               <p className="text-xs text-gray-400">par mois</p>
@@ -2037,7 +2047,7 @@ export function SpQuestionnaireUI({
               </div>
             </div>
             <div className="px-6 py-6 flex flex-col items-center gap-1">
-              {promoPopupData.loyerMensuel != null ? (
+              {promoPopupData.totalMensuelFinal != null ? (
                 <>
                   <p className="text-xs text-gray-400">
                     {currentExpanded.question?.description
@@ -2045,8 +2055,14 @@ export function SpQuestionnaireUI({
                       : 'Nouveau loyer mensuel'}
                   </p>
                   <p className="text-4xl font-bold text-gray-900">
-                    {promoPopupData.loyerMensuel.toFixed(2).replace('.', ',')} €
+                    {promoPopupData.totalMensuelFinal.toFixed(2).replace('.', ',')} €
                   </p>
+                  {promoPopupData.loyerMensuel != null &&
+                    Math.abs(promoPopupData.totalMensuelFinal - promoPopupData.loyerMensuel) > 0.005 && (
+                      <p className="text-xs text-gray-400">
+                        dont {promoPopupData.abonnementsTotalMensuel.toFixed(2).replace('.', ',')} € abonnements + {promoPopupData.loyerMensuel.toFixed(2).replace('.', ',')} € loyer
+                      </p>
+                    )}
                 </>
               ) : (
                 <p className="text-sm text-gray-400 italic">Loyer non calculé</p>
@@ -3110,33 +3126,58 @@ export function SpQuestionnaireUI({
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
               if (!found) { setPromoError('Code promo invalide'); return; }
               setPromoError('');
-              const existingMargeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
-              const existingMarge = existingMargeRep ? Number(existingMargeRep.valeur) || 0 : 0;
-              const margeNum = spCodesPromoMode === 'soustraction' ? existingMarge - found.valeur : existingMarge + found.valeur;
-              const margeVal = String(margeNum);
-              const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
-              const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
               const configLoyer = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
-              const remisePourCalculLoyer = calculerRemiseMoisOffert(bareme, baseSummary.abonnements.totalMensuel, dureeMois);
-              const baseCalculLoyer = calculerBaseLoyer({
-                materiel: baseSummary.materiel,
-                cadeaux: baseSummary.cadeaux,
-                installations: baseSummary.installations,
-                fas: baseSummary.fas,
-                autres_ponctuels: baseSummary.autresPonctuels,
-                mois_offerts: remisePourCalculLoyer,
-                indemnites: baseSummary.indemnites,
-                marge: margeNum,
-              }, configLoyer);
-              const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
+
+              let margeVal: string;
+              let loyer: ReturnType<typeof calculerLoyer>;
+              let abonnementsApresPromo: number;
               const extras: SpQuestionReponse[] = [
-                { question_id: 'sp_marge_calculee', valeur: margeVal },
                 // Détail du code promo (pour affichage panier + export comparatif)
-                { question_id: 'sp_marge_avant_promo', valeur: String(existingMarge) },
                 { question_id: 'sp_code_promo_nom', valeur: found.nom },
                 { question_id: 'sp_code_promo_valeur', valeur: String(found.valeur) },
                 { question_id: 'sp_code_promo_mode', valeur: spCodesPromoMode },
+                { question_id: 'sp_code_promo_cible', valeur: spCodesPromoCible },
               ];
+
+              if (spCodesPromoCible === 'abonnements') {
+                // Cible "abonnements" : remise directe 1:1 € sur le total des abonnements,
+                // la marge/le loyer ne sont pas modifiés.
+                const existingRemiseRep = reponses.find((r) => r.question_id === 'sp_remise_abonnements_promo');
+                const existingRemise = existingRemiseRep ? Number(existingRemiseRep.valeur) || 0 : 0;
+                const newRemise = spCodesPromoMode === 'soustraction' ? existingRemise - found.valeur : existingRemise + found.valeur;
+                margeVal = String(newRemise);
+                const reponsesSansRemise = reponses.filter((r) => r.question_id !== 'sp_remise_abonnements_promo');
+                const baseSummary = calculateCartSummary(reponsesSansRemise, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+                loyer = baseSummary.loyer;
+                abonnementsApresPromo = baseSummary.abonnements.totalMensuel + newRemise;
+                extras.push({ question_id: 'sp_remise_abonnements_promo', valeur: margeVal });
+                extras.push({ question_id: 'sp_abonnements_avant_promo', valeur: String(baseSummary.abonnements.totalMensuel) });
+              } else {
+                // Cible "totalité" / "loyer" (même mécanisme) : la valeur passe par la marge,
+                // puis par la formule du loyer.
+                const existingMargeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
+                const existingMarge = existingMargeRep ? Number(existingMargeRep.valeur) || 0 : 0;
+                const margeNum = spCodesPromoMode === 'soustraction' ? existingMarge - found.valeur : existingMarge + found.valeur;
+                margeVal = String(margeNum);
+                const reponsesSansPromo = reponses.filter((r) => r.question_id !== 'sp_marge_calculee');
+                const baseSummary = calculateCartSummary(reponsesSansPromo, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+                const remisePourCalculLoyer = calculerRemiseMoisOffert(bareme, baseSummary.abonnements.totalMensuel, dureeMois);
+                const baseCalculLoyer = calculerBaseLoyer({
+                  materiel: baseSummary.materiel,
+                  cadeaux: baseSummary.cadeaux,
+                  installations: baseSummary.installations,
+                  fas: baseSummary.fas,
+                  autres_ponctuels: baseSummary.autresPonctuels,
+                  mois_offerts: remisePourCalculLoyer,
+                  indemnites: baseSummary.indemnites,
+                  marge: margeNum,
+                }, configLoyer);
+                loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
+                abonnementsApresPromo = baseSummary.abonnements.totalMensuel;
+                extras.push({ question_id: 'sp_marge_calculee', valeur: margeVal });
+                extras.push({ question_id: 'sp_marge_avant_promo', valeur: String(existingMarge) });
+              }
+
               if (loyer) {
                 extras.push({ question_id: 'sp_loyer_mensuel_calculee', valeur: String(loyer.loyer_mensuel) });
                 extras.push({ question_id: 'sp_loyer_trimestriel_calculee', valeur: String(loyer.loyer_trimestriel) });
@@ -3160,6 +3201,10 @@ export function SpQuestionnaireUI({
                   nom: found.nom,
                   valeur: found.valeur,
                   loyerMensuel: loyer?.loyer_mensuel ?? null,
+                  totalMensuelFinal: loyer
+                    ? resolveTotalMensuelFinal(abonnementsApresPromo, loyer.loyer_mensuel, configLoyer.mode_total_mensuel)
+                    : null,
+                  abonnementsTotalMensuel: abonnementsApresPromo,
                   margeVal,
                   extras,
                 });
@@ -3549,12 +3594,9 @@ export function SpQuestionnaireUI({
           spConfigMoisOfferts,
           spPreferencesProduits,
         );
-        // Pour la comparaison, on aligne sur le loyer mensuel SP (qui inclut
-        // matériel, FAS, cadeaux, indemnités, marge). Fallback : total abonnements.
-        const spReference =
-          spSummary.loyer?.loyer_mensuel && spSummary.loyer.loyer_mensuel > 0
-            ? spSummary.loyer.loyer_mensuel
-            : spSummary.abonnements.totalMensuel;
+        // Pour la comparaison, on aligne sur le total mensuel final SP (loyer et/ou
+        // abonnements selon `mode_total_mensuel`).
+        const spReference = spSummary.totalMensuelFinal;
         const widgetGroupContent = (
           <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
             {(() => {

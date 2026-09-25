@@ -5,13 +5,15 @@ import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { supportsSp } from '@/lib/templates/supportsSp';
-import type { PropositionTemplate, SpCodePromo, SpConfigCodesPromo, WordConfig } from '@/types';
+import type { PropositionTemplate, SpCibleCodePromo, SpCodePromo, SpConfigCodesPromo, WordConfig } from '@/types';
 
 interface EditorProps {
   codes: SpCodePromo[];
   onChange: (codes: SpCodePromo[]) => void;
   mode: 'addition' | 'soustraction';
   onModeChange: (mode: 'addition' | 'soustraction') => void;
+  cible: SpCibleCodePromo;
+  onCibleChange: (cible: SpCibleCodePromo) => void;
   masquerSaisie?: boolean;
   onMasquerSaisieChange?: (v: boolean) => void;
 }
@@ -20,7 +22,7 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function SpCodesPromoEditor({ codes, onChange, mode, onModeChange, masquerSaisie = false, onMasquerSaisieChange }: EditorProps) {
+function SpCodesPromoEditor({ codes, onChange, mode, onModeChange, cible, onCibleChange, masquerSaisie = false, onMasquerSaisieChange }: EditorProps) {
   // Edition d'un code existant
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNom, setEditNom] = useState('');
@@ -74,6 +76,45 @@ function SpCodesPromoEditor({ codes, onChange, mode, onModeChange, masquerSaisie
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3 rounded-lg border border-gray-200 bg-gray-50">
+        <span className="text-sm font-medium text-gray-700 shrink-0">Cible du code promo :</span>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="radio"
+            name="codes-promo-cible"
+            checked={cible === 'totalite'}
+            onChange={() => onCibleChange('totalite')}
+            className="accent-blue-600"
+          />
+          Totalité (abonnements + loyer)
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="radio"
+            name="codes-promo-cible"
+            checked={cible === 'abonnements'}
+            onChange={() => onCibleChange('abonnements')}
+            className="accent-blue-600"
+          />
+          Uniquement les abonnements
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="radio"
+            name="codes-promo-cible"
+            checked={cible === 'loyer'}
+            onChange={() => onCibleChange('loyer')}
+            className="accent-blue-600"
+          />
+          Uniquement le loyer
+        </label>
+        <p className="basis-full text-xs text-gray-500">
+          {cible === 'abonnements'
+            ? 'La valeur du code est retranchée/ajoutée directement (1:1 €) au total des abonnements.'
+            : 'La valeur du code est ajoutée/soustraite à la marge, qui passe par la formule du loyer — l\'impact réel sur le loyer est une fraction de la valeur saisie.'}
+        </p>
+      </div>
+
       <div className="flex items-center gap-6 p-3 rounded-lg border border-gray-200 bg-gray-50">
         <span className="text-sm font-medium text-gray-700 shrink-0">Effet du code sur le loyer :</span>
         <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
@@ -126,7 +167,7 @@ function SpCodesPromoEditor({ codes, onChange, mode, onModeChange, masquerSaisie
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Codes promo SP</h3>
           <p className="text-sm text-gray-500">
-            Chaque code est associé à un montant en € utilisé comme marge dans le calcul du loyer.
+            Chaque code est associé à un montant en €, appliqué selon la cible choisie ci-dessus.
           </p>
         </div>
         <Button size="sm" onClick={openNewForm} disabled={showNewForm}>
@@ -290,8 +331,13 @@ function getConfig(template: PropositionTemplate | undefined, fallbackConfig: Sp
   const fileConfig = template?.file_config as WordConfig | undefined;
   const saved = fileConfig?.sp_config_codes_promo;
   return saved
-    ? { codes: saved.codes ?? [], mode: saved.mode ?? 'addition', masquer_saisie: saved.masquer_saisie ?? false }
-    : { ...fallbackConfig, codes: [...fallbackConfig.codes] };
+    ? {
+        codes: saved.codes ?? [],
+        mode: saved.mode ?? 'addition',
+        masquer_saisie: saved.masquer_saisie ?? false,
+        cible: saved.cible ?? 'totalite',
+      }
+    : { ...fallbackConfig, codes: [...fallbackConfig.codes], cible: fallbackConfig.cible ?? 'totalite' };
 }
 
 export function SpCodesPromoManager({ templates, fallbackConfig }: Props) {
@@ -352,6 +398,8 @@ export function SpCodesPromoManager({ templates, fallbackConfig }: Props) {
         onChange={(codes) => setConfig((prev) => ({ ...prev, codes }))}
         mode={config.mode}
         onModeChange={(mode) => setConfig((prev) => ({ ...prev, mode }))}
+        cible={config.cible ?? 'totalite'}
+        onCibleChange={(cible) => setConfig((prev) => ({ ...prev, cible }))}
         masquerSaisie={config.masquer_saisie}
         onMasquerSaisieChange={(masquer_saisie) => setConfig((prev) => ({ ...prev, masquer_saisie }))}
       />

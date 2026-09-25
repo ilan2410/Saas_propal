@@ -44,6 +44,7 @@ function getLoyerConfig(template: PropositionTemplate | undefined): SpConfigLoye
     mois_offerts_actifs: saved.mois_offerts_actifs ?? true,
     formule: { ...DEFAULT_FORMULE_LOYER, ...saved.formule },
     composantes_base: { ...DEFAULT_COMPOSANTES_BASE_LOYER, ...saved.composantes_base },
+    mode_total_mensuel: saved.mode_total_mensuel ?? 'tout_compris',
   };
 }
 
@@ -323,6 +324,24 @@ export function SpLoyerManager({ templates }: Props) {
             />
           </label>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total mensuel affiché</h4>
+          <p className="text-xs text-gray-500 mt-1">Montant mensuel mis en avant pour le client (badge du panier, page proposition, variable {'{{sp_total_mensuel_final}}'}).</p>
+        </div>
+        <select
+          value={loyerConfig.mode_total_mensuel ?? 'tout_compris'}
+          onChange={(e) => setLoyerConfig((prev) => ({
+            ...prev,
+            mode_total_mensuel: e.target.value as NonNullable<SpConfigLoyer['mode_total_mensuel']>,
+          }))}
+          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+        >
+          <option value="tout_compris">Tout compris — loyer seul (abonnements en repli s’il n’y a pas de loyer)</option>
+          <option value="separe">Abonnements + loyer — les deux montants sont additionnés</option>
+        </select>
       </div>
 
       <div className="rounded-lg border border-gray-200 p-4 space-y-4 bg-gray-50/50">

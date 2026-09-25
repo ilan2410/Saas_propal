@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 // (WebSocket) — les deux protocoles doivent être autorisés en connect-src.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseWsUrl = supabaseUrl.replace(/^http/, 'ws');
+// Uniquement défini pour un stockage S3-compatible (MinIO, R2...) ; le S3 AWS
+// natif sans endpoint personnalisé n'est pas couvert (voir aperçu des pièces
+// jointes ci-dessous, cas d'usage secondaire de ATTACHMENTS_STORAGE_PROVIDER).
+const attachmentsS3Endpoint = process.env.ATTACHMENTS_S3_ENDPOINT || '';
 
 // CSP validée en mode report-only sans violation détectée (tous les parcours
 // testés : login, dashboard, catalogue + upload image, templates, propositions,
@@ -15,9 +19,12 @@ const csp = [
   `default-src 'self'`,
   `script-src 'self' 'unsafe-inline'${isDev ? ` 'unsafe-eval'` : ''}`,
   `style-src 'self' 'unsafe-inline'`,
-  `img-src 'self' data: blob:${supabaseUrl ? ` ${supabaseUrl}` : ''}`,
+  `img-src 'self' data: blob:${supabaseUrl ? ` ${supabaseUrl}` : ''}${attachmentsS3Endpoint ? ` ${attachmentsS3Endpoint}` : ''}`,
   `font-src 'self' data:`,
   `connect-src 'self' blob:${supabaseUrl ? ` ${supabaseUrl}` : ''}${supabaseWsUrl ? ` ${supabaseWsUrl}` : ''}`,
+  // Aperçu des pièces jointes : PDF/images depuis le stockage (URL signée),
+  // Word/Excel via Google Docs Viewer (le fichier est transmis à Google).
+  `frame-src 'self' https://docs.google.com${supabaseUrl ? ` ${supabaseUrl}` : ''}${attachmentsS3Endpoint ? ` ${attachmentsS3Endpoint}` : ''}`,
   `frame-ancestors 'none'`,
   `object-src 'none'`,
   `base-uri 'self'`,

@@ -1,6 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
+import { isMissingRelationError } from '@/lib/supabase/errors';
 
 function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
   if (!url) return null;
@@ -109,8 +111,38 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // 4. Supprimer les entrées BDD
+    // 4. Pièces jointes : supprimer les objets (Supabase ou S3) avant que les
+    // métadonnées ne disparaissent via le ON DELETE CASCADE.
     const ids = filteredPropositions.map((p) => p.id);
+    const { data: attachments, error: attachmentsError } = await serviceSupabase
+      .from('proposition_attachments')
+      .select('storage_provider, storage_bucket, storage_key')
+      .in('proposition_id', ids)
+      .eq('organization_id', ctx.organizationId);
+
+    if (attachmentsError && !isMissingRelationError(attachmentsError)) {
+      return NextResponse.json(
+        { error: 'Erreur lors de la récupération des pièces jointes' },
+        { status: 500 }
+      );
+    }
+
+    await Promise.all((attachments ?? []).map((attachment) => deleteAttachmentObject({
+      storage_provider: attachment.storage_provider as AttachmentStorageProvider,
+      storage_bucket: attachment.storage_bucket,
+      storage_key: attachment.storage_key,
+    }).catch((storageError) => console.error('Erreur suppression pièce jointe:', storageError))));
+
+    // 5. L'archive d'export n'a pas de FK vers propositions : purge explicite.
+    const { error: archiveError } = await serviceSupabase
+      .from('propositions_archive')
+      .delete()
+      .in('proposition_id', ids);
+    if (archiveError && !isMissingRelationError(archiveError)) {
+      console.error('Erreur suppression archives:', archiveError);
+    }
+
+    // 6. Supprimer les entrées BDD
     const { error: deleteError, count } = await serviceSupabase
       .from('propositions')
       .delete({ count: 'exact' })

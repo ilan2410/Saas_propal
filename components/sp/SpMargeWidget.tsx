@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 
 interface SpMargeWidgetProps {
   reponses: SpQuestionReponse[];
@@ -111,7 +111,12 @@ export function SpMargeWidget({
       const loyer = bareme
         ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule)
         : null;
-      return { loyer, dureeMois, baseLoyer: baseCalculLoyer, margeNum };
+      const totalMensuelFinal = resolveTotalMensuelFinal(
+        summary.abonnements.totalMensuel,
+        loyer?.loyer_mensuel,
+        configLoyer.mode_total_mensuel,
+      );
+      return { loyer, dureeMois, baseLoyer: baseCalculLoyer, margeNum, totalMensuelFinal };
     },
     [resolveDureeMois, spConfigLoyer, reponses, donneesExtraites, catalogue, questions, spConfigMoisOfferts, spPreferencesProduits],
   );
@@ -245,7 +250,7 @@ export function SpMargeWidget({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Loyer mensuel HT</span>
                 <span className="font-semibold text-blue-800">
-                  {loyerResult.loyer.loyer_mensuel.toFixed(2)} €
+                  {loyerResult.totalMensuelFinal.toFixed(2)} €
                 </span>
               </div>
               <div className="flex gap-3 text-xs text-gray-500 pt-1 border-t border-blue-100">

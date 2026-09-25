@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
+import { isMissingRelationError } from '@/lib/supabase/errors';
 
 function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
   if (!url) return null;
@@ -143,7 +145,30 @@ export async function DELETE(
       }
     }
 
-    // Supprimer la proposition
+    // Pièces jointes : supprimer les objets (Supabase ou S3) avant que les
+    // métadonnées ne disparaissent via le ON DELETE CASCADE de la proposition.
+    const { data: attachments, error: attachmentsError } = await serviceSupabase
+      .from('proposition_attachments')
+      .select('storage_provider, storage_bucket, storage_key')
+      .eq('proposition_id', id)
+      .eq('organization_id', ctx.organizationId);
+    if (attachmentsError && !isMissingRelationError(attachmentsError)) throw attachmentsError;
+    await Promise.all((attachments ?? []).map((attachment) => deleteAttachmentObject({
+      storage_provider: attachment.storage_provider as AttachmentStorageProvider,
+      storage_bucket: attachment.storage_bucket,
+      storage_key: attachment.storage_key,
+    }).catch((storageError) => console.error('Error deleting attachment object:', storageError))));
+
+    // L'archive d'export n'a pas de FK vers propositions : purge explicite.
+    const { error: archiveError } = await serviceSupabase
+      .from('propositions_archive')
+      .delete()
+      .eq('proposition_id', id);
+    if (archiveError && !isMissingRelationError(archiveError)) {
+      console.error('Error deleting proposition archive:', archiveError);
+    }
+
+    // Supprimer la proposition (cascade : pièces jointes, notes, rappels)
     const { error } = await serviceSupabase
       .from('propositions')
       .delete()

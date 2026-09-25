@@ -408,19 +408,32 @@ export interface SpCodePromo {
   valeur: number;
 }
 
+/**
+ * 'totalite' (défaut) et 'loyer' : la valeur du code est ajoutée/soustraite à la marge,
+ * qui passe par la formule du loyer (comportement historique — identiques tant que le
+ * code ne peut pas aussi impacter les abonnements).
+ * 'abonnements' : la valeur est appliquée directement (1:1 €) sur le total des
+ * abonnements, sans passer par la marge ni la formule du loyer.
+ */
+export type SpCibleCodePromo = 'totalite' | 'abonnements' | 'loyer';
+
 export interface SpConfigCodesPromo {
   codes: SpCodePromo[];
   mode: 'addition' | 'soustraction';
   masquer_saisie: boolean;
+  cible?: SpCibleCodePromo;
 }
 
-/** Détail d'un code promo appliqué sur la marge SP (pour affichage/export). */
+/** Détail d'un code promo appliqué sur la marge et/ou les abonnements SP (pour affichage/export). */
 export interface SpCodePromoInfo {
   nom: string;
   valeur: number;
   mode: 'addition' | 'soustraction';
-  /** Marge avant application du code promo. */
+  cible: SpCibleCodePromo;
+  /** Marge avant application du code promo (pertinent pour cible 'totalite' / 'loyer'). */
   margeAvant: number;
+  /** Total abonnements avant application du code promo (pertinent pour cible 'abonnements'). */
+  abonnementsAvant?: number;
 }
 
 export type SpQuestionAffichage =
@@ -901,6 +914,8 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   // ── Récurrent / Ponctuel ───────────────────────────────────────
   sp_total_recurrent?: string;
   sp_total_ponctuel?: string;
+  /** Montant mensuel final affiché au client (abonnements et/ou loyer selon `SpConfigLoyer.mode_total_mensuel`). */
+  sp_total_mensuel_final?: string;
   sp_total_indemnites?: string;
   /** Calcul d'indemnité figé à la génération SP, partagé par tous les exports. */
   sp_indemnites_calcul?: SpIndemnitesCalculSnapshot;
@@ -969,6 +984,12 @@ export interface SpBareme {
 
 export type SpArrondiLoyer = 'superieur' | 'standard' | 'inferieur' | 'aucun';
 
+/**
+ * 'tout_compris' : le total mensuel affiché au client = loyer si présent, sinon abonnements (comportement historique).
+ * 'separe' : le total mensuel affiché au client = abonnements + loyer (les deux montants s'additionnent).
+ */
+export type SpModeTotalMensuel = 'tout_compris' | 'separe';
+
 export interface SpFormuleLoyer {
   diviseur: number;
   arrondi: SpArrondiLoyer;
@@ -997,6 +1018,8 @@ export interface SpConfigLoyer {
   mois_offerts_actifs?: boolean;
   formule?: SpFormuleLoyer;
   composantes_base?: SpComposantesBaseLoyer;
+  /** Défaut : 'tout_compris'. Contrôle comment le total mensuel affiché au client combine abonnements et loyer. */
+  mode_total_mensuel?: SpModeTotalMensuel;
 }
 
 export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';

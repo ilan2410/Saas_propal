@@ -74,7 +74,7 @@ export function StatutCommercialSelect({
           onClick={(e) => e.stopPropagation()}
           disabled={saving}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:brightness-95 disabled:opacity-60',
+            'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-medium transition-colors hover:brightness-95 disabled:opacity-60',
             config.badgeClass,
             className,
           )}
