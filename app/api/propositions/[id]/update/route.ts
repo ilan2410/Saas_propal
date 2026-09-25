@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
+import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 
 export async function PATCH(
   request: NextRequest,
@@ -108,11 +109,24 @@ export async function PATCH(
 
     if (error) {
       console.error('Erreur Supabase:', error);
-      return NextResponse.json({ 
-        error: 'Erreur base de données', 
+      return NextResponse.json({
+        error: 'Erreur base de données',
         details: error.message,
-        code: error.code 
+        code: error.code
       }, { status: 500 });
+    }
+
+    if (body.source_documents !== undefined) {
+      try {
+        await syncSourceDocumentsAsAttachments(createServiceClient(), {
+          organizationId: ctx.organizationId,
+          propositionId: id,
+          urls: body.source_documents,
+          uploadedBy: user.id,
+        });
+      } catch (syncError) {
+        console.error('Erreur sync pièces jointes (documents source):', syncError);
+      }
     }
 
     return NextResponse.json({ success: true, proposition });

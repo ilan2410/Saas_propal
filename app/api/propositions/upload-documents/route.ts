@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { SOURCE_DOCUMENTS_BUCKET } from '@/lib/propositions/source-documents';
 
 // Types réellement supportés en aval : envoyés tels quels à Claude
 // (extractDataFromDocuments) comme document PDF ou image.
@@ -32,9 +33,27 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
+    const propositionIdRaw = formData.get('proposition_id');
+    const propositionId = typeof propositionIdRaw === 'string' && propositionIdRaw.trim()
+      ? propositionIdRaw.trim()
+      : null;
 
     if (files.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
+    }
+
+    // Si la proposition est connue, chaque document source est aussi référencé
+    // comme pièce jointe (même objet storage, vrai nom de fichier conservé).
+    const serviceSupabase = createServiceClient();
+    let attachToPropositionId: string | null = null;
+    if (propositionId) {
+      const { data: proposition } = await serviceSupabase
+        .from('propositions')
+        .select('id')
+        .eq('id', propositionId)
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle();
+      attachToPropositionId = proposition ? proposition.id : null;
     }
 
     // Valider tous les fichiers AVANT tout upload : on rejette la requête
@@ -65,6 +84,28 @@ export async function POST(request: NextRequest) {
         });
 
       if (error) throw error;
+
+      if (attachToPropositionId) {
+        const { error: attachmentError } = await serviceSupabase
+          .from('proposition_attachments')
+          .upsert(
+            {
+              organization_id: ctx.organizationId,
+              proposition_id: attachToPropositionId,
+              uploaded_by: user.id,
+              original_name: (files[i]?.name ?? 'Document').slice(0, 255),
+              mime_type: validation.mime,
+              size_bytes: validation.buffer.byteLength,
+              storage_provider: 'supabase',
+              storage_bucket: SOURCE_DOCUMENTS_BUCKET,
+              storage_key: fileName,
+            },
+            { onConflict: 'storage_provider,storage_bucket,storage_key', ignoreDuplicates: true },
+          );
+        if (attachmentError) {
+          console.error('Erreur création pièce jointe (document source):', attachmentError);
+        }
+      }
 
       const {
         data: { publicUrl },

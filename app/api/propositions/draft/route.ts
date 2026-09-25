@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
+import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
@@ -35,11 +35,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Purge préventive AVANT la création : on garde les documents source des 14 propositions
-    // les plus récentes existantes, pour laisser la place à la nouvelle (qui deviendra la 15ème
-    // la plus récente une fois insérée). Les propositions elles-mêmes ne sont jamais supprimées.
-    await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 14);
-
     const { data: proposition, error } = await supabase
       .from('propositions')
       .insert({
@@ -62,6 +57,19 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    if (source_documents.length > 0) {
+      try {
+        await syncSourceDocumentsAsAttachments(serviceSupabase, {
+          organizationId: ctx.organizationId,
+          propositionId: proposition.id,
+          urls: source_documents,
+          uploadedBy: user.id,
+        });
+      } catch (syncError) {
+        console.error('Erreur sync pièces jointes (documents source):', syncError);
+      }
     }
 
     return NextResponse.json({ success: true, proposition });

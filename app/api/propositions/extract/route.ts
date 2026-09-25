@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis, validateClaudeApiKey } from '@/lib/ai/claude';
 import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { buildLegacySaData } from '@/lib/sa/structure-sa';
-import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
+import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
@@ -615,13 +615,18 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     console.log('📝 Proposition utilisée:', proposition.id);
 
 
-    // Purge automatiquement les documents source au-delà des 15 propositions les plus récentes
-    // (la proposition elle-même n'est jamais supprimée). Utilisation du helper centralisé.
+    // Chaque document source devient aussi une pièce jointe de la proposition
+    // (même objet storage, pas de copie). La colonne source_documents reste la
+    // référence pour l'extraction.
     try {
-      // On utilise 15 ici car la proposition courante est déjà créée/mise à jour et incluse dans le compte
-      await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 15);
-    } catch (trimError) {
-      console.error('Erreur lors de la purge des documents source au-delà de 15 propositions:', trimError);
+      await syncSourceDocumentsAsAttachments(serviceSupabase, {
+        organizationId: ctx.organizationId,
+        propositionId: proposition.id,
+        urls: documents_urls,
+        uploadedBy: user.id,
+      });
+    } catch (syncError) {
+      console.error('Erreur sync pièces jointes (documents source):', syncError);
     }
 
     // Extraire les données avec Claude

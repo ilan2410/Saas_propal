@@ -140,18 +140,18 @@ USING (public.is_org_member(organization_id) OR (auth.jwt() ->> 'role') = 'admin
 DROP POLICY IF EXISTS "Owners can create teleprospecteurs" ON public.teleprospecteurs;
 CREATE POLICY "Owners can create teleprospecteurs"
 ON public.teleprospecteurs FOR INSERT
-WITH CHECK (organization_id = auth.uid() OR (auth.jwt() ->> 'role') = 'admin');
+WITH CHECK (public.is_org_member(organization_id) OR (auth.jwt() ->> 'role') = 'admin');
 
 DROP POLICY IF EXISTS "Owners can update teleprospecteurs" ON public.teleprospecteurs;
 CREATE POLICY "Owners can update teleprospecteurs"
 ON public.teleprospecteurs FOR UPDATE
-USING (organization_id = auth.uid() OR (auth.jwt() ->> 'role') = 'admin')
-WITH CHECK (organization_id = auth.uid() OR (auth.jwt() ->> 'role') = 'admin');
+USING (public.is_org_member(organization_id) OR (auth.jwt() ->> 'role') = 'admin')
+WITH CHECK (public.is_org_member(organization_id) OR (auth.jwt() ->> 'role') = 'admin');
 
 DROP POLICY IF EXISTS "Owners can delete teleprospecteurs" ON public.teleprospecteurs;
 CREATE POLICY "Owners can delete teleprospecteurs"
 ON public.teleprospecteurs FOR DELETE
-USING (organization_id = auth.uid() OR (auth.jwt() ->> 'role') = 'admin');
+USING (public.is_org_member(organization_id) OR (auth.jwt() ->> 'role') = 'admin');
 
 DROP POLICY IF EXISTS "Organization users can view proposition attachments" ON public.proposition_attachments;
 CREATE POLICY "Organization users can view proposition attachments"

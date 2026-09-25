@@ -3,6 +3,11 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { requireVisibleProposition } from '@/lib/propositions/note-access';
 import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
+import {
+  asStringArray,
+  extractStoragePathFromPublicUrl,
+  SOURCE_DOCUMENTS_BUCKET,
+} from '@/lib/propositions/source-documents';
 
 export async function DELETE(
   _request: NextRequest,
@@ -38,6 +43,27 @@ export async function DELETE(
       .eq('id', attachmentId)
       .eq('organization_id', ctx.organizationId);
     if (deleteError) throw deleteError;
+
+    // Un document source supprimé des pièces jointes est aussi retiré de
+    // source_documents pour rester cohérent avec la synchronisation.
+    if (attachment.storage_bucket === SOURCE_DOCUMENTS_BUCKET) {
+      const { data: proposition } = await service
+        .from('propositions')
+        .select('source_documents')
+        .eq('id', id)
+        .eq('organization_id', ctx.organizationId)
+        .single();
+      const remaining = asStringArray(proposition?.source_documents).filter(
+        (url) => extractStoragePathFromPublicUrl(url, SOURCE_DOCUMENTS_BUCKET) !== attachment.storage_key,
+      );
+      const { error: unlinkError } = await service
+        .from('propositions')
+        .update({ source_documents: remaining })
+        .eq('id', id)
+        .eq('organization_id', ctx.organizationId);
+      if (unlinkError) console.error('Erreur retrait document source:', unlinkError);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     const notFound = error instanceof Error && error.message === 'proposition_not_found';

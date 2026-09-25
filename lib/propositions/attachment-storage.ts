@@ -80,12 +80,16 @@ export async function uploadAttachmentObject(input: {
   return { storage_provider: 's3', storage_bucket: bucket, storage_key: input.key };
 }
 
-export async function createAttachmentDownloadUrl(ref: AttachmentStorageRef): Promise<string> {
+export async function createAttachmentDownloadUrl(
+  ref: AttachmentStorageRef,
+  options?: { expiresIn?: number },
+): Promise<string> {
+  const expiresIn = options?.expiresIn ?? 60;
   if (ref.storage_provider === 'supabase') {
     const supabase = createServiceClient();
     const { data, error } = await supabase.storage
       .from(ref.storage_bucket)
-      .createSignedUrl(ref.storage_key, 60);
+      .createSignedUrl(ref.storage_key, expiresIn);
     if (error || !data?.signedUrl) throw error ?? new Error('URL de téléchargement indisponible');
     return data.signedUrl;
   }
@@ -94,7 +98,7 @@ export async function createAttachmentDownloadUrl(ref: AttachmentStorageRef): Pr
   return getSignedUrl(client, new GetObjectCommand({
     Bucket: ref.storage_bucket,
     Key: ref.storage_key,
-  }), { expiresIn: 60 });
+  }), { expiresIn });
 }
 
 export async function deleteAttachmentObject(ref: AttachmentStorageRef): Promise<void> {

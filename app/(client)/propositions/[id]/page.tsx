@@ -7,7 +7,6 @@ import {
   FileText,
   Calendar,
   Clock,
-  Package,
   Edit3,
   ChevronDown,
   Sparkles,
@@ -21,7 +20,6 @@ import {
   Paperclip,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 import { SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
 import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
@@ -49,6 +47,7 @@ import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { EditableClientName } from '@/components/propositions/EditableClientName';
 import { TeleprospecteurSelect } from '@/components/propositions/TeleprospecteurSelect';
 import { PropositionAttachmentsPanel } from '@/components/propositions/PropositionAttachments';
+import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -647,22 +646,6 @@ function formatFieldName(key: string): string {
     .trim();
 }
 
-// Extrait le nom du document depuis l'URL de stockage (retire le préfixe UUID).
-function extractDocumentName(url: string): string {
-  return friendlyFileNameFromUrl(url);
-}
-
-// Extrait l'extension du fichier
-function getFileExtension(url: string): string {
-  try {
-    const name = extractDocumentName(url);
-    const ext = name.split('.').pop()?.toUpperCase();
-    return ext || 'FILE';
-  } catch {
-    return 'FILE';
-  }
-}
-
 function ObjectifsSection({
   objectifsConfig,
   templateId,
@@ -750,6 +733,20 @@ export default async function PropositionDetailPage({
   );
   
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
+
+  // Les documents source de l'extraction sont exposés comme pièces jointes :
+  // la synchronisation est lazy (à la lecture de la fiche) pour couvrir aussi
+  // les propositions créées avant l'introduction des pièces jointes.
+  try {
+    await syncSourceDocumentsAsAttachments(serviceSupabase, {
+      organizationId: ctx.organizationId,
+      propositionId: proposition.id,
+      urls: documentsUrls,
+      uploadedBy: typeof proposition.created_by === 'string' ? proposition.created_by : null,
+    });
+  } catch (syncError) {
+    console.error('Erreur sync pièces jointes (documents source):', syncError);
+  }
   const totalFields = countTotalFields(extractedDataForDisplay);
   const suggestionsGenerees =
     (proposition as Record<string, unknown>).suggestions_editees ||
@@ -1047,46 +1044,6 @@ export default async function PropositionDetailPage({
             <PropositionAttachmentsPanel propositionId={proposition.id} />
           </div>
         </div>
-
-        {/* Documents sources */}
-        {documentsUrls.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
-              <Package className="h-4 w-4 text-slate-400" />
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Documents sources</h2>
-                <p className="text-xs text-slate-500">
-                  {documentsUrls.length} fichier(s) utilisé(s) pour l&apos;extraction
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2">
-              {documentsUrls.map((url: string, index: number) => {
-                const fileName = extractDocumentName(url);
-                const fileExt = getFileExtension(url);
-
-                return (
-                  <a
-                    key={index}
-                    href={url}
-                    download
-                    className="group/doc flex items-center gap-3 rounded-lg border border-slate-200 p-3 transition-colors hover:bg-slate-50"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md bg-slate-100 text-slate-500">
-                      <FileText className="h-4 w-4" />
-                      <span className="text-[8px] font-bold">{fileExt}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{fileName}</p>
-                      <p className="text-xs text-slate-500">Document source #{index + 1}</p>
-                    </div>
-                    <Download className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover/doc:text-slate-700" />
-                  </a>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

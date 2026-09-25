@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, File, Loader2, Paperclip, Trash2, Upload } from 'lucide-react';
+import { Download, Eye, File, Loader2, Paperclip, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatFileSize } from '@/lib/utils/formatting';
 import {
@@ -20,12 +20,76 @@ export type PropositionAttachment = {
   createdAt: string;
 };
 
+const WORD_MIME_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const EXCEL_MIME_TYPES = new Set([
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
+type PreviewKind = 'image' | 'pdf' | 'word' | 'excel' | 'unsupported';
+
+function previewKind(mimeType: string): PreviewKind {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (WORD_MIME_TYPES.has(mimeType)) return 'word';
+  if (EXCEL_MIME_TYPES.has(mimeType)) return 'excel';
+  return 'unsupported';
+}
+
+function AttachmentPreviewBody({ attachment, url }: { attachment: PropositionAttachment; url: string }) {
+  const kind = previewKind(attachment.mimeType);
+  if (kind === 'image') {
+    return <img src={url} alt={attachment.originalName} className="mx-auto h-full max-h-full w-auto object-contain" />;
+  }
+  if (kind === 'pdf') {
+    return <iframe src={url} title={attachment.originalName} className="h-full w-full rounded-md border border-slate-200" />;
+  }
+  if (kind === 'word') {
+    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+    return (
+      <div className="flex h-full flex-col gap-2">
+        <iframe src={viewerUrl} title={attachment.originalName} className="min-h-0 w-full flex-1 rounded-md border border-slate-200" />
+        <p className="shrink-0 text-xs text-slate-500">
+          Aperçu généré par Google Docs Viewer : le document est transmis à Google pour l’affichage.
+        </p>
+      </div>
+    );
+  }
+  if (kind === 'excel') {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-500">
+        <File className="h-8 w-8 text-slate-400" />
+        <p>Aperçu non disponible pour les fichiers Excel.</p>
+        <a
+          href={url}
+          className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <Download className="h-4 w-4" />
+          Télécharger le fichier
+        </a>
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-slate-500">
+      Aperçu non disponible pour ce type de fichier.
+    </div>
+  );
+}
+
 function AttachmentManager({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<PropositionAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<PropositionAttachment | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +130,23 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const openPreview = async (attachment: PropositionAttachment) => {
+    setPreviewAttachment(attachment);
+    setPreviewUrl(null);
+    setPreviewLoading(true);
+    try {
+      const response = await fetch(`/api/propositions/${propositionId}/attachments/${attachment.id}/preview`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.details || data.error || 'Aperçu impossible');
+      setPreviewUrl(data.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Aperçu impossible');
+      setPreviewAttachment(null);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -110,6 +191,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
                 <p className="truncate text-sm font-medium text-slate-800">{attachment.originalName}</p>
                 <p className="text-xs text-slate-500">{formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}</p>
               </div>
+              <button type="button" onClick={() => void openPreview(attachment)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label={`Aperçu de ${attachment.originalName}`}><Eye className="h-4 w-4" /></button>
               <a href={`/api/propositions/${propositionId}/attachments/${attachment.id}/download`} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label={`Télécharger ${attachment.originalName}`}><Download className="h-4 w-4" /></a>
               <button type="button" onClick={() => void remove(attachment)} disabled={deleting === attachment.id} className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50" aria-label={`Supprimer ${attachment.originalName}`}>
                 {deleting === attachment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -118,6 +200,28 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
           ))}
         </div>
       )}
+      <Dialog
+        open={!!previewAttachment}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewAttachment(null);
+            setPreviewUrl(null);
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col border-slate-200 bg-white">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6 text-slate-900">{previewAttachment?.originalName}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1">
+            {previewLoading ? (
+              <div className="flex h-full min-h-[50vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+            ) : previewAttachment && previewUrl ? (
+              <div className="h-[70vh]"><AttachmentPreviewBody attachment={previewAttachment} url={previewUrl} /></div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

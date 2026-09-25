@@ -72,7 +72,9 @@
       "Bash(echo \"TSC_EXIT=$?\")",
       "Bash(echo \"ESLINT_EXIT=$?\")",
       "Bash(cp \"C:/Users/ilan/CascadeProjects/Saas_propal/file_000000001ba881f5b293b5430903f82c.png\" \"C:/Users/ilan/CascadeProjects/Saas_propal/public/logo.png\")",
-      "Bash(cp \"C:/Users/ilan/CascadeProjects/Saas_propal/file_000000001ba881f5b293b5430903f82c.png\" \"C:/Users/ilan/CascadeProjects/Saas_propal/app/icon.png\")"
+      "Bash(cp \"C:/Users/ilan/CascadeProjects/Saas_propal/file_000000001ba881f5b293b5430903f82c.png\" \"C:/Users/ilan/CascadeProjects/Saas_propal/app/icon.png\")",
+      "Bash(git log *)",
+      "Bash(bash .claude/skills/security-audit/scripts/scan.sh .)"
     ],
     "additionalDirectories": [
       "\\tmp"

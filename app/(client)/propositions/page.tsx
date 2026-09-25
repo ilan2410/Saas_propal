@@ -1,8 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Plus, FileText, Sparkles } from 'lucide-react';
-import { purgeOldSourceDocuments } from '@/lib/propositions/cleanup';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
+import { syncAllSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
@@ -47,8 +47,27 @@ export default async function PropositionsPage() {
   const ctx = user ? await resolveOrgContext(supabase, user) : null;
 
   const serviceSupabase = createServiceClient();
+
+  // Les documents source de l'extraction sont exposés comme pièces jointes :
+  // synchronisation en amont pour que la colonne PJ reflète les documents
+  // existants, y compris pour les propositions créées avant les pièces jointes.
   if (ctx) {
-    await purgeOldSourceDocuments(serviceSupabase, ctx.organizationId, 15);
+    try {
+      const { data: propsDocs } = await serviceSupabase
+        .from('propositions')
+        .select('id, source_documents, created_by')
+        .eq('organization_id', ctx.organizationId);
+      await syncAllSourceDocumentsAsAttachments(serviceSupabase, {
+        organizationId: ctx.organizationId,
+        propositions: (propsDocs ?? []).map((prop) => ({
+          id: prop.id,
+          sourceDocuments: prop.source_documents,
+          uploadedBy: prop.created_by,
+        })),
+      });
+    } catch (syncError) {
+      console.error('Erreur sync pièces jointes (documents source):', syncError);
+    }
   }
 
   // Récupérer toutes les propositions avec les templates
