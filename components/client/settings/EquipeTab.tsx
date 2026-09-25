@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
+import { TeleprosManager } from '@/components/settings/TeleprosManager';
 import {
   Users,
   Plus,
@@ -351,6 +352,8 @@ export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
           </div>
         )}
       </div>
+
+      <TeleprosManager />
 
       {showCreateModal && (
         <CreateMemberModal

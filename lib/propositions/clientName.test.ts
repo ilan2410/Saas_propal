@@ -12,9 +12,10 @@ describe('resolvePropositionClientName', () => {
     expect(resolvePropositionClientName({ client: { societe: 'Copieurs Pro' } })).toBe('Copieurs Pro');
   });
 
-  it('gère les clés à plat et la colonne nom_client', () => {
+  it('gère les clés à plat et donne priorité au nom_client modifié', () => {
     expect(resolvePropositionClientName({ 'client.raison_sociale': 'Flat Corp' })).toBe('Flat Corp');
     expect(resolvePropositionClientName({}, 'Nom saisi manuellement')).toBe('Nom saisi manuellement');
+    expect(resolvePropositionClientName({ client: { nom: 'Nom extrait' } }, 'Nom modifié')).toBe('Nom modifié');
   });
 
   it('utilise le placeholder quand tout est vide', () => {

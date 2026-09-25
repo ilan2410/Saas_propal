@@ -13,13 +13,13 @@ function firstString(...values: unknown[]): string | null {
  * Nom affiché pour une proposition dans les listes / en-têtes.
  *
  * Ordre de résolution :
- *  1. contact extrait  : client.nom / client.name, puis client.prenom + client.nom
- *  2. entreprise extraite : client.raison_sociale / societe / entreprise
+ *  1. `fallbackNomClient` : la colonne propositions.nom_client saisie manuellement
+ *  2. contact extrait  : client.nom / client.name, puis client.prenom + client.nom
+ *  3. entreprise extraite : client.raison_sociale / societe / entreprise
  *     (ajouté pour les dossiers où seul le nom d'entreprise est extrait — ex.
  *     bureautique/copieurs — qui affichaient "Sans nom")
- *  3. clés à plat dans extracted_data (client.nom, raison_sociale, nom_client…)
- *  4. tout objet dont la clé contient "client"
- *  5. `fallbackNomClient` : la colonne propositions.nom_client saisie manuellement
+ *  4. clés à plat dans extracted_data (client.nom, raison_sociale, nom_client…)
+ *  5. tout objet dont la clé contient "client"
  *  6. `placeholder`
  */
 export function resolvePropositionClientName(
@@ -27,6 +27,8 @@ export function resolvePropositionClientName(
   fallbackNomClient?: unknown,
   placeholder = 'Sans nom',
 ): string {
+  const explicitName = firstString(fallbackNomClient);
+  if (explicitName) return explicitName;
   try {
     const data: Record<string, unknown> = isRecord(extractedData) ? extractedData : {};
     const client = isRecord(data.client) ? data.client : null;
@@ -63,8 +65,8 @@ export function resolvePropositionClientName(
       }
     }
 
-    return firstString(fallbackNomClient) ?? placeholder;
+    return placeholder;
   } catch {
-    return firstString(fallbackNomClient) ?? placeholder;
+    return placeholder;
   }
 }

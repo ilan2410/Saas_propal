@@ -44,7 +44,27 @@ export async function PATCH(
       updateData.template_id = body.template_id;
     }
     if (body.nom_client !== undefined) {
-      updateData.nom_client = body.nom_client;
+      if (typeof body.nom_client !== 'string' || !body.nom_client.trim() || body.nom_client.trim().length > 255) {
+        return NextResponse.json({ error: 'Nom client invalide' }, { status: 400 });
+      }
+      updateData.nom_client = body.nom_client.trim();
+    }
+    if (body.teleprospecteur_id !== undefined) {
+      if (body.teleprospecteur_id === null) {
+        updateData.teleprospecteur_id = null;
+      } else if (typeof body.teleprospecteur_id === 'string') {
+        const { data: telepro } = await supabase
+          .from('teleprospecteurs')
+          .select('id')
+          .eq('id', body.teleprospecteur_id)
+          .eq('organization_id', ctx.organizationId)
+          .eq('actif', true)
+          .maybeSingle();
+        if (!telepro) return NextResponse.json({ error: 'Télépro invalide' }, { status: 400 });
+        updateData.teleprospecteur_id = telepro.id;
+      } else {
+        return NextResponse.json({ error: 'Télépro invalide' }, { status: 400 });
+      }
     }
     if (body.source_documents !== undefined) {
       updateData.source_documents = body.source_documents;

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,6 +16,9 @@ import {
   TrendingDown,
   MapPin,
   Wrench,
+  UserRound,
+  Headphones,
+  Paperclip,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
@@ -43,6 +46,9 @@ import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
+import { EditableClientName } from '@/components/propositions/EditableClientName';
+import { TeleprospecteurSelect } from '@/components/propositions/TeleprospecteurSelect';
+import { PropositionAttachmentsPanel } from '@/components/propositions/PropositionAttachments';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -681,6 +687,7 @@ export default async function PropositionDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const serviceSupabase = createServiceClient();
 
   const {
     data: { user },
@@ -752,11 +759,39 @@ export default async function PropositionDetailPage({
   const spReponses = Array.isArray((proposition as Record<string, unknown>).sp_reponses)
     ? (proposition as Record<string, unknown>).sp_reponses as SpQuestionReponse[]
     : [];
-  const { data: organization } = await supabase
-    .from('organizations')
-    .select('sp_questions, preferences')
-    .eq('id', ctx.organizationId)
-    .single();
+  const creatorId = typeof proposition.created_by === 'string' ? proposition.created_by : null;
+  const [organizationResult, teleprosResult, creatorResult] = await Promise.all([
+    supabase
+      .from('organizations')
+      .select('sp_questions, preferences')
+      .eq('id', ctx.organizationId)
+      .single(),
+    serviceSupabase
+      .from('teleprospecteurs')
+      .select('id, prenom, nom, actif')
+      .eq('organization_id', ctx.organizationId)
+      .order('nom')
+      .order('prenom'),
+    creatorId && creatorId !== ctx.organizationId
+      ? serviceSupabase
+          .from('organization_members')
+          .select('prenom, nom')
+          .eq('organization_id', ctx.organizationId)
+          .eq('user_id', creatorId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const organization = organizationResult.data;
+  const teleproOptions = (teleprosResult.data ?? []).map((telepro) => ({
+    id: telepro.id,
+    name: `${telepro.prenom ?? ''} ${telepro.nom ?? ''}`.trim() || 'Télépro',
+    actif: telepro.actif !== false,
+  }));
+  const creatorName = creatorId === ctx.organizationId
+    ? `${ctx.displayName.prenom} ${ctx.displayName.nom}`.trim() || 'Compte principal'
+    : creatorResult.data
+      ? `${creatorResult.data.prenom ?? ''} ${creatorResult.data.nom ?? ''}`.trim() || 'Commercial'
+      : 'Non renseigné';
   const allSpQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
   const templateId = typeof proposition.template_id === 'string' ? proposition.template_id : undefined;
   const spQuestions = templateId
@@ -821,7 +856,9 @@ export default async function PropositionDetailPage({
                 {clientName[0]?.toUpperCase() || 'C'}
               </div>
               <div className="min-w-0">
-                <h1 className="truncate text-xl font-semibold text-slate-900">{clientName}</h1>
+                <h1 className="flex min-w-0 text-xl font-semibold text-slate-900">
+                  <EditableClientName propositionId={proposition.id} value={clientName} className="min-w-0" />
+                </h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <PropositionStatusBadge statut={proposition.statut} />
                   {proposition.statut === 'exported' && (
@@ -832,7 +869,11 @@ export default async function PropositionDetailPage({
                   )}
                   <span className="flex items-center gap-1.5 text-sm text-slate-500">
                     <Calendar className="h-3.5 w-3.5" />
-                    {formatDate(proposition.created_at, 'long')}
+                    Créée le {formatDate(proposition.created_at, 'long')}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-sm text-slate-500">
+                    <Clock className="h-3.5 w-3.5" />
+                    Modifiée le {formatDate(proposition.updated_at || proposition.created_at, 'full')}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
@@ -842,6 +883,21 @@ export default async function PropositionDetailPage({
                   {' · '}
                   {totalFields} champ{totalFields > 1 ? 's' : ''}
                 </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                    <UserRound className="h-3.5 w-3.5" />
+                    {creatorName}
+                  </span>
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Headphones className="h-3.5 w-3.5" />
+                    <TeleprospecteurSelect
+                      propositionId={proposition.id}
+                      value={typeof proposition.teleprospecteur_id === 'string' ? proposition.teleprospecteur_id : null}
+                      options={teleproOptions}
+                      canCreate={ctx.role === 'owner'}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -978,6 +1034,19 @@ export default async function PropositionDetailPage({
             </div>
           </details>
         )}
+
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+            <Paperclip className="h-4 w-4 text-slate-400" />
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Pièces jointes</h2>
+              <p className="text-xs text-slate-500">Factures, contrats signés et documents de suivi</p>
+            </div>
+          </div>
+          <div className="p-5">
+            <PropositionAttachmentsPanel propositionId={proposition.id} />
+          </div>
+        </div>
 
         {/* Documents sources */}
         {documentsUrls.length > 0 && (
