@@ -81,7 +81,7 @@ function AttachmentPreviewBody({ attachment, url }: { attachment: PropositionAtt
   );
 }
 
-function AttachmentManager({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number) => void }) {
+function AttachmentManager({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number, changed: boolean) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<PropositionAttachment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +99,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       if (!response.ok) throw new Error(data.error || 'Chargement impossible');
       const next = Array.isArray(data.attachments) ? data.attachments : [];
       setAttachments(next);
-      onCountChange?.(next.length);
+      onCountChange?.(next.length, false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Chargement impossible');
     } finally {
@@ -121,7 +121,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       const added = Array.isArray(data.attachments) ? data.attachments : [];
       setAttachments((previous) => {
         const next = [...added, ...previous];
-        onCountChange?.(next.length);
+        onCountChange?.(next.length, true);
         return next;
       });
       toast.success(`${added.length} pièce${added.length > 1 ? 's' : ''} jointe${added.length > 1 ? 's' : ''} ajoutée${added.length > 1 ? 's' : ''}`);
@@ -159,7 +159,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       if (!response.ok) throw new Error(data.details || data.error || 'Suppression impossible');
       setAttachments((previous) => {
         const next = previous.filter((item) => item.id !== attachment.id);
-        onCountChange?.(next.length);
+        onCountChange?.(next.length, true);
         return next;
       });
       toast.success('Pièce jointe supprimée');
@@ -226,7 +226,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
   );
 }
 
-export function PropositionAttachmentsDialog({ propositionId, open, onOpenChange, onCountChange }: { propositionId: string; open: boolean; onOpenChange: (open: boolean) => void; onCountChange?: (count: number) => void }) {
+export function PropositionAttachmentsDialog({ propositionId, open, onOpenChange, onCountChange }: { propositionId: string; open: boolean; onOpenChange: (open: boolean) => void; onCountChange?: (count: number, changed: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto border-slate-200 bg-white sm:max-w-2xl">
@@ -240,6 +240,6 @@ export function PropositionAttachmentsDialog({ propositionId, open, onOpenChange
   );
 }
 
-export function PropositionAttachmentsPanel({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number) => void }) {
+export function PropositionAttachmentsPanel({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number, changed: boolean) => void }) {
   return <AttachmentManager propositionId={propositionId} onCountChange={onCountChange} />;
 }

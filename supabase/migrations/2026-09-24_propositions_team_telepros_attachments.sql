@@ -11,8 +11,10 @@ ALTER COLUMN updated_at SET NOT NULL;
 
 DROP TRIGGER IF EXISTS update_propositions_updated_at ON public.propositions;
 CREATE TRIGGER update_propositions_updated_at
-BEFORE UPDATE ON public.propositions
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+BEFORE UPDATE OF nom_client ON public.propositions
+FOR EACH ROW
+WHEN (OLD.nom_client IS DISTINCT FROM NEW.nom_client)
+EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE TABLE IF NOT EXISTS public.teleprospecteurs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

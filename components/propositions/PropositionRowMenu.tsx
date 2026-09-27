@@ -20,7 +20,7 @@ export function PropositionRowMenu({
   propositionId: string;
   showOpenDetail?: boolean;
   afterDeleteHref?: string;
-  onAttachmentCountChange?: (count: number) => void;
+  onAttachmentCountChange?: (count: number, changed: boolean) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);

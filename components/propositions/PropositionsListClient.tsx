@@ -212,8 +212,10 @@ export function PropositionsListClient({
 
   const hasColumn = (column: PropositionOptionalColumn) => columns.includes(column);
   const goToDetail = (id: string) => router.push(`/propositions/${id}`);
-  const updateRow = (id: string, updates: Partial<PropositionListItem>) => {
-    setRows((previous) => previous.map((row) => row.id === id ? { ...row, ...updates, updatedAt: new Date().toISOString() } : row));
+  const updateRow = (id: string, updates: Partial<PropositionListItem>, touchUpdatedAt = false) => {
+    setRows((previous) => previous.map((row) => row.id === id
+      ? { ...row, ...updates, ...(touchUpdatedAt ? { updatedAt: new Date().toISOString() } : {}) }
+      : row));
   };
 
   return (
@@ -281,7 +283,7 @@ export function PropositionsListClient({
               <tbody className="divide-y divide-slate-100">
                 {visible.map((prop) => (
                   <tr key={prop.id} onClick={() => goToDetail(prop.id)} className="cursor-pointer transition-colors hover:bg-slate-50">
-                    <td className="truncate px-3 py-2 font-medium text-slate-900"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} onSaved={(clientName) => updateRow(prop.id, { clientName })} /></td>
+                    <td className="truncate px-3 py-2 font-medium text-slate-900"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} /></td>
                     {hasColumn('team') && <td className="truncate px-3 py-2 text-slate-600" title={prop.creatorName}>{prop.creatorName}</td>}
                     {hasColumn('telepro') && <td className="px-3 py-2"><TeleprospecteurSelect propositionId={prop.id} value={prop.teleproId} options={teleproOptions} canCreate={canManageTelepros} onChanged={(teleproId, option) => updateRow(prop.id, { teleproId, teleproName: option?.name ?? '' })} /></td>}
                     {hasColumn('template') && <td className="truncate px-3 py-2 text-slate-500" title={prop.templateNom || undefined}>{prop.templateNom || '—'}</td>}
@@ -291,9 +293,9 @@ export function PropositionsListClient({
                     {hasColumn('updatedAt') && <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(prop.updatedAt)}</td>}
                     {hasColumn('attachments') && <td className="px-3 py-2 text-center"><span className="inline-flex items-center gap-1 text-xs text-slate-500"><Paperclip className="h-3.5 w-3.5" />{prop.attachmentsCount}</span></td>}
                     <td className="px-3 py-2"><div className="flex items-center justify-end gap-1 whitespace-nowrap">
-                      <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} />
+                      <PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} onChanged={() => updateRow(prop.id, {}, true)} />
                       {RESUMABLE.includes(prop.statut) && <Link href={`/propositions/${prop.id}/resume`} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-100"><Clock className="h-3.5 w-3.5" />Reprendre</Link>}
-                      <PropositionRowMenu propositionId={prop.id} onAttachmentCountChange={(attachmentsCount) => updateRow(prop.id, { attachmentsCount })} />
+                      <PropositionRowMenu propositionId={prop.id} onAttachmentCountChange={(attachmentsCount, changed) => updateRow(prop.id, { attachmentsCount }, changed)} />
                     </div></td>
                   </tr>
                 ))}
@@ -306,8 +308,8 @@ export function PropositionsListClient({
             {visible.map((prop) => (
               <div key={prop.id} onClick={() => goToDetail(prop.id)} className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} className="font-medium text-slate-900" onSaved={(clientName) => updateRow(prop.id, { clientName })} /><p className="mt-0.5 truncate text-xs text-slate-500">{prop.templateNom || '—'}</p></div>
-                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}><PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} /><PropositionRowMenu propositionId={prop.id} onAttachmentCountChange={(attachmentsCount) => updateRow(prop.id, { attachmentsCount })} /></div>
+                  <div className="min-w-0"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} className="font-medium text-slate-900" onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} /><p className="mt-0.5 truncate text-xs text-slate-500">{prop.templateNom || '—'}</p></div>
+                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}><PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} onChanged={() => updateRow(prop.id, {}, true)} /><PropositionRowMenu propositionId={prop.id} onAttachmentCountChange={(attachmentsCount, changed) => updateRow(prop.id, { attachmentsCount }, changed)} /></div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">{prop.statut === 'exported' ? <StatutCommercialSelect propositionId={prop.id} value={prop.statutCommercial} /> : <PropositionStatusBadge statut={prop.statut} />}<span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-400"><Calendar className="h-3 w-3" />{formatDate(prop.updatedAt)}</span></div>
                 {(hasColumn('team') || hasColumn('telepro')) && <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs"><div><p className="text-slate-400">Équipe</p><p className="mt-0.5 truncate text-slate-600">{prop.creatorName}</p></div><div onClick={(event) => event.stopPropagation()}><p className="text-slate-400">Télépro</p><div className="mt-1"><TeleprospecteurSelect propositionId={prop.id} value={prop.teleproId} options={teleproOptions} canCreate={canManageTelepros} onChanged={(teleproId, option) => updateRow(prop.id, { teleproId, teleproName: option?.name ?? '' })} /></div></div></div>}

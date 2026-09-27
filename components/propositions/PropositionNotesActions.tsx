@@ -17,10 +17,12 @@ export function PropositionNotesActions({
   propositionId,
   initialCount,
   titleContext,
+  onChanged,
 }: {
   propositionId: string;
   initialCount: number;
   titleContext: NoteTitleTemplateContext;
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [count, setCount] = useState(initialCount);
@@ -60,6 +62,7 @@ export function PropositionNotesActions({
 
   const saved = () => {
     void loadNotes();
+    onChanged?.();
     router.refresh();
   };
 
@@ -72,6 +75,7 @@ export function PropositionNotesActions({
       if (!response.ok) throw new Error(data.error || 'Suppression impossible');
       toast.success(note.kind === 'reminder' ? 'Rappel supprimé' : 'Note supprimée');
       await loadNotes();
+      onChanged?.();
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Suppression impossible');

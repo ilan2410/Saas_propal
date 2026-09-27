@@ -55,18 +55,21 @@ export function EditableClientName({
 
   if (!editing) {
     return (
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          setEditing(true);
-        }}
-        className={cn('group inline-flex max-w-full items-center gap-1.5 text-left', className)}
-        title="Modifier le nom du client"
-      >
+      <span className={cn('group inline-flex max-w-full items-center gap-1.5 text-left', className)}>
         <span className="truncate" title={current || 'Sans nom'}>{current || 'Sans nom'}</span>
-        <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-      </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setEditing(true);
+          }}
+          className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 focus-visible:opacity-100"
+          title="Modifier le nom du client"
+          aria-label="Modifier le nom du client"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      </span>
     );
   }
 
