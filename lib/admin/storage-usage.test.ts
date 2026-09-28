@@ -4,9 +4,9 @@ import { fetchStorageUsage, groupStorageUsage, type StorageUsageRpcRow } from '.
 describe('groupStorageUsage', () => {
   it('regroupe les buckets par organisation et totalise', () => {
     const rows: StorageUsageRpcRow[] = [
-      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 1000, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'proposition-attachments', generated: false, bytes: 500, objects: 1 },
-      { organization_id: 'org-2', bucket_id: 'documents', generated: false, bytes: 200, objects: 1 },
+      { organization_id: 'org-1', bucket_id: 'documents', generated: false, orphan: false, bytes: 1000, objects: 2 },
+      { organization_id: 'org-1', bucket_id: 'proposition-attachments', generated: false, orphan: false, bytes: 500, objects: 1 },
+      { organization_id: 'org-2', bucket_id: 'documents', generated: false, orphan: false, bytes: 200, objects: 1 },
     ];
 
     const result = groupStorageUsage(rows);
@@ -20,8 +20,8 @@ describe('groupStorageUsage', () => {
 
   it('trie du plus gros au plus petit', () => {
     const result = groupStorageUsage([
-      { organization_id: 'petit', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 },
-      { organization_id: 'gros', bucket_id: 'documents', generated: false, bytes: 10_000, objects: 1 },
+      { organization_id: 'petit', bucket_id: 'documents', generated: false, orphan: false, bytes: 10, objects: 1 },
+      { organization_id: 'gros', bucket_id: 'documents', generated: false, orphan: false, bytes: 10_000, objects: 1 },
     ]);
 
     expect(result.map((item) => item.organizationId)).toEqual(['gros', 'petit']);
@@ -29,7 +29,7 @@ describe('groupStorageUsage', () => {
 
   it('conserve les fichiers non attribués sous organizationId null', () => {
     const result = groupStorageUsage([
-      { organization_id: null, bucket_id: 'propositions', generated: false, bytes: 4242, objects: 7 },
+      { organization_id: null, bucket_id: 'propositions', generated: false, orphan: false, bytes: 4242, objects: 7 },
     ]);
 
     expect(result).toHaveLength(1);
@@ -127,8 +127,8 @@ describe('groupStorageUsage — documents générés', () => {
     // écrivent sous generated/<orgId>/ : les additionner sur une seule ligne
     // fait lire "27 templates" à un client qui n'en a que deux.
     const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'templates', generated: false, bytes: 200, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'templates', generated: true, bytes: 32_000, objects: 25 },
+      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: false, bytes: 200, objects: 2 },
+      { organization_id: 'org-1', bucket_id: 'templates', generated: true, orphan: false, bytes: 32_000, objects: 25 },
     ]);
 
     expect(result[0].buckets).toHaveLength(2);
@@ -146,5 +146,31 @@ describe('groupStorageUsage — documents générés', () => {
     ] as unknown as StorageUsageRpcRow[]);
 
     expect(result[0].buckets[0].generated).toBe(false);
+  });
+});
+
+describe('groupStorageUsage - fichiers orphelins', () => {
+  it('isole les templates que plus aucun template ne reference', () => {
+    // Cas reel : un client avec 2 templates trainait 6 fichiers orphelins,
+    // laisses par des envois abandonnes et des suppressions best-effort.
+    const result = groupStorageUsage([
+      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: false, bytes: 1_980_000, objects: 2 },
+      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: true, bytes: 5_280_000, objects: 6 },
+    ]);
+
+    const utilises = result[0].buckets.find((b) => !b.orphan);
+    const orphelins = result[0].buckets.find((b) => b.orphan);
+
+    expect(utilises?.objects).toBe(2);
+    expect(orphelins?.objects).toBe(6);
+    expect(result[0].totalObjects).toBe(8);
+  });
+
+  it('traite un drapeau orphan absent comme non orphelin', () => {
+    const result = groupStorageUsage([
+      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 },
+    ] as unknown as StorageUsageRpcRow[]);
+
+    expect(result[0].buckets[0].orphan).toBe(false);
   });
 });

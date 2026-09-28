@@ -138,11 +138,14 @@ export function StorageByBucketList({ usage }: { usage: StorageBucketUsage[] }) 
   return (
     <ul className="space-y-1 text-sm">
       {usage.map((bucket) => (
-        <li key={`${bucket.bucketId}-${bucket.generated}`} className="flex justify-between gap-4">
+        <li key={`${bucket.bucketId}-${bucket.generated}-${bucket.orphan}`} className="flex justify-between gap-4">
           <span className="text-gray-600">
             {bucket.bucketId}
             {bucket.generated && (
               <span className="text-gray-400"> — documents générés</span>
+            )}
+            {bucket.orphan && (
+              <span className="text-orange-600"> — orphelins, plus référencés</span>
             )}
           </span>
           <span className="text-gray-900">

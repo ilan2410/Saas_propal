@@ -16,6 +16,12 @@ export type StorageUsageRpcRow = {
    * « 27 templates ».
    */
   generated: boolean;
+  /**
+   * Template maitre que plus aucune ligne `proposition_templates` ne
+   * reference : envoi abandonne, ou nettoyage best-effort qui a echoue. Il
+   * occupe reellement l'espace, il est donc compte -- mais a part.
+   */
+  orphan: boolean;
   bytes: number;
   objects: number;
 };
@@ -23,6 +29,7 @@ export type StorageUsageRpcRow = {
 export type StorageBucketUsage = {
   bucketId: string;
   generated: boolean;
+  orphan: boolean;
   bytes: number;
   objects: number;
 };
@@ -72,6 +79,7 @@ export function groupStorageUsage(rows: StorageUsageRpcRow[]): OrgStorageUsage[]
     group.buckets.push({
       bucketId: row.bucket_id,
       generated: row.generated === true,
+      orphan: row.orphan === true,
       bytes,
       objects,
     });
