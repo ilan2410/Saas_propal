@@ -16,6 +16,7 @@ export type Database = {
       usage_analytics: TableDef;
       stripe_transactions: TableDef;
       prompt_defaults: TableDef;
+      ai_usage_events: TableDef;
     };
   };
 };
@@ -71,3 +72,6 @@ export type PropositionUpdate = Database['public']['Tables']['propositions']['Up
 
 export type UsageAnalytics = Database['public']['Tables']['usage_analytics']['Row'];
 export type StripeTransaction = Database['public']['Tables']['stripe_transactions']['Row'];
+
+/** Un appel Claude d'extraction et sa consommation. Voir lib/ai/usage-log.ts. */
+export type AiUsageEvent = Database['public']['Tables']['ai_usage_events']['Row'];
