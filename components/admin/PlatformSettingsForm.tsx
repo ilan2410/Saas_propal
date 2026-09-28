@@ -5,10 +5,12 @@ import { Loader2, Save, Euro, Info } from 'lucide-react';
 
 interface Props {
   initialTarifDefaut: number;
+  initialUsdToEurRate: number;
 }
 
-export function PlatformSettingsForm({ initialTarifDefaut }: Props) {
+export function PlatformSettingsForm({ initialTarifDefaut, initialUsdToEurRate }: Props) {
   const [tarif, setTarif] = useState<string>(String(initialTarifDefaut));
+  const [rate, setRate] = useState<string>(String(initialUsdToEurRate));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -41,6 +43,42 @@ export function PlatformSettingsForm({ initialTarifDefaut }: Props) {
       }
 
       setSuccess('Prix par défaut mis à jour. Il sera appliqué aux nouveaux clients.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erreur lors de la sauvegarde';
+      setError(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveRate = async () => {
+    const parsed = parseFloat(rate);
+    if (isNaN(parsed) || parsed <= 0) {
+      setError('Veuillez saisir un taux valide (> 0)');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch('/api/admin/platform-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'usd_to_eur_rate',
+          value: parsed,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Erreur lors de la sauvegarde');
+      }
+
+      setSuccess('Taux de conversion mis à jour.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur lors de la sauvegarde';
       setError(message);
@@ -109,6 +147,36 @@ export function PlatformSettingsForm({ initialTarifDefaut }: Props) {
           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Enregistrer
         </button>
+      </div>
+
+      <div className="max-w-xs border-t border-gray-100 pt-5">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Taux de conversion USD &rarr; EUR
+        </label>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="0.92"
+        />
+        <p className="text-xs text-gray-500 mt-1.5">
+          Sert uniquement à afficher en euros les coûts Claude, facturés en dollars.
+          Aucun impact sur les crédits ni la facturation client.
+        </p>
+        <div className="flex justify-end mt-3">
+          <button
+            type="button"
+            onClick={handleSaveRate}
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Enregistrer le taux
+          </button>
+        </div>
       </div>
     </div>
   );

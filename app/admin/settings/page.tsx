@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { PromptDefaultsForm } from '@/components/admin/PromptDefaultsForm';
 import { PlatformSettingsForm } from '@/components/admin/PlatformSettingsForm';
+import { parseUsdToEurRate } from '@/lib/admin/currency';
 import { Euro, MessageSquare, Settings } from 'lucide-react';
 
 export const revalidate = 0;
@@ -47,6 +48,7 @@ export default async function AdminSettingsPage() {
     (platformSettingsResult.data || []).map((s) => [s.key, s.value as number | string])
   );
   const tarifDefaut = Number(settingsMap.get('tarif_par_proposition_defaut') ?? 5);
+  const tauxUsdEur = parseUsdToEurRate(settingsMap.get('usd_to_eur_rate'));
 
   return (
     <div className="space-y-8">
@@ -75,7 +77,7 @@ export default async function AdminSettingsPage() {
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <PlatformSettingsForm initialTarifDefaut={tarifDefaut} />
+          <PlatformSettingsForm initialTarifDefaut={tarifDefaut} initialUsdToEurRate={tauxUsdEur} />
         </div>
       </section>
 
