@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Headphones, Loader2, Pencil, Plus, RotateCcw, Ban, X } from 'lucide-react';
+import { Headphones, Loader2, Pencil, Plus, RotateCcw, Ban, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 
@@ -22,6 +22,8 @@ export function TeleprosManager({ endpoint = '/api/settings/telepros', compact =
   const [editing, setEditing] = useState<Teleprospecteur | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<Teleprospecteur | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const load = useCallback(async () => {
@@ -97,6 +99,24 @@ export function TeleprosManager({ endpoint = '/api/settings/telepros', compact =
     }
   };
 
+  // Les propositions déjà rattachées conservent leur historique (FK ON DELETE SET NULL).
+  const remove = async (item: Teleprospecteur) => {
+    if (deletingId) return;
+    setDeletingId(item.id);
+    try {
+      const response = await fetch(`${endpoint}/${item.id}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Suppression impossible');
+      setItems((previous) => previous.filter((current) => current.id !== item.id));
+      setDeleting(null);
+      toast.success('Télépro supprimé');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Suppression impossible');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className={compact ? 'space-y-4' : 'space-y-4 border-t border-gray-100 pt-8'}>
       <div className="flex items-center justify-between gap-4">
@@ -122,10 +142,29 @@ export function TeleprosManager({ endpoint = '/api/settings/telepros', compact =
               {items.map((item) => <tr key={item.id}>
                 <td className="px-4 py-3 font-medium text-gray-900">{`${item.prenom ?? ''} ${item.nom ?? ''}`.trim()}</td>
                 <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.actif ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{item.actif ? 'Actif' : 'Inactif'}</span></td>
-                <td className="px-4 py-3"><div className="flex justify-end gap-1"><button type="button" onClick={() => openEdit(item)} className="rounded-md p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600" aria-label="Modifier"><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => void toggle(item)} className="rounded-md p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600" aria-label={item.actif ? 'Désactiver' : 'Réactiver'}>{item.actif ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button></div></td>
+                <td className="px-4 py-3"><div className="flex justify-end gap-1"><button type="button" onClick={() => openEdit(item)} className="rounded-md p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600" aria-label="Modifier"><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => void toggle(item)} className="rounded-md p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600" aria-label={item.actif ? 'Désactiver' : 'Réactiver'}>{item.actif ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</button><button type="button" onClick={() => setDeleting(item)} className="rounded-md p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button></div></td>
               </tr>)}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Supprimer ce télépro ?</h3>
+            <p className="text-sm text-gray-600">
+              <span className="font-medium">{`${deleting.prenom ?? ''} ${deleting.nom ?? ''}`.trim()}</span>{' '}
+              sera supprimé définitivement. Les propositions déjà créées sont conservées, mais ne seront plus rattachées à ce télépro. Cette action est irréversible.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setDeleting(null)} disabled={deletingId !== null}>Annuler</Button>
+              <Button variant="destructive" onClick={() => void remove(deleting)} disabled={deletingId !== null}>
+                {deletingId !== null && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirmer la suppression
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

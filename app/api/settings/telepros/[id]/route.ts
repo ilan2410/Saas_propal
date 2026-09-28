@@ -26,3 +26,24 @@ export async function PATCH(
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Données invalides' }, { status: 400 });
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx || ctx.role !== 'owner') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Les propositions liées conservent leur historique : la FK est ON DELETE SET NULL.
+  const { data, error } = await supabase.from('teleprospecteurs').delete()
+    .eq('id', id)
+    .eq('organization_id', ctx.organizationId)
+    .select('id')
+    .maybeSingle();
+  if (error) return NextResponse.json({ error: 'Suppression impossible' }, { status: 400 });
+  if (!data) return NextResponse.json({ error: 'Télépro introuvable' }, { status: 404 });
+  return NextResponse.json({ success: true });
+}
