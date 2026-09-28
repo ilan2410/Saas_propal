@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis } from '@/lib/ai/claude';
 import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { buildLegacySaData } from '@/lib/sa/structure-sa';
+import { logAiUsage } from '@/lib/ai/usage-log';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,9 +56,35 @@ export async function POST(request: NextRequest) {
       (secteur === 'telephonie' && hasSituationActuelle) ||
       (secteur === 'mixte' && hasSituationActuelle && !hasNonTelecomFields);
 
+    // L'identifiant vient du client : on ne l'accepte qu'apres avoir verifie
+    // qu'il designe une organisation existante, pour ne jamais imputer une
+    // depense a une organisation arbitraire. Le formulaire de creation
+    // d'organisation n'en fournit aucun : la depense est alors non rattachee.
+    const requestedOrgId = typeof body.organization_id === 'string' ? body.organization_id : null;
+    let testOrganizationId: string | null = null;
+    if (requestedOrgId) {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('id', requestedOrgId)
+        .maybeSingle();
+      testOrganizationId = org?.id ?? null;
+    }
+
+    const logTest = (usage: Parameters<typeof logAiUsage>[0]['usage']) =>
+      logAiUsage({
+        organizationId: testOrganizationId,
+        propositionId: null,
+        userId: user.id,
+        operation: 'admin_test',
+        usage,
+      });
+
     let donneesExtraites: Record<string, unknown>;
     if (useSaPipeline) {
-      const report = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort });
+      const analysis = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort });
+      await logTest(analysis.usage);
+      const report = analysis.data;
       const coveredFields = new Set(report.field_coverage.map((item) => item.field));
       for (const field of activeFields) {
         if (!coveredFields.has(field)) {
@@ -65,16 +92,19 @@ export async function POST(request: NextRequest) {
         }
       }
       const canonical = calculateCanonicalSaAnalysis(report, activeFields, true);
-      const structured = await structureSaAnalysis({ report, canonical, active_fields: activeFields, claude_model: model });
-      donneesExtraites = buildLegacySaData(structured, report, canonical, true);
+      const structuring = await structureSaAnalysis({ report, canonical, active_fields: activeFields, claude_model: model });
+      await logTest(structuring.usage);
+      donneesExtraites = buildLegacySaData(structuring.data, report, canonical, true);
     } else {
-      donneesExtraites = await extractDataFromDocuments({
+      const extraction = await extractDataFromDocuments({
         documents_urls,
         champs_actifs: activeFields,
         prompt_template: prompt_template || '',
         claude_model: model,
         claude_effort: effort,
       });
+      await logTest(extraction.usage);
+      donneesExtraites = extraction.data;
     }
 
     console.log('Extraction réussie:', {

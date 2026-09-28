@@ -292,7 +292,7 @@ export function EditOrganizationForm({ organization }: Props) {
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
           <h3 className="font-semibold text-purple-900 flex items-center gap-2 mb-2">🧪 Tester l extraction IA</h3>
           <p className="text-sm text-purple-700 mb-4">Testez avec de vrais documents pour verifier l extraction.</p>
-          <TestExtractionIA champsActifs={getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFields)} claudeModel={formData.claude_model} promptTemplate={formData.prompt_template} secteur={formData.secteur} />
+          <TestExtractionIA champsActifs={getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFields)} claudeModel={formData.claude_model} promptTemplate={formData.prompt_template} secteur={formData.secteur} organizationId={organization.id} />
         </div>
       )}
 
