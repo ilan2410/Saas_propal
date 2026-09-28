@@ -10,6 +10,7 @@ import {
   formatSecteur,
 } from '@/lib/utils/formatting';
 import { StorageByCategoryList } from '@/components/admin/UsageCostTables';
+import { OrphanCleanupButton } from '@/components/admin/OrphanCleanupButton';
 
 export default async function ClientDetailPage({
   params,
@@ -209,7 +210,10 @@ export default async function ClientDetailPage({
 
       {/* Coût IA & stockage */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Coût IA &amp; stockage</h2>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="text-xl font-bold text-gray-900">Coût IA &amp; stockage</h2>
+          <OrphanCleanupButton organizationId={id} />
+        </div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
           <div>
             <dt className="text-sm text-gray-600">Coût Claude ce mois</dt>

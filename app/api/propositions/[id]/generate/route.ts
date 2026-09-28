@@ -183,7 +183,17 @@ export async function POST(
         const urlParts = previousFileUrl.split('/templates/');
         if (urlParts.length > 1) {
           const filePath = decodeURIComponent(urlParts[1]);
-          await supabase.storage.from('templates').remove([filePath]);
+          const { error: removeError } = await supabase.storage.from('templates').remove([filePath]);
+          if (removeError) {
+            // Cause historique de l'accumulation : l'erreur n'etait pas
+            // regardee, et les policies RLS du bucket faisaient echouer la
+            // suppression sur tout chemin `generated/` (cast uuid).
+            console.error('Ancien fichier genere non supprime du storage:', {
+              propositionId: id,
+              path: filePath,
+              details: removeError.message,
+            });
+          }
         }
       } catch (err) {
         console.error('Erreur nettoyage ancien fichier généré:', err);

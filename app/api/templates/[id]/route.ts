@@ -83,9 +83,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       try {
         const urlParts = String(template.file_url).split('/templates/');
         if (urlParts.length > 1) {
-          await supabase.storage
+          // `.remove()` rend une erreur au lieu de lever : sans ce controle,
+          // un echec (RLS, fichier deja absent) passait totalement inapercu et
+          // laissait un fichier orphelin en storage.
+          const { error: removeError } = await supabase.storage
             .from('templates')
             .remove([decodeURIComponent(urlParts[1])]);
+          if (removeError) {
+            console.error('Fichier template non supprime du storage:', {
+              templateId: id,
+              path: decodeURIComponent(urlParts[1]),
+              details: removeError.message,
+            });
+          }
         }
       } catch (err) {
         console.error('Erreur suppression fichier template:', err);
@@ -184,9 +194,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             const filePath = decodeURIComponent(rawPath);
             console.log('Suppression de l\'ancien fichier (Client):', filePath);
             
-            await supabase.storage
+            const { error: removeError } = await supabase.storage
               .from('templates')
               .remove([filePath]);
+            if (removeError) {
+              console.error('Ancien fichier template non supprime du storage:', {
+                templateId: id,
+                path: filePath,
+                details: removeError.message,
+              });
+            }
           }
         }
       } catch (err) {
