@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('.', import.meta.url)),
+      // `server-only` est résolu en interne par Next.js et n'existe pas dans
+      // node_modules : sans cet alias, tout test d'un module portant ce
+      // garde-fou échoue au chargement.
+      'server-only': fileURLToPath(new URL('./test/stubs/server-only.ts', import.meta.url)),
     },
   },
 });
