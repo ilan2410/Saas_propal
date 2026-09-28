@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { formatCurrency, formatDate, formatFileSize, formatTokens } from '@/lib/utils/formatting';
 import { formatUsd, usdToEur } from '@/lib/admin/currency';
 import type { OrgUsageTotals, PropositionUsageTotals, UsageTotals } from '@/lib/admin/usage-report';
+import type { StorageBucketUsage } from '@/lib/admin/storage-usage';
 
 /** Un total dont un appel a un tarif inconnu est signalé, jamais présenté comme exact. */
 function CostCell({ totals, rate }: { totals: UsageTotals; rate: number }) {
@@ -130,15 +131,20 @@ export function ExtractionCostTable({
   );
 }
 
-export function StorageByBucketList({ usage }: { usage: { bucketId: string; bytes: number; objects: number }[] }) {
+export function StorageByBucketList({ usage }: { usage: StorageBucketUsage[] }) {
   if (usage.length === 0) {
     return <p className="text-sm text-gray-500">Aucun fichier stocké.</p>;
   }
   return (
     <ul className="space-y-1 text-sm">
       {usage.map((bucket) => (
-        <li key={bucket.bucketId} className="flex justify-between gap-4">
-          <span className="text-gray-600">{bucket.bucketId}</span>
+        <li key={`${bucket.bucketId}-${bucket.generated}`} className="flex justify-between gap-4">
+          <span className="text-gray-600">
+            {bucket.bucketId}
+            {bucket.generated && (
+              <span className="text-gray-400"> — documents générés</span>
+            )}
+          </span>
           <span className="text-gray-900">
             {formatFileSize(bucket.bytes)} <span className="text-gray-400">({bucket.objects})</span>
           </span>

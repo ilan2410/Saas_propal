@@ -9,6 +9,20 @@
 export type StorageUsageRpcRow = {
   organization_id: string | null;
   bucket_id: string;
+  /**
+   * Fichier produit par l'application (`generated/<orgId>/…`) plutôt que
+   * déposé par le client. Le bucket `templates` contient les deux : sans cette
+   * distinction, un client avec 2 templates et 25 propositions générées lit
+   * « 27 templates ».
+   */
+  generated: boolean;
+  bytes: number;
+  objects: number;
+};
+
+export type StorageBucketUsage = {
+  bucketId: string;
+  generated: boolean;
   bytes: number;
   objects: number;
 };
@@ -18,7 +32,7 @@ export type OrgStorageUsage = {
   organizationId: string | null;
   totalBytes: number;
   totalObjects: number;
-  buckets: Array<{ bucketId: string; bytes: number; objects: number }>;
+  buckets: StorageBucketUsage[];
 };
 
 /**
@@ -55,7 +69,12 @@ export function groupStorageUsage(rows: StorageUsageRpcRow[]): OrgStorageUsage[]
     const objects = toNumber(row.objects);
     group.totalBytes += bytes;
     group.totalObjects += objects;
-    group.buckets.push({ bucketId: row.bucket_id, bytes, objects });
+    group.buckets.push({
+      bucketId: row.bucket_id,
+      generated: row.generated === true,
+      bytes,
+      objects,
+    });
   }
 
   for (const group of groups.values()) {

@@ -4,9 +4,9 @@ import { fetchStorageUsage, groupStorageUsage, type StorageUsageRpcRow } from '.
 describe('groupStorageUsage', () => {
   it('regroupe les buckets par organisation et totalise', () => {
     const rows: StorageUsageRpcRow[] = [
-      { organization_id: 'org-1', bucket_id: 'documents', bytes: 1000, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'proposition-attachments', bytes: 500, objects: 1 },
-      { organization_id: 'org-2', bucket_id: 'documents', bytes: 200, objects: 1 },
+      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 1000, objects: 2 },
+      { organization_id: 'org-1', bucket_id: 'proposition-attachments', generated: false, bytes: 500, objects: 1 },
+      { organization_id: 'org-2', bucket_id: 'documents', generated: false, bytes: 200, objects: 1 },
     ];
 
     const result = groupStorageUsage(rows);
@@ -20,8 +20,8 @@ describe('groupStorageUsage', () => {
 
   it('trie du plus gros au plus petit', () => {
     const result = groupStorageUsage([
-      { organization_id: 'petit', bucket_id: 'documents', bytes: 10, objects: 1 },
-      { organization_id: 'gros', bucket_id: 'documents', bytes: 10_000, objects: 1 },
+      { organization_id: 'petit', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 },
+      { organization_id: 'gros', bucket_id: 'documents', generated: false, bytes: 10_000, objects: 1 },
     ]);
 
     expect(result.map((item) => item.organizationId)).toEqual(['gros', 'petit']);
@@ -29,7 +29,7 @@ describe('groupStorageUsage', () => {
 
   it('conserve les fichiers non attribués sous organizationId null', () => {
     const result = groupStorageUsage([
-      { organization_id: null, bucket_id: 'propositions', bytes: 4242, objects: 7 },
+      { organization_id: null, bucket_id: 'propositions', generated: false, bytes: 4242, objects: 7 },
     ]);
 
     expect(result).toHaveLength(1);
@@ -39,7 +39,7 @@ describe('groupStorageUsage', () => {
 
   it('traite une taille absente comme zéro', () => {
     const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'documents', bytes: null, objects: 1 },
+      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: null, objects: 1 },
     ] as unknown as StorageUsageRpcRow[]);
 
     expect(result[0].totalBytes).toBe(0);
@@ -54,7 +54,7 @@ describe('fetchStorageUsage', () => {
       async rpc(name: string) {
         appels.push(name);
         return {
-          data: [{ organization_id: 'org-1', bucket_id: 'documents', bytes: 10, objects: 1 }],
+          data: [{ organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 }],
           error: null,
         };
       },
@@ -118,5 +118,33 @@ describe('fetchStorageUsage — filtre par organisation', () => {
     };
 
     await expect(fetchStorageUsage(client as never)).resolves.toEqual([]);
+  });
+});
+
+describe('groupStorageUsage — documents générés', () => {
+  it('sépare les templates maîtres des propositions générées', () => {
+    // Le bucket `templates` contient aussi tout ce que les générateurs
+    // écrivent sous generated/<orgId>/ : les additionner sur une seule ligne
+    // fait lire "27 templates" à un client qui n'en a que deux.
+    const result = groupStorageUsage([
+      { organization_id: 'org-1', bucket_id: 'templates', generated: false, bytes: 200, objects: 2 },
+      { organization_id: 'org-1', bucket_id: 'templates', generated: true, bytes: 32_000, objects: 25 },
+    ]);
+
+    expect(result[0].buckets).toHaveLength(2);
+    expect(result[0].buckets.find((b) => b.generated)?.objects).toBe(25);
+    expect(result[0].buckets.find((b) => !b.generated)?.objects).toBe(2);
+    expect(result[0].totalObjects).toBe(27);
+    expect(result[0].totalBytes).toBe(32_200);
+  });
+
+  it('traite un drapeau absent comme non généré', () => {
+    const result = groupStorageUsage([
+      // Volontairement sans `generated` : ce que rendrait une base ou la
+      // migration de separation n'a pas encore ete appliquee.
+      { organization_id: 'org-1', bucket_id: 'documents', bytes: 10, objects: 1 },
+    ] as unknown as StorageUsageRpcRow[]);
+
+    expect(result[0].buckets[0].generated).toBe(false);
   });
 });
