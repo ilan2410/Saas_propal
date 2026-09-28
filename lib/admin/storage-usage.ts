@@ -69,11 +69,25 @@ export function groupStorageUsage(rows: StorageUsageRpcRow[]): OrgStorageUsage[]
  * Lit la volumétrie. Une erreur SQL rend une liste vide : un écran de coûts
  * doit s'afficher même si la fonction de volumétrie n'est pas encore déployée.
  */
-export async function fetchStorageUsage(client: StorageUsageClient): Promise<OrgStorageUsage[]> {
-  const { data, error } = await client.rpc('admin_storage_usage_by_org');
-  if (error || !Array.isArray(data)) {
-    if (error) console.error('Volumétrie stockage indisponible:', error);
+export async function fetchStorageUsage(
+  client: StorageUsageClient,
+  organizationId?: string,
+): Promise<OrgStorageUsage[]> {
+  try {
+    // Filtrer en SQL : une fiche client n'a pas a faire agreger la totalite du
+    // stockage de la plateforme pour n'en garder qu'une ligne.
+    const { data, error } = await client.rpc('admin_storage_usage_by_org', {
+      p_organization_id: organizationId ?? null,
+    });
+    if (error || !Array.isArray(data)) {
+      if (error) console.error('Volumétrie stockage indisponible:', error);
+      return [];
+    }
+    return groupStorageUsage(data as StorageUsageRpcRow[]);
+  } catch (error) {
+    // La fonction SQL peut ne pas exister (migration pas encore appliquée) :
+    // l'écran doit s'afficher sans volumétrie plutôt que tomber en 500.
+    console.error('Volumétrie stockage indisponible:', error);
     return [];
   }
-  return groupStorageUsage(data as StorageUsageRpcRow[]);
 }

@@ -3,12 +3,14 @@ import { redirect } from 'next/navigation';
 import { BarChart3, Coins, Database, Hash } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { formatCurrency, formatFileSize, formatTokens } from '@/lib/utils/formatting';
-import { parseUsdToEurRate, usdToEur } from '@/lib/admin/currency';
+import { formatUsd, parseUsdToEurRate, usdToEur } from '@/lib/admin/currency';
 import { fetchStorageUsage } from '@/lib/admin/storage-usage';
+import { fetchAllRows } from '@/lib/admin/paginate';
 import {
   aggregateAdminTests,
   aggregateByOrganization,
-  aggregateByProposition,
+  latestExtractions,
+  sumClientCostUsd,
   type UsageRow,
 } from '@/lib/admin/usage-report';
 import {
@@ -59,34 +61,36 @@ export default async function AdminAnalyticsPage({
   const COLUMNS =
     'organization_id, proposition_id, operation, model, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, cost_usd, created_at';
 
-  const [monthResult, allTimeResult, organizationsResult, settingsResult, storage] =
+  type CostOnlyRow = { cost_usd: number | null; operation: UsageRow['operation'] };
+
+  // Lectures paginées : PostgREST tronque à 1000 lignes en silence, ce qui
+  // ferait cesser de croître le coût cumulé sans le moindre signe.
+  const [monthRows, allTimeRows, organizationsResult, settingsResult, storage] =
     await Promise.all([
-      service.from('ai_usage_events').select(COLUMNS)
-        .gte('created_at', month.start).lt('created_at', month.end)
-        .order('created_at', { ascending: false }),
-      service.from('ai_usage_events').select('cost_usd, operation'),
+      fetchAllRows<UsageRow>(async (from, to) => {
+        const { data } = await service.from('ai_usage_events').select(COLUMNS)
+          .gte('created_at', month.start).lt('created_at', month.end)
+          .order('created_at', { ascending: false })
+          .range(from, to);
+        return (data ?? []) as unknown as UsageRow[];
+      }),
+      fetchAllRows<CostOnlyRow>(async (from, to) => {
+        const { data } = await service.from('ai_usage_events')
+          .select('cost_usd, operation')
+          .order('created_at', { ascending: false })
+          .range(from, to);
+        return (data ?? []) as unknown as CostOnlyRow[];
+      }),
       service.from('organizations').select('id, nom'),
       service.from('platform_settings').select('key, value'),
       fetchStorageUsage(service),
     ]);
-
-  const monthRows = (monthResult.data ?? []) as unknown as UsageRow[];
-
-  // Les noms de propositions ne sont chargés que pour les lignes affichées :
-  // la table entière n'a pas à traverser le réseau pour 50 libellés.
-  const propositionIds = [...new Set(monthRows.map((row) => row.proposition_id).filter(Boolean))] as string[];
-  const propositionsResult = propositionIds.length
-    ? await service.from('propositions').select('id, nom_client').in('id', propositionIds)
-    : { data: [] as { id: string; nom_client: string | null }[] };
 
   const rate = parseUsdToEurRate(
     (settingsResult.data ?? []).find((setting) => setting.key === 'usd_to_eur_rate')?.value,
   );
 
   const names = new Map((organizationsResult.data ?? []).map((org) => [String(org.id), String(org.nom)]));
-  const propositionNames = new Map(
-    (propositionsResult.data ?? []).map((prop) => [String(prop.id), String(prop.nom_client ?? 'Sans nom')]),
-  );
 
   // Une organisation qui occupe du stockage reste listée même sans extraction
   // sur la période : sinon un client qui accumule des fichiers devient invisible.
@@ -98,8 +102,20 @@ export default async function AdminAnalyticsPage({
   const storedOrgIds = [...storageByOrg.keys()];
 
   const byOrganization = aggregateByOrganization(monthRows, storedOrgIds);
-  const byExtraction = aggregateByProposition(monthRows).slice(0, 50);
+  const byExtraction = latestExtractions(monthRows, 50);
   const adminTests = aggregateAdminTests(monthRows);
+
+  // Les noms ne sont chargés que pour les lignes affichées : un `in` construit
+  // sur tout le mois dépasserait la longueur d'URL acceptée et ferait afficher
+  // « Proposition supprimée » partout.
+  const propositionIds = byExtraction.map((row) => row.propositionId);
+  const propositionsResult = propositionIds.length
+    ? await service.from('propositions').select('id, nom_client').in('id', propositionIds)
+    : { data: [] as { id: string; nom_client: string | null }[] };
+
+  const propositionNames = new Map(
+    (propositionsResult.data ?? []).map((prop) => [String(prop.id), String(prop.nom_client ?? 'Sans nom')]),
+  );
 
   const monthTotals = byOrganization.reduce(
     (acc, row) => ({
@@ -107,27 +123,30 @@ export default async function AdminAnalyticsPage({
       inputTokens: acc.inputTokens + row.totals.inputTokens,
       outputTokens: acc.outputTokens + row.totals.outputTokens,
       extractions: acc.extractions + row.extractions,
+      unknownPricingCalls: acc.unknownPricingCalls + row.totals.unknownPricingCalls,
     }),
-    { costUsd: 0, inputTokens: 0, outputTokens: 0, extractions: 0 },
+    { costUsd: 0, inputTokens: 0, outputTokens: 0, extractions: 0, unknownPricingCalls: 0 },
   );
 
-  const allTimeCostUsd = (allTimeResult.data ?? []).reduce(
-    (sum, row) => sum + (row.cost_usd === null ? 0 : Number(row.cost_usd)),
-    0,
-  );
+  // Cumul hors tests admin, comme le coût du mois : les deux cartes doivent
+  // rester comparables côte à côte.
+  const allTime = sumClientCostUsd(allTimeRows);
   const storageTotalBytes = storage.reduce((sum, entry) => sum + entry.totalBytes, 0);
   const unattributedStorage = storage.find((entry) => entry.organizationId === null);
 
+  /** Un total partiel ne doit jamais être présenté comme exact. */
+  const reserve = (calls: number) => (calls > 0 ? ` · + ${calls} appel(s) au tarif inconnu` : '');
+
   const cards = [
     { label: `Coût Claude — ${month.key}`, icon: Coins,
-      value: `${monthTotals.costUsd.toFixed(2)} $`,
-      hint: formatCurrency(usdToEur(monthTotals.costUsd, rate)) },
+      value: formatUsd(monthTotals.costUsd),
+      hint: `${formatCurrency(usdToEur(monthTotals.costUsd, rate))}${reserve(monthTotals.unknownPricingCalls)}` },
     { label: 'Tokens du mois', icon: Hash,
       value: formatTokens(monthTotals.inputTokens + monthTotals.outputTokens),
       hint: `${formatTokens(monthTotals.inputTokens)} entrée · ${formatTokens(monthTotals.outputTokens)} sortie` },
     { label: 'Coût cumulé', icon: BarChart3,
-      value: `${allTimeCostUsd.toFixed(2)} $`,
-      hint: `${formatCurrency(usdToEur(allTimeCostUsd, rate))} · depuis la mise en service` },
+      value: formatUsd(allTime.costUsd),
+      hint: `${formatCurrency(usdToEur(allTime.costUsd, rate))} · depuis la mise en service${reserve(allTime.unknownPricingCalls)}` },
     { label: 'Stockage total', icon: Database,
       value: formatFileSize(storageTotalBytes),
       hint: unattributedStorage ? `dont ${formatFileSize(unattributedStorage.totalBytes)} non attribué` : 'entièrement attribué' },
@@ -193,11 +212,11 @@ export default async function AdminAnalyticsPage({
           Dépense engagée par tes propres tests, exclue du coût imputé aux clients.
         </p>
         <p className="mt-3 text-sm text-gray-900">
-          {adminTests.totals.calls} appel(s) · {adminTests.totals.costUsd.toFixed(2)} $ ·{' '}
+          {adminTests.totals.calls} appel(s) · {formatUsd(adminTests.totals.costUsd)} ·{' '}
           {formatCurrency(usdToEur(adminTests.totals.costUsd, rate))}
           {adminTests.unattributedCostUsd > 0 && (
             <span className="text-gray-500">
-              {' '}(dont {adminTests.unattributedCostUsd.toFixed(2)} $ hors client)
+              {' '}(dont {formatUsd(adminTests.unattributedCostUsd)} hors client)
             </span>
           )}
         </p>

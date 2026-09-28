@@ -7,6 +7,7 @@ import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAn
 import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
 import type { ClaudeCallUsage } from '@/lib/ai/claude-pricing';
+import { ClaudeCallError } from '@/lib/ai/claude-errors';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -283,11 +284,13 @@ Le résumé (summary) tient en 3 à 5 phrases : le total HT mensuel de chaque fa
     },
   });
   const message = await stream.finalMessage();
-  if (!message.parsed_output) throw new Error("L'analyse comptable Claude n'a pas retourné de résultat structuré.");
-  return {
-    data: normalizeInvoiceAnalysisOutput(message.parsed_output),
-    usage: readUsage(message.usage, options.claude_model),
-  };
+  const usage = readUsage(message.usage, options.claude_model);
+  // L'appel a déjà été facturé en entier : l'erreur transporte sa consommation
+  // pour que la dépense soit enregistrée malgré l'échec.
+  if (!message.parsed_output) {
+    throw new ClaudeCallError("L'analyse comptable Claude n'a pas retourné de résultat structuré.", usage);
+  }
+  return { data: normalizeInvoiceAnalysisOutput(message.parsed_output), usage };
 }
 
 export async function structureSaAnalysis(options: {
@@ -337,10 +340,10 @@ ${JSON.stringify(options.canonical)}`;
     },
   });
   const message = await stream.finalMessage();
-  if (!message.parsed_output) throw new Error("La structuration Claude n'a pas retourné de résultat structuré.");
-  return {
-    data: normalizeStructuredSaOutput(message.parsed_output),
-    usage: readUsage(message.usage, options.claude_model),
-  };
+  const usage = readUsage(message.usage, options.claude_model);
+  if (!message.parsed_output) {
+    throw new ClaudeCallError("La structuration Claude n'a pas retourné de résultat structuré.", usage);
+  }
+  return { data: normalizeStructuredSaOutput(message.parsed_output), usage };
 }
 

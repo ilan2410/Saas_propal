@@ -76,3 +76,47 @@ describe('fetchStorageUsage', () => {
     await expect(fetchStorageUsage(client)).resolves.toEqual([]);
   });
 });
+
+describe('fetchStorageUsage — filtre par organisation', () => {
+  it('transmet l’organisation à la fonction SQL au lieu de tout scanner', async () => {
+    // Sans ce paramètre, l'ouverture d'une fiche client agrège la totalité du
+    // stockage de la plateforme pour n'en garder qu'une ligne.
+    let params: unknown = 'jamais appelé';
+    const client = {
+      async rpc(_name: string, args?: Record<string, unknown>) {
+        params = args;
+        return { data: [], error: null };
+      },
+    };
+
+    await fetchStorageUsage(client, 'org-42');
+
+    expect(params).toEqual({ p_organization_id: 'org-42' });
+  });
+
+  it('demande toutes les organisations quand aucune n’est précisée', async () => {
+    let params: unknown = 'jamais appelé';
+    const client = {
+      async rpc(_name: string, args?: Record<string, unknown>) {
+        params = args;
+        return { data: [], error: null };
+      },
+    };
+
+    await fetchStorageUsage(client);
+
+    expect(params).toEqual({ p_organization_id: null });
+  });
+
+  it('rend une liste vide si l’appel lève au lieu de renvoyer une erreur', async () => {
+    // La RPC absente (migration pas encore appliquée) ne doit pas faire tomber
+    // l'écran entier en 500.
+    const client = {
+      rpc() {
+        throw new Error('function does not exist');
+      },
+    };
+
+    await expect(fetchStorageUsage(client as never)).resolves.toEqual([]);
+  });
+});

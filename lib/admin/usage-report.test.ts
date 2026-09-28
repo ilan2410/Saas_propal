@@ -3,6 +3,8 @@ import {
   aggregateAdminTests,
   aggregateByOrganization,
   aggregateByProposition,
+  latestExtractions,
+  sumClientCostUsd,
   type UsageRow,
 } from './usage-report';
 
@@ -126,5 +128,52 @@ describe('aggregateAdminTests', () => {
     expect(result.totals.calls).toBe(2);
     expect(result.totals.costUsd).toBeCloseTo(3, 10);
     expect(result.unattributedCostUsd).toBeCloseTo(2, 10);
+  });
+});
+
+describe('sumClientCostUsd', () => {
+  it('exclut les tests admin du cumul', () => {
+    // La carte "cout cumule" et la carte "cout du mois" doivent etre comparables :
+    // si l'une exclut les tests admin, l'autre aussi.
+    const result = sumClientCostUsd([
+      { operation: 'extraction', cost_usd: 12 },
+      { operation: 'admin_test', cost_usd: 40 },
+    ]);
+
+    expect(result.costUsd).toBeCloseTo(12, 10);
+  });
+
+  it('compte les appels au tarif inconnu sans les sommer', () => {
+    const result = sumClientCostUsd([
+      { operation: 'extraction', cost_usd: 3 },
+      { operation: 'extraction', cost_usd: null },
+    ]);
+
+    expect(result.costUsd).toBeCloseTo(3, 10);
+    expect(result.unknownPricingCalls).toBe(1);
+  });
+});
+
+describe('latestExtractions', () => {
+  it('rend les plus RECENTES, pas les plus cheres', () => {
+    // Le tableau s'intitule "Dernieres extractions" : une petite extraction
+    // lancee a l'instant doit y figurer avant une grosse d'il y a trois semaines.
+    const result = latestExtractions(
+      [
+        row({ proposition_id: 'ancienne-chere', cost_usd: 50, created_at: '2026-09-01T10:00:00.000Z' }),
+        row({ proposition_id: 'recente-petite', cost_usd: 0.1, created_at: '2026-09-28T10:00:00.000Z' }),
+      ],
+      10,
+    );
+
+    expect(result.map((item) => item.propositionId)).toEqual(['recente-petite', 'ancienne-chere']);
+  });
+
+  it('tronque a la limite demandee', () => {
+    const rows = Array.from({ length: 60 }, (_, index) =>
+      row({ proposition_id: `prop-${index}`, created_at: `2026-09-${String((index % 28) + 1).padStart(2, '0')}T10:00:00.000Z` }),
+    );
+
+    expect(latestExtractions(rows, 50)).toHaveLength(50);
   });
 });

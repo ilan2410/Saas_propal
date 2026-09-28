@@ -16,6 +16,16 @@ export function parseUsdToEurRate(value: unknown): number {
   return parsed;
 }
 
+/** Format monetaire USD unique a toute l'application admin. */
+export function formatUsd(amountUsd: number): string {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amountUsd) ? amountUsd : 0);
+}
+
 export function usdToEur(amountUsd: number, rate: number): number {
   if (!Number.isFinite(amountUsd)) return 0;
   return amountUsd * rate;

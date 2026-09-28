@@ -3,6 +3,7 @@ import 'server-only';
 import { createServiceClient } from '@/lib/supabase/server';
 import { computeCallCostUsd, type ClaudeCallUsage } from '@/lib/ai/claude-pricing';
 import type { AiUsageOperation } from '@/lib/admin/usage-report';
+import { usageFromError } from '@/lib/ai/claude-errors';
 
 /**
  * Enregistre la consommation d'un appel Claude.
@@ -35,5 +36,34 @@ export async function logAiUsage(input: {
     if (error) console.error('Enregistrement usage IA impossible:', error);
   } catch (error) {
     console.error('Enregistrement usage IA impossible:', error);
+  }
+}
+
+export type AiUsageContext = {
+  organizationId: string | null;
+  propositionId: string | null;
+  userId: string | null;
+  operation: AiUsageOperation;
+};
+
+/**
+ * Lance un appel Claude et enregistre sa consommation, succes ou echec.
+ *
+ * Un appel qui aboutit puis echoue a la validation (sortie structuree tronquee)
+ * a deja ete facture en entier : son cout est enregistre avant de relancer
+ * l'erreur. Un appel qui n'a jamais abouti n'enregistre rien.
+ */
+export async function runAndLogAiUsage<T>(
+  context: AiUsageContext,
+  call: () => Promise<{ data: T; usage: ClaudeCallUsage }>,
+): Promise<T> {
+  try {
+    const { data, usage } = await call();
+    await logAiUsage({ ...context, usage });
+    return data;
+  } catch (error) {
+    const usage = usageFromError(error);
+    if (usage) await logAiUsage({ ...context, usage });
+    throw error;
   }
 }

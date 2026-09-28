@@ -45,13 +45,15 @@ USING ((auth.jwt() ->> 'role') = 'admin');
 -- storage.objects n'est pas exposé à l'API REST : cette fonction est le seul
 -- accès. SECURITY DEFINER + EXECUTE réservé à service_role (l'appelant est déjà
 -- authentifié comme admin côté Next.js).
-CREATE OR REPLACE FUNCTION public.admin_storage_usage_by_org()
+CREATE OR REPLACE FUNCTION public.admin_storage_usage_by_org(
+  p_organization_id UUID DEFAULT NULL
+)
 RETURNS TABLE (organization_id UUID, bucket_id TEXT, bytes BIGINT, objects BIGINT)
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public, storage
 AS $fn$
-  WITH candidats AS (
+  WITH chemins AS (
     SELECT
       o.bucket_id,
       COALESCE((o.metadata ->> 'size')::BIGINT, 0) AS taille,
@@ -62,6 +64,22 @@ AS $fn$
         ELSE o.path_tokens[1]
       END AS org_texte
     FROM storage.objects o
+  ),
+  candidats AS (
+    SELECT
+      c.bucket_id,
+      c.taille,
+      -- Le CASE court-circuite VRAIMENT, contrairement aux quals d'une clause
+      -- ON : placer le regex dans le JOIN laisserait Postgres évaluer le cast
+      -- sur toutes les lignes (clé de hachage) et lever 22P02 sur le premier
+      -- objet écrit à la racine d'un bucket — ce que font les générateurs
+      -- historiques du bucket `propositions`. Toute la volumétrie tomberait
+      -- alors en silence.
+      CASE
+        WHEN c.org_texte ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        THEN c.org_texte::UUID
+      END AS org_uuid
+    FROM chemins c
   )
   SELECT
     org.id,
@@ -69,15 +87,15 @@ AS $fn$
     SUM(c.taille)::BIGINT,
     COUNT(*)::BIGINT
   FROM candidats c
-  LEFT JOIN public.organizations org
-    ON c.org_texte ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-   AND org.id = c.org_texte::UUID
+  LEFT JOIN public.organizations org ON org.id = c.org_uuid
+  -- NULL = toutes les organisations, y compris la ligne "non attribué".
+  WHERE p_organization_id IS NULL OR org.id = p_organization_id
   GROUP BY org.id, c.bucket_id;
 $fn$;
 
-REVOKE ALL ON FUNCTION public.admin_storage_usage_by_org() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.admin_storage_usage_by_org() FROM anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_storage_usage_by_org() TO service_role;
+REVOKE ALL ON FUNCTION public.admin_storage_usage_by_org(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_storage_usage_by_org(UUID) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_storage_usage_by_org(UUID) TO service_role;
 
 -- Taux de conversion USD -> EUR, utilisé uniquement à l'affichage.
 INSERT INTO public.platform_settings (key, value)

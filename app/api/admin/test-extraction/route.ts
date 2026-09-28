@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis } from '@/lib/ai/claude';
 import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { buildLegacySaData } from '@/lib/sa/structure-sa';
-import { logAiUsage } from '@/lib/ai/usage-log';
+import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,31 +60,34 @@ export async function POST(request: NextRequest) {
     // qu'il designe une organisation existante, pour ne jamais imputer une
     // depense a une organisation arbitraire. Le formulaire de creation
     // d'organisation n'en fournit aucun : la depense est alors non rattachee.
+    // Lecture via le client service : la policy RLS de `organizations` teste
+    // `auth.jwt() ->> 'role'`, qui vaut le role Postgres (`authenticated`) et non
+    // `app_metadata.role`. Avec le client utilisateur, le super-admin ne voit
+    // aucune organisation cliente et l'imputation retomberait toujours sur null.
+    // L'appelant est deja prouve admin plus haut ; la garantie "pas d'organisation
+    // arbitraire" vient du `.eq('id', ...)` sur la table reelle.
     const requestedOrgId = typeof body.organization_id === 'string' ? body.organization_id : null;
     let testOrganizationId: string | null = null;
     if (requestedOrgId) {
-      const { data: org } = await supabase
+      const { data: org } = await createServiceClient()
         .from('organizations')
         .select('id')
         .eq('id', requestedOrgId)
         .maybeSingle();
-      testOrganizationId = org?.id ?? null;
+      testOrganizationId = org?.id ? String(org.id) : null;
     }
 
-    const logTest = (usage: Parameters<typeof logAiUsage>[0]['usage']) =>
-      logAiUsage({
-        organizationId: testOrganizationId,
-        propositionId: null,
-        userId: user.id,
-        operation: 'admin_test',
-        usage,
-      });
+    const contexteTest = {
+      organizationId: testOrganizationId,
+      propositionId: null,
+      userId: user.id,
+      operation: 'admin_test' as const,
+    };
 
     let donneesExtraites: Record<string, unknown>;
     if (useSaPipeline) {
-      const analysis = await analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort });
-      await logTest(analysis.usage);
-      const report = analysis.data;
+      const report = await runAndLogAiUsage(contexteTest, () =>
+        analyzeInvoicesForSa({ documents_urls, active_fields: activeFields, claude_model: model, claude_effort: effort }));
       const coveredFields = new Set(report.field_coverage.map((item) => item.field));
       for (const field of activeFields) {
         if (!coveredFields.has(field)) {
@@ -92,19 +95,18 @@ export async function POST(request: NextRequest) {
         }
       }
       const canonical = calculateCanonicalSaAnalysis(report, activeFields, true);
-      const structuring = await structureSaAnalysis({ report, canonical, active_fields: activeFields, claude_model: model });
-      await logTest(structuring.usage);
-      donneesExtraites = buildLegacySaData(structuring.data, report, canonical, true);
+      const structured = await runAndLogAiUsage(contexteTest, () =>
+        structureSaAnalysis({ report, canonical, active_fields: activeFields, claude_model: model }));
+      donneesExtraites = buildLegacySaData(structured, report, canonical, true);
     } else {
-      const extraction = await extractDataFromDocuments({
-        documents_urls,
-        champs_actifs: activeFields,
-        prompt_template: prompt_template || '',
-        claude_model: model,
-        claude_effort: effort,
-      });
-      await logTest(extraction.usage);
-      donneesExtraites = extraction.data;
+      donneesExtraites = await runAndLogAiUsage(contexteTest, () =>
+        extractDataFromDocuments({
+          documents_urls,
+          champs_actifs: activeFields,
+          prompt_template: prompt_template || '',
+          claude_model: model,
+          claude_effort: effort,
+        }));
     }
 
     console.log('Extraction réussie:', {

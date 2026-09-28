@@ -67,7 +67,7 @@ export default async function ClientDetailPage({
   // Coût IA et stockage de ce client
   const { fetchStorageUsage } = await import('@/lib/admin/storage-usage');
   const { aggregateByOrganization } = await import('@/lib/admin/usage-report');
-  const { parseUsdToEurRate, usdToEur } = await import('@/lib/admin/currency');
+  const { formatUsd, parseUsdToEurRate, usdToEur } = await import('@/lib/admin/currency');
   type UsageRow = import('@/lib/admin/usage-report').UsageRow;
 
   const now = new Date();
@@ -80,7 +80,7 @@ export default async function ClientDetailPage({
       .gte('created_at', monthStart),
     supabase.from('ai_usage_events').select('cost_usd, operation').eq('organization_id', id),
     supabase.from('platform_settings').select('key, value').eq('key', 'usd_to_eur_rate'),
-    fetchStorageUsage(supabase),
+    fetchStorageUsage(supabase, id),
   ]);
 
   const rate = parseUsdToEurRate((settings.data ?? [])[0]?.value);
@@ -214,7 +214,7 @@ export default async function ClientDetailPage({
           <div>
             <dt className="text-sm text-gray-600">Coût Claude ce mois</dt>
             <dd className="mt-1 text-sm font-medium text-gray-900">
-              {(moisCourant?.totals.costUsd ?? 0).toFixed(2)} ${' '}
+              {formatUsd(moisCourant?.totals.costUsd ?? 0)}{' '}
               <span className="text-gray-500">
                 ({formatCurrency(usdToEur(moisCourant?.totals.costUsd ?? 0, rate))})
               </span>
@@ -227,7 +227,7 @@ export default async function ClientDetailPage({
           <div>
             <dt className="text-sm text-gray-600">Coût Claude cumulé</dt>
             <dd className="mt-1 text-sm font-medium text-gray-900">
-              {coutCumuleUsd.toFixed(2)} ${' '}
+              {formatUsd(coutCumuleUsd)}{' '}
               <span className="text-gray-500">({formatCurrency(usdToEur(coutCumuleUsd, rate))})</span>
             </dd>
           </div>

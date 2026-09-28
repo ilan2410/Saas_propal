@@ -136,6 +136,40 @@ export function aggregateByProposition(rows: UsageRow[]): PropositionUsageTotals
     .sort((a, b) => b.totals.costUsd - a.totals.costUsd);
 }
 
+/**
+ * Cumul du cout imputable aux clients. Exclut les tests admin, comme
+ * `aggregateByOrganization`, pour que les deux chiffres restent comparables
+ * cote a cote sur le meme ecran.
+ */
+export function sumClientCostUsd(
+  rows: Pick<UsageRow, 'operation' | 'cost_usd'>[],
+): { costUsd: number; unknownPricingCalls: number } {
+  let costUsd = 0;
+  let unknownPricingCalls = 0;
+
+  for (const row of rows) {
+    if (row.operation === 'admin_test') continue;
+    if (row.cost_usd === null || !Number.isFinite(Number(row.cost_usd))) {
+      unknownPricingCalls += 1;
+      continue;
+    }
+    costUsd += Number(row.cost_usd);
+  }
+
+  return { costUsd, unknownPricingCalls };
+}
+
+/**
+ * Les extractions les plus RECENTES. `aggregateByProposition` trie par cout
+ * decroissant : s'en servir directement pour un tableau intitule "dernieres
+ * extractions" y ferait figurer les plus cheres, pas les dernieres.
+ */
+export function latestExtractions(rows: UsageRow[], limit: number): PropositionUsageTotals[] {
+  return aggregateByProposition(rows)
+    .sort((a, b) => b.lastCallAt.localeCompare(a.lastCallAt))
+    .slice(0, limit);
+}
+
 export function aggregateAdminTests(rows: UsageRow[]): AdminTestTotals {
   const totals = emptyTotals();
   let unattributedCostUsd = 0;

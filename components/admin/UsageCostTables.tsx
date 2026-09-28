@@ -1,16 +1,7 @@
 import Link from 'next/link';
 import { formatCurrency, formatDate, formatFileSize, formatTokens } from '@/lib/utils/formatting';
-import { usdToEur } from '@/lib/admin/currency';
+import { formatUsd, usdToEur } from '@/lib/admin/currency';
 import type { OrgUsageTotals, PropositionUsageTotals, UsageTotals } from '@/lib/admin/usage-report';
-
-function formatUsd(amount: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 /** Un total dont un appel a un tarif inconnu est signalé, jamais présenté comme exact. */
 function CostCell({ totals, rate }: { totals: UsageTotals; rate: number }) {
