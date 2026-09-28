@@ -1,35 +1,41 @@
 /**
- * Volumétrie du stockage par organisation.
+ * Volumétrie du stockage par organisation, classée par catégorie métier.
  *
  * `storage.objects` n'est pas exposé à l'API REST : tout passe par la fonction
  * SQL `public.admin_storage_usage_by_org()`, exécutable uniquement par
- * `service_role` (voir la migration 2026-09-28_ai_usage_events.sql).
+ * `service_role` (supabase/migrations/2026-09-30_storage_usage_categories.sql).
+ *
+ * La fonction rend des CATÉGORIES, pas des buckets : un bucket est de la
+ * plomberie — `templates` contient aussi toutes les propositions générées — et
+ * l'afficher tel quel oblige le lecteur à la connaître.
  */
+
+/** Ordre d'affichage. Les anomalies ferment la liste. */
+export const STORAGE_CATEGORY_ORDER = [
+  'pieces_jointes',
+  'propositions_generees',
+  'templates',
+  'logos',
+  'images_catalogue',
+  'orphelins',
+  'autres',
+] as const;
+
+export type StorageCategory = (typeof STORAGE_CATEGORY_ORDER)[number];
 
 export type StorageUsageRpcRow = {
   organization_id: string | null;
-  bucket_id: string;
   /**
-   * Fichier produit par l'application (`generated/<orgId>/…`) plutôt que
-   * déposé par le client. Le bucket `templates` contient les deux : sans cette
-   * distinction, un client avec 2 templates et 25 propositions générées lit
-   * « 27 templates ».
+   * Une des valeurs de STORAGE_CATEGORY_ORDER, ou une catégorie plus récente
+   * que ce code : elle est conservée et rangée en fin de liste.
    */
-  generated: boolean;
-  /**
-   * Template maitre que plus aucune ligne `proposition_templates` ne
-   * reference : envoi abandonne, ou nettoyage best-effort qui a echoue. Il
-   * occupe reellement l'espace, il est donc compte -- mais a part.
-   */
-  orphan: boolean;
+  categorie: string;
   bytes: number;
   objects: number;
 };
 
-export type StorageBucketUsage = {
-  bucketId: string;
-  generated: boolean;
-  orphan: boolean;
+export type StorageCategoryUsage = {
+  category: string;
   bytes: number;
   objects: number;
 };
@@ -39,7 +45,7 @@ export type OrgStorageUsage = {
   organizationId: string | null;
   totalBytes: number;
   totalObjects: number;
-  buckets: StorageBucketUsage[];
+  categories: StorageCategoryUsage[];
 };
 
 /**
@@ -57,8 +63,17 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** Une catégorie inconnue de ce code passe en fin de liste plutôt que d'être perdue. */
+function categoryRank(category: string): number {
+  const index = (STORAGE_CATEGORY_ORDER as readonly string[]).indexOf(category);
+  return index === -1 ? STORAGE_CATEGORY_ORDER.length : index;
+}
+
 export function groupStorageUsage(rows: StorageUsageRpcRow[]): OrgStorageUsage[] {
-  const groups = new Map<string, OrgStorageUsage>();
+  const groups = new Map<
+    string,
+    { organizationId: string | null; totalBytes: number; totalObjects: number; parCategorie: Map<string, StorageCategoryUsage> }
+  >();
 
   for (const row of rows) {
     const key = row.organization_id ?? UNATTRIBUTED;
@@ -68,28 +83,35 @@ export function groupStorageUsage(rows: StorageUsageRpcRow[]): OrgStorageUsage[]
         organizationId: row.organization_id ?? null,
         totalBytes: 0,
         totalObjects: 0,
-        buckets: [],
+        parCategorie: new Map(),
       };
       groups.set(key, group);
     }
+
     const bytes = toNumber(row.bytes);
     const objects = toNumber(row.objects);
     group.totalBytes += bytes;
     group.totalObjects += objects;
-    group.buckets.push({
-      bucketId: row.bucket_id,
-      generated: row.generated === true,
-      orphan: row.orphan === true,
-      bytes,
-      objects,
-    });
+
+    // Une même catégorie peut venir de plusieurs buckets (les pièces jointes
+    // notamment) : elle doit rester une seule ligne.
+    const existing = group.parCategorie.get(row.categorie);
+    if (existing) {
+      existing.bytes += bytes;
+      existing.objects += objects;
+    } else {
+      group.parCategorie.set(row.categorie, { category: row.categorie, bytes, objects });
+    }
   }
 
-  for (const group of groups.values()) {
-    group.buckets.sort((a, b) => b.bytes - a.bytes);
-  }
-
-  return [...groups.values()].sort((a, b) => b.totalBytes - a.totalBytes);
+  return [...groups.values()]
+    .map(({ parCategorie, ...group }) => ({
+      ...group,
+      categories: [...parCategorie.values()].sort(
+        (a, b) => categoryRank(a.category) - categoryRank(b.category) || b.bytes - a.bytes,
+      ),
+    }))
+    .sort((a, b) => b.totalBytes - a.totalBytes);
 }
 
 /**
@@ -101,7 +123,7 @@ export async function fetchStorageUsage(
   organizationId?: string,
 ): Promise<OrgStorageUsage[]> {
   try {
-    // Filtrer en SQL : une fiche client n'a pas a faire agreger la totalite du
+    // Filtrer en SQL : une fiche client n'a pas à faire agréger la totalité du
     // stockage de la plateforme pour n'en garder qu'une ligne.
     const { data, error } = await client.rpc('admin_storage_usage_by_org', {
       p_organization_id: organizationId ?? null,

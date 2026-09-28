@@ -9,7 +9,7 @@ import {
   formatFileSize,
   formatSecteur,
 } from '@/lib/utils/formatting';
-import { StorageByBucketList } from '@/components/admin/UsageCostTables';
+import { StorageByCategoryList } from '@/components/admin/UsageCostTables';
 
 export default async function ClientDetailPage({
   params,
@@ -239,9 +239,9 @@ export default async function ClientDetailPage({
             </dd>
           </div>
         </div>
-        {stockageClient && stockageClient.buckets.length > 0 && (
+        {stockageClient && stockageClient.categories.length > 0 && (
           <div className="mt-4 max-w-sm border-t border-gray-100 pt-4">
-            <StorageByBucketList usage={stockageClient.buckets} />
+            <StorageByCategoryList usage={stockageClient.categories} />
           </div>
         )}
       </div>

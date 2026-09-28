@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { formatCurrency, formatDate, formatFileSize, formatTokens } from '@/lib/utils/formatting';
 import { formatUsd, usdToEur } from '@/lib/admin/currency';
 import type { OrgUsageTotals, PropositionUsageTotals, UsageTotals } from '@/lib/admin/usage-report';
-import type { StorageBucketUsage } from '@/lib/admin/storage-usage';
+import type { StorageCategoryUsage } from '@/lib/admin/storage-usage';
 
 /** Un total dont un appel a un tarif inconnu est signalé, jamais présenté comme exact. */
 function CostCell({ totals, rate }: { totals: UsageTotals; rate: number }) {
@@ -131,28 +131,39 @@ export function ExtractionCostTable({
   );
 }
 
-export function StorageByBucketList({ usage }: { usage: StorageBucketUsage[] }) {
+/** Libellés lisibles : le lecteur pense en métier, pas en buckets de stockage. */
+const CATEGORY_LABELS: Record<string, string> = {
+  pieces_jointes: 'Pièces jointes',
+  propositions_generees: 'Propositions générées',
+  templates: 'Templates',
+  logos: 'Logos',
+  images_catalogue: 'Images catalogue',
+  orphelins: 'Fichiers orphelins',
+  autres: 'Autres fichiers',
+};
+
+export function StorageByCategoryList({ usage }: { usage: StorageCategoryUsage[] }) {
   if (usage.length === 0) {
     return <p className="text-sm text-gray-500">Aucun fichier stocké.</p>;
   }
   return (
     <ul className="space-y-1 text-sm">
-      {usage.map((bucket) => (
-        <li key={`${bucket.bucketId}-${bucket.generated}-${bucket.orphan}`} className="flex justify-between gap-4">
-          <span className="text-gray-600">
-            {bucket.bucketId}
-            {bucket.generated && (
-              <span className="text-gray-400"> — documents générés</span>
-            )}
-            {bucket.orphan && (
-              <span className="text-orange-600"> — orphelins, plus référencés</span>
-            )}
-          </span>
-          <span className="text-gray-900">
-            {formatFileSize(bucket.bytes)} <span className="text-gray-400">({bucket.objects})</span>
-          </span>
-        </li>
-      ))}
+      {usage.map((item) => {
+        const orphelins = item.category === 'orphelins';
+        return (
+          <li key={item.category} className="flex justify-between gap-4">
+            <span className={orphelins ? 'text-orange-600' : 'text-gray-600'}>
+              {CATEGORY_LABELS[item.category] ?? item.category}
+              {orphelins && (
+                <span className="text-orange-500"> — plus référencés, espace récupérable</span>
+              )}
+            </span>
+            <span className={orphelins ? 'text-orange-600' : 'text-gray-900'}>
+              {formatFileSize(item.bytes)} <span className="text-gray-400">({item.objects})</span>
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
