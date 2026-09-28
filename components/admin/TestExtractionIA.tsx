@@ -8,9 +8,14 @@ interface Props {
   claudeModel: string;
   promptTemplate: string;
   secteur: string;
+  /**
+   * Organisation a laquelle imputer le cout du test. Absente depuis le
+   * formulaire de creation : l'organisation n'existe pas encore.
+   */
+  organizationId?: string;
 }
 
-export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, secteur }: Props) {
+export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, secteur, organizationId }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -73,6 +78,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
           claude_model: claudeModel,
           prompt_template: promptTemplate,
           secteur: secteur,
+          organization_id: organizationId ?? null,
         }),
       });
 

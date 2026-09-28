@@ -1,117 +1,40 @@
 // Client Claude AI pour l'extraction de données
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import fs from 'fs';
-import { ExtractionResult } from '@/types';
 import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { buildClaudeEffortConfig, buildClaudeModelOptions, getClaudeMaxOutputTokens, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
 import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAnalysisReport, type CanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
+import type { ClaudeCallUsage } from '@/lib/ai/claude-pricing';
+import { ClaudeCallError } from '@/lib/ai/claude-errors';
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-/**
- * Extrait les données de documents avec Claude AI
- * @param documentPaths - Chemins des documents à analyser
- * @param fieldsToExtract - Liste des champs à extraire
- * @param customPrompt - Prompt personnalisé du client
- * @param claudeModel - Modèle Claude à utiliser
- * @returns Résultat de l'extraction avec données, confiance et métriques
- */
-export async function extractWithClaude(
-  documentPaths: Array<{ path: string; type: string }>,
-  fieldsToExtract: string[],
-  customPrompt: string,
-  claudeModel: string = process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6'
-): Promise<ExtractionResult> {
-  try {
-    // Préparer les documents pour Claude
-    const documentContents = documentPaths.map((doc) => {
-      const buffer = fs.readFileSync(doc.path);
-      const mediaType: 'application/pdf' = doc.type as 'application/pdf';
-      return {
-        type: 'document' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: mediaType,
-          data: buffer.toString('base64'),
-        },
-      };
-    });
+export type { ClaudeCallUsage };
 
-    // Construire le prompt final
-    const finalPrompt = customPrompt
-      .replace('{liste_champs_actifs}', fieldsToExtract.map(f => `- ${f}`).join('\n'))
-      .replace('{documents}', '[Documents fournis ci-dessus]');
+/** Donnees d'un appel, accompagnees de sa consommation facturee. */
+export type WithUsage<T> = { data: T; usage: ClaudeCallUsage };
 
-    // Appel à Claude
-    const message = await anthropic.messages.create({
-      model: claudeModel,
-      max_tokens: 8192,
-      ...buildClaudeModelOptions(claudeModel),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            ...documentContents,
-            {
-              type: 'text',
-              text: finalPrompt,
-            },
-          ],
-        },
-      ],
-    });
-
-    // Parser la réponse (ignore les blocs "thinking" éventuels, ne prend que le texte)
-    const textBlock = message.content.find((block) => block.type === 'text');
-    const responseText = textBlock ? textBlock.text : '';
-
-    // Nettoyer et parser le JSON
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
-    const extractedData = JSON.parse(jsonStr);
-
-    // Calculer le coût (Prix Claude 3.5 Sonnet : $3/MTok input, $15/MTok output)
-    const inputTokens = message.usage.input_tokens;
-    const outputTokens = message.usage.output_tokens;
-    const cost = (inputTokens * 0.003) / 1000 + (outputTokens * 0.015) / 1000;
-
-    // Extraire les scores de confiance
-    const confidence: Record<string, number> = {};
-    for (const field of fieldsToExtract) {
-      // Si Claude retourne un format {valeur: "...", confiance: 95}
-      if (
-        extractedData[field] &&
-        typeof extractedData[field] === 'object' &&
-        'confidence' in extractedData[field]
-      ) {
-        confidence[field] = extractedData[field].confidence;
-        extractedData[field] = extractedData[field].value;
-      } else {
-        // Sinon, confiance par défaut 100%
-        confidence[field] = extractedData[field] ? 100 : 0;
-      }
-    }
-
-    return {
-      data: extractedData,
-      confidence,
-      tokensUsed: {
-        input: inputTokens,
-        output: outputTokens,
-        total: inputTokens + outputTokens,
-      },
-      cost,
-    };
-  } catch (error) {
-    console.error('Erreur extraction Claude:', error);
-    throw new Error(
-      `Échec de l'extraction avec Claude: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-    );
-  }
+/** Lit `message.usage` en traitant les compteurs de cache absents comme zero. */
+function readUsage(
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+  },
+  model: string,
+): ClaudeCallUsage {
+  return {
+    model,
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+  };
 }
 
 /**
@@ -206,7 +129,7 @@ export async function extractDataFromDocuments(options: {
   prompt_template: string;
   claude_model: string;
   claude_effort?: string | null;
-}): Promise<Record<string, unknown>> {
+}): Promise<WithUsage<Record<string, unknown>>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
   const documentContents = await prepareDocumentsForClaude(documents_urls);
 
@@ -306,10 +229,10 @@ export async function extractDataFromDocuments(options: {
       }
       
       console.log(`✅ Données filtrées: ${Object.keys(filteredData).length} champs (sur ${champs_actifs.length} demandés)`);
-      return filteredData;
+      return { data: filteredData, usage: readUsage(message.usage, modelToUse) };
     }
-    
-    return parsedData;
+
+    return { data: parsedData, usage: readUsage(message.usage, modelToUse) };
   } catch (error: unknown) {
     console.error(`❌ Erreur lors de l'appel à Claude:`, error);
     const maybeError = error as { message?: unknown; response?: unknown };
@@ -326,7 +249,7 @@ export async function analyzeInvoicesForSa(options: {
   active_fields: string[];
   claude_model: string;
   claude_effort?: string | null;
-}): Promise<InvoiceAnalysisReport> {
+}): Promise<WithUsage<InvoiceAnalysisReport>> {
   const documentContents = await prepareDocumentsForClaude(options.documents_urls);
   const fields = options.active_fields.map((field) => `- ${field}`).join('\n');
   const prompt = `Tu es un analyste expert des factures télécom B2B. Ta priorité absolue est de déterminer exactement le TOTAL HT MENSUEL réellement payé par le client sur l'ensemble des documents.
@@ -361,8 +284,13 @@ Le résumé (summary) tient en 3 à 5 phrases : le total HT mensuel de chaque fa
     },
   });
   const message = await stream.finalMessage();
-  if (!message.parsed_output) throw new Error("L'analyse comptable Claude n'a pas retourné de résultat structuré.");
-  return normalizeInvoiceAnalysisOutput(message.parsed_output);
+  const usage = readUsage(message.usage, options.claude_model);
+  // L'appel a déjà été facturé en entier : l'erreur transporte sa consommation
+  // pour que la dépense soit enregistrée malgré l'échec.
+  if (!message.parsed_output) {
+    throw new ClaudeCallError("L'analyse comptable Claude n'a pas retourné de résultat structuré.", usage);
+  }
+  return { data: normalizeInvoiceAnalysisOutput(message.parsed_output), usage };
 }
 
 export async function structureSaAnalysis(options: {
@@ -370,7 +298,7 @@ export async function structureSaAnalysis(options: {
   canonical: CanonicalSaAnalysis;
   active_fields: string[];
   claude_model: string;
-}): Promise<StructuredSa> {
+}): Promise<WithUsage<StructuredSa>> {
   const prompt = `Tu es un agent de structuration. Tu ne relis pas les factures et tu ne refais aucun calcul. Transforme fidèlement le rapport d'analyse fourni dans le schéma demandé.
 
 Tous les champs actifs doivent être représentés à partir de field_coverage. Ajoute exactement une entrée mapped_fields pour chaque champ actif, avec le nom strictement identique et la valeur sérialisée dans value_json. Le schéma n'accepte pas null : utilise une chaîne vide pour un texte ou une value_json absente, et 0 pour preavis_mois absent. Une donnée marquée not_found utilise value_json="" et reste absente ou un tableau vide dans la structure. N'invente aucune information. Ne modifie jamais total_ht_mensuel_client ni les montants canoniques: le backend les injectera après ta réponse.
@@ -412,25 +340,10 @@ ${JSON.stringify(options.canonical)}`;
     },
   });
   const message = await stream.finalMessage();
-  if (!message.parsed_output) throw new Error("La structuration Claude n'a pas retourné de résultat structuré.");
-  return normalizeStructuredSaOutput(message.parsed_output);
+  const usage = readUsage(message.usage, options.claude_model);
+  if (!message.parsed_output) {
+    throw new ClaudeCallError("La structuration Claude n'a pas retourné de résultat structuré.", usage);
+  }
+  return { data: normalizeStructuredSaOutput(message.parsed_output), usage };
 }
 
-/**
- * Estime le coût d'une extraction basée sur la taille des documents
- * @param documentSizesMB - Tailles des documents en MB
- * @returns Coût estimé en euros
- */
-export function estimateExtractionCost(documentSizesMB: number[]): number {
-  // Estimation approximative : 1MB ≈ 300 tokens
-  const totalTokens = documentSizesMB.reduce((sum, size) => sum + size * 300, 0);
-  
-  // Ajouter les tokens de sortie estimés (environ 500 tokens)
-  const inputTokens = totalTokens;
-  const outputTokens = 500;
-  
-  // Calculer le coût
-  const cost = (inputTokens * 0.003) / 1000 + (outputTokens * 0.015) / 1000;
-  
-  return Math.round(cost * 100) / 100; // Arrondir à 2 décimales
-}

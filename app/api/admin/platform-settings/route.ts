@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 
-const ALLOWED_KEYS = new Set(['tarif_par_proposition_defaut']);
+const ALLOWED_KEYS = new Set(['tarif_par_proposition_defaut', 'usd_to_eur_rate']);
 
 export async function GET() {
   try {

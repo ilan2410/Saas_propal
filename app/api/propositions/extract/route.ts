@@ -8,6 +8,7 @@ import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/l
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -653,12 +654,19 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     let extractedData: Record<string, unknown>;
     if (useSaPipeline) {
-      const report = await analyzeInvoicesForSa({
-        documents_urls,
-        active_fields: activeFields,
-        claude_model: modelToUse,
-        claude_effort: effortToUse,
-      });
+      // L'enregistrement suit chaque appel : si la structuration echoue, le cout
+      // de l'analyse (le plus lourd) reste comptabilise. C'est precisement le cas
+      // ou l'ecart avec les credits debites est maximal, puisque le debit
+      // n'intervient qu'en cas de succes.
+      const report = await runAndLogAiUsage(
+        { organizationId: ctx.organizationId, propositionId: proposition.id, userId: user.id, operation: 'sa_analysis' },
+        () => analyzeInvoicesForSa({
+          documents_urls,
+          active_fields: activeFields,
+          claude_model: modelToUse,
+          claude_effort: effortToUse,
+        }),
+      );
       const coveredFields = new Set(report.field_coverage.map((item) => item.field));
       for (const field of activeFields) {
         if (!coveredFields.has(field)) {
@@ -672,21 +680,27 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         }
       }
       const canonical = calculateCanonicalSaAnalysis(report, activeFields, inclureChargesVariables);
-      const structured = await structureSaAnalysis({
-        report,
-        canonical,
-        active_fields: activeFields,
-        claude_model: modelToUse,
-      });
+      const structured = await runAndLogAiUsage(
+        { organizationId: ctx.organizationId, propositionId: proposition.id, userId: user.id, operation: 'sa_structuring' },
+        () => structureSaAnalysis({
+          report,
+          canonical,
+          active_fields: activeFields,
+          claude_model: modelToUse,
+        }),
+      );
       extractedData = buildLegacySaData(structured, report, canonical, inclureChargesVariables);
     } else {
-      extractedData = await extractDataFromDocuments({
-        documents_urls,
-        champs_actifs: activeFields,
-        prompt_template: promptToUse,
-        claude_model: modelToUse,
-        claude_effort: effortToUse,
-      });
+      extractedData = await runAndLogAiUsage(
+        { organizationId: ctx.organizationId, propositionId: proposition.id, userId: user.id, operation: 'extraction' },
+        () => extractDataFromDocuments({
+          documents_urls,
+          champs_actifs: activeFields,
+          prompt_template: promptToUse,
+          claude_model: modelToUse,
+          claude_effort: effortToUse,
+        }),
+      );
     }
 
     // Post-traitement bureautique : garantir des arrays d'au moins N éléments

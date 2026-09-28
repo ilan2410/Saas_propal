@@ -6,8 +6,10 @@ import { TeleprosManager } from '@/components/settings/TeleprosManager';
 import {
   formatCurrency,
   formatDate,
+  formatFileSize,
   formatSecteur,
 } from '@/lib/utils/formatting';
+import { StorageByBucketList } from '@/components/admin/UsageCostTables';
 
 export default async function ClientDetailPage({
   params,
@@ -61,6 +63,32 @@ export default async function ClientDetailPage({
     .eq('organization_id', id)
     .order('created_at', { ascending: false })
     .limit(10);
+
+  // Coût IA et stockage de ce client
+  const { fetchStorageUsage } = await import('@/lib/admin/storage-usage');
+  const { aggregateByOrganization } = await import('@/lib/admin/usage-report');
+  const { formatUsd, parseUsdToEurRate, usdToEur } = await import('@/lib/admin/currency');
+  type UsageRow = import('@/lib/admin/usage-report').UsageRow;
+
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+
+  const [usageMonth, usageAll, settings, storage] = await Promise.all([
+    supabase.from('ai_usage_events')
+      .select('organization_id, proposition_id, operation, model, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, cost_usd, created_at')
+      .eq('organization_id', id)
+      .gte('created_at', monthStart),
+    supabase.from('ai_usage_events').select('cost_usd, operation').eq('organization_id', id),
+    supabase.from('platform_settings').select('key, value').eq('key', 'usd_to_eur_rate'),
+    fetchStorageUsage(supabase, id),
+  ]);
+
+  const rate = parseUsdToEurRate((settings.data ?? [])[0]?.value);
+  const moisCourant = aggregateByOrganization((usageMonth.data ?? []) as unknown as UsageRow[])[0];
+  const coutCumuleUsd = (usageAll.data ?? [])
+    .filter((row) => row.operation !== 'admin_test')
+    .reduce((sum, row) => sum + (row.cost_usd === null ? 0 : Number(row.cost_usd)), 0);
+  const stockageClient = storage.find((entry) => entry.organizationId === id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -177,6 +205,45 @@ export default async function ClientDetailPage({
             </dd>
           </div>
         </div>
+      </div>
+
+      {/* Coût IA & stockage */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Coût IA &amp; stockage</h2>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+          <div>
+            <dt className="text-sm text-gray-600">Coût Claude ce mois</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900">
+              {formatUsd(moisCourant?.totals.costUsd ?? 0)}{' '}
+              <span className="text-gray-500">
+                ({formatCurrency(usdToEur(moisCourant?.totals.costUsd ?? 0, rate))})
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-gray-600">Extractions ce mois</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900">{moisCourant?.extractions ?? 0}</dd>
+          </div>
+          <div>
+            <dt className="text-sm text-gray-600">Coût Claude cumulé</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900">
+              {formatUsd(coutCumuleUsd)}{' '}
+              <span className="text-gray-500">({formatCurrency(usdToEur(coutCumuleUsd, rate))})</span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-gray-600">Stockage (à aujourd&apos;hui)</dt>
+            <dd className="mt-1 text-sm font-medium text-gray-900">
+              {formatFileSize(stockageClient?.totalBytes ?? 0)}
+              <span className="text-gray-500"> · {stockageClient?.totalObjects ?? 0} fichier(s)</span>
+            </dd>
+          </div>
+        </div>
+        {stockageClient && stockageClient.buckets.length > 0 && (
+          <div className="mt-4 max-w-sm border-t border-gray-100 pt-4">
+            <StorageByBucketList usage={stockageClient.buckets} />
+          </div>
+        )}
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-6">
