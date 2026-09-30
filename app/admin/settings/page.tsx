@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { PromptDefaultsForm } from '@/components/admin/PromptDefaultsForm';
 import { PlatformSettingsForm } from '@/components/admin/PlatformSettingsForm';
 import { parseUsdToEurRate } from '@/lib/admin/currency';
-import { Euro, MessageSquare, Settings } from 'lucide-react';
+import { TemplateModelMigration } from '@/components/admin/TemplateModelMigration';
+import { Cpu, Euro, MessageSquare, Settings } from 'lucide-react';
 
 export const revalidate = 0;
 
@@ -94,6 +95,22 @@ export default async function AdminSettingsPage() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
           <PromptDefaultsForm initialPromptDefaults={initialPromptDefaults} />
+        </div>
+      </section>
+
+      {/* Section 3 : Modèle d'extraction */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Cpu className="w-5 h-5 text-blue-700" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Modèle d&apos;extraction</h2>
+            <p className="text-sm text-gray-500">Basculer d&apos;un coup tous les templates existants vers un modèle Claude</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <TemplateModelMigration />
         </div>
       </section>
     </div>

@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis } from '@/lib/ai/claude';
 import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { buildLegacySaData } from '@/lib/sa/structure-sa';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 export async function POST(request: NextRequest) {
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     // Extraire les données avec Claude
     const activeFields = (champs_actifs as unknown[]).filter((field): field is string => typeof field === 'string');
-    const model = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+    const model = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
     const hasSituationActuelle = activeFields.some((field) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.'));
     const hasNonTelecomFields = activeFields.some((field) => !(
       field === 'fournisseur' || field.startsWith('fournisseur.') ||
