@@ -1,15 +1,23 @@
 export const CLAUDE_MODELS = [
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Recommandé)', legacy: false },
+  { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (Recommandé, thinking adaptatif)', legacy: false },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', legacy: false },
   { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 (Thinking adaptatif)', legacy: false },
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 (Legacy)', legacy: true },
   { value: 'claude-3-7-sonnet-20250219', label: 'Claude Sonnet 3.7 (Legacy)', legacy: true },
   { value: 'claude-3-5-sonnet-20241022', label: 'Claude Sonnet 3.5 (Legacy)', legacy: true },
 ] as const;
 
-export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';
+
+/**
+ * Modèles à thinking adaptatif : ils rejettent toute `temperature` non-défaut
+ * (400) et exposent `output_config.effort`. Sonnet 5.5 reprend les réglages de
+ * Sonnet 5 à l'identique (pas de `budget_tokens`, pas de `tool_choice` forcé ici).
+ */
+const ADAPTIVE_THINKING_MODELS: readonly string[] = ['claude-sonnet-5', 'claude-sonnet-5-5'];
 
 export function buildClaudeModelOptions(model: string) {
-  if (model === 'claude-sonnet-5') {
+  if (ADAPTIVE_THINKING_MODELS.includes(model)) {
     return { thinking: { type: 'adaptive' as const } };
   }
   return { temperature: 0 };
@@ -39,9 +47,9 @@ export const DEFAULT_CLAUDE_EFFORT: ClaudeEffort = 'medium';
  */
 export const STRUCTURING_CLAUDE_EFFORT: ClaudeEffort = 'low';
 
-/** `output_config.effort` n'est exploité que sur Sonnet 5 pour l'instant. */
+/** `output_config.effort` n'est exploité que sur les modèles à thinking adaptatif. */
 export function supportsClaudeEffort(model: string): boolean {
-  return model === 'claude-sonnet-5';
+  return ADAPTIVE_THINKING_MODELS.includes(model);
 }
 
 /**

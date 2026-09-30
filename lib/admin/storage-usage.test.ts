@@ -1,27 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { fetchStorageUsage, groupStorageUsage, type StorageUsageRpcRow } from './storage-usage';
 
-describe('groupStorageUsage', () => {
-  it('regroupe les buckets par organisation et totalise', () => {
-    const rows: StorageUsageRpcRow[] = [
-      { organization_id: 'org-1', bucket_id: 'documents', generated: false, orphan: false, bytes: 1000, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'proposition-attachments', generated: false, orphan: false, bytes: 500, objects: 1 },
-      { organization_id: 'org-2', bucket_id: 'documents', generated: false, orphan: false, bytes: 200, objects: 1 },
-    ];
+function row(overrides: Partial<StorageUsageRpcRow> = {}): StorageUsageRpcRow {
+  return {
+    organization_id: 'org-1',
+    categorie: 'templates',
+    bytes: 1000,
+    objects: 1,
+    ...overrides,
+  };
+}
 
-    const result = groupStorageUsage(rows);
+describe('groupStorageUsage', () => {
+  it('regroupe les catégories par organisation et totalise', () => {
+    const result = groupStorageUsage([
+      row({ organization_id: 'org-1', categorie: 'pieces_jointes', bytes: 1000, objects: 2 }),
+      row({ organization_id: 'org-1', categorie: 'templates', bytes: 500, objects: 1 }),
+      row({ organization_id: 'org-2', categorie: 'pieces_jointes', bytes: 200, objects: 1 }),
+    ]);
 
     expect(result).toHaveLength(2);
     expect(result[0].organizationId).toBe('org-1');
     expect(result[0].totalBytes).toBe(1500);
     expect(result[0].totalObjects).toBe(3);
-    expect(result[0].buckets).toHaveLength(2);
+    expect(result[0].categories).toHaveLength(2);
   });
 
-  it('trie du plus gros au plus petit', () => {
+  it('trie les organisations du plus gros au plus petit', () => {
     const result = groupStorageUsage([
-      { organization_id: 'petit', bucket_id: 'documents', generated: false, orphan: false, bytes: 10, objects: 1 },
-      { organization_id: 'gros', bucket_id: 'documents', generated: false, orphan: false, bytes: 10_000, objects: 1 },
+      row({ organization_id: 'petit', bytes: 10 }),
+      row({ organization_id: 'gros', bytes: 10_000 }),
     ]);
 
     expect(result.map((item) => item.organizationId)).toEqual(['gros', 'petit']);
@@ -29,7 +37,7 @@ describe('groupStorageUsage', () => {
 
   it('conserve les fichiers non attribués sous organizationId null', () => {
     const result = groupStorageUsage([
-      { organization_id: null, bucket_id: 'propositions', generated: false, orphan: false, bytes: 4242, objects: 7 },
+      row({ organization_id: null, categorie: 'autres', bytes: 4242, objects: 7 }),
     ]);
 
     expect(result).toHaveLength(1);
@@ -39,11 +47,56 @@ describe('groupStorageUsage', () => {
 
   it('traite une taille absente comme zéro', () => {
     const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: null, objects: 1 },
+      { organization_id: 'org-1', categorie: 'templates', bytes: null, objects: 1 },
     ] as unknown as StorageUsageRpcRow[]);
 
     expect(result[0].totalBytes).toBe(0);
     expect(result[0].totalObjects).toBe(1);
+  });
+
+  it('additionne deux lignes de même catégorie', () => {
+    // Les pièces jointes viennent de deux buckets distincts : elles doivent
+    // apparaître sur une seule ligne, pas deux.
+    const result = groupStorageUsage([
+      row({ categorie: 'pieces_jointes', bytes: 100, objects: 1 }),
+      row({ categorie: 'pieces_jointes', bytes: 400, objects: 3 }),
+    ]);
+
+    expect(result[0].categories).toHaveLength(1);
+    expect(result[0].categories[0].bytes).toBe(500);
+    expect(result[0].categories[0].objects).toBe(4);
+  });
+
+  it('classe les catégories dans un ordre métier stable, anomalies en fin', () => {
+    // Un ordre fixe rend deux fiches clients comparables d'un coup d'œil et
+    // laisse les anomalies (orphelins, non classés) en bas.
+    const result = groupStorageUsage([
+      row({ categorie: 'autres', bytes: 9_000_000 }),
+      row({ categorie: 'orphelins', bytes: 8_000_000 }),
+      row({ categorie: 'logos', bytes: 10 }),
+      row({ categorie: 'templates', bytes: 20 }),
+      row({ categorie: 'propositions_generees', bytes: 30 }),
+      row({ categorie: 'pieces_jointes', bytes: 40 }),
+    ]);
+
+    expect(result[0].categories.map((c) => c.category)).toEqual([
+      'pieces_jointes',
+      'propositions_generees',
+      'templates',
+      'logos',
+      'orphelins',
+      'autres',
+    ]);
+  });
+
+  it('range une catégorie inconnue en fin de liste sans la perdre', () => {
+    const result = groupStorageUsage([
+      row({ categorie: 'templates', bytes: 20, objects: 1 }),
+      row({ categorie: 'categorie_future', bytes: 50, objects: 2 }),
+    ]);
+
+    expect(result[0].totalObjects).toBe(3);
+    expect(result[0].categories.at(-1)?.category).toBe('categorie_future');
   });
 });
 
@@ -54,7 +107,7 @@ describe('fetchStorageUsage', () => {
       async rpc(name: string) {
         appels.push(name);
         return {
-          data: [{ organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 }],
+          data: [{ organization_id: 'org-1', categorie: 'templates', bytes: 10, objects: 1 }],
           error: null,
         };
       },
@@ -75,9 +128,7 @@ describe('fetchStorageUsage', () => {
 
     await expect(fetchStorageUsage(client)).resolves.toEqual([]);
   });
-});
 
-describe('fetchStorageUsage — filtre par organisation', () => {
   it('transmet l’organisation à la fonction SQL au lieu de tout scanner', async () => {
     // Sans ce paramètre, l'ouverture d'une fiche client agrège la totalité du
     // stockage de la plateforme pour n'en garder qu'une ligne.
@@ -118,59 +169,5 @@ describe('fetchStorageUsage — filtre par organisation', () => {
     };
 
     await expect(fetchStorageUsage(client as never)).resolves.toEqual([]);
-  });
-});
-
-describe('groupStorageUsage — documents générés', () => {
-  it('sépare les templates maîtres des propositions générées', () => {
-    // Le bucket `templates` contient aussi tout ce que les générateurs
-    // écrivent sous generated/<orgId>/ : les additionner sur une seule ligne
-    // fait lire "27 templates" à un client qui n'en a que deux.
-    const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: false, bytes: 200, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'templates', generated: true, orphan: false, bytes: 32_000, objects: 25 },
-    ]);
-
-    expect(result[0].buckets).toHaveLength(2);
-    expect(result[0].buckets.find((b) => b.generated)?.objects).toBe(25);
-    expect(result[0].buckets.find((b) => !b.generated)?.objects).toBe(2);
-    expect(result[0].totalObjects).toBe(27);
-    expect(result[0].totalBytes).toBe(32_200);
-  });
-
-  it('traite un drapeau absent comme non généré', () => {
-    const result = groupStorageUsage([
-      // Volontairement sans `generated` : ce que rendrait une base ou la
-      // migration de separation n'a pas encore ete appliquee.
-      { organization_id: 'org-1', bucket_id: 'documents', bytes: 10, objects: 1 },
-    ] as unknown as StorageUsageRpcRow[]);
-
-    expect(result[0].buckets[0].generated).toBe(false);
-  });
-});
-
-describe('groupStorageUsage - fichiers orphelins', () => {
-  it('isole les templates que plus aucun template ne reference', () => {
-    // Cas reel : un client avec 2 templates trainait 6 fichiers orphelins,
-    // laisses par des envois abandonnes et des suppressions best-effort.
-    const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: false, bytes: 1_980_000, objects: 2 },
-      { organization_id: 'org-1', bucket_id: 'templates', generated: false, orphan: true, bytes: 5_280_000, objects: 6 },
-    ]);
-
-    const utilises = result[0].buckets.find((b) => !b.orphan);
-    const orphelins = result[0].buckets.find((b) => b.orphan);
-
-    expect(utilises?.objects).toBe(2);
-    expect(orphelins?.objects).toBe(6);
-    expect(result[0].totalObjects).toBe(8);
-  });
-
-  it('traite un drapeau orphan absent comme non orphelin', () => {
-    const result = groupStorageUsage([
-      { organization_id: 'org-1', bucket_id: 'documents', generated: false, bytes: 10, objects: 1 },
-    ] as unknown as StorageUsageRpcRow[]);
-
-    expect(result[0].buckets[0].orphan).toBe(false);
   });
 });

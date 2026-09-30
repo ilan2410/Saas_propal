@@ -4,6 +4,7 @@ import {
   buildClaudeModelOptions,
   CLAUDE_MODELS,
   DEFAULT_CLAUDE_EFFORT,
+  DEFAULT_CLAUDE_MODEL,
   getClaudeMaxOutputTokens,
   STRUCTURING_CLAUDE_EFFORT,
   supportsClaudeEffort,
@@ -18,6 +19,14 @@ describe('Claude Sonnet model configuration', () => {
     const options = buildClaudeModelOptions('claude-sonnet-5');
     expect(options).toEqual({ thinking: { type: 'adaptive' } });
     expect(options).not.toHaveProperty('temperature');
+  });
+
+  it('reprend les réglages de Sonnet 5 pour Sonnet 5.5 et en fait le défaut', () => {
+    expect(buildClaudeModelOptions('claude-sonnet-5-5')).toEqual({ thinking: { type: 'adaptive' } });
+    expect(supportsClaudeEffort('claude-sonnet-5-5')).toBe(true);
+    expect(buildClaudeEffortConfig('claude-sonnet-5-5', undefined)).toEqual({ effort: 'medium' });
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-5-5');
+    expect(CLAUDE_MODELS.some((model) => model.value === DEFAULT_CLAUDE_MODEL)).toBe(true);
   });
 
   it('ne propose que des modèles Sonnet', () => {

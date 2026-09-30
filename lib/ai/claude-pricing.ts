@@ -29,6 +29,7 @@ export const CACHE_READ_MULTIPLIER = 0.1;
 
 /** Grille publique Anthropic, en USD par million de tokens. */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
+  'claude-sonnet-5-5': { inputPerMTok: 2, outputPerMTok: 10 },
   'claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 },
   'claude-sonnet-4-6': { inputPerMTok: 3, outputPerMTok: 15 },
   'claude-sonnet-4-5-20250929': { inputPerMTok: 3, outputPerMTok: 15 },

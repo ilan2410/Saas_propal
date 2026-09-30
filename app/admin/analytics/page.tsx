@@ -17,6 +17,7 @@ import {
   ExtractionCostTable,
   OrganizationCostTable,
 } from '@/components/admin/UsageCostTables';
+import { OrphanCleanupButton } from '@/components/admin/OrphanCleanupButton';
 
 export const revalidate = 0;
 
@@ -197,7 +198,10 @@ export default async function AdminAnalyticsPage({
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-xl font-bold text-gray-900">Par client</h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-bold text-gray-900">Par client</h2>
+          <OrphanCleanupButton />
+        </div>
         <OrganizationCostTable rows={byOrganization} names={names} storageByOrg={storageByOrg} rate={rate} />
       </section>
 

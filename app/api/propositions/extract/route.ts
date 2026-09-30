@@ -8,6 +8,7 @@ import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/l
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -481,7 +482,7 @@ DOCUMENT(S):
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
-    const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+    const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
 
     // Niveau d'effort de raisonnement, réglable par template (file_config.claude_effort).
     // N'a d'effet que sur Sonnet 5 ; sinon ignoré côté lib/ai/claude.

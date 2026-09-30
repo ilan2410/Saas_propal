@@ -2,7 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
-import { buildClaudeEffortConfig, buildClaudeModelOptions, getClaudeMaxOutputTokens, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
+import { buildClaudeEffortConfig, buildClaudeModelOptions, DEFAULT_CLAUDE_MODEL, getClaudeMaxOutputTokens, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
 import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAnalysisReport, type CanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
@@ -144,7 +144,7 @@ export async function extractDataFromDocuments(options: {
   console.log(`📝 Nombre de champs à extraire: ${champs_actifs.length}`);
   
   try {
-    const modelToUse = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || 'claude-sonnet-4-6';
+    const modelToUse = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
     const effortConfig = buildClaudeEffortConfig(modelToUse, options.claude_effort);
 
     const message = await anthropic.messages.create({
