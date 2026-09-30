@@ -63,7 +63,7 @@ export function EditableClientName({
             event.stopPropagation();
             setEditing(true);
           }}
-          className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 focus-visible:opacity-100"
+          className="shrink-0 rounded p-1 text-slate-400 transition-opacity hover:bg-slate-100 hover:text-slate-600 focus-visible:opacity-100 md:p-0.5 md:text-slate-300 md:opacity-0 md:group-hover:opacity-100"
           title="Modifier le nom du client"
           aria-label="Modifier le nom du client"
         >
