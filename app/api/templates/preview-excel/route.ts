@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { createClient } from '@/lib/supabase/server';
-import { buildPropositionBaseData, fillExcelWorkbook } from '@/lib/generators';
+import { buildPropositionBaseData } from '@/lib/generators/base-data';
+import { fillExcelWorkbook } from '@/lib/generators/excel-proposition';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
