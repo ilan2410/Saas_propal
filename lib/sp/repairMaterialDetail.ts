@@ -49,6 +49,7 @@ export function repairMaterialDetailFromQuestionnaire(
     return {
       sp_materiel_nom: line.produitNom,
       sp_materiel_ref: undefined,
+      sp_materiel_quantite: String(line.quantite),
       sp_materiel_fournisseur: cat?.fournisseur,
       sp_materiel_prix_mensuel: formatEuro(line.prixTotal),
       sp_materiel_duree_engagement: '',

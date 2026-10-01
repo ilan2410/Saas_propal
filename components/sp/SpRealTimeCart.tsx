@@ -599,6 +599,7 @@ export function SpRealTimeCart({
       `numero_${iid}`,
       `libre_${iid}`,
       `options_${iid}`,
+      `quantite_options_${iid}`,
     ]);
 
     let next = [...reponses];
@@ -624,6 +625,14 @@ export function SpRealTimeCart({
         } else {
           next = next.map((r) => (r.question_id === iid ? { ...r, valeur: JSON.stringify(filtered) } : r));
         }
+        next = next.flatMap((r) => {
+          if (![`quantite_${iid}`, `prix_${iid}`, `fas_${iid}`, `numero_${iid}`].includes(r.question_id)) return [r];
+          const values = parseJsonMap(r.valeur);
+          if (!values) return filtered.length ? [r] : [];
+          delete values[line.produitId ?? ''];
+          delete values[line.produitNom];
+          return Object.keys(values).length ? [{ ...r, valeur: JSON.stringify(values) }] : [];
+        });
       }
       onUpdateReponses?.(next);
       return;

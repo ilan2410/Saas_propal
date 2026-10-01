@@ -17,6 +17,7 @@ import {
   DEFAULT_CONFIG_LOYER,
   type ResultatLoyer,
 } from './calculLoyer';
+import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from './evaluateBareme';
 import { collectQuestionVariableValues } from './questionVariables';
 import { evaluateGroupes } from './evaluateConditions';
@@ -90,12 +91,12 @@ function parseJsonRecord(value: SpQuestionReponse['valeur']): Record<string, str
   return null;
 }
 
-function getQuantite(reponses: SpQuestionReponse[], instanceId: string, produitNom: string): number {
+function getQuantite(reponses: SpQuestionReponse[], instanceId: string, produitNom: string, produitId?: string): number {
   const rep = reponses.find((r) => r.question_id === `quantite_${instanceId}`);
   if (!rep) return 1;
   const asMap = parseJsonRecord(rep.valeur);
   if (asMap) {
-    const q = Number(asMap[produitNom]);
+    const q = Number(asMap[produitNom] ?? (produitId && asMap[produitId]));
     return Number.isFinite(q) && q > 0 ? q : 1;
   }
   const q = Number(rep.valeur);
@@ -424,12 +425,14 @@ export function calculateCartSummary(
     for (const key of optionKeys) {
       const produit = findProduct(catalogue, key);
       if (!produit) continue;
-      const quantite = getQuantite(reponses, rep.question_id, produit.nom);
+      const quantite = getQuantite(reponses, rep.question_id, produit.nom, produit.id);
       const prixOverride = getPrixOverride(reponses, rep.question_id, produit.nom, produit.id);
+      const resolved = resolvePrixPourQuantite(produit, quantite);
       const prixTotal = prixOverride != null
         ? prixOverride
-        : defaultPrixUnitaire(produit) * quantite;
+        : ((produit.type_frequence === 'mensuel' ? resolved.prix_mensuel : resolved.prix_vente) ?? 0) * quantite;
       const fasOverride = getFas(reponses, rep.question_id, produit.nom);
+      const fasUnitaire = resolved.prix_installation ?? 0;
       lines.push({
         produitNom: produit.nom,
         produitId: produit.id,
@@ -437,7 +440,7 @@ export function calculateCartSummary(
         type_frequence: produit.type_frequence,
         quantite,
         prixTotal,
-        fasTotal: fasOverride || produit.prix_installation || 0,
+        fasTotal: fasOverride || fasUnitaire * (produit.mode_fas === 'multiplie_par_quantite' ? quantite : 1),
         instanceId: rep.question_id,
       });
     }

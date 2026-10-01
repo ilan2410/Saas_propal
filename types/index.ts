@@ -746,6 +746,7 @@ export interface SpInternet extends SpLigneBase {
 export interface SpMateriel {
   sp_materiel_nom: string;
   sp_materiel_ref?: string;
+  sp_materiel_quantite?: string;
   sp_materiel_prix_mensuel: string;
   sp_materiel_duree_engagement: string;
   sp_materiel_commentaire: string;

@@ -256,6 +256,7 @@ function buildSpMateriel(raw: UnknownRecord, priceOverrides: Map<string, number>
   return {
     sp_materiel_nom: String(raw.sp_materiel_nom ?? ''),
     sp_materiel_ref: typeof raw.sp_materiel_ref === 'string' ? raw.sp_materiel_ref : undefined,
+    sp_materiel_quantite: typeof raw.sp_materiel_quantite === 'string' ? raw.sp_materiel_quantite : undefined,
     sp_materiel_prix_mensuel: formatEuro(prix),
     sp_materiel_duree_engagement: String(raw.sp_materiel_duree_engagement ?? ''),
     sp_materiel_commentaire: String(raw.sp_materiel_commentaire ?? ''),
@@ -554,6 +555,7 @@ function buildSpCompletes(
       sp_materiel.push({
         sp_materiel_nom: line.produitNom,
         sp_materiel_ref: line.numero || undefined,
+        sp_materiel_quantite: String(line.quantite),
         sp_materiel_prix_mensuel: formatEuro(line.prixTotal),
         sp_materiel_duree_engagement: catItem?.engagement_mois ? `${catItem.engagement_mois} mois` : '',
         sp_materiel_commentaire: '',
@@ -759,6 +761,7 @@ function buildSpCompletes(
   const toSituationMateriel = (m: SpMateriel): SpSituationProposeeLigne => ({
     sp_sp_type: 'Materiel',
     sp_sp_nom: m.sp_materiel_nom,
+    sp_sp_quantite: m.sp_materiel_quantite ?? '1',
     sp_sp_produit: m.sp_materiel_nom,
     sp_sp_fournisseur: m.sp_materiel_fournisseur,
     sp_sp_prix_actuel: undefined,
@@ -808,7 +811,7 @@ function buildSpCompletes(
       sp_matd_nom: m.sp_materiel_nom,
       sp_matd_ref: m.sp_materiel_ref,
       sp_matd_fournisseur: m.sp_materiel_fournisseur,
-      sp_matd_quantite: '1',
+      sp_matd_quantite: m.sp_materiel_quantite ?? '1',
       sp_matd_prix_ht: m.sp_materiel_prix_mensuel,
       sp_matd_description: description,
       sp_matd_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
@@ -908,7 +911,7 @@ function buildSpCompletes(
         sp_bdc_mat_nom: m.sp_materiel_nom,
         sp_bdc_mat_ref: m.sp_materiel_ref,
         sp_bdc_mat_fournisseur: m.sp_materiel_fournisseur,
-        sp_bdc_mat_quantite: '1',
+        sp_bdc_mat_quantite: m.sp_materiel_quantite ?? '1',
         sp_bdc_mat_prix_ht: m.sp_materiel_prix_mensuel,
         sp_bdc_mat_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
         _prix_raw: m._prix_mensuel_raw,

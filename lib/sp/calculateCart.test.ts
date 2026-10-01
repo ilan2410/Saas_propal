@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogueCategorie, CatalogueProduit, SpQuestion } from '@/types';
+import type { CatalogueCategorie, CatalogueProduit, SpQuestion, SuggestionsSpCompletes } from '@/types';
 import { calculateCartSummary } from './calculateCart';
+import { buildSolutionProposeeLines } from './buildExportSaSpData';
+import { orderProductsByPreference } from './productTableOrder';
+import { repairSpCompletesFromQuestionnaire } from './repairSpCompletes';
 import { calculerBaseLoyer, calculerLoyer, resolveTotalMensuelFinal, DEFAULT_BAREME } from './calculLoyer';
 import { calculerPrixRemiseProduit, getEligibleDiscountProducts, resolveRemiseProduit } from './evaluateDiscountRules';
 
@@ -41,6 +44,92 @@ function question(id: string): SpQuestion {
     priorite_ia: 'normale',
   };
 }
+
+describe('calculateCartSummary — quantités des options', () => {
+  const parent = product('fibre', 'Fibre', 'internet', 'mensuel', 50);
+  const option = product('gtr', 'GTR', 'internet', 'mensuel', 10);
+  const materiel = product('routeur', 'Routeur', 'equipement', 'unique', 25);
+  materiel.mode_fas = 'multiplie_par_quantite';
+  materiel.prix_installation = 5;
+  const catalogue = [parent, option, materiel];
+  const questions = [question('offre')];
+
+  it('conserve les anciennes réponses et isole les quantités des produits parents', () => {
+    const summary = calculateCartSummary([
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'quantite_offre', valeur: '3' },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id]) },
+    ], questions, catalogue);
+
+    expect(summary.lines.map(({ produitId, quantite, prixTotal }) => ({ produitId, quantite, prixTotal }))).toEqual([
+      { produitId: parent.id, quantite: 3, prixTotal: 150 },
+      { produitId: option.id, quantite: 1, prixTotal: 10 },
+    ]);
+  });
+
+  it('calcule chaque option avec sa quantité, ses FAS et le comparatif SA/SP', () => {
+    const summary = calculateCartSummary([
+      { question_id: 'offre', valeur: [parent.nom] },
+      { question_id: 'quantite_offre', valeur: JSON.stringify({ [parent.nom]: '2' }) },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id, materiel.id]) },
+      { question_id: 'quantite_options_offre', valeur: JSON.stringify({ [option.id]: '4', [materiel.id]: '3' }) },
+    ], questions, catalogue);
+
+    expect(summary.lines.map(({ produitId, quantite, prixTotal, fasTotal }) => ({ produitId, quantite, prixTotal, fasTotal }))).toEqual([
+      { produitId: parent.id, quantite: 2, prixTotal: 100, fasTotal: 0 },
+      { produitId: option.id, quantite: 4, prixTotal: 40, fasTotal: 0 },
+      { produitId: materiel.id, quantite: 3, prixTotal: 75, fasTotal: 15 },
+    ]);
+    expect(summary.abonnements.totalMensuel).toBe(140);
+    expect(summary.materiel).toBe(75);
+    expect(summary.fas).toBe(15);
+    expect(buildSolutionProposeeLines(summary, catalogue).lines.map(({ offre, quantite }) => ({ offre, quantite }))).toEqual([
+      { offre: parent.nom, quantite: 2 },
+      { offre: option.nom, quantite: 4 },
+    ]);
+    expect(orderProductsByPreference(summary.lines, [option.id, parent.id, materiel.id], (line) => line.produitId)
+      .map((line) => line.produitId)).toEqual([option.id, parent.id, materiel.id]);
+  });
+
+  it('reporte la quantité des options dans les variables tableaux et respecte leur ordre configuré', () => {
+    const reponses = [
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'options_offre', valeur: JSON.stringify([materiel.id]) },
+      { question_id: 'quantite_options_offre', valeur: JSON.stringify({ [materiel.id]: '3' }) },
+    ];
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes, reponses, questions, catalogue, {},
+      undefined, undefined, undefined, undefined,
+      { sp_situation_proposee_complet: [materiel.id, parent.id], sp_bdc_materiel_table: [materiel.id] },
+    );
+    expect(repaired?.sp_materiel_detail?.[0]).toMatchObject({ sp_matd_nom: materiel.nom, sp_matd_quantite: '3' });
+    expect(repaired?.sp_bdc_materiel_table?.[0]).toMatchObject({ sp_bdc_mat_nom: materiel.nom, sp_bdc_mat_quantite: '3' });
+    expect(repaired?.sp_situation_proposee_complet?.map(({ sp_sp_produit, sp_sp_quantite }) => ({ sp_sp_produit, sp_sp_quantite })))
+      .toEqual([{ sp_sp_produit: materiel.nom, sp_sp_quantite: '3' }, { sp_sp_produit: parent.nom, sp_sp_quantite: '1' }]);
+  });
+
+  it('privilégie la quantité modifiée dans le panier et applique les tranches de prix des options', () => {
+    const optionAvecTranches: CatalogueProduit = { ...option, prix_par_tranche: [{ id: 'tier-1', qte_min: 2, qte_max: null, prix_mensuel: 8 }] };
+    const summary = calculateCartSummary([
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id]) },
+      { question_id: 'quantite_options_offre', valeur: JSON.stringify({ [option.id]: '2', [option.nom]: '4' }) },
+    ], questions, [parent, optionAvecTranches]);
+    expect(summary.lines[1]).toMatchObject({ produitId: option.id, quantite: 4, prixTotal: 32 });
+  });
+
+  it('ignore les quantités invalides et les options non sélectionnées', () => {
+    const summary = calculateCartSummary([
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id]) },
+      { question_id: 'quantite_options_offre', valeur: JSON.stringify({ [option.id]: '-2', [materiel.id]: '8' }) },
+    ], questions, catalogue);
+    expect(summary.lines.map(({ produitId, quantite }) => ({ produitId, quantite }))).toEqual([
+      { produitId: parent.id, quantite: 1 },
+      { produitId: option.id, quantite: 1 },
+    ]);
+  });
+});
 
 describe('calculateCartSummary — mois offerts', () => {
   it('multiplie le total des abonnements mensuels par le nombre de mois offerts', () => {

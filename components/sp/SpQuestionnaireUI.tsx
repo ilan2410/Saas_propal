@@ -472,6 +472,7 @@ function CatalogueMultipleChoiceInput({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+  const [optionQuantityValues, setOptionQuantityValues] = useState<Record<string, string>>({});
   const [freeEntryEnabled, setFreeEntryEnabled] = useState(false);
   const [freeEntryDraft, setFreeEntryDraft] = useState<FreeEntryDraft>(() => buildDefaultFreeEntryDraft(products));
   const [search, setSearch] = useState('');
@@ -699,24 +700,36 @@ function CatalogueMultipleChoiceInput({
                       const checked = selectedForP.includes(opt.id);
                       const prix = !hidePrice ? formatPrixProduit(opt) : null;
                       return (
-                        <label key={opt.id} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setSelectedOptions((prev) => {
-                              const cur = prev[p.nom] ?? [];
-                              return {
-                                ...prev,
-                                [p.nom]: cur.includes(opt.id)
-                                  ? cur.filter((x) => x !== opt.id)
-                                  : [...cur, opt.id],
-                              };
-                            })}
-                            className="h-4 w-4"
-                          />
-                          <span className="flex-1 min-w-0 truncate">{opt.nom}</span>
-                          {prix && <span className="text-xs text-gray-400">{prix}</span>}
-                        </label>
+                        <div key={opt.id} className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                          <label className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setSelectedOptions((prev) => {
+                                const cur = prev[p.nom] ?? [];
+                                return {
+                                  ...prev,
+                                  [p.nom]: cur.includes(opt.id)
+                                    ? cur.filter((x) => x !== opt.id)
+                                    : [...cur, opt.id],
+                                };
+                              })}
+                              className="h-4 w-4 shrink-0"
+                            />
+                            <span className="min-w-0 break-words">{opt.nom}</span>
+                          </label>
+                          {prix && <span className="text-xs text-gray-500">{prix}</span>}
+                          {checked && (
+                            <label className="flex items-center gap-1 text-xs text-gray-700">
+                              Qté
+                              <input type="number" min="1" step="1" aria-label={`Quantité de ${opt.nom}`}
+                                value={optionQuantityValues[opt.id] ?? '1'}
+                                onChange={(e) => setOptionQuantityValues((prev) => ({ ...prev, [opt.id]: e.target.value }))}
+                                className="h-8 w-16 rounded border border-gray-300 bg-white px-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                              />
+                            </label>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -762,6 +775,9 @@ function CatalogueMultipleChoiceInput({
             }
             if (optionIds.length > 0) {
               extraReponses.push({ question_id: '__options_placeholder__', valeur: JSON.stringify(optionIds) });
+              extraReponses.push({ question_id: '__option_quantities_placeholder__', valeur: JSON.stringify(
+                Object.fromEntries(optionIds.map((id) => [id, String(getQuantityValue(optionQuantityValues[id]))])),
+              ) });
             }
             if (Object.keys(prixMap).length > 0) {
               extraReponses.push({ question_id: '__prix_placeholder__', valeur: JSON.stringify(prixMap) });
@@ -1035,6 +1051,7 @@ export function SpQuestionnaireUI({
     quantityValue: string;
     prixEditing: boolean;
     selectedOptions: string[];
+    optionQuantityValues: Record<string, string>;
   } | null>(null);
   const [pendingFreeEntry, setPendingFreeEntry] = useState<{
     instanceId: string;
@@ -1051,6 +1068,8 @@ export function SpQuestionnaireUI({
   } | null>(null);
   const [history, setHistory] = useState<QuestionnaireSnapshot[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const activeQuestionRef = useRef<HTMLDivElement>(null);
+  const pendingLoopScrollRef = useRef<string | null>(null);
   const hasInitialized = useRef(false);
   const hasReportedCompletion = useRef(false);
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1238,8 +1257,10 @@ export function SpQuestionnaireUI({
             editedLabelRep && typeof editedLabelRep.valeur === 'string'
               ? editedLabelRep.valeur.trim()
               : '';
-          const iterLabel =
-            editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
+          const rawLabel = editedLabel || labels[iter] || `${q.boucle.label_prefix || 'Item'} ${iter + 1}`;
+          const iterLabel = /^\+?[\d\s().-]+$/.test(rawLabel.trim())
+            ? normalizePhoneNumber(rawLabel)
+            : rawLabel;
           for (const lq of loopQuestions) {
             result.push({
               question: lq,
@@ -1452,6 +1473,13 @@ export function SpQuestionnaireUI({
       showTimerRef.current = null;
     }
     if (!isChat) {
+      const previous = expandedQuestions[currentIdx];
+      const next = expandedQuestions[idx];
+      pendingLoopScrollRef.current = previous?.question.groupe_boucle_id &&
+        previous.question.groupe_boucle_id === next.question.groupe_boucle_id &&
+        previous.iterationIndex !== next.iterationIndex
+        ? next.instanceId : null;
+      if (pendingLoopScrollRef.current) setCatalogueSearch('');
       setCurrentIdx(idx);
       return;
     }
@@ -1612,7 +1640,7 @@ export function SpQuestionnaireUI({
 
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
-    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
     // Build updated reponses synchronously
     const nextReps = [
       ...reponses.filter((r) =>
@@ -1658,6 +1686,35 @@ export function SpQuestionnaireUI({
   const currentExpanded = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
   const currentQuestionVisible = currentExpanded !== null && isQuestionVisible(currentExpanded);
   const currentQuestion = currentQuestionVisible ? currentExpanded.question : null;
+  const currentLoopGroupId = currentExpanded?.question.groupe_boucle_id;
+  const currentLoopCount = currentLoopGroupId
+    ? expandedQuestions.reduce((count, eq) => eq.question.groupe_boucle_id === currentLoopGroupId ? Math.max(count, eq.iterationIndex + 1) : count, 0)
+    : 0;
+  const currentLoopPrefix = currentLoopGroupId
+    ? questions.find((q) => q.groupe_boucle_id === currentLoopGroupId && q.boucle)?.boucle?.label_prefix?.trim() || 'Élément'
+    : '';
+
+  useEffect(() => {
+    if (isChat || pendingLoopScrollRef.current !== currentExpanded?.instanceId || !currentQuestion) return;
+    pendingLoopScrollRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      const target = activeQuestionRef.current;
+      if (!target) return;
+      let container = target.parentElement;
+      while (container) {
+        const overflow = window.getComputedStyle(container).overflowY;
+        if (/(auto|scroll)/.test(overflow) && container.scrollHeight > container.clientHeight) break;
+        container = container.parentElement;
+      }
+      if (container) {
+        container.scrollTop += target.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
+      } else {
+        const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+        target.scrollIntoView({ behavior, block: 'start' });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [currentExpanded?.instanceId, currentQuestion, isChat]);
 
   // Sync inputValue when landing on a "marge" question (bidirectional sync with widget)
   useEffect(() => {
@@ -2227,36 +2284,24 @@ export function SpQuestionnaireUI({
 
       {/* Question active */}
       {currentQuestion && currentExpanded && !isTyping && currentQuestion.affichage !== 'resume_ref' && currentQuestion.affichage !== 'affichage_loyer' && (
-        <div className={isChat
+        <div ref={activeQuestionRef} className={isChat
           ? 'border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3'
           : 'rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm space-y-4'
         }>
-          <p className={isChat ? 'text-sm font-medium text-blue-900' : 'text-lg font-semibold text-gray-900 leading-snug'}>
-            {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
-          </p>
-          {currentQuestion.description && (
-            <p className={isChat ? 'text-xs text-blue-600' : 'text-sm text-gray-500 -mt-2'}>
-              {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
-            </p>
-          )}
-          {currentExpanded.iterationLabel !== undefined && currentExpanded.question.groupe_boucle_id && (
-            editingLoopLabel?.instanceId === currentExpanded.instanceId ? (
-              <input
-                autoFocus
-                value={editingLoopLabel.value}
-                onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: maskPhoneInput(e.target.value) })}
-                onBlur={() => {
-                  if (!editingLoopLabel) return;
-                  const { groupId, iterIndex, value } = editingLoopLabel;
-                  const qId = `loop_label__${groupId}__iter_${iterIndex}`;
-                  setReponses((prev) => [
-                    ...prev.filter((r) => r.question_id !== qId),
-                    { question_id: qId, valeur: normalizePhoneNumber(value) },
-                  ]);
-                  setEditingLoopLabel(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+          {currentLoopGroupId && currentExpanded.iterationLabel !== undefined && (
+            <div className={`z-10 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-950 ${isChat ? '' : 'sticky top-0'}`}>
+              <span role="status" aria-live="polite" aria-atomic="true" className="font-semibold">
+                {currentLoopPrefix} {currentExpanded.iterationIndex + 1} sur {currentLoopCount}
+                <span className="sr-only">, {currentExpanded.iterationLabel}</span>
+              </span>
+              <span aria-hidden="true" className="text-purple-400">·</span>
+              {editingLoopLabel?.instanceId === currentExpanded.instanceId ? (
+                <input
+                  autoFocus
+                  aria-label={`Libellé de ${currentLoopPrefix.toLowerCase()} ${currentExpanded.iterationIndex + 1}`}
+                  value={editingLoopLabel.value}
+                  onChange={(e) => setEditingLoopLabel((p) => p && { ...p, value: maskPhoneInput(e.target.value) })}
+                  onBlur={() => {
                     if (!editingLoopLabel) return;
                     const { groupId, iterIndex, value } = editingLoopLabel;
                     const qId = `loop_label__${groupId}__iter_${iterIndex}`;
@@ -2265,29 +2310,48 @@ export function SpQuestionnaireUI({
                       { question_id: qId, valeur: normalizePhoneNumber(value) },
                     ]);
                     setEditingLoopLabel(null);
-                  }
-                  if (e.key === 'Escape') setEditingLoopLabel(null);
-                }}
-                className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium border border-purple-400 outline-none w-44"
-              />
-            ) : (
-              <span
-                className="inline-block text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium cursor-pointer hover:bg-purple-200 transition-colors"
-                title="Cliquer pour modifier le numéro"
-                onClick={() =>
-                  setEditingLoopLabel({
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (!editingLoopLabel) return;
+                      const { groupId, iterIndex, value } = editingLoopLabel;
+                      const qId = `loop_label__${groupId}__iter_${iterIndex}`;
+                      setReponses((prev) => [
+                        ...prev.filter((r) => r.question_id !== qId),
+                        { question_id: qId, valeur: normalizePhoneNumber(value) },
+                      ]);
+                      setEditingLoopLabel(null);
+                    }
+                    if (e.key === 'Escape') setEditingLoopLabel(null);
+                  }}
+                  className="w-44 rounded border border-purple-400 bg-white px-2 py-1 text-sm text-purple-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="max-w-full break-words rounded px-1 text-left font-medium text-purple-900 hover:bg-purple-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  title="Modifier le libellé"
+                  aria-label={`Modifier le libellé ${currentExpanded.iterationLabel}`}
+                  onClick={() => setEditingLoopLabel({
                     instanceId: currentExpanded.instanceId,
-                    groupId: currentExpanded.question.groupe_boucle_id!,
+                    groupId: currentLoopGroupId,
                     iterIndex: currentExpanded.iterationIndex,
                     value: currentExpanded.iterationLabel!,
-                  })
-                }
-              >
-                {currentExpanded.iterationLabel}
-              </span>
-            )
+                  })}
+                >
+                  {currentExpanded.iterationLabel}
+                </button>
+              )}
+            </div>
           )}
-
+          <p className={isChat ? 'text-sm font-medium text-blue-900' : 'text-lg font-semibold text-gray-900 leading-snug'}>
+            {resolveTemplateText(currentExpanded.displayLabel, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+          </p>
+          {currentQuestion.description && (
+            <p className={isChat ? 'text-xs text-blue-600' : 'text-sm text-gray-500 -mt-2'}>
+              {resolveTemplateText(currentQuestion.description, donneesExtraites, reponses, currentExpanded.iterationIndex)}
+            </p>
+          )}
           {currentQuestion.affichage === 'oui_non' && (
             <div className="flex gap-2">
               {['Oui', 'Non'].map((opt) => (
@@ -2431,6 +2495,7 @@ export function SpQuestionnaireUI({
                           quantityValue: '1',
                           prixEditing: false,
                           selectedOptions: [],
+                          optionQuantityValues: {},
                         })}
                         className={`text-left px-3 py-2 rounded-md border transition-colors ${
                           isPending ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
@@ -2516,6 +2581,7 @@ export function SpQuestionnaireUI({
                           quantityValue: '1',
                           prixEditing: false,
                           selectedOptions: [],
+                          optionQuantityValues: {},
                         })}
                         className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
                           isPending ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-800'
@@ -2580,6 +2646,7 @@ export function SpQuestionnaireUI({
           {currentQuestion.affichage === 'boutons_choix_multiple' && (
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
+                key={currentExpanded.instanceId}
                 products={currentCatalogueOptions}
                 catalogue={catalogue}
                 allowFreeEntry={!!currentQuestion.options_libres}
@@ -2600,6 +2667,9 @@ export function SpQuestionnaireUI({
                     if (r.question_id === '__options_placeholder__') {
                       return { ...r, question_id: 'options_' + currentExpanded.instanceId };
                     }
+                    if (r.question_id === '__option_quantities_placeholder__') {
+                      return { ...r, question_id: 'quantite_options_' + currentExpanded.instanceId };
+                    }
                     if (r.question_id === '__libre_placeholder__') {
                       return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
                     }
@@ -2610,6 +2680,7 @@ export function SpQuestionnaireUI({
               />
             ) : (
               <MultipleChoiceInput
+                key={currentExpanded.instanceId}
                 options={currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)}
                 onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
               />
@@ -2619,6 +2690,7 @@ export function SpQuestionnaireUI({
           {currentQuestion.affichage === 'liste_deroulante_choix_multiple' && (
             currentCatalogueOptions.length > 0 ? (
               <CatalogueMultipleChoiceInput
+                key={currentExpanded.instanceId}
                 products={currentCatalogueOptions}
                 catalogue={catalogue}
                 display="select"
@@ -2640,6 +2712,9 @@ export function SpQuestionnaireUI({
                     if (r.question_id === '__options_placeholder__') {
                       return { ...r, question_id: 'options_' + currentExpanded.instanceId };
                     }
+                    if (r.question_id === '__option_quantities_placeholder__') {
+                      return { ...r, question_id: 'quantite_options_' + currentExpanded.instanceId };
+                    }
                     if (r.question_id === '__libre_placeholder__') {
                       return { ...r, question_id: 'libre_' + currentExpanded.instanceId };
                     }
@@ -2650,6 +2725,7 @@ export function SpQuestionnaireUI({
               />
             ) : (
               <MultipleSelectInput
+                key={currentExpanded.instanceId}
                 options={currentQuestion.options_manuelles ?? (isCatalogueQuestion ? [] : fournisseurs)}
                 onSubmit={(selected) => recordAnswer(currentExpanded.instanceId, selected)}
               />
@@ -3398,21 +3474,36 @@ export function SpQuestionnaireUI({
                         ? formatPrixProduit(opt)
                         : null;
                       return (
-                        <label key={opt.id} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setPendingCatalogueSelection((prev) => prev ? {
-                              ...prev,
-                              selectedOptions: prev.selectedOptions.includes(opt.id)
-                                ? prev.selectedOptions.filter((x) => x !== opt.id)
-                                : [...prev.selectedOptions, opt.id],
-                            } : null)}
-                            className="h-4 w-4"
-                          />
-                          <span className="flex-1 min-w-0 truncate">{opt.nom}</span>
-                          {prix && <span className="text-xs text-gray-400">{prix}</span>}
-                        </label>
+                        <div key={opt.id} className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                          <label className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setPendingCatalogueSelection((prev) => prev ? {
+                                ...prev,
+                                selectedOptions: prev.selectedOptions.includes(opt.id)
+                                  ? prev.selectedOptions.filter((x) => x !== opt.id)
+                                  : [...prev.selectedOptions, opt.id],
+                              } : null)}
+                              className="h-4 w-4 shrink-0"
+                            />
+                            <span className="min-w-0 break-words">{opt.nom}</span>
+                          </label>
+                          {prix && <span className="text-xs text-gray-500">{prix}</span>}
+                          {checked && (
+                            <label className="flex items-center gap-1 text-xs text-gray-700">
+                              Qté
+                              <input type="number" min="1" step="1" aria-label={`Quantité de ${opt.nom}`}
+                                value={pendingCatalogueSelection.optionQuantityValues[opt.id] ?? '1'}
+                                onChange={(e) => setPendingCatalogueSelection((prev) => prev ? {
+                                  ...prev,
+                                  optionQuantityValues: { ...prev.optionQuantityValues, [opt.id]: e.target.value },
+                                } : null)}
+                                className="h-8 w-16 rounded border border-gray-300 bg-white px-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                              />
+                            </label>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -3440,10 +3531,18 @@ export function SpQuestionnaireUI({
                   question_id: 'quantite_' + pendingCatalogueSelection.instanceId,
                   valeur: quantiteVal,
                 });
-                if (pendingCatalogueSelection.selectedOptions.length > 0) extras.push({
-                  question_id: 'options_' + pendingCatalogueSelection.instanceId,
-                  valeur: JSON.stringify(pendingCatalogueSelection.selectedOptions),
-                });
+                if (pendingCatalogueSelection.selectedOptions.length > 0) {
+                  extras.push({
+                    question_id: 'options_' + pendingCatalogueSelection.instanceId,
+                    valeur: JSON.stringify(pendingCatalogueSelection.selectedOptions),
+                  });
+                  extras.push({
+                    question_id: 'quantite_options_' + pendingCatalogueSelection.instanceId,
+                    valeur: JSON.stringify(Object.fromEntries(pendingCatalogueSelection.selectedOptions.map((id) => [
+                      id, String(getQuantityValue(pendingCatalogueSelection.optionQuantityValues[id])),
+                    ]))),
+                  });
+                }
                 recordAnswer(pendingCatalogueSelection.instanceId, pendingCatalogueSelection.product.nom, extras.length > 0 ? extras : undefined);
                 setPendingCatalogueSelection(null);
                 setPendingFreeEntry(null);

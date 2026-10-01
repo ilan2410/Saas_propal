@@ -209,6 +209,7 @@ export function repairSpCompletesFromQuestionnaire(
     return {
       sp_materiel_nom: line.produitNom,
       sp_materiel_ref: undefined,
+      sp_materiel_quantite: String(line.quantite),
       sp_materiel_fournisseur: cat?.fournisseur,
       sp_materiel_prix_mensuel: formatEuro(line.prixTotal),
       sp_materiel_duree_engagement: '',
@@ -261,6 +262,7 @@ export function repairSpCompletesFromQuestionnaire(
   const toSituationMateriel = (m: SpMateriel): SpSituationProposeeLigne => ({
     sp_sp_type: 'Materiel',
     sp_sp_nom: m.sp_materiel_nom,
+    sp_sp_quantite: m.sp_materiel_quantite ?? '1',
     sp_sp_produit: m.sp_materiel_nom,
     sp_sp_fournisseur: m.sp_materiel_fournisseur,
     sp_sp_prix_actuel: undefined,
@@ -356,7 +358,7 @@ export function repairSpCompletesFromQuestionnaire(
         sp_bdc_mat_nom: m.sp_materiel_nom,
         sp_bdc_mat_ref: m.sp_materiel_ref,
         sp_bdc_mat_fournisseur: m.sp_materiel_fournisseur,
-        sp_bdc_mat_quantite: '1',
+        sp_bdc_mat_quantite: m.sp_materiel_quantite ?? '1',
         sp_bdc_mat_prix_ht: m.sp_materiel_prix_mensuel,
         sp_bdc_mat_frequence: freq === 'unique' ? 'Achat unique' : 'Mensuel',
         _prix_raw: m._prix_mensuel_raw,
