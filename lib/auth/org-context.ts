@@ -3,6 +3,7 @@
 //  - propriétaire : organizations.id === auth.users.id (1:1 historique)
 //  - commercial   : sous-compte lié via organization_members
 import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { createServiceClient } from '@/lib/supabase/server';
 
 export type OrgRole = 'owner' | 'commercial';
 
@@ -26,6 +27,8 @@ export interface OrgContext {
     nom: string;
     telephone_fixe: string;
     telephone_mobile: string;
+    /** Email de connexion du commercial (absent pour un propriétaire : l'email société fait foi). */
+    email?: string;
   };
 }
 
@@ -115,12 +118,57 @@ export async function resolveOrgContext(
         nom: member.nom ?? '',
         telephone_fixe: member.telephone_fixe ?? '',
         telephone_mobile: member.telephone_mobile ?? '',
+        email: user.email ?? '',
       },
     };
   }
 
   // 3. Ni propriétaire, ni commercial actif.
   return null;
+}
+
+/**
+ * Profil entreprise pour une proposition donnée : les coordonnées sont celles de
+ * l'AUTEUR de la proposition (`created_by`), pas de la personne qui l'ouvre/télécharge.
+ * Si l'auteur est un commercial de l'organisation, ses prénom/nom/téléphones viennent de
+ * organization_members et son email de auth.users. Sinon (propriétaire, auteur inconnu
+ * ou ancien), on retombe sur l'utilisateur agissant.
+ */
+export async function buildPropositionAuthorProfile(
+  supabase: SupabaseClient,
+  organization: Record<string, unknown>,
+  ctx: OrgContext,
+  createdBy: string | null | undefined
+): Promise<Record<string, unknown>> {
+  if (!createdBy || createdBy === ctx.memberUserId || createdBy === ctx.organizationId) {
+    return buildActingOrgProfile(organization, ctx);
+  }
+
+  const { data: member } = await supabase
+    .from('organization_members')
+    .select('prenom, nom, telephone_fixe, telephone_mobile')
+    .eq('organization_id', ctx.organizationId)
+    .eq('user_id', createdBy)
+    .maybeSingle();
+
+  if (!member) return buildActingOrgProfile(organization, ctx);
+
+  let email = '';
+  try {
+    const { data: authUser } = await createServiceClient().auth.admin.getUserById(createdBy);
+    email = authUser?.user?.email ?? '';
+  } catch {
+    // email indisponible : on garde celui de la société
+  }
+
+  return {
+    ...organization,
+    contact_prenom: member.prenom ?? '',
+    contact_nom: member.nom ?? '',
+    telephone_fixe: member.telephone_fixe ?? '',
+    telephone_mobile: member.telephone_mobile ?? '',
+    ...(email ? { email } : {}),
+  };
 }
 
 /**
@@ -141,5 +189,6 @@ export function buildActingOrgProfile(
     contact_nom: ctx.displayName.nom,
     telephone_fixe: ctx.displayName.telephone_fixe,
     telephone_mobile: ctx.displayName.telephone_mobile,
+    ...(ctx.displayName.email ? { email: ctx.displayName.email } : {}),
   };
 }

@@ -5,7 +5,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpTableProductOrders } from '@/types';
-import { resolveOrgContext, buildActingOrgProfile } from '@/lib/auth/org-context';
+import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
@@ -147,7 +147,9 @@ export async function POST(
     // Profil entreprise transmis au générateur : champs société inchangés, mais
     // contact_prenom/contact_nom/telephone_fixe/telephone_mobile proviennent de
     // l'utilisateur agissant (le commercial lui-même pour un sous-compte).
-    const organizationProfile = organization ? buildActingOrgProfile(organization, ctx) : organization;
+    const organizationProfile = organization
+      ? await buildPropositionAuthorProfile(supabase, organization, ctx, proposition.created_by as string | null)
+      : organization;
 
     // Générer le fichier
     const fileUrl = await generatePropositionFile({

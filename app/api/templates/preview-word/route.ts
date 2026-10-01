@@ -18,7 +18,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
 import type { WordConfig, SpPreferencesProduits, SpClauseConditionnelle, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpQuestion, SpQuestionReponse, CatalogueProduit, SuggestionsSpCompletes } from '@/types';
 
 /**
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     //    Priorité : la plus récente proposition AYANT des données SP
     //    (suggestions_sp_completes non nul). À défaut, la plus récente tout
     //    court (les variables SA seront remplies, les tableaux SP resteront vides).
-    const baseSelect = 'template_id, created_at, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
+    const baseSelect = 'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -221,7 +221,14 @@ export async function POST(request: NextRequest) {
     const referenceData: Record<string, string> = { sp_reference: sp_reference ?? '' };
     // Profil Entreprise (organizations) → variables {{entreprise_*}}, distinctes des
     // variables client (SA) et situation proposée (SP).
-    const entrepriseData = buildEntrepriseWordData(org);
+    const entrepriseData = buildEntrepriseWordData(
+      await buildPropositionAuthorProfile(
+        supabase,
+        org,
+        ctx,
+        (proposition as Record<string, unknown>).created_by as string | null,
+      ),
+    );
     // Ordre de priorité : données extraites (flat) < SA < SP calculées < entreprise < clauses < référence < mapping utilisateur.
     // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
     const finalData = { ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData, ...mappedData };
