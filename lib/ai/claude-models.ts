@@ -7,6 +7,21 @@ export const CLAUDE_MODELS = [
   { value: 'claude-3-5-sonnet-20241022', label: 'Claude Sonnet 3.5 (Legacy)', legacy: true },
 ] as const;
 
+export const DEEPSEEK_SA_MODEL = { value: 'deepseek-flash', label: 'DeepSeek V4.1 Flash (SA)', legacy: false } as const;
+export const SA_EXTRACTION_MODELS = [...CLAUDE_MODELS, DEEPSEEK_SA_MODEL];
+
+export function isDeepSeekSaModel(model: string): boolean {
+  return model === DEEPSEEK_SA_MODEL.value;
+}
+
+export function isSaExtractionEligible(secteur: string, fields: string[]): boolean {
+  const hasSa = fields.some((field) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.'));
+  return hasSa && (secteur === 'telephonie' || (secteur === 'mixte' && fields.every((field) =>
+    field === 'fournisseur' || field.startsWith('fournisseur.') ||
+    field === 'client' || field.startsWith('client.') ||
+    field === 'situation_actuelle' || field.startsWith('situation_actuelle.'))));
+}
+
 export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';
 
 /**

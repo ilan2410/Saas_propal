@@ -32,6 +32,12 @@ export const InvoiceLineSchema = z.object({
   phone_number: z.string().nullable(),
   contract_reference: z.string().nullable(),
   evidence: z.array(EvidenceSchema),
+  /**
+   * Posé par l'écran de vérification quand le client a modifié ou ajouté la
+   * ligne : ses valeurs (dont `billing_months`) priment sur la règle de
+   * rattrapage ci-dessous. Jamais produit par l'IA.
+   */
+  user_edited: z.boolean().optional(),
 });
 
 export const InvoiceAnalysisSchema = z.object({
@@ -280,7 +286,8 @@ export function calculateCanonicalSaAnalysis(
       const lineTotal = line.amount_scope === 'unit' ? signedAmount * quantity : signedAmount;
       const lineMatchesInvoiceTotal = invoice.printed_total_ht !== null
         && Math.abs(Math.abs(lineTotal) - Math.abs(invoice.printed_total_ht)) <= 0.02;
-      const months = line.billing_months > 0 && !(line.billing_months === 1 && invoiceMonths > 1 && lineMatchesInvoiceTotal)
+      const months = line.billing_months > 0
+        && (line.user_edited === true || !(line.billing_months === 1 && invoiceMonths > 1 && lineMatchesInvoiceTotal))
         ? line.billing_months
         : invoiceMonths;
       if (!Number.isFinite(months) || months <= 0) {

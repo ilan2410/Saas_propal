@@ -6,11 +6,11 @@ import { Loader2, Save, FileText, Settings, Sparkles, Upload, ArrowLeft } from '
 import { Step2UploadTemplate } from '../templates/Step2UploadTemplate';
 import { TemplateData, ExcelState } from '../templates/TemplateWizard';
 import { renderPromptTemplate, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { SA_EXTRACTION_MODELS, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
 import { CustomFieldsEditor, type CustomArrayCategory, type CustomCategory, type CustomFieldDefinition } from '@/components/shared/CustomFieldsEditor';
 import { UpdateExpectedJsonStructureButton } from '@/components/shared/UpdateExpectedJsonStructureButton';
 import {
   ALL_FIELDS,
-  CLAUDE_MODELS,
   DEFAULT_CLAUDE_MODEL,
   CLAUDE_EFFORT_LEVELS,
   DEFAULT_CLAUDE_EFFORT,
@@ -285,6 +285,11 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         setIsLoading(false);
         return;
       }
+      if (isDeepSeekSaModel(formData.claude_model) && !isSaExtractionEligible(secteur, allFields)) {
+        setError('DeepSeek V4.1 Flash nécessite un template SA téléphonie.');
+        setIsLoading(false);
+        return;
+      }
 
       const endpoint = isEditing && template?.id
         ? `/api/admin/templates/${template.id}/update`
@@ -549,19 +554,22 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Modèle Claude
+              Modèle d&apos;extraction
             </label>
             <select
               value={formData.claude_model}
               onChange={(e) => setFormData({ ...formData, claude_model: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {CLAUDE_MODELS.map((m) => (
+              {(isSaExtractionEligible(secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList))
+                ? SA_EXTRACTION_MODELS
+                : SA_EXTRACTION_MODELS.filter((m) => !isDeepSeekSaModel(m.value) || m.value === formData.claude_model)
+              ).map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
             <p className="text-sm text-gray-500 mt-2">
-              Claude 3.7 Sonnet offre une meilleure précision d&apos;extraction.
+              DeepSeek V4.1 Flash est disponible uniquement pour l&apos;extraction SA.
             </p>
           </div>
 

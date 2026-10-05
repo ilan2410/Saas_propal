@@ -106,6 +106,94 @@ describe('calculateCanonicalSaAnalysis', () => {
     }));
   });
 
+  describe('périodicité des lignes (trimestriel, semestriel, annuel)', () => {
+    function periodicReport(annualMonths = 12): InvoiceAnalysisReport {
+      return {
+        summary: 'Total HT mensuel de 200 €.',
+        declared_monthly_total_ht: 200,
+        field_coverage: [],
+        invoices: [
+          {
+            document_index: 0,
+            invoice_number: 'FA-PERIODIC',
+            supplier: 'Orange',
+            account_number: null,
+            site: null,
+            period_start: '01/09/2025',
+            period_end: '30/09/2025',
+            billing_months: 1,
+            printed_total_ht: 910,
+            printed_total_ttc: 1092,
+            lines: [
+              line('abo', 'Abonnement mensuel', 100),
+              line('maintenance', 'Maintenance annuelle PABX', 600, annualMonths),
+              line('licence', 'Licence semestrielle', 120, 6),
+              line('assistance', 'Assistance trimestrielle', 90, 3),
+            ],
+          },
+        ],
+      };
+    }
+
+    it('divise chaque ligne par son nombre de mois et conserve le montant source', () => {
+      const result = calculateCanonicalSaAnalysis(periodicReport(), []);
+      const byId = Object.fromEntries(result.invoices[0].lines.map((item) => [item.id, item]));
+
+      expect(byId.maintenance.amount_ht).toBe(600);
+      expect(byId.maintenance.monthly_amount_ht).toBe(50);
+      expect(byId.licence.monthly_amount_ht).toBe(20);
+      expect(byId.assistance.monthly_amount_ht).toBe(30);
+      expect(result.total_ht_mensuel_client).toBe(200);
+      expect(result.issues).toEqual([]);
+    });
+
+    it('signale un total annoncé incohérent quand une ligne annuelle est comptée pour 1 mois', () => {
+      const result = calculateCanonicalSaAnalysis(periodicReport(1), []);
+
+      expect(result.total_ht_mensuel_client).toBe(750);
+      expect(result.issues).toContainEqual(expect.objectContaining({
+        code: 'monthly_total_mismatch',
+        expected: 750,
+        actual: 200,
+      }));
+    });
+  });
+
+  describe('rattrapage « ligne = total de la facture »', () => {
+    function schedule(userEdited?: boolean): InvoiceAnalysisReport {
+      const rent = { ...line('rent', 'Loyer location matériel', 110), ...(userEdited ? { user_edited: true } : {}) };
+      return {
+        summary: 'Échéancier.',
+        declared_monthly_total_ht: 110,
+        field_coverage: [],
+        invoices: [{
+          document_index: 0,
+          invoice_number: null,
+          supplier: 'Leaser',
+          account_number: null,
+          site: null,
+          period_start: '05/11/2025',
+          period_end: '04/11/2028',
+          billing_months: 36,
+          printed_total_ht: 110,
+          printed_total_ttc: 132,
+          lines: [rent],
+        }],
+      };
+    }
+
+    it("divise encore la ligne quand l'IA a pris la durée de l'échéancier pour la période", () => {
+      const result = calculateCanonicalSaAnalysis(schedule(), []);
+      expect(result.invoices[0].lines[0].monthly_amount_ht).toBe(3.06);
+    });
+
+    it('respecte la valeur saisie par le client (user_edited) : 110 € sur 1 mois', () => {
+      const result = calculateCanonicalSaAnalysis(schedule(true), []);
+      expect(result.invoices[0].lines[0].monthly_amount_ht).toBe(110);
+      expect(result.total_ht_mensuel_client).toBe(110);
+    });
+  });
+
   it('conserve un taux de TVA explicite à zéro', () => {
     const value = report();
     const target = value.invoices[1].lines[0];

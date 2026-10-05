@@ -8,7 +8,8 @@ import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/l
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
-import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
+import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
+import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -278,14 +279,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Aucun document fourni' }, { status: 400 });
     }
 
-    // Vérifier la clé API Claude
-    if (!validateClaudeApiKey()) {
-      return NextResponse.json({ 
-        error: 'Clé API Claude non configurée',
-        details: 'La variable ANTHROPIC_API_KEY n\'est pas définie'
-      }, { status: 500 });
-    }
-
     // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter
     // qu'un utilisateur authentifié puisse déclencher une extraction sur un
     // template appartenant à une autre organisation).
@@ -546,6 +539,18 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     
     console.log('🤖 Modèle utilisé:', modelToUse);
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
+    const activeFields = Array.isArray(template.champs_actifs)
+      ? template.champs_actifs.filter((field: unknown): field is string => typeof field === 'string')
+      : [];
+    const useSaPipeline = isSaExtractionEligible(organization.secteur, activeFields);
+    if (isDeepSeekSaModel(modelToUse) && !useSaPipeline) {
+      return NextResponse.json({ error: 'DeepSeek V4.1 Flash est réservé aux extractions SA.' }, { status: 400 });
+    }
+    // Vérifier la clé API Claude
+    if (isDeepSeekSaModel(modelToUse) ? !validateDeepSeekApiKey() : !validateClaudeApiKey()) {
+      const variable = isDeepSeekSaModel(modelToUse) ? 'DEEPSEEK_API_KEY' : 'ANTHROPIC_API_KEY';
+      return NextResponse.json({ error: 'Clé API du modèle non configurée', details: `La variable ${variable} n'est pas définie` }, { status: 500 });
+    }
 
     // Créer OU réutiliser la proposition (draft) en BDD
     type PropositionRow = { id: string } & Record<string, unknown>;
@@ -632,26 +637,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     }
 
     // Extraire les données avec Claude
-    console.log('🤖 Lancement extraction Claude...');
-    const activeFields = Array.isArray(template.champs_actifs)
-      ? template.champs_actifs.filter((field: unknown): field is string => typeof field === 'string')
-      : [];
-    const hasSituationActuelle = activeFields.some(
-      (field: string) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.')
-    );
-    const hasNonTelecomFields = activeFields.some(
-      (field: string) => !(
-        field === 'fournisseur' ||
-        field.startsWith('fournisseur.') ||
-        field === 'client' ||
-        field.startsWith('client.') ||
-        field === 'situation_actuelle' ||
-        field.startsWith('situation_actuelle.')
-      )
-    );
-    const useSaPipeline =
-      (organization.secteur === 'telephonie' && hasSituationActuelle) ||
-      (organization.secteur === 'mixte' && hasSituationActuelle && !hasNonTelecomFields);
+    console.log('🤖 Lancement extraction avec modèle:', modelToUse);
 
     let extractedData: Record<string, unknown>;
     if (useSaPipeline) {

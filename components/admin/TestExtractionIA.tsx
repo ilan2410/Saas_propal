@@ -127,7 +127,7 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
               {"Test d'extraction IA"}
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Vérifiez que Claude comprend bien vos champs
+              Vérifiez que le modèle sélectionné comprend bien vos champs
             </p>
           </div>
           <button
@@ -201,11 +201,11 @@ export function TestExtractionIA({ champsActifs, claudeModel, promptTemplate, se
                   id="test-file-upload"
                   type="file"
                   className="hidden"
-                  accept=".pdf,.xlsx,.xls,.docx,.doc"
+                  accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                   onChange={handleFileChange}
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  PDF, Excel ou Word
+                  PDF ou photo (JPEG, PNG, GIF, WebP)
                 </p>
               </div>
             </div>

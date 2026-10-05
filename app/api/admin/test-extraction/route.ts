@@ -3,7 +3,9 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis } from '@/lib/ai/claude';
 import { calculateCanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { buildLegacySaData } from '@/lib/sa/structure-sa';
-import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
+import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
+import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
+import { validateClaudeApiKey } from '@/lib/ai/claude';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 
 export async function POST(request: NextRequest) {
@@ -47,15 +49,14 @@ export async function POST(request: NextRequest) {
     // Extraire les données avec Claude
     const activeFields = (champs_actifs as unknown[]).filter((field): field is string => typeof field === 'string');
     const model = claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
-    const hasSituationActuelle = activeFields.some((field) => field === 'situation_actuelle' || field.startsWith('situation_actuelle.'));
-    const hasNonTelecomFields = activeFields.some((field) => !(
-      field === 'fournisseur' || field.startsWith('fournisseur.') ||
-      field === 'client' || field.startsWith('client.') ||
-      field === 'situation_actuelle' || field.startsWith('situation_actuelle.')
-    ));
-    const useSaPipeline =
-      (secteur === 'telephonie' && hasSituationActuelle) ||
-      (secteur === 'mixte' && hasSituationActuelle && !hasNonTelecomFields);
+    const useSaPipeline = isSaExtractionEligible(secteur, activeFields);
+    if (isDeepSeekSaModel(model) && !useSaPipeline) {
+      return NextResponse.json({ error: 'DeepSeek V4.1 Flash est réservé aux extractions SA.' }, { status: 400 });
+    }
+    if (isDeepSeekSaModel(model) ? !validateDeepSeekApiKey() : !validateClaudeApiKey()) {
+      const variable = isDeepSeekSaModel(model) ? 'DEEPSEEK_API_KEY' : 'ANTHROPIC_API_KEY';
+      return NextResponse.json({ error: `La variable ${variable} n'est pas définie` }, { status: 500 });
+    }
 
     // L'identifiant vient du client : on ne l'accepte qu'apres avoir verifie
     // qu'il designe une organisation existante, pour ne jamais imputer une
