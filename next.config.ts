@@ -33,6 +33,7 @@ const csp = [
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  serverExternalPackages: ['pdf-parse', '@napi-rs/canvas'],
   async headers() {
     return [
       {

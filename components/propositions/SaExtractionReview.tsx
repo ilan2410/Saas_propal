@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import {
   TOTAL_BLOCKING_ISSUE_CODES,
   calculateCanonicalSaAnalysis,
@@ -19,6 +19,11 @@ interface Props {
   onValidated: (data: Record<string, unknown>) => void;
   /** Ferme le panneau sans rien corriger : la suite reste accessible. */
   onDismiss?: () => void;
+  /**
+   * `alert` : ouvert automatiquement car le total est incohérent.
+   * `manual` : ouvert à la demande du client alors que tout est cohérent.
+   */
+  mode?: 'alert' | 'manual';
 }
 
 function cloneReport(report: InvoiceAnalysisReport): InvoiceAnalysisReport {
@@ -47,6 +52,7 @@ function makeBlankLine(): InvoiceAnalysisLine {
     amount_scope: 'line_total',
     recurring: true,
     billing_months: 1,
+    user_edited: true,
     source_periodicity: 'mensuel',
     related_line_id: null,
     operator: null,
@@ -258,6 +264,7 @@ export function SaExtractionReview({
   includeVariableCharges = true,
   onValidated,
   onDismiss,
+  mode = 'alert',
 }: Props) {
   const [report, setReport] = useState(() => cloneReport(initialReport));
   const [saving, setSaving] = useState(false);
@@ -352,7 +359,10 @@ export function SaExtractionReview({
   const updateLine = (invoiceIndex: number, lineIndex: number, key: string, value: unknown) => {
     setReport((current) => {
       const next = cloneReport(current);
-      (next.invoices[invoiceIndex].lines[lineIndex] as unknown as Record<string, unknown>)[key] = value;
+      const target = next.invoices[invoiceIndex].lines[lineIndex];
+      (target as unknown as Record<string, unknown>)[key] = value;
+      // Les valeurs saisies par le client priment sur les règles automatiques.
+      target.user_edited = true;
       return next;
     });
   };
@@ -437,19 +447,45 @@ export function SaExtractionReview({
   const remainingCount = blockingIssues.length;
   const displayedTotal = Number.isFinite(computedTotal) ? computedTotal : initialTotal;
 
+  // En mode manuel tout est cohérent : ton neutre (bleu) plutôt qu'alerte (ambre),
+  // sauf si les modifications du client créent elles-mêmes une incohérence.
+  const isManual = mode === 'manual' && remainingCount === 0;
+  const tone = isManual
+    ? {
+        box: 'border-blue-200 bg-blue-50',
+        icon: 'text-blue-700',
+        title: 'text-blue-950',
+        text: 'text-blue-800',
+        primary: 'bg-blue-700 hover:bg-blue-800',
+        secondary: 'border-blue-200 text-blue-800 hover:bg-blue-100',
+      }
+    : {
+        box: 'border-amber-300 bg-amber-50',
+        icon: 'text-amber-700',
+        title: 'text-amber-950',
+        text: 'text-amber-800',
+        primary: 'bg-amber-700 hover:bg-amber-800',
+        secondary: 'border-amber-300 text-amber-800 hover:bg-amber-100',
+      };
+  const HeaderIcon = isManual ? ListChecks : AlertTriangle;
+
   return (
-    <div className="space-y-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 text-left">
+    <div className={`space-y-4 rounded-xl border-2 p-5 text-left ${tone.box}`}>
       {/* En-tête : un fait, une action */}
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+        <HeaderIcon className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} />
         <div className="min-w-0">
-          <h3 className="font-bold text-amber-950">Le total mensuel doit être vérifié</h3>
-          <p className="text-sm text-amber-800">
+          <h3 className={`font-bold ${tone.title}`}>
+            {isManual ? 'Vérification de la situation actuelle' : 'Le total mensuel doit être vérifié'}
+          </h3>
+          <p className={`text-sm ${tone.text}`}>
             {remainingCount > 0
               ? `${remainingCount} point${remainingCount > 1 ? 's' : ''} à corriger ci-dessous, ou continuez sans corriger si vous préférez y revenir plus tard.`
-              : 'Vérifiez le détail ci-dessous, ou continuez sans corriger si vous préférez y revenir plus tard.'}
+              : isManual
+                ? 'Aucune incohérence détectée. Relisez les lignes extraites et corrigez-les si besoin : le total est recalculé automatiquement.'
+                : 'Vérifiez le détail ci-dessous, ou continuez sans corriger si vous préférez y revenir plus tard.'}
           </p>
-          <p className="mt-2 text-xl font-bold text-amber-950">{euro(displayedTotal)} HT / mois</p>
+          <p className={`mt-2 text-xl font-bold ${tone.title}`}>{euro(displayedTotal)} HT / mois</p>
         </div>
       </div>
 
@@ -560,14 +596,19 @@ export function SaExtractionReview({
       </div>
 
       {error && <p className="text-sm font-medium text-red-700">{error}</p>}
+      {isDirty && (
+        <p className={`text-sm ${tone.text}`}>
+          Modifications non enregistrées : le résumé ci-dessous sera mis à jour après validation.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => submit(false)} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">
+        <button type="button" onClick={() => submit(false)} disabled={saving} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${tone.primary}`}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Recalculer et valider
+          {isManual && !isDirty ? 'Valider' : 'Recalculer et valider'}
         </button>
         {onDismiss && (
-          <button type="button" onClick={continueWithoutFixing} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50">
-            {isDirty ? 'Continuer avec mes montants' : 'Continuer sans corriger'}
+          <button type="button" onClick={continueWithoutFixing} disabled={saving} className={`inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50 ${tone.secondary}`}>
+            {isDirty ? 'Continuer avec mes montants' : isManual ? 'Fermer' : 'Continuer sans corriger'}
           </button>
         )}
       </div>

@@ -2,7 +2,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
-import { buildClaudeEffortConfig, buildClaudeModelOptions, DEFAULT_CLAUDE_MODEL, getClaudeMaxOutputTokens, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
+import { buildClaudeEffortConfig, buildClaudeModelOptions, DEFAULT_CLAUDE_MODEL, getClaudeMaxOutputTokens, isDeepSeekSaModel, STRUCTURING_CLAUDE_EFFORT } from '@/lib/ai/claude-models';
+import { callDeepSeekStructured, prepareDocumentsForDeepSeek } from '@/lib/ai/deepseek';
 import { InvoiceAnalysisAiSchema, normalizeInvoiceAnalysisOutput, type InvoiceAnalysisReport, type CanonicalSaAnalysis } from '@/lib/sa/invoice-analysis';
 import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } from '@/lib/sa/structure-sa';
 
@@ -131,6 +132,7 @@ export async function extractDataFromDocuments(options: {
   claude_effort?: string | null;
 }): Promise<WithUsage<Record<string, unknown>>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
+  if (isDeepSeekSaModel(claude_model)) throw new Error('DeepSeek V4.1 Flash est réservé au pipeline SA.');
   const documentContents = await prepareDocumentsForClaude(documents_urls);
 
   // Construire le prompt final
@@ -250,11 +252,17 @@ export async function analyzeInvoicesForSa(options: {
   claude_model: string;
   claude_effort?: string | null;
 }): Promise<WithUsage<InvoiceAnalysisReport>> {
-  const documentContents = await prepareDocumentsForClaude(options.documents_urls);
+  const documentContents = isDeepSeekSaModel(options.claude_model)
+    ? await prepareDocumentsForDeepSeek(options.documents_urls)
+    : await prepareDocumentsForClaude(options.documents_urls);
   const fields = options.active_fields.map((field) => `- ${field}`).join('\n');
   const prompt = `Tu es un analyste expert des factures télécom B2B. Ta priorité absolue est de déterminer exactement le TOTAL HT MENSUEL réellement payé par le client sur l'ensemble des documents.
 
 Lis chaque document intégralement. Sépare les montants HT et TTC, conserve le signe des remises, distingue les frais récurrents des frais ponctuels et détermine le nombre exact de mois couvert par chaque montant à partir des mentions et des dates. Une facture couvrant deux mois doit être divisée par 2.
+
+RÈGLE DE PÉRIODICITÉ : le champ billing_months de chaque ligne est le nombre de mois couverts par le montant de CETTE ligne, même si elle figure sur une facture mensuelle. Un montant facturé trimestriellement (« par trimestre ») vaut billing_months 3, semestriellement 6, annuellement (« par an », « annuel ») 12. Le montant source reste celui imprimé sur la facture : ne le divise jamais toi-même, le calcul mensuel est fait ensuite à partir de billing_months. Sans mention de périodicité ni période propre à la ligne, utilise le nombre de mois de la facture. Une maintenance, redevance, licence ou assistance facturée annuellement ou semestriellement est une ligne récurrente (subscription ou other), jamais one_time.
+
+RÈGLE ÉCHÉANCIER : un échéancier (tableau d'échéances d'un contrat de location ou de financement) n'est pas une facture. Crée UNE SEULE ligne (catégorie location) avec le loyer hors taxes d'UNE échéance, jamais une ligne par échéance. Son billing_months correspond à la périodicité d'une échéance (mensuelle = 1, trimestrielle = 3, semestrielle = 6, annuelle = 12). Pour ce document, period_start et period_end couvrent UNE échéance (et non la durée du contrat), billing_months de la facture vaut 1, et printed_total_ht reste à 0 s'il n'existe pas de total imprimé. Ne retiens que la colonne loyer hors taxes : ignore les colonnes taxes et « règlement à effectuer » (TTC) ainsi que les assurances vides. Les dates de première et de dernière échéance ne sont pas une période de facturation : utilise-les pour les champs d'engagement ou de fin de contrat demandés dans les champs actifs.
 
 RÈGLE DE CATÉGORISATION : les appels ou communications vers des services spéciaux, numéros spéciaux ou SVA, ainsi que le hors-forfait, sont toujours de catégorie variable, même si la facture les décrit comme ponctuels, comme achats, comme provenant d'autres fournisseurs, ou si recurring=false. La catégorie one_time est réservée aux frais réellement uniques tels que mise en service, installation, activation ou achat de matériel.
 
@@ -266,6 +274,12 @@ CHAMPS ACTIFS:
 ${fields}
 
 Le résumé (summary) tient en 3 à 5 phrases : le total HT mensuel de chaque facture, puis le total HT mensuel client. Pas de reformulation détaillée du parc ni de recopie des lignes.`;
+  if (isDeepSeekSaModel(options.claude_model)) {
+    const result = await callDeepSeekStructured({
+      prompt, schema: InvoiceAnalysisAiSchema, toolName: 'analyse_sa', maxTokens: 64000, documents: documentContents,
+    });
+    return { data: normalizeInvoiceAnalysisOutput(result.data), usage: result.usage };
+  }
   const stream = anthropic.messages.stream({
     model: options.claude_model,
     // Requête en streaming : pas de risque de timeout HTTP, on laisse donc une
@@ -325,6 +339,12 @@ ${JSON.stringify(options.report)}
 
 CALCULS CANONIQUES:
 ${JSON.stringify(options.canonical)}`;
+  if (isDeepSeekSaModel(options.claude_model)) {
+    const result = await callDeepSeekStructured({
+      prompt, schema: StructuredSaAiSchema, toolName: 'structure_sa', maxTokens: 32000,
+    });
+    return { data: normalizeStructuredSaOutput(result.data), usage: result.usage };
+  }
   const stream = anthropic.messages.stream({
     model: options.claude_model,
     // Streaming : marge élargie pour éviter la troncature du JSON structuré

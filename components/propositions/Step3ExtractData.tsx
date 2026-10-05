@@ -13,7 +13,9 @@ import {
   FileSearch,
   Zap,
   CreditCard,
-  AlertTriangle
+  AlertTriangle,
+  ListChecks,
+  Lock
 } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
@@ -63,6 +65,7 @@ export function Step3ExtractData({
   const [error, setError] = useState<string>('');
   const [creditsInfo, setCreditsInfo] = useState<{ restants: number; debite: number } | null>(null);
   const [requiresReview, setRequiresReview] = useState(initialControl?.status === 'review_required');
+  const [reviewRequestedManually, setReviewRequestedManually] = useState(false);
 
   const startExtraction = async () => {
     setIsExtracting(true);
@@ -141,6 +144,15 @@ export function Step3ExtractData({
       ? extractedData.situation_actuelle.totaux
       : null;
   const includeVariableCharges = saTotaux ? saTotaux.charges_variables_incluses !== false : true;
+
+  // La vérification réécrit la situation actuelle : elle n'est plus permise dès
+  // que les questions SP sont terminées (suggestions calculées sur ces données)
+  // ou qu'une proposition de site a déjà été générée en mode multisite.
+  const isReviewLocked =
+    Boolean(propositionData.suggestions_sp_completes)
+    || Boolean(propositionData.multisite_propositions?.some((entry) => entry.generated));
+  const canReview = Boolean(invoiceAnalysis && propositionData.proposition_id) && !isReviewLocked;
+  const isReviewOpen = canReview && (requiresReview || reviewRequestedManually);
 
   return (
     <div className="space-y-8">
@@ -292,35 +304,56 @@ export function Step3ExtractData({
               )}
             </div>
 
-            {requiresReview && invoiceAnalysis && propositionData.proposition_id && (
+            {isReviewOpen && invoiceAnalysis && propositionData.proposition_id && (
               <div className="mb-8 max-w-5xl mx-auto">
                 <SaExtractionReview
                   propositionId={propositionData.proposition_id}
                   initialReport={invoiceAnalysis}
                   initialTotal={reviewTotal}
                   includeVariableCharges={includeVariableCharges}
+                  mode={requiresReview ? 'alert' : 'manual'}
                   onValidated={(nextData) => {
                     setExtractedData(nextData);
                     setRequiresReview(false);
+                    setReviewRequestedManually(false);
                     updatePropositionData({ donnees_extraites: nextData });
                   }}
-                  onDismiss={() => setRequiresReview(false)}
+                  onDismiss={() => {
+                    setRequiresReview(false);
+                    setReviewRequestedManually(false);
+                  }}
                 />
               </div>
             )}
 
             {/* Message de confirmation */}
-            <div className={`${requiresReview ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-xl p-4 max-w-2xl mx-auto`}>
+            <div className={`${requiresReview && !isReviewLocked ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-xl p-4 max-w-2xl mx-auto`}>
               <div className="flex items-start gap-3">
-                {requiresReview
+                {requiresReview && !isReviewLocked
                   ? <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   : <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />}
                 <div className="flex-1">
-                  <p className={`text-sm ${requiresReview ? 'text-amber-800' : 'text-green-800'}`}>
-                    {requiresReview
+                  <p className={`text-sm ${requiresReview && !isReviewLocked ? 'text-amber-800' : 'text-green-800'}`}>
+                    {requiresReview && !isReviewLocked
                       ? <><strong>Total à vérifier</strong> - Le total HT mensuel recalculé semble incohérent. Vous pouvez le corriger ci-dessus, ou continuer sans corriger : rien ne bloque la suite.</>
                       : <><strong>Données validées</strong> - La situation actuelle est prête pour la suite.</>}
                   </p>
+                  {canReview && !isReviewOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setReviewRequestedManually(true)}
+                      className="mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-white border border-green-300 text-green-800 hover:bg-green-100 transition-colors"
+                    >
+                      <ListChecks className="w-4 h-4" />
+                      Vérifier le détail de la situation actuelle
+                    </button>
+                  )}
+                  {isReviewLocked && invoiceAnalysis && (
+                    <p className="mt-3 flex items-center gap-2 text-xs text-green-700">
+                      <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+                      La vérification n&apos;est plus disponible : les questions SP sont terminées.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

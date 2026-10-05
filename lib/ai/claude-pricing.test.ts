@@ -47,6 +47,10 @@ describe('computeCallCostUsd', () => {
     expect(isKnownModelPricing('claude-sonnet-4-6')).toBe(true);
   });
 
+  it('ne facture pas DeepSeek aux tarifs ni aux multiplicateurs de cache Anthropic', () => {
+    expect(computeCallCostUsd(usage({ model: 'deepseek-flash', inputTokens: 1000, outputTokens: 1000, cacheReadInputTokens: 100 }))).toBeNull();
+  });
+
   it('rend 0 pour un usage entièrement nul sur un modèle connu', () => {
     expect(computeCallCostUsd(usage())).toBe(0);
   });

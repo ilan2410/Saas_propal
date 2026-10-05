@@ -8,6 +8,9 @@ import {
   getClaudeMaxOutputTokens,
   STRUCTURING_CLAUDE_EFFORT,
   supportsClaudeEffort,
+  SA_EXTRACTION_MODELS,
+  isDeepSeekSaModel,
+  isSaExtractionEligible,
 } from './claude-models';
 
 describe('Claude Sonnet model configuration', () => {
@@ -31,6 +34,16 @@ describe('Claude Sonnet model configuration', () => {
 
   it('ne propose que des modèles Sonnet', () => {
     expect(CLAUDE_MODELS.every((model) => model.value.includes('sonnet'))).toBe(true);
+  });
+
+  it('ajoute DeepSeek seulement à la sélection SA, sans changer les options Claude', () => {
+    expect(SA_EXTRACTION_MODELS).toHaveLength(CLAUDE_MODELS.length + 1);
+    expect(SA_EXTRACTION_MODELS.some((model) => model.value === 'deepseek-flash')).toBe(true);
+    expect(CLAUDE_MODELS.some((model) => isDeepSeekSaModel(model.value))).toBe(false);
+    expect(isSaExtractionEligible('telephonie', ['situation_actuelle'])).toBe(true);
+    expect(isSaExtractionEligible('mixte', ['client.nom', 'situation_actuelle.lignes'])).toBe(true);
+    expect(isSaExtractionEligible('mixte', ['situation_actuelle', 'materiels'])).toBe(false);
+    expect(isSaExtractionEligible('bureautique', ['situation_actuelle'])).toBe(false);
   });
 
   it('respecte la limite de sortie des anciens Sonnet', () => {
