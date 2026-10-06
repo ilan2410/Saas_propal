@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
         { error: 'template_id requis' },
         { status: 400 }
       );
+    }
+
+    if (!canUseTemplate(ctx, template_id)) {
+      return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     const { data: proposition, error } = await supabase

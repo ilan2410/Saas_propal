@@ -48,7 +48,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { prenom, nom, telephone_fixe, telephone_mobile, permissions_override } = body ?? {};
+    const { prenom, nom, telephone_fixe, telephone_mobile, permissions_override, allowed_template_ids } = body ?? {};
 
     const updates: Record<string, unknown> = {};
     if (prenom !== undefined) updates.prenom = prenom;
@@ -71,6 +71,35 @@ export async function PATCH(
         updates.permissions_override = sanitized;
       } else {
         return NextResponse.json({ error: 'permissions_override invalide' }, { status: 400 });
+      }
+    }
+
+    // null = tous les templates ; tableau d'ids = uniquement ceux-là
+    if (allowed_template_ids !== undefined) {
+      if (allowed_template_ids === null) {
+        updates.allowed_template_ids = null;
+      } else if (
+        Array.isArray(allowed_template_ids) &&
+        allowed_template_ids.every((v: unknown) => typeof v === 'string')
+      ) {
+        const ids = Array.from(new Set(allowed_template_ids as string[]));
+        if (ids.length > 0) {
+          // Ne garder que des templates appartenant à l'organisation
+          const { data: owned, error: ownedError } = await supabase
+            .from('proposition_templates')
+            .select('id')
+            .eq('organization_id', ctx.organizationId)
+            .in('id', ids);
+          if (ownedError) {
+            return NextResponse.json({ error: ownedError.message }, { status: 500 });
+          }
+          if ((owned ?? []).length !== ids.length) {
+            return NextResponse.json({ error: 'Template invalide' }, { status: 400 });
+          }
+        }
+        updates.allowed_template_ids = ids;
+      } else {
+        return NextResponse.json({ error: 'allowed_template_ids invalide' }, { status: 400 });
       }
     }
 

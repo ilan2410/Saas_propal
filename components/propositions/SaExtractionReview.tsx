@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Eye, ListChecks, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import {
   TOTAL_BLOCKING_ISSUE_CODES,
   calculateCanonicalSaAnalysis,
@@ -9,6 +9,11 @@ import {
   type InvoiceAnalysisLine,
   type InvoiceAnalysisReport,
 } from '@/lib/sa/invoice-analysis';
+import {
+  AttachmentPreviewDialog,
+  useAttachmentPreview,
+  type PropositionAttachment,
+} from '@/components/propositions/PropositionAttachments';
 
 interface Props {
   propositionId: string;
@@ -273,6 +278,33 @@ export function SaExtractionReview({
   const [editingLines, setEditingLines] = useState<Set<string>>(new Set());
   const didAutoExpand = useRef(false);
 
+  // Documents sources (même ordre que `document_index`), prévisualisés avec le
+  // visualiseur des pièces jointes de la fiche proposition.
+  const [sourceDocuments, setSourceDocuments] = useState<Array<{ index: number; attachment: PropositionAttachment | null }>>([]);
+  const preview = useAttachmentPreview(propositionId);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/propositions/${propositionId}/source-documents`);
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled && response.ok && Array.isArray(data.documents)) setSourceDocuments(data.documents);
+      } catch {
+        // Le visualiseur est un confort : sans lui, la vérification reste possible.
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [propositionId]);
+
+  // Une seule pièce source : toutes les factures en proviennent, même si l'IA
+  // a numéroté son index autrement.
+  const attachmentForInvoice = (documentIndex: number): PropositionAttachment | null =>
+    sourceDocuments.length === 1
+      ? sourceDocuments[0].attachment
+      : sourceDocuments.find((doc) => doc.index === documentIndex)?.attachment ?? null;
+
   const invoices = report.invoices;
 
   // Le total « à prendre en compte pour la SA » et les anomalies sont recalculés
@@ -524,25 +556,43 @@ export function SaExtractionReview({
           const isOpen = expandedInvoices.has(invoiceIndex);
           const invoiceMessages = invoiceIssuesByIndex.get(invoiceIndex) ?? [];
           const isFlagged = flaggedInvoiceIndexes.has(invoiceIndex);
+          const invoiceAttachment = attachmentForInvoice(invoice.document_index);
           return (
             <div key={`${invoice.document_index}-${invoiceIndex}`} id={`sa-invoice-${invoiceIndex}`} className="rounded-lg border border-gray-200 bg-white p-3">
-              <button
-                type="button"
-                onClick={() => toggleInvoice(invoiceIndex)}
-                className="flex w-full items-center justify-between gap-3 text-left"
-              >
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
-                  <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-                  {invoiceLabel(invoice)}
-                  {isFlagged && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">à vérifier</span>
-                  )}
-                </span>
-                <span className="shrink-0 text-right text-[11px] leading-tight text-gray-500">
-                  Total HT imprimé sur la facture
-                  <span className="ml-2 tabular-nums text-sm font-medium text-gray-700">{euro(invoice.printed_total_ht)}</span>
-                </span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleInvoice(invoiceIndex)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                    {invoiceAttachment ? invoiceAttachment.originalName : invoiceLabel(invoice)}
+                    {invoiceAttachment && invoice.invoice_number && (
+                      <span className="text-xs font-normal text-gray-500">Facture {invoice.invoice_number}</span>
+                    )}
+                    {isFlagged && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">à vérifier</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-right text-[11px] leading-tight text-gray-500">
+                    Total HT imprimé sur la facture
+                    <span className="ml-2 tabular-nums text-sm font-medium text-gray-700">{euro(invoice.printed_total_ht)}</span>
+                  </span>
+                </button>
+                {invoiceAttachment && (
+                  <button
+                    type="button"
+                    onClick={() => void preview.openPreview(invoiceAttachment)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    aria-label={`Voir le document ${invoiceAttachment.originalName}`}
+                    title={invoiceAttachment.originalName}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Voir le document
+                  </button>
+                )}
+              </div>
 
               {isOpen && (
                 <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
@@ -612,6 +662,7 @@ export function SaExtractionReview({
           </button>
         )}
       </div>
+      <AttachmentPreviewDialog preview={preview} />
     </div>
   );
 }

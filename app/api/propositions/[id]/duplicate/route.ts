@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { safeStorageFileName } from '@/lib/security/validate-upload';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
@@ -43,6 +43,10 @@ export async function POST(
         { error: 'Proposition non trouvée' },
         { status: 404 }
       );
+    }
+
+    if (originalProposition.template_id && !canUseTemplate(ctx, originalProposition.template_id)) {
+      return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     // Extraire le nom du client
