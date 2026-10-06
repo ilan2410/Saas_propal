@@ -46,6 +46,18 @@ const nextConfig: NextConfig = {
           { key: 'Content-Security-Policy', value: csp },
         ],
       },
+      // Aperçu PDF des pièces jointes : cette route est affichée dans une iframe
+      // de notre propre application. Seule exception à l'interdiction globale
+      // d'iframe, limitée à la même origine ; la règle suivante l'emporte sur la
+      // précédente pour ces deux en-têtes. La CSP se réduit à frame-ancestors :
+      // object-src 'none' empêcherait le visualiseur PDF de s'afficher.
+      {
+        source: '/api/propositions/:id/attachments/:attachmentId/file',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: `frame-ancestors 'self'` },
+        ],
+      },
     ];
   },
 };

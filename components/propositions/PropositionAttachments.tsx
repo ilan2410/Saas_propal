@@ -81,15 +81,73 @@ function AttachmentPreviewBody({ attachment, url }: { attachment: PropositionAtt
   );
 }
 
+/**
+ * État d'aperçu d'une pièce jointe (URL signée courte durée). Partagé entre la
+ * liste des pièces jointes et l'écran de vérification des factures.
+ */
+export function useAttachmentPreview(propositionId: string) {
+  const [previewAttachment, setPreviewAttachment] = useState<PropositionAttachment | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const openPreview = async (attachment: PropositionAttachment) => {
+    setPreviewAttachment(attachment);
+    setPreviewUrl(null);
+    // PDF : servi par notre route (même origine) pour que le visualiseur du
+    // navigateur affiche le nom d'origine plutôt que la clé de stockage.
+    if (attachment.mimeType === 'application/pdf') {
+      setPreviewUrl(`/api/propositions/${propositionId}/attachments/${attachment.id}/file`);
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const response = await fetch(`/api/propositions/${propositionId}/attachments/${attachment.id}/preview`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.details || data.error || 'Aperçu impossible');
+      setPreviewUrl(data.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Aperçu impossible');
+      setPreviewAttachment(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewAttachment(null);
+    setPreviewUrl(null);
+  };
+
+  return { previewAttachment, previewUrl, previewLoading, openPreview, closePreview };
+}
+
+export function AttachmentPreviewDialog({ preview }: { preview: ReturnType<typeof useAttachmentPreview> }) {
+  const { previewAttachment, previewUrl, previewLoading, closePreview } = preview;
+  return (
+    <Dialog open={!!previewAttachment} onOpenChange={(open) => { if (!open) closePreview(); }}>
+      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col border-slate-200 bg-white">
+        <DialogHeader>
+          <DialogTitle className="truncate pr-6 text-slate-900">{previewAttachment?.originalName}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1">
+          {previewLoading ? (
+            <div className="flex h-full min-h-[50vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+          ) : previewAttachment && previewUrl ? (
+            <div className="h-[70vh]"><AttachmentPreviewBody attachment={previewAttachment} url={previewUrl} /></div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AttachmentManager({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number, changed: boolean) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<PropositionAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [previewAttachment, setPreviewAttachment] = useState<PropositionAttachment | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const preview = useAttachmentPreview(propositionId);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,23 +188,6 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
-    }
-  };
-
-  const openPreview = async (attachment: PropositionAttachment) => {
-    setPreviewAttachment(attachment);
-    setPreviewUrl(null);
-    setPreviewLoading(true);
-    try {
-      const response = await fetch(`/api/propositions/${propositionId}/attachments/${attachment.id}/preview`);
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.details || data.error || 'Aperçu impossible');
-      setPreviewUrl(data.url);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Aperçu impossible');
-      setPreviewAttachment(null);
-    } finally {
-      setPreviewLoading(false);
     }
   };
 
@@ -191,7 +232,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
                 <p className="truncate text-sm font-medium text-slate-800">{attachment.originalName}</p>
                 <p className="text-xs text-slate-500">{formatFileSize(attachment.sizeBytes)} · {formatDate(attachment.createdAt)}</p>
               </div>
-              <button type="button" onClick={() => void openPreview(attachment)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label={`Aperçu de ${attachment.originalName}`}><Eye className="h-4 w-4" /></button>
+              <button type="button" onClick={() => void preview.openPreview(attachment)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label={`Aperçu de ${attachment.originalName}`}><Eye className="h-4 w-4" /></button>
               <a href={`/api/propositions/${propositionId}/attachments/${attachment.id}/download`} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label={`Télécharger ${attachment.originalName}`}><Download className="h-4 w-4" /></a>
               <button type="button" onClick={() => void remove(attachment)} disabled={deleting === attachment.id} className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50" aria-label={`Supprimer ${attachment.originalName}`}>
                 {deleting === attachment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -200,28 +241,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
           ))}
         </div>
       )}
-      <Dialog
-        open={!!previewAttachment}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPreviewAttachment(null);
-            setPreviewUrl(null);
-          }
-        }}
-      >
-        <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col border-slate-200 bg-white">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-6 text-slate-900">{previewAttachment?.originalName}</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 flex-1">
-            {previewLoading ? (
-              <div className="flex h-full min-h-[50vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
-            ) : previewAttachment && previewUrl ? (
-              <div className="h-[70vh]"><AttachmentPreviewBody attachment={previewAttachment} url={previewUrl} /></div>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AttachmentPreviewDialog preview={preview} />
     </div>
   );
 }
