@@ -28,9 +28,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@napi-rs ./node_modules/@napi-rs
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/pdf-parse/node_modules/@napi-rs ./node_modules/pdf-parse/node_modules/@napi-rs
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs ./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-RUN node -e "import('pdf-parse').then(() => console.log('pdf-parse OK'))"
+RUN test -f node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs && node -e "import('pdf-parse').then(() => console.log('PDF runtime OK'))"
 
 USER nextjs
 
