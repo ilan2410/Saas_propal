@@ -58,6 +58,8 @@ export interface TeamMember {
   telephone_mobile: string | null;
   actif: boolean;
   permissions_override: PermissionsOverride | null;
+  /** null = tous les templates ; sinon uniquement ceux-ci pour créer une proposition */
+  allowed_template_ids?: string[] | null;
   created_at: string;
 }
 
@@ -697,6 +699,38 @@ function PermissionsModal({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [templates, setTemplates] = useState<{ id: string; nom: string }[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [restrictTemplates, setRestrictTemplates] = useState(
+    Array.isArray(member.allowed_template_ids)
+  );
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>(
+    member.allowed_template_ids ?? []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/settings/team/templates')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setTemplates(data?.templates ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Impossible de charger les templates');
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleTemplate = (id: string) =>
+    setSelectedTemplateIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
@@ -710,7 +744,10 @@ function PermissionsModal({
       const res = await fetch(`/api/settings/team/members/${member.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions_override }),
+        body: JSON.stringify({
+          permissions_override,
+          allowed_template_ids: restrictTemplates ? selectedTemplateIds : null,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Erreur de sauvegarde');
@@ -756,6 +793,59 @@ function PermissionsModal({
             </div>
           </div>
         ))}
+
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-gray-700">Templates utilisables pour créer une proposition</p>
+          <p className="text-xs text-gray-400">
+            Les propositions déjà créées restent accessibles, même avec un template retiré.
+          </p>
+          <div className="flex gap-2">
+            {(
+              [
+                [false, 'Tous les templates'],
+                [true, 'Sélection'],
+              ] as [boolean, string][]
+            ).map(([restrict, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setRestrictTemplates(restrict)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  restrictTemplates === restrict
+                    ? 'bg-blue-50 text-blue-700 border-blue-300'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {restrictTemplates && (
+            <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-md border border-gray-200 p-2">
+              {templatesLoading ? (
+                <p className="text-xs text-gray-400">Chargement…</p>
+              ) : templates.length === 0 ? (
+                <p className="text-xs text-gray-400">Aucun template actif dans l&apos;organisation.</p>
+              ) : (
+                templates.map((t) => (
+                  <label key={t.id} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedTemplateIds.includes(t.id)}
+                      onChange={() => toggleTemplate(t.id)}
+                    />
+                    {t.nom}
+                  </label>
+                ))
+              )}
+              {!templatesLoading && selectedTemplateIds.length === 0 && (
+                <p className="pt-1 text-xs text-amber-600">
+                  Aucun template coché : ce commercial ne pourra pas créer de proposition.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="flex justify-end gap-3 pt-4">
         <Button variant="outline" onClick={onClose}>

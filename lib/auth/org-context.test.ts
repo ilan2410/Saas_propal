@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
-import { resolveOrgContext } from './org-context';
+import { canUseTemplate, resolveOrgContext, type OrgContext } from './org-context';
 
 // Mock minimal d'un client Supabase : chaque `.from(table)` renvoie un builder
 // chaînable dont `.maybeSingle()` / `.single()` résout la valeur configurée.
@@ -102,5 +102,21 @@ describe('resolveOrgContext — permissions de téléchargement', () => {
     expect(ctx?.role).toBe('owner');
     expect(ctx?.permissions.download_proposition).toBe(true);
     expect(ctx?.permissions.download_comparatif_sa_sp).toBe(true);
+  });
+});
+
+describe('canUseTemplate', () => {
+  const base = { allowedTemplateIds: null } as unknown as OrgContext;
+  it('autorise tout sans restriction', () => {
+    expect(canUseTemplate(base, 'a')).toBe(true);
+  });
+  it('limite aux templates attribués', () => {
+    const ctx = { allowedTemplateIds: ['a'] } as unknown as OrgContext;
+    expect(canUseTemplate(ctx, 'a')).toBe(true);
+    expect(canUseTemplate(ctx, 'b')).toBe(false);
+  });
+  it('liste vide = aucun template', () => {
+    const ctx = { allowedTemplateIds: [] } as unknown as OrgContext;
+    expect(canUseTemplate(ctx, 'a')).toBe(false);
   });
 });

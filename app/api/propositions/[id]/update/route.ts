@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
 import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
@@ -42,6 +42,16 @@ export async function PATCH(
       updateData.extracted_data = body.extracted_data;
     }
     if (body.template_id !== undefined) {
+      // Garder le template courant reste toujours permis ; en changer exige l'accès au nouveau.
+      if (!canUseTemplate(ctx, body.template_id)) {
+        const { data: current } = await scopePropositionsQuery(
+          supabase.from('propositions').select('template_id').eq('id', id),
+          ctx
+        ).maybeSingle();
+        if (current?.template_id !== body.template_id) {
+          return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
+        }
+      }
       updateData.template_id = body.template_id;
     }
     if (body.nom_client !== undefined) {

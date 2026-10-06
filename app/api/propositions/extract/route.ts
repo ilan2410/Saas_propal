@@ -7,7 +7,8 @@ import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-docu
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
 import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
@@ -277,6 +278,22 @@ export async function POST(request: NextRequest) {
     
     if (!documents_urls || !Array.isArray(documents_urls) || documents_urls.length === 0) {
       return NextResponse.json({ error: 'Aucun document fourni' }, { status: 400 });
+    }
+
+    // Restriction par template : une proposition existante garde son template même s'il
+    // a été retiré au commercial depuis ; seule une création sur un autre template est bloquée.
+    if (!canUseTemplate(ctx, template_id)) {
+      let sameTemplateAsExisting = false;
+      if (proposition_id) {
+        const { data: existing } = await scopePropositionsQuery(
+          supabase.from('propositions').select('template_id').eq('id', proposition_id),
+          ctx
+        ).maybeSingle();
+        sameTemplateAsExisting = existing?.template_id === template_id;
+      }
+      if (!sameTemplateAsExisting) {
+        return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
+      }
     }
 
     // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter

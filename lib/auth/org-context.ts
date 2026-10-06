@@ -22,6 +22,8 @@ export interface OrgContext {
   memberId: string | null; // id de la ligne organization_members, null pour un propriétaire
   memberUserId: string | null; // = user.id pour un commercial, null pour un propriétaire
   permissions: OrgPermissions; // toujours entièrement peuplé ; tout `true` pour un propriétaire
+  /** Templates utilisables pour créer une proposition. null = tous (propriétaire, ou commercial sans restriction). */
+  allowedTemplateIds: string[] | null;
   displayName: {
     prenom: string;
     nom: string;
@@ -63,6 +65,14 @@ const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
   'download_comparatif_sa_sp',
 ];
 
+/** Vrai si l'utilisateur peut créer une proposition à partir de ce template. */
+export function canUseTemplate(ctx: OrgContext, templateId: string): boolean {
+  return ctx.allowedTemplateIds === null || ctx.allowedTemplateIds.includes(templateId);
+}
+
+export const TEMPLATE_FORBIDDEN_MESSAGE =
+  "Vous n'avez pas accès à ce template. Contactez votre administrateur.";
+
 export async function resolveOrgContext(
   supabase: SupabaseClient,
   user: User
@@ -81,6 +91,7 @@ export async function resolveOrgContext(
       memberId: null,
       memberUserId: null,
       permissions: { ...ALL_PERMISSIONS_TRUE },
+      allowedTemplateIds: null,
       displayName: {
         prenom: ownerOrg.contact_prenom ?? '',
         nom: ownerOrg.contact_nom ?? '',
@@ -113,6 +124,7 @@ export async function resolveOrgContext(
       memberId: member.id,
       memberUserId: member.user_id,
       permissions,
+      allowedTemplateIds: Array.isArray(member.allowed_template_ids) ? member.allowed_template_ids : null,
       displayName: {
         prenom: member.prenom ?? '',
         nom: member.nom ?? '',
