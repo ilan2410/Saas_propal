@@ -26,7 +26,11 @@ RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@napi-rs ./node_modules/@napi-rs
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/pdf-parse/node_modules/@napi-rs ./node_modules/pdf-parse/node_modules/@napi-rs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+RUN node -e "import('pdf-parse').then(() => console.log('pdf-parse OK'))"
 
 USER nextjs
 
