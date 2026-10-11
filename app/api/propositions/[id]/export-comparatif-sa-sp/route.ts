@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type {
   CatalogueProduit,
   OrganizationPreferences,
@@ -52,8 +52,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         filled_data,
         suggestions_sp_completes,
         sp_reponses,
-        organization_id,
-        organizations(nom, preferences, logo_url, pdf_header_logo_url, sp_questions)
+        organization_id
       `)
       .eq('id', id),
     ctx
@@ -63,12 +62,16 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
   }
 
-  const orgRaw = (proposition as unknown as { organizations: unknown }).organizations;
-  const org = isRecord(orgRaw)
-    ? orgRaw
-    : Array.isArray(orgRaw) && orgRaw.length > 0
-      ? (orgRaw[0] as Record<string, unknown>)
-      : null;
+  // Preferences are private columns: read only after the user-scoped proposal
+  // authorizes access, and keep them server-side for document generation.
+  const { data: org, error: orgError } = await createServiceClient()
+    .from('organizations')
+    .select('nom, preferences, logo_url, pdf_header_logo_url, sp_questions')
+    .eq('id', ctx.organizationId)
+    .single();
+  if (orgError || !org) {
+    return NextResponse.json({ error: 'Erreur de chargement de la configuration du comparatif' }, { status: 500 });
+  }
 
   const prefs = (isRecord(org?.preferences) ? org.preferences : {}) as OrganizationPreferences;
   const spCustom = (isRecord(prefs.sp_customization) ? prefs.sp_customization : {}) as SpCustomization;
