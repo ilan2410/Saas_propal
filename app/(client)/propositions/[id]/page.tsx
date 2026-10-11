@@ -760,7 +760,7 @@ export default async function PropositionDetailPage({
   const creatorId = typeof proposition.created_by === 'string' ? proposition.created_by : null;
   const [organizationResult, teleprosResult, creatorResult] = await Promise.all([
     createServiceClient().from('organizations')
-      .select('sp_questions, preferences')
+      .select('sp_questions, preferences, contact_prenom, contact_nom')
       .eq('id', ctx.organizationId)
       .single(),
     serviceSupabase
@@ -785,7 +785,7 @@ export default async function PropositionDetailPage({
     actif: telepro.actif !== false,
   }));
   const creatorName = creatorId === ctx.organizationId
-    ? `${ctx.displayName.prenom} ${ctx.displayName.nom}`.trim() || 'Compte principal'
+    ? `${organization?.contact_prenom ?? ''} ${organization?.contact_nom ?? ''}`.trim() || 'Compte principal'
     : creatorResult.data
       ? `${creatorResult.data.prenom ?? ''} ${creatorResult.data.nom ?? ''}`.trim() || 'Commercial'
       : 'Non renseigné';
