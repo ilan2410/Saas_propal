@@ -13,6 +13,7 @@ interface SheetInfo {
   cols: number;
   cells: { [key: string]: string };
   preview: { ref: string; value: string }[];
+  formulaCells?: string[];
 }
 
 interface CellMapping {
@@ -34,6 +35,7 @@ interface Props {
   onMappingComplete: (mapping: CellMapping, fileConfig: MappingContext) => void;
   onMappingChange?: (mapping: CellMapping) => void; // Notifie le parent en continu
   onBack: () => void;
+  preserveFormulas?: boolean;
 }
 
 // Générer le nom de colonne Excel (A, B, ..., Z, AA, AB, ...)
@@ -47,11 +49,12 @@ function getColumnName(colIndex: number): string {
   return name;
 }
 
-export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMapping, onMappingComplete, onMappingChange, onBack }: Props) {
+export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMapping, onMappingComplete, onMappingChange, onBack, preserveFormulas = true }: Props) {
   const [mapping, setMapping] = useState<CellMapping>(initialMapping || {});
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedField, setExpandedField] = useState<string | null>(fields[0] || null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [mappingError, setMappingError] = useState<string | null>(null);
 
   const spFieldsSet = useMemo(() => new Set(spFields ?? []), [spFields]);
 
@@ -124,9 +127,9 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
     setExpandedCategories(newExpanded);
   };
 
-  // Générer toutes les cellules de la grille (max 200 lignes x 26 colonnes)
+  // Générer une grille bornée pour garder les grands classeurs utilisables.
   const maxRows = Math.min(sheet.rows || 100, 200);
-  const maxCols = Math.min(sheet.cols || 26, 26);
+  const maxCols = Math.min(sheet.cols || 26, 100);
 
   const allCells = useMemo(() => {
     const cells: { ref: string; value: string }[] = [];
@@ -152,6 +155,16 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
   }, [allCells, searchTerm]);
 
   const handleMapField = (fieldName: string, cellRef: string) => {
+    if (preserveFormulas && sheet.formulaCells?.includes(cellRef)) {
+      setMappingError(`${cellRef} contient une formule protégée. Choisissez une autre cellule.`);
+      return;
+    }
+    const otherField = Object.entries(mapping).find(([key, refs]) => key !== fieldName && (Array.isArray(refs) ? refs.includes(cellRef) : refs === cellRef));
+    if (otherField) {
+      setMappingError(`${cellRef} est déjà associée à ${otherField[0]}. Retirez cette association avant de la remplacer.`);
+      return;
+    }
+    setMappingError(null);
     setMapping((prev) => {
       const current = prev[fieldName];
       
@@ -238,6 +251,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
 
   return (
     <div className="space-y-6">
+      {mappingError && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{mappingError}</p>}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
           Mapper les cellules Excel

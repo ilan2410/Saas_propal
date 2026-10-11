@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { tableTotalSource, withTableTotalField } from '@/lib/generators/table-row-total';
 import { Upload, Loader2, FileSpreadsheet, FileText, X, Check, Play, HelpCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { TemplateData, ExcelState } from './TemplateWizard';
 import { ExcelMultiSheetMapper } from './ExcelMultiSheetMapper';
+import { ExcelTemplateOptions } from './ExcelTemplateOptions';
+import { buildExcelReplacementConfig, mergeExcelTemplateConfig, validateExcelMappings } from '@/lib/excel/template-config';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getArrayFieldsForSecteur, type ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 import { SpCustomVariablesEditor } from './SpCustomVariablesEditor';
 import { SpClausesManager } from './SpClausesManager';
-import type { SpVariableCustom, SpTableauFusionne } from '@/types';
+import type { SpVariableCustom, SpTableauFusionne, SpClauseConditionnelle, ExcelConfig } from '@/types';
 import '@js-preview/excel/lib/index.css';
 
 interface SheetMapping {
@@ -25,6 +29,7 @@ interface Props {
   onPrev: () => void;
   isLoading?: boolean;
   onSave?: () => void;
+  onExcelSave?: (excelUpdate: Partial<TemplateData>) => void;
 }
 
 interface ValidationError {
@@ -106,6 +111,9 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_adresse_livraison', label: 'Adresse livraison complète' },
   { key: 'sp_livraison_identique', label: '"Oui" ou "Non"' },
   { key: 'Adresse_facturation_SP_societe', label: 'Société (facturation)' },
+  { key: 'Adresse_facturation_SP_nom', label: 'Nom (facturation)' },
+  { key: 'Adresse_facturation_SP_prenom', label: 'Prénom (facturation)' },
+  { key: 'Adresse_facturation_SP_fonction', label: 'Fonction (facturation)' },
   { key: 'Adresse_facturation_SP_adresse', label: 'Adresse (facturation)' },
   { key: 'Adresse_facturation_SP_cp', label: 'Code postal (facturation)' },
   { key: 'Adresse_facturation_SP_ville', label: 'Ville (facturation)' },
@@ -115,6 +123,9 @@ const SP_SIMPLE_VARS = [
   { key: 'Adresse_facturation_SP_email', label: 'Email (facturation)' },
   { key: 'Adresse_facturation_SP_siret', label: 'SIRET (facturation)' },
   { key: 'Adresse_livraison_SP_societe', label: 'Société (livraison)' },
+  { key: 'Adresse_livraison_SP_nom', label: 'Nom (livraison)' },
+  { key: 'Adresse_livraison_SP_prenom', label: 'Prénom (livraison)' },
+  { key: 'Adresse_livraison_SP_fonction', label: 'Fonction (livraison)' },
   { key: 'Adresse_livraison_SP_adresse', label: 'Adresse (livraison)' },
   { key: 'Adresse_livraison_SP_cp', label: 'Code postal (livraison)' },
   { key: 'Adresse_livraison_SP_ville', label: 'Ville (livraison)' },
@@ -221,17 +232,20 @@ const SP_TABLE_BLOCKS = [
     label: 'Tableau cadeaux',
     fullBlock: `{{#sp_cadeaux_table}}\n{{sp_cadeau_nom}}  {{sp_cadeau_ref}}  {{sp_cadeau_quantite}}  {{sp_cadeau_valeur_ht}}\n{{/sp_cadeaux_table}}`,
   },
-];
+].map(block => (tableTotalSource(spBlockColumns(block.fullBlock).map(field => field.id))
+    || ['sp_lignes_mobiles', 'sp_lignes_fixes', 'sp_internet'].includes(block.arrayId))
+  ? { ...block, fullBlock: block.fullBlock.replace(/(\n\{\{\/)/, '  {{prix_total}}$1') }
+  : block);
 
-// Colonnes mappables d'un bloc SP : les tokens {{...}} hors ouverture {{#..}},
-// fermeture {{/..}} et image {{%..}}. Utilisé pour proposer les tableaux SP au
+// Colonnes mappables d'un bloc SP, incluant les images, hors balises de boucle.
+// Utilisé pour proposer les tableaux SP au
 // mapping Excel (zone → tableau, colonne → champ).
 function spBlockColumns(fullBlock: string): ArrayFieldDefinition['rowFields'] {
   const ids: string[] = [];
-  const re = /\{\{([^#/%][^}]*)\}\}/g;
+  const re = /\{\{([^#/^][^}]*)\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(fullBlock)) !== null) {
-    const id = m[1].trim();
+    const id = m[1].trim().replace(/^%/, '');
     if (id && !ids.includes(id)) ids.push(id);
   }
   return ids.map((id) => ({ id, label: id, type: 'string' as const }));
@@ -253,6 +267,7 @@ const SP_MERGED_TABLE_ROWFIELDS: ArrayFieldDefinition['rowFields'] = [
   { id: 'sp_prix_propose', label: 'sp_prix_propose', type: 'string' },
   { id: 'sp_economie', label: 'sp_economie', type: 'string' },
   { id: 'sp_analyse', label: 'sp_analyse', type: 'string' },
+  { id: 'prix_total', label: 'Prix total HT (quantité × prix unitaire)', type: 'number' },
 ];
 
 const VARIABLE_HELP: Record<string, { label: string; description: string; example: string }> = {
@@ -382,6 +397,7 @@ export function Step2UploadTemplate({
   onPrev,
   isLoading = false,
   onSave,
+  onExcelSave,
 }: Props) {
   // Utiliser l'état Excel partagé du wizard
   const { file, fileName, sheets: excelSheets, mappings: savedMappings, arrayMappings: savedArrayMappings } = excelState;
@@ -458,13 +474,15 @@ export function Step2UploadTemplate({
       ...arr,
       rowFields: [...arr.rowFields, ...extraRowFields],
     };
-  });
+  }).map(withTableTotalField);
 
   // ── Variables et tableaux SP exposés au mapping Excel (parité avec Word) ──
   // Toujours disponibles : l'utilisateur mappe sur des cellules ce dont il a besoin.
   const spFileConfig = (templateData?.file_config ?? {}) as {
     spVariablesCustom?: SpVariableCustom[];
     spTableauxFusionnes?: SpTableauFusionne[];
+    spClausesConditionnelles?: SpClauseConditionnelle[];
+    fieldTypes?: ExcelConfig['fieldTypes'];
   };
   const spCustomVars = Array.isArray(spFileConfig.spVariablesCustom) ? spFileConfig.spVariablesCustom : [];
   const spMergedTables = Array.isArray(spFileConfig.spTableauxFusionnes) ? spFileConfig.spTableauxFusionnes : [];
@@ -472,6 +490,9 @@ export function Step2UploadTemplate({
   const spSimpleFieldKeys = [
     ...SP_SIMPLE_VARS.map((v) => v.key),
     ...spCustomVars.filter((v) => v.type !== 'tableau').map((v) => v.key),
+    ...(spFileConfig.spClausesConditionnelles ?? []).map(clause => `sp_clause_${clause.cle_variable}`),
+    'sp_date_limite_souscription',
+    ...Object.keys(spFileConfig.fieldTypes ?? {}).filter(key => key.startsWith('sp_date_limite_souscription-')),
   ];
 
   const spArrayDefs: ArrayFieldDefinition[] = [
@@ -493,9 +514,9 @@ export function Step2UploadTemplate({
   ];
 
   const excelMapperFields = Array.from(
-    new Set([...((templateData.champs_actifs ?? []) as string[]), ...spSimpleFieldKeys])
+    new Set([...((templateData.champs_actifs ?? []) as string[]), ...spSimpleFieldKeys, ...ENTREPRISE_VARS.map(v => v.key)])
   );
-  const excelMapperArrayFields: ArrayFieldDefinition[] = [...arrayFields, ...spArrayDefs];
+  const excelMapperArrayFields: ArrayFieldDefinition[] = [...arrayFields, ...spArrayDefs].map(withTableTotalField);
 
   const [parseError, setParseError] = useState<string | null>(null);
   const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null);
@@ -518,6 +539,16 @@ export function Step2UploadTemplate({
   const [excelNoProposition, setExcelNoProposition] = useState(false);
   const [isRenderingExcel, setIsRenderingExcel] = useState(false);
   const [excelRenderError, setExcelRenderError] = useState<string | null>(null);
+  const [excelValidationError, setExcelValidationError] = useState<string | null>(null);
+  const [isValidatingExcel, setIsValidatingExcel] = useState(false);
+  const excelPreviewRequest = useRef(0);
+  useEffect(() => {
+    if (templateData.file_type !== 'excel') return;
+    excelPreviewRequest.current++;
+    setExcelFilledBuffer(null);
+    setExcelPreviewMode('raw');
+    setIsLoadingExcelFilled(false);
+  }, [savedMappings, savedArrayMappings, templateData.file_config, templateData.file_type]);
   const [copiedKeys, setCopiedKeys] = useState<Record<string, true>>({});
   const [showHelp, setShowHelp] = useState(false);
   const [currentHelpStep, setCurrentHelpStep] = useState(0);
@@ -529,6 +560,11 @@ export function Step2UploadTemplate({
   const [hasUploadedBefore, setHasUploadedBefore] = useState(false);
   const [collapsedAdvanced, setCollapsedAdvanced] = useState<Record<string, boolean>>({});
   const [isReplacingFile, setIsReplacingFile] = useState(false);
+  const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
+  const [retainedExcelMappings, setRetainedExcelMappings] = useState(false);
+  const retainedMappingIssues = retainedExcelMappings
+    ? validateExcelMappings({ sheetMappings: savedMappings, arrayMappings: savedArrayMappings }, excelSheets)
+    : [];
 
   const hasExistingFile =
     !!templateData.file_url &&
@@ -722,6 +758,7 @@ export function Step2UploadTemplate({
       setExcelPreviewMode('raw');
       return;
     }
+    const requestId = ++excelPreviewRequest.current;
     try {
       setIsLoadingExcelFilled(true);
       setExcelFilledError(null);
@@ -729,13 +766,20 @@ export function Step2UploadTemplate({
       const fd = new FormData();
       fd.append('templateId', templateData.id);
       if (file) fd.append('file', file);
+      fd.append('fileConfig', JSON.stringify(mergeExcelTemplateConfig(
+        (templateData.file_config ?? {}) as Record<string, unknown>,
+        { sheetMappings: savedMappings, arrayMappings: savedArrayMappings },
+      )));
       const res = await fetch('/api/templates/preview-excel', { method: 'POST', body: fd });
+      if (requestId !== excelPreviewRequest.current) return;
       const contentType = res.headers.get('Content-Type') ?? '';
       if (res.ok && contentType.includes('spreadsheet')) {
         const buf = await res.arrayBuffer();
+        if (requestId !== excelPreviewRequest.current) return;
         setExcelFilledBuffer(buf);
       } else {
         const data = await res.json().catch(() => ({}));
+        if (requestId !== excelPreviewRequest.current) return;
         if (data?.hasData === false) {
           setExcelNoProposition(true);
         } else {
@@ -744,17 +788,19 @@ export function Step2UploadTemplate({
         setExcelPreviewMode('raw');
       }
     } catch (e) {
+      if (requestId !== excelPreviewRequest.current) return;
       setExcelFilledError(e instanceof Error ? e.message : 'Erreur réseau');
       setExcelPreviewMode('raw');
     } finally {
-      setIsLoadingExcelFilled(false);
+      if (requestId === excelPreviewRequest.current) setIsLoadingExcelFilled(false);
     }
   }
 
   function handleSelectExcelPreviewMode(mode: 'raw' | 'filled') {
     setExcelPreviewMode(mode);
     setExcelFilledError(null);
-    if (mode === 'filled' && !excelFilledBuffer) {
+    if (mode === 'filled') {
+      setExcelFilledBuffer(null);
       void loadFilledExcelPreview();
     }
   }
@@ -805,14 +851,55 @@ export function Step2UploadTemplate({
     );
   }
 
+  const parseSelectedExcelFile = async (selectedFile: File, keepMappings: boolean) => {
+    setStep('parse-excel');
+    setParseError(null);
+    setWordPreviewHtml(null);
+    setWordParseError(null);
+    setWordParseMessages([]);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      const response = await fetch('/api/templates/parse-excel', { method: 'POST', body: formData });
+      if (!response.ok) throw new Error('Erreur lors de la lecture du fichier Excel');
+      const result = (await response.json().catch(() => null)) as unknown;
+      const sheets = isRecord(result) && Array.isArray(result.sheets) ? (result.sheets as ExcelState['sheets']) : [];
+      if (!sheets.length) throw new Error('Aucune feuille Excel détectée dans le fichier.');
+
+      const existingConfig = templateData.file_type === 'excel' ? (templateData.file_config ?? {}) : {};
+      const config = buildExcelReplacementConfig(existingConfig, savedMappings, savedArrayMappings, keepMappings);
+      updateExcelState({
+        file: selectedFile,
+        fileName: selectedFile.name,
+        sheets,
+        mappings: keepMappings ? savedMappings : [],
+        arrayMappings: keepMappings ? savedArrayMappings : [],
+      });
+      updateTemplateData({ file_type: 'excel', file_config: config });
+      setRetainedExcelMappings(keepMappings);
+      setIsReplacingFile(false);
+      window.dispatchEvent(new CustomEvent('template:file-type-selected', { detail: { fileType: 'excel' } }));
+      setStep('map-sheets');
+    } catch (error) {
+      console.error('Erreur parsing Excel:', error);
+      setParseError(error instanceof Error ? error.message : 'Erreur lors de la lecture du fichier Excel');
+      setStep('upload');
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     const extension = selectedFile.name.split('.').pop()?.toLowerCase();
+    if (extension === 'xls') {
+      alert('Convertissez le fichier .xls au format .xlsx dans Excel avant de l’importer.');
+      return;
+    }
     let type: 'excel' | 'word' | 'pdf' | null = null;
 
-    if (extension === 'xlsx' || extension === 'xls') {
+    if (extension === 'xlsx') {
       type = 'excel';
     } else if (extension === 'docx') {
       type = 'word';
@@ -823,59 +910,33 @@ export function Step2UploadTemplate({
       return;
     }
 
-    updateExcelState({
-      file: selectedFile,
-      fileName: selectedFile.name,
-      sheets: [],
-      mappings: [],
-    });
-
-    // Notify onboarding tour of the selected file type
-    if (type === 'excel' || type === 'word') {
-      window.dispatchEvent(
-        new CustomEvent('template:file-type-selected', { detail: { fileType: type } })
-      );
-    }
+    e.target.value = '';
 
     // Pour Excel, parser le fichier pour obtenir les feuilles
     if (type === 'excel') {
-      setStep('parse-excel');
-      setParseError(null);
-      setWordPreviewHtml(null);
-      setWordParseError(null);
-      setWordParseMessages([]);
-
-      try {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-
-        const response = await fetch('/api/templates/parse-excel', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error('Erreur lors du parsing du fichier Excel');
-        }
-
-        const result = (await response.json().catch(() => null)) as unknown;
-        const sheets = isRecord(result) && Array.isArray(result.sheets) ? (result.sheets as ExcelState['sheets']) : [];
-        updateExcelState({
-          sheets,
-        });
-        setStep('map-sheets');
-      } catch (error) {
-        console.error('Erreur parsing Excel:', error);
-        setParseError('Erreur lors de la lecture du fichier Excel');
-        setStep('upload');
-      }
-    } else {
-      if (type === 'word') {
-        await parseWordToPreview(selectedFile);
+      if ((savedMappings.length > 0 || savedArrayMappings.length > 0) &&
+          (templateData.file_type === 'excel' || selectedFileType === 'excel')) {
+        setPendingExcelFile(selectedFile);
       } else {
-        handleUploadFile(selectedFile, type);
+        await parseSelectedExcelFile(selectedFile, false);
       }
+      return;
     }
+
+    updateExcelState({ file: selectedFile, fileName: selectedFile.name, sheets: [], mappings: [], arrayMappings: [] });
+    // Notify onboarding tour of the selected file type
+    if (type === 'word') {
+      window.dispatchEvent(new CustomEvent('template:file-type-selected', { detail: { fileType: type } }));
+      await parseWordToPreview(selectedFile);
+    } else {
+      handleUploadFile(selectedFile, type);
+    }
+  };
+
+  const confirmExcelReplacement = (keepMappings: boolean) => {
+    const selectedFile = pendingExcelFile;
+    setPendingExcelFile(null);
+    if (selectedFile) void parseSelectedExcelFile(selectedFile, keepMappings);
   };
 
   const handleUploadFile = async (
@@ -911,7 +972,10 @@ export function Step2UploadTemplate({
       });
 
       if (isSave && onSave) {
-        onSave();
+        if (uploadType === 'excel' && onExcelSave) {
+          onExcelSave({ file_type: 'excel', file_url: url, file_name: uploadFile.name,
+            file_size_mb: uploadFile.size / (1024 * 1024), file_config: fileConfig || {} });
+        } else onSave();
       } else {
         onNext();
       }
@@ -929,10 +993,27 @@ export function Step2UploadTemplate({
   ) => {
     updateExcelState({ mappings: sheetMappings });
 
-    const config = {
+    const config = mergeExcelTemplateConfig((templateData.file_config ?? {}) as Record<string, unknown>, {
       ...fileConfig,
       sheetMappings,
-    };
+    });
+
+    setIsValidatingExcel(true);
+    setExcelValidationError(null);
+    try {
+      const form = new FormData();
+      form.append('fileConfig', JSON.stringify(config));
+      if (file) form.append('file', file);
+      if (templateData.id) form.append('templateId', templateData.id);
+      const response = await fetch('/api/templates/validate-excel', { method: 'POST', body: form });
+      const body = await response.json();
+      if (!response.ok || body.valid !== true) throw new Error(body.error ?? 'Validation Excel impossible.');
+    } catch (error) {
+      setExcelValidationError(error instanceof Error ? error.message : 'Validation Excel impossible.');
+      return;
+    } finally {
+      setIsValidatingExcel(false);
+    }
 
     if (file) {
       await handleUploadFile(file, 'excel', config, isSave);
@@ -942,7 +1023,8 @@ export function Step2UploadTemplate({
       });
 
       if (isSave && onSave) {
-        onSave();
+        if (onExcelSave) onExcelSave({ file_type: 'excel', file_config: config });
+        else onSave();
       } else {
         onNext();
       }
@@ -1249,6 +1331,11 @@ export function Step2UploadTemplate({
   };
 
   const handleChangeFile = () => {
+    if (effectiveFileType === 'excel') {
+      setIsReplacingFile(true);
+      setStep('upload');
+      return;
+    }
     updateExcelState({
       file: null,
       fileName: null,
@@ -1376,7 +1463,7 @@ export function Step2UploadTemplate({
           )}
 
           {/* Fichier déjà sélectionné avec mappings */}
-          {(file || fileName) && excelSheets.length > 0 ? (
+          {(file || fileName) && excelSheets.length > 0 && !isReplacingFile ? (
             <div className="space-y-4">
               <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
                 <div className="flex items-center justify-between">
@@ -1546,7 +1633,7 @@ export function Step2UploadTemplate({
             >
               Précédent
             </button>
-            {onSave && hasSavedData && (
+            {onSave && hasSavedData && !isReplacingFile && (
               <button
                 onClick={onSave}
                 className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -2590,8 +2677,26 @@ export function Step2UploadTemplate({
             </div>
           )}
 
-          {excelSheets.length > 0 && templateData.champs_actifs && templateData.champs_actifs.length > 0 ? (
+          {excelSheets.length > 0 ? (
             <div id="excel-mapping-panel">
+            {excelValidationError && <p role="alert" className="mb-4 whitespace-pre-line rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{excelValidationError}</p>}
+            {isValidatingExcel && <p role="status" className="mb-4 text-sm text-blue-700">Vérification du fichier et du mapping Excel…</p>}
+            {retainedExcelMappings && (
+              <p role="status" className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Mapping conservé sur le nouveau fichier. {retainedMappingIssues.length > 0
+                  ? `${retainedMappingIssues.length} incompatibilité(s) à corriger ci-dessous avant de sauvegarder.`
+                  : 'Vérifiez les feuilles et les positions des cellules avant de sauvegarder.'}
+              </p>
+            )}
+            <ExcelTemplateOptions
+              config={(templateData.file_config ?? {}) as ExcelConfig}
+              fields={Array.from(new Set([...excelMapperFields, ...excelMapperArrayFields.flatMap(a => a.rowFields.map(f => f.id))]))}
+              onChange={config => {
+                updateTemplateData({ file_config: config as unknown as Record<string, unknown> });
+                setExcelFilledBuffer(null);
+                setExcelPreviewMode('raw');
+              }}
+            />
             <ExcelMultiSheetMapper
               sheets={excelSheets}
               fields={excelMapperFields}
@@ -2605,6 +2710,9 @@ export function Step2UploadTemplate({
               onBack={handleBackFromMapping}
               onArrayMappingsChange={(arrayMappings) => updateExcelState({ arrayMappings })}
               onSave={onSave}
+              onMappingsChange={sheetMappings => updateExcelState({ mappings: sheetMappings })}
+              preserveFormulas={templateData.file_config?.preserverFormules !== false}
+              isSaving={isValidatingExcel}
             />
 
             {/* Configuration SP (Situation Proposée) — parité avec les templates Word.
@@ -2660,6 +2768,34 @@ export function Step2UploadTemplate({
           </div>
         </div>
       )}
+
+      <Dialog open={pendingExcelFile !== null} onOpenChange={(open) => {
+        if (!open) { setPendingExcelFile(null); setIsReplacingFile(false); }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Conserver le mapping Excel ?</DialogTitle>
+            <DialogDescription>
+              Le nouveau fichier « {pendingExcelFile?.name} » peut utiliser les mêmes associations de cellules.
+              Si ses feuilles ou ses emplacements ont changé, vous devrez vérifier et corriger le mapping avant de sauvegarder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <button type="button" onClick={() => { setPendingExcelFile(null); setIsReplacingFile(false); }}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Annuler
+            </button>
+            <button type="button" onClick={() => confirmExcelReplacement(false)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Repartir de zéro
+            </button>
+            <button type="button" onClick={() => confirmExcelReplacement(true)}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              Conserver le mapping
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

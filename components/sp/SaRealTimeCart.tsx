@@ -12,6 +12,7 @@ import {
   type SaSection,
 } from '@/lib/sp/saCartEdit';
 import { formatEuro } from '@/lib/sp/calculLoyer';
+import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
 
 interface SaRealTimeCartProps {
   donneesExtraites?: Record<string, unknown>;
@@ -141,21 +142,30 @@ function TextField({
   value,
   onChange,
   placeholder,
+  phone = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  phone?: boolean;
 }) {
   return (
     <label className="flex items-center justify-between gap-2 text-[10px] text-gray-500">
       <span>{label}</span>
       <input
-        type="text"
+        type={phone ? 'tel' : 'text'}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-32 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[11px] text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-400"
+        onChange={(e) => {
+          const input = e.target.value;
+          onChange(phone && /^0[\d.\s-]*$/.test(input) && input.replace(/\D/g, '').length <= 10
+            ? maskPhoneInput(input) : input);
+        }}
+        onBlur={phone ? (e) => onChange(normalizePhoneNumber(e.target.value)) : undefined}
+        className={`w-32 rounded border px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 ${phone
+          ? 'border-purple-300 bg-purple-50 text-purple-900 focus:ring-purple-400'
+          : 'border-amber-300 bg-amber-50 text-amber-900 focus:ring-amber-400'}`}
       />
     </label>
   );
@@ -225,9 +235,14 @@ function EditableLineRow({
   return (
     <div className="border-l-2 border-amber-100 pl-2 py-0.5">
       <div className="flex items-start justify-between gap-2 text-[11px] text-gray-600">
-        <span className="truncate" title={line.designation}>
-          {line.designation}
-          {line.numero && <span className="ml-1 text-[10px] text-gray-400">({line.numero})</span>}
+        <span className="min-w-0 flex items-center gap-1">
+          <span className="truncate" title={line.designation}>{line.designation}</span>
+          {line.numero && (
+            <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700"
+              title={`Numéro : ${line.numero}`}>
+              {line.numero}
+            </span>
+          )}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           <span className="tabular-nums">{formatEuro(line.montant)}</span>
@@ -260,7 +275,7 @@ function EditableLineRow({
           <TextField label="Désignation" value={draft.designation} onChange={(v) => setDraft((d) => ({ ...d, designation: v }))} />
           {!simple && (
             <>
-              <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} />
+              <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} phone />
               <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
             </>
           )}
@@ -332,7 +347,7 @@ function AddLineForm({
       />
       {!simple && (
         <>
-          <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} placeholder="optionnel" />
+          <TextField label="Numéro" value={draft.numero} onChange={(v) => setDraft((d) => ({ ...d, numero: v }))} placeholder="06 12 34 56 78" phone />
           <NumField label="Quantité" value={draft.quantite} step={1} min={1} onChange={(v) => setDraft((d) => ({ ...d, quantite: v }))} />
         </>
       )}

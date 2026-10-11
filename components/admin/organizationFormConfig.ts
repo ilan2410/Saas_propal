@@ -1,5 +1,6 @@
 // Configuration partagée pour les formulaires de création et d'édition d'organisation
 // Basée sur la structure JSON d'extraction
+import { withTableTotalField } from '@/lib/generators/table-row-total';
 
 // ============================================
 // QUESTIONS SIMPLES (Mode Simple)
@@ -945,7 +946,7 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
   );
 
   if (validMerges.length < 2) {
-    return baseArrays;
+    return baseArrays.map(withTableTotalField);
   }
 
   const includesMateriel = validMerges.includes('location_materiel');
@@ -981,7 +982,7 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
 
   // Retourner [Tableau fusionné, ...Autres tableaux]
   // On met le tableau fusionné en premier
-  return [mergedArray, ...remainingArrays];
+  return [mergedArray, ...remainingArrays].map(withTableTotalField);
 }
 
 // Secteurs disponibles

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
       // Télécharger le fichier depuis l'URL
       console.log('📥 Téléchargement du fichier Excel:', fileUrl);
-      const response = await fetch(fileUrl);
+      const response = await fetch(fileUrl, { redirect: 'error' });
       
       if (!response.ok) {
         return NextResponse.json({ 
@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
 
       // Vérifier que c'est un fichier Excel
       const extension = file.name.split('.').pop()?.toLowerCase();
-      if (extension !== 'xlsx' && extension !== 'xls') {
-        return NextResponse.json({ error: 'Only Excel files are supported' }, { status: 400 });
+      if (extension !== 'xlsx') {
+        return NextResponse.json({ error: 'Utilisez un fichier .xlsx. Convertissez les anciens fichiers .xls dans Excel avant de les importer.' }, { status: 400 });
       }
 
       buffer = await file.arrayBuffer();
@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
     const sheets = workbook.worksheets.map((worksheet) => {
       const cells: { [key: string]: string } = {};
       const preview: { ref: string; value: string }[] = [];
+      const formulaCells: string[] = [];
 
       // Déterminer les vraies dimensions
       let maxRow = 0;
@@ -92,11 +93,11 @@ export async function POST(request: NextRequest) {
 
       // Parcourir les cellules avec contenu
       worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        if (rowNumber > 100) return; // Limiter à 100 lignes
+        if (rowNumber > 200) return;
         maxRow = Math.max(maxRow, rowNumber);
 
         row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-          if (colNumber > 26) return; // Limiter à 26 colonnes (A-Z)
+          if (colNumber > 100) return;
           maxCol = Math.max(maxCol, colNumber);
 
           if (cell.value !== null && cell.value !== undefined) {
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
             }
 
             const cellRef = `${getColumnName(colNumber)}${rowNumber}`;
+            if (cell.type === ExcelJS.ValueType.Formula) formulaCells.push(cellRef);
             let value = '';
             
             // Gérer les différents types de valeurs
@@ -143,6 +145,7 @@ export async function POST(request: NextRequest) {
         cols: Math.max(maxCol, worksheet.columnCount || 0, 10),
         cells,
         preview,
+        formulaCells,
         merges: worksheet.model.merges || [],
       };
     });

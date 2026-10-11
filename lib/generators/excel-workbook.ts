@@ -1,0 +1,315 @@
+import ExcelJS from 'exceljs';
+import type { ExcelConfig } from '@/types';
+import { validateExcelMappings, type ExcelArrayMapping, type ExcelSheetMapping } from '@/lib/excel/template-config';
+import { findValueInData, getNestedValue, isPlainObject, type UnknownRecord } from './data-utils';
+import { formatExcelValue, resolveExcelDynamicValue, type ExcelFieldType } from './excel-values';
+import { rewriteExcelFormula } from './excel-formulas';
+import { addExcelImage, clearExcelCellImages, loadExcelImage } from './excel-images';
+import { inferExcelTableCapacity } from './excel-table-capacity';
+import { withTableRowTotal } from './table-row-total';
+
+const ARRAY_PATHS: Record<string, string> = {
+  lignes_fixes: 'lignes.fixes', lignes_mobiles: 'lignes.mobiles', lignes_internet: 'lignes.internet',
+  location_materiel: 'location_materiel', forfaits_fixes: 'abonnements.forfaits_fixes',
+  forfaits_mobiles: 'abonnements.forfaits_mobiles', services: 'services', equipements: 'equipements',
+  reductions: 'reductions', internet: 'abonnements.internet',
+};
+const FIELD_TYPES = new Set(['text', 'number', 'date', 'boolean', 'image']);
+const SA_ARRAYS = new Set(['lignes', 'abonnements', 'sa_lignes_telephoniques', ...Object.keys(ARRAY_PATHS)]);
+
+function excelRowValue(item: UnknownRecord, field: string): unknown {
+  const value = findValueInData(item, field);
+  if ((field === 'numero' || field === 'numero_ligne') && (value === undefined || value === null || value === '')) {
+    return findValueInData(item, field === 'numero' ? 'numero_ligne' : 'numero');
+  }
+  return value;
+}
+
+/** Validate stored JSON rather than silently dropping malformed mappings. */
+function readConfig(raw: UnknownRecord): ExcelConfig {
+  const sheets: ExcelSheetMapping[] = [];
+  const arrays: ExcelArrayMapping[] = [];
+  if (raw.sheetMappings !== undefined && !Array.isArray(raw.sheetMappings)) throw new Error('Mapping des feuilles Excel invalide.');
+  for (const entry of (raw.sheetMappings ?? []) as unknown[]) {
+    if (!isPlainObject(entry) || typeof entry.sheetName !== 'string' || !isPlainObject(entry.mapping)) throw new Error('Mapping de feuille Excel invalide.');
+    const mapping: ExcelSheetMapping['mapping'] = {};
+    for (const [field, refs] of Object.entries(entry.mapping)) {
+      if (typeof refs !== 'string' && !(Array.isArray(refs) && refs.every(ref => typeof ref === 'string'))) throw new Error(`Mapping invalide pour ${field}.`);
+      mapping[field] = refs as string | string[];
+    }
+    sheets.push({ sheetName: entry.sheetName, mapping });
+  }
+  if (!sheets.length && typeof raw.feuilleCiblee === 'string' && isPlainObject(raw.cellMappings)) {
+    const mapping: ExcelSheetMapping['mapping'] = {};
+    for (const [ref, field] of Object.entries(raw.cellMappings)) {
+      if (typeof field !== 'string') throw new Error('Ancien mapping Excel invalide.');
+      const previous = mapping[field];
+      mapping[field] = previous ? [...(Array.isArray(previous) ? previous : [previous]), ref] : ref;
+    }
+    sheets.push({ sheetName: raw.feuilleCiblee, mapping });
+  }
+  if (raw.arrayMappings !== undefined && !Array.isArray(raw.arrayMappings)) throw new Error('Mapping des tableaux Excel invalide.');
+  for (const entry of (raw.arrayMappings ?? []) as unknown[]) {
+    if (!isPlainObject(entry) || typeof entry.arrayId !== 'string' || typeof entry.sheetName !== 'string' || !isPlainObject(entry.columnMapping)) throw new Error('Mapping de tableau Excel invalide.');
+    if (!Object.values(entry.columnMapping).every(column => typeof column === 'string')) throw new Error(`Colonnes invalides : ${entry.arrayId}.`);
+    if (entry.stopCondition !== undefined && entry.stopCondition !== 'empty_first_col' && entry.stopCondition !== 'max_rows') throw new Error(`Condition d'arrêt invalide : ${entry.arrayId}.`);
+    if (entry.overflowMode !== undefined && entry.overflowMode !== 'error' && entry.overflowMode !== 'insert_rows') throw new Error(`Mode de dépassement invalide : ${entry.arrayId}.`);
+    arrays.push({
+      arrayId: entry.arrayId, sheetName: entry.sheetName,
+      startRow: entry.startRow === undefined ? 2 : entry.startRow as number,
+      stopCondition: (entry.stopCondition ?? 'empty_first_col') as ExcelArrayMapping['stopCondition'],
+      maxRows: entry.maxRows as number | undefined,
+      columnMapping: entry.columnMapping as Record<string, string>,
+      overflowMode: entry.overflowMode as ExcelArrayMapping['overflowMode'],
+    });
+  }
+  const fieldTypes: Record<string, ExcelFieldType> = {};
+  if (raw.fieldTypes !== undefined && !isPlainObject(raw.fieldTypes)) throw new Error('Types de champs Excel invalides.');
+  for (const [field, type] of Object.entries((raw.fieldTypes ?? {}) as UnknownRecord)) {
+    if (typeof type !== 'string' || !FIELD_TYPES.has(type)) throw new Error(`Type Excel invalide : ${field}.`);
+    fieldTypes[field] = type as ExcelFieldType;
+  }
+  for (const key of ['imageWidth', 'imageHeight']) {
+    if (raw[key] !== undefined && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key]) || raw[key] < 1 || raw[key] > 1000)) throw new Error('Dimensions des images Excel invalides (1 à 1000 pixels).');
+  }
+  return { ...raw, sheetMappings: sheets, arrayMappings: arrays, fieldTypes } as ExcelConfig;
+}
+
+function normalizeRef(ref: string): string {
+  const clean = ref.replace(/\$/g, '').toUpperCase();
+  const match = /^([A-Z]{1,3})([1-9]\d{0,6})$/.exec(clean);
+  const column = match?.[1].split('').reduce((n, char) => n * 26 + char.charCodeAt(0) - 64, 0);
+  if (!match || !column || column > 16384 || +match[2] > 1048576) throw new Error(`Cellule Excel invalide : ${ref}.`);
+  return clean;
+}
+
+function moveRef(ref: string, at: number, count: number): string {
+  return ref.replace(/(\$?[A-Z]+)(\$?)(\d+)/gi, (_, column, fixed, row) => `${column}${fixed}${+row >= at ? +row + count : row}`);
+}
+
+/** Insert a complete styled row block, preserving downstream formulas and mapping coordinates. */
+function expandRows(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, templateRow: number, at: number, count: number, config: ExcelConfig) {
+  // ExcelJS cannot safely move table/conditional-format/data-validation metadata.
+  const metadata = sheet.model as ExcelJS.WorksheetModel & { tables?: unknown[]; conditionalFormattings?: unknown[]; dataValidations?: UnknownRecord };
+  if (metadata.tables?.length || metadata.conditionalFormattings?.length || Object.keys(metadata.dataValidations ?? {}).length) {
+    throw new Error(`La feuille ${sheet.name} contient des tableaux structurés, validations ou mises en forme conditionnelles. Réservez davantage de lignes au lieu de les insérer.`);
+  }
+  if (sheet.rowCount + count > 1048576) throw new Error('Le tableau dépasse la limite des lignes Excel.');
+  const formulas: Array<{ sheet: ExcelJS.Worksheet; row: number; col: number; formula: string }> = [];
+  workbook.eachSheet(ws => ws.eachRow(row => row.eachCell(cell => {
+    if (cell.type === ExcelJS.ValueType.Formula) {
+      if ((cell.value as ExcelJS.CellFormulaValue & { shareType?: string }).shareType === 'array') throw new Error('Insertion impossible avec une formule matricielle. Réservez davantage de lignes.');
+      formulas.push({ sheet: ws, row: Number(cell.row), col: Number(cell.col), formula: rewriteExcelFormula(cell.formula, ws.name, sheet.name, at, count, false, templateRow) });
+    }
+  })));
+  const names = workbook.definedNames.model.map(name => ({ ...name, ranges: name.ranges.map(range => rewriteExcelFormula(range, '', sheet.name, at, count)) }));
+  const source = sheet.getRow(templateRow);
+  const values = new Map<number, { value: ExcelJS.CellValue; style: Partial<ExcelJS.Style>; formula?: string }>();
+  source.eachCell({ includeEmpty: true }, (cell, col) => {
+    values.set(col, { value: structuredClone(cell.value), style: structuredClone(cell.style), formula: cell.type === ExcelJS.ValueType.Formula ? cell.formula : undefined });
+  });
+  const height = source.height;
+  const merges = [...(sheet.model.merges ?? [])];
+  for (const merge of merges) sheet.unMergeCells(merge);
+  sheet.insertRows(at, Array.from({ length: count }, () => []));
+  for (const merge of merges) sheet.mergeCells(moveRef(merge, at, count));
+  for (let i = 0; i < count; i++) {
+    const row = sheet.getRow(at + i);
+    row.height = height;
+    for (const [col, original] of values) {
+      const cell = row.getCell(col);
+      cell.style = structuredClone(original.style);
+      cell.value = original.formula
+        ? { formula: rewriteExcelFormula(rewriteExcelFormula(original.formula, sheet.name, sheet.name, at, count), sheet.name, sheet.name, 0, row.number - templateRow, true) }
+        : structuredClone(original.value);
+    }
+    for (const merge of merges) {
+      const match = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(merge);
+      if (match && +match[2] === templateRow && +match[4] === templateRow) sheet.mergeCells(`${match[1]}${row.number}:${match[3]}${row.number}`);
+    }
+  }
+  for (const original of formulas) {
+    const row = original.sheet === sheet && original.row >= at ? original.row + count : original.row;
+    original.sheet.getCell(row, original.col).value = { formula: original.formula };
+  }
+  workbook.definedNames.model = names;
+  for (const image of sheet.getImages()) {
+    const range = image.range;
+    if (range.tl.nativeRow >= at - 1) range.tl.nativeRow += count;
+    if (range.br && range.br.nativeRow >= at - 1) range.br.nativeRow += count;
+  }
+  if (sheet.pageSetup.printArea) sheet.pageSetup.printArea = moveRef(sheet.pageSetup.printArea, at, count);
+  if (typeof sheet.autoFilter === 'string') sheet.autoFilter = moveRef(sheet.autoFilter, at, count);
+  else if (sheet.autoFilter) {
+    const filter = sheet.autoFilter;
+    sheet.autoFilter = {
+      from: typeof filter.from === 'string' ? moveRef(filter.from, at, count) : { ...filter.from, row: filter.from.row >= at ? filter.from.row + count : filter.from.row },
+      to: typeof filter.to === 'string' ? moveRef(filter.to, at, count) : { ...filter.to, row: filter.to.row >= at ? filter.to.row + count : filter.to.row },
+    };
+  }
+  for (const mapping of config.sheetMappings ?? []) {
+    if (mapping.sheetName !== sheet.name) continue;
+    for (const [field, refs] of Object.entries(mapping.mapping)) mapping.mapping[field] = Array.isArray(refs) ? refs.map(ref => moveRef(ref, at, count)) : moveRef(refs, at, count);
+  }
+  for (const mapping of config.arrayMappings ?? []) if (mapping.sheetName === sheet.name && mapping.startRow >= at) mapping.startRow += count;
+}
+
+export async function fillExcelWorkbook(
+  templateBuffer: ArrayBuffer,
+  donnees: UnknownRecord,
+  baseData: UnknownRecord,
+  rawConfig: UnknownRecord,
+  context: { createdAt?: string | Date | null } = {},
+): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  try { await workbook.xlsx.load(templateBuffer); }
+  catch { throw new Error('Le fichier template Excel est corrompu ou invalide. Utilisez un fichier .xlsx.'); }
+  const config = readConfig(rawConfig);
+  const errors = validateExcelMappings(config, workbook.worksheets);
+  if (errors.length) throw new Error(errors.join('\n'));
+  const resolve = (field: string, item?: UnknownRecord): unknown => {
+    if (item) {
+      const value = excelRowValue(item, field);
+      if (value !== undefined && value !== null) return value;
+    }
+    const sa = findValueInData(donnees, field);
+    if (sa !== undefined && sa !== null && sa !== '') return sa;
+    const value = baseData[field] ?? findValueInData(baseData, field);
+    return (value === undefined || value === null || value === '')
+      ? resolveExcelDynamicValue(field, context.createdAt ?? new Date()) ?? value
+      : value;
+  };
+  const claimed = new Map<string, string>();
+  const imageCache = new Map<string, ReturnType<typeof loadExcelImage>>();
+  const claim = (sheet: ExcelJS.Worksheet, ref: string, owner: string) => {
+    const cell = sheet.getCell(normalizeRef(ref));
+    // Two references into the same merged cell are also a collision.
+    const key = `${sheet.name}!${cell.master.address}`;
+    const previous = claimed.get(key);
+    if (previous && previous !== owner) throw new Error(`${key} : conflit entre ${previous} et ${owner}.`);
+    claimed.set(key, owner);
+    if (config.preserverFormules !== false && (cell.master.type === ExcelJS.ValueType.Formula || config.cellulesAvecFormules?.includes(cell.address))) {
+      throw new Error(`${key} contient une formule protégée. Choisissez une autre cellule ou désactivez la protection des formules.`);
+    }
+    return cell.master;
+  };
+  const write = async (sheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, field: string, value: unknown, forceImage = false) => {
+    const type = config.fieldTypes?.[field];
+    if (forceImage || type === 'image' || (!type && /image_url$/i.test(field))) {
+      clearExcelCellImages(sheet, cell);
+      cell.value = null;
+      if (value !== undefined && value !== null && value !== '') {
+        const url = String(value);
+        if (!imageCache.has(url)) imageCache.set(url, loadExcelImage(url));
+        addExcelImage(workbook, sheet, cell, await imageCache.get(url)!, config.imageWidth, config.imageHeight);
+      }
+      return;
+    }
+    cell.value = formatExcelValue(value, field, config);
+    if (typeof cell.value === 'number' && typeof value === 'string' && value.trim().endsWith('%')) {
+      cell.value /= 100;
+      if (!cell.numFmt || cell.numFmt === 'General') cell.numFmt = '0.00%';
+    }
+    if (type === 'text' || (typeof cell.value === 'string' && /^0\d+$/.test(cell.value))) cell.numFmt = '@';
+    if (type === 'date') cell.numFmt = 'dd/mm/yyyy';
+  };
+
+  // Plan expansions before claiming/writing cells so all mappings use final coordinates.
+  const tables = (config.arrayMappings ?? []).map(mapping => {
+    let rows = findValueInData(donnees, mapping.arrayId);
+    if (!Array.isArray(rows) && ARRAY_PATHS[mapping.arrayId]) rows = getNestedValue(donnees, ARRAY_PATHS[mapping.arrayId]);
+    if (!Array.isArray(rows)) rows = baseData[mapping.arrayId];
+    // Prepared SA rows include aliases and numbers linked to their contracts.
+    // Raw extracted rows can lack `numero` even when `numero_ligne` is present.
+    if (SA_ARRAYS.has(mapping.arrayId) && Array.isArray(baseData[mapping.arrayId])) rows = baseData[mapping.arrayId];
+    if (rows !== undefined && rows !== null && !Array.isArray(rows)) throw new Error(`${mapping.arrayId} n'est pas un tableau.`);
+    let items = (rows ?? []) as unknown[];
+    if (!items.every(isPlainObject)) throw new Error(`${mapping.arrayId} contient une ligne invalide.`);
+      items = items.map(item => withTableRowTotal(item as UnknownRecord));
+    if (mapping.stopCondition === 'empty_first_col') {
+      const firstField = Object.keys(mapping.columnMapping)[0];
+      const emptyAt = firstField ? items.findIndex(item => {
+        const value = excelRowValue(item as UnknownRecord, firstField);
+        return value === undefined || value === null || value === '';
+      }) : -1;
+      if (emptyAt >= 0) items = items.slice(0, emptyAt);
+    }
+    const sheet = workbook.getWorksheet(mapping.sheetName)!;
+    return { mapping, items: items as UnknownRecord[], capacity: mapping.maxRows ?? inferExcelTableCapacity(sheet, mapping, config) };
+  });
+  for (const table of tables.sort((a, b) => a.mapping.startRow - b.mapping.startRow)) {
+    const { mapping, items } = table;
+    if (items.length > table.capacity) {
+      if (mapping.overflowMode !== 'insert_rows') throw new Error(`${mapping.arrayId} : ${items.length} lignes pour ${table.capacity} lignes réservées. Augmentez la zone ou activez l'insertion de lignes.`);
+      const sheet = workbook.getWorksheet(mapping.sheetName)!;
+      const at = mapping.startRow + table.capacity;
+      const count = items.length - table.capacity;
+      const crossingTables = tables.filter(t => t.mapping.sheetName === mapping.sheetName && t.mapping.startRow < at && t.mapping.startRow + t.capacity >= at);
+      expandRows(workbook, sheet, mapping.startRow, at, count, config);
+      // Side-by-side tables share inserted worksheet rows; do not insert them twice.
+      for (const crossing of crossingTables) crossing.capacity += count;
+    }
+  }
+  // Validate final ranges as well (including expanded tables).
+  const finalConfig = { ...config, arrayMappings: tables.map(t => ({ ...t.mapping, maxRows: t.capacity })) };
+  const finalErrors = validateExcelMappings(finalConfig, workbook.worksheets);
+  if (finalErrors.length) throw new Error(finalErrors.join('\n'));
+  const writes: Array<{ sheet: ExcelJS.Worksheet; cell: ExcelJS.Cell; field: string; value: unknown }> = [];
+  for (const mapping of config.sheetMappings ?? []) {
+    const sheet = workbook.getWorksheet(mapping.sheetName)!;
+    for (const [field, refs] of Object.entries(mapping.mapping)) {
+      for (const ref of Array.isArray(refs) ? refs : [refs]) writes.push({ sheet, cell: claim(sheet, ref, field), field, value: resolve(field) });
+    }
+  }
+  for (const { mapping, items, capacity } of tables) {
+    const sheet = workbook.getWorksheet(mapping.sheetName)!;
+    for (let index = 0; index < capacity; index++) {
+      for (const [field, column] of Object.entries(mapping.columnMapping)) {
+        const ref = `${column}${mapping.startRow + index}`;
+        writes.push({ sheet, cell: claim(sheet, ref, `${mapping.arrayId}.${field}`), field,
+          value: items[index] ? excelRowValue(items[index], field) : null });
+      }
+    }
+  }
+  const uniqueWrites = new Map(writes.map(entry => [`${entry.sheet.name}!${entry.cell.address}`, entry]));
+  for (const entry of uniqueWrites.values()) await write(entry.sheet, entry.cell, entry.field, entry.value);
+
+  // Replace inline variables in untouched cells; retain surrounding text/rich-text styles.
+  const token = /\{\{([^{}]+)\}\}/g;
+  const interpolate = (text: string, item?: UnknownRecord) => text.replace(token, (_, raw: string) => {
+    const field = raw.trim();
+    if (/^[#/^%]/.test(field)) throw new Error(`Balise Excel non prise en charge dans du texte : ${field}. Mappez les tableaux et images sur leurs cellules.`);
+    const value = formatExcelValue(resolve(field, item), field, config);
+    return value === null ? '' : value instanceof Date ? value.toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : String(value);
+  });
+  const inlineImages: Array<{ sheet: ExcelJS.Worksheet; cell: ExcelJS.Cell; field: string }> = [];
+  workbook.eachSheet(sheet => sheet.eachRow(row => row.eachCell(cell => {
+    if (cell.isMerged && cell.master !== cell) return;
+    if (claimed.has(`${sheet.name}!${cell.address}`)) return;
+    const table = tables.find(t => t.mapping.sheetName === sheet.name && row.number >= t.mapping.startRow && row.number < t.mapping.startRow + t.capacity);
+    const item = table?.items[row.number - table.mapping.startRow];
+    if (typeof cell.value === 'string') {
+      const image = /^\s*\{\{%([^{}]+)\}\}\s*$/.exec(cell.value);
+      if (image) inlineImages.push({ sheet, cell, field: image[1].trim() });
+      else cell.value = table && !item ? cell.value.replace(token, '') : interpolate(cell.value, item);
+    } else if (isPlainObject(cell.value) && Array.isArray(cell.value.richText)) {
+      // Join runs when a placeholder crosses a style boundary; preserve style for normal runs.
+      const runs = cell.value.richText as ExcelJS.RichText[];
+      const joined = runs.map(run => run.text).join('');
+      const individualCount = runs.reduce((n, run) => n + (run.text.match(token)?.length ?? 0), 0);
+      const joinedCount = joined.match(token)?.length ?? 0;
+      if (joinedCount > individualCount) cell.value = { richText: [{ ...runs[0], text: table && !item ? joined.replace(token, '') : interpolate(joined, item) }] };
+      else cell.value = { richText: runs.map(run => ({ ...run, text: table && !item ? run.text.replace(token, '') : interpolate(run.text, item) })) };
+    }
+  })));
+  for (const { sheet, cell, field } of inlineImages) {
+    const table = tables.find(t => t.mapping.sheetName === sheet.name && Number(cell.row) >= t.mapping.startRow && Number(cell.row) < t.mapping.startRow + t.capacity);
+    const item = table?.items[Number(cell.row) - table.mapping.startRow];
+    const value = table && !item ? null : resolve(field, item);
+    await write(sheet, cell, field, value, true);
+  }
+  workbook.calcProperties.fullCalcOnLoad = true;
+  const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+  if (!bytes.byteLength) throw new Error('Le fichier Excel généré est vide.');
+  return bytes;
+}

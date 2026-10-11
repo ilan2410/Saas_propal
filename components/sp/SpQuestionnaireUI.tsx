@@ -5,12 +5,14 @@ import { createPortal } from 'react-dom';
 import { Bot, User, ChevronLeft, ChevronRight, ChevronDown, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff, Info, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
+import { ClientCoordonneesFields, type ClientEdit } from '@/components/propositions/FloatingClientCoordonnees';
 import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
 import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
+import { clientToSpAddress, findAddressQuestion, isDeliveryIdentical, spAddressToClient, syncLinkedAddresses } from '@/lib/sp/questionVariables';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
@@ -1019,6 +1021,7 @@ export function SpQuestionnaireUI({
     const restored = JSON.parse(JSON.stringify(saBaselineRef.current ?? {}));
     handleUpdateSaData(restored as Record<string, unknown>);
   }, [handleUpdateSaData]);
+  const lastClientRef = useRef(donneesExtraitesProp.client);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [messages, setMessages] = useState<MessageBubble[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -1578,7 +1581,10 @@ export function SpQuestionnaireUI({
     }
 
     setHistory(stack);
-    setReponses(snapshot.reponses);
+    const client = donneesExtraites.client;
+    setReponses(client && typeof client === 'object' && !Array.isArray(client)
+      ? syncLinkedAddresses(questions, snapshot.reponses, client as Record<string, unknown>)
+      : snapshot.reponses);
     setMessages(snapshot.messages);
     setHiddenByConsequence(snapshot.hiddenByConsequence);
     setShownByConsequence(snapshot.shownByConsequence);
@@ -1641,8 +1647,9 @@ export function SpQuestionnaireUI({
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
     const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
+    const eq = expandedQuestions[currentIdx];
     // Build updated reponses synchronously
-    const nextReps = [
+    let nextReps = [
       ...reponses.filter((r) =>
         r.question_id !== instanceId &&
         !auxiliaryQuestionIds.includes(r.question_id) &&
@@ -1651,13 +1658,25 @@ export function SpQuestionnaireUI({
       rep,
       ...extra,
     ];
+    const address = valeur && typeof valeur === 'object' && !Array.isArray(valeur) ? valeur as SpAdresse : null;
+    const linkedAddress = eq?.question.id === findAddressQuestion(questions, 'sp_adresse_facturation')?.id ||
+      (eq?.question.id === findAddressQuestion(questions, 'sp_adresse_livraison')?.id && isDeliveryIdentical(questions, nextReps));
+    if (address && linkedAddress) {
+      const nextData = spAddressToClient(donneesExtraites, address);
+      lastEmittedRef.current = nextData;
+      setDonneesExtraites(nextData);
+      onUpdateDonneesExtraites?.(nextData);
+      nextReps = syncLinkedAddresses(questions, nextReps, nextData.client as Record<string, unknown>);
+    } else if (eq?.question.id === findAddressQuestion(questions, 'sp_livraison_identique')?.id && isDeliveryIdentical(questions, nextReps)) {
+      const client = donneesExtraites.client;
+      if (client && typeof client === 'object' && !Array.isArray(client))
+        nextReps = syncLinkedAddresses(questions, nextReps, client as Record<string, unknown>);
+    }
     setReponses(nextReps);
     setMessages((prev) => [
       ...prev.filter((m) => !(m.from === 'bot' && m.variant === 'success')),
       { from: 'user', text: formatReponseText(valeur) },
     ]);
-
-    const eq = expandedQuestions[currentIdx];
 
     // Process consequences synchronously so findNextVisibleIndex sees updated sets
     const { jumpTo, newHidden, newShown } = processConsequences(
@@ -1727,20 +1746,31 @@ export function SpQuestionnaireUI({
 
   useEffect(() => {
     if (!currentQuestion || currentQuestion.affichage !== 'adresse_complete') return;
-    if (currentQuestion.sa_prefill === false) return;
     const get = (path: string) => {
       const v = getNestedValue(donneesExtraites, path);
       return typeof v === 'string' ? v : (v != null ? String(v) : '');
     };
+    const saved = reponses.find((r) => r.question_id === currentExpanded?.instanceId)?.valeur;
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      const savedAdresse = saved as SpAdresse;
+      setAdresseEdit({ ...savedAdresse, nom: savedAdresse.nom ?? savedAdresse.contact ?? '' });
+      return;
+    }
+    if (currentQuestion.sa_prefill === false) {
+      setAdresseEdit(EMPTY_ADRESSE);
+      return;
+    }
     const nom = get('client.nom');
     const prenom = get('client.prenom');
-    const contact = [nom, prenom].filter(Boolean).join(' ');
     setAdresseEdit({
       societe:       get('client.raison_sociale'),
+      nom,
+      prenom,
+      fonction:      get('client.fonction'),
       adresse:       get('client.adresse'),
       code_postal:   get('client.code_postal'),
       ville:         get('client.ville'),
-      contact,
+      contact:       [nom, prenom].filter(Boolean).join(' '),
       ligne_fixe:    get('client.fixe'),
       ligne_mobile:  get('client.mobile'),
       email:         get('client.email'),
@@ -1748,6 +1778,18 @@ export function SpQuestionnaireUI({
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentExpanded?.instanceId]);
+  useEffect(() => {
+    const client = donneesExtraitesProp.client;
+    if (lastClientRef.current === client) return;
+    lastClientRef.current = client;
+    if (!client || typeof client !== 'object' || Array.isArray(client)) return;
+    const clientFields = client as Record<string, unknown>;
+    setReponses((previous) => syncLinkedAddresses(questions, previous, clientFields));
+    if (currentQuestion?.affichage === 'adresse_complete' && (
+      currentQuestion.id === findAddressQuestion(questions, 'sp_adresse_facturation')?.id ||
+      (currentQuestion.id === findAddressQuestion(questions, 'sp_adresse_livraison')?.id && isDeliveryIdentical(questions, reponses))
+    )) setAdresseEdit((previous) => clientToSpAddress(clientFields, previous));
+  }, [donneesExtraitesProp.client, currentQuestion, questions, reponses]);
   const resiliationEstimation = useMemo(() => {
     if (
       !currentQuestion ||
@@ -3315,41 +3357,32 @@ export function SpQuestionnaireUI({
           })()}
 
           {currentQuestion.affichage === 'adresse_complete' && (
-            <div className="space-y-1.5">
-              <input placeholder="Société" value={adresseEdit.societe ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, societe: e.target.value }))}
-                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
-              <input placeholder="Adresse (rue, numéro) *" value={adresseEdit.adresse}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, adresse: e.target.value }))}
-                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
-              <div className="flex gap-2">
-                <input placeholder="C.P. *" value={adresseEdit.code_postal}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, code_postal: e.target.value }))}
-                  className="h-8 text-sm border border-gray-300 rounded px-2 w-28" />
-                <input placeholder="Ville *" value={adresseEdit.ville}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ville: e.target.value }))}
-                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
-              </div>
-              <input placeholder="Contact (nom prénom)" value={adresseEdit.contact ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, contact: e.target.value }))}
-                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
-              <div className="flex gap-2">
-                <input type="tel" placeholder="Ligne fixe" value={adresseEdit.ligne_fixe ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: maskPhoneInput(e.target.value) }))}
-                  onBlur={(e: React.FocusEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_fixe: normalizePhoneNumber(e.target.value) }))}
-                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
-                <input type="tel" placeholder="Ligne mobile" value={adresseEdit.ligne_mobile ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: maskPhoneInput(e.target.value) }))}
-                  onBlur={(e: React.FocusEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, ligne_mobile: normalizePhoneNumber(e.target.value) }))}
-                  className="h-8 text-sm border border-gray-300 rounded px-2 flex-1" />
-              </div>
-              <input placeholder="Adresse e-mail" value={adresseEdit.email ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, email: e.target.value }))}
-                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
-              <input placeholder="Numéro de SIRET" value={adresseEdit.siret ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAdresseEdit((p) => ({ ...p, siret: e.target.value }))}
-                className="h-8 text-sm border border-gray-300 rounded px-2 w-full" />
-              <Button size="sm" disabled={!adresseEdit.adresse || !adresseEdit.code_postal || !adresseEdit.ville}
+            <div className="space-y-3">
+              <ClientCoordonneesFields
+                idPrefix={`sp-${currentExpanded.instanceId}`}
+                value={{
+                  raison_sociale: adresseEdit.societe ?? '',
+                  nom: adresseEdit.nom ?? '',
+                  prenom: adresseEdit.prenom ?? '',
+                  fonction: adresseEdit.fonction ?? '',
+                  email: adresseEdit.email ?? '',
+                  mobile: adresseEdit.ligne_mobile ?? '',
+                  fixe: adresseEdit.ligne_fixe ?? '',
+                  adresse: adresseEdit.adresse,
+                  code_postal: adresseEdit.code_postal,
+                  ville: adresseEdit.ville,
+                  siret: adresseEdit.siret ?? '',
+                }}
+                onChange={(key: keyof ClientEdit, value: string) => setAdresseEdit((previous) => {
+                  const mapped = { raison_sociale: 'societe', mobile: 'ligne_mobile', fixe: 'ligne_fixe' } as const;
+                  const target = key in mapped ? mapped[key as keyof typeof mapped] : key;
+                  const next = { ...previous, [target]: value };
+                  return key === 'nom' || key === 'prenom'
+                    ? { ...next, contact: [next.nom, next.prenom].filter(Boolean).join(' ') }
+                    : next;
+                })}
+              />
+              <Button size="sm" disabled={!adresseEdit.adresse.trim() || !adresseEdit.code_postal.trim() || !adresseEdit.ville.trim()}
                 onClick={() => { recordAnswer(currentExpanded.instanceId, { ...adresseEdit }); setAdresseEdit(EMPTY_ADRESSE); }}>
                 Valider
               </Button>

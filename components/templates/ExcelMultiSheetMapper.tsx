@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { validateExcelMappings } from '@/lib/excel/template-config';
 import { Trash2, FileSpreadsheet, Check, Table2 } from 'lucide-react';
 import { ExcelCellMapper } from './ExcelCellMapper';
 import { ExcelArrayMapper, ArrayMapping } from './ExcelArrayMapper';
@@ -12,6 +13,8 @@ interface SheetInfo {
   cols: number;
   cells: { [key: string]: string };
   preview: { ref: string; value: string }[];
+  formulaCells?: string[];
+  merges?: string[];
 }
 
 interface SheetMapping {
@@ -39,6 +42,9 @@ interface Props {
   onBack: () => void;
   onArrayMappingsChange?: (mappings: ArrayMapping[]) => void; // Callback pour sauvegarder les mappings de tableaux
   onSave?: () => void;
+  onMappingsChange?: (mappings: SheetMapping[]) => void;
+  preserveFormulas?: boolean;
+  isSaving?: boolean;
 }
 
 export function ExcelMultiSheetMapper({
@@ -53,10 +59,36 @@ export function ExcelMultiSheetMapper({
   onComplete,
   onBack,
   onArrayMappingsChange,
-  onSave
+  onSave,
+  onMappingsChange,
+  preserveFormulas = true,
+  isSaving = false,
 }: Props) {
   const [sheetMappings, setSheetMappings] = useState<SheetMapping[]>(initialMappings || []);
   const [arrayMappings, setArrayMappings] = useState<ArrayMapping[]>(initialArrayMappings || []);
+  useEffect(() => {
+    onMappingsChange?.(sheetMappings);
+    // The parent callback is recreated on render; only mapping changes notify it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetMappings]);
+  const validationErrors = validateExcelMappings({ sheetMappings, arrayMappings }, sheets);
+  if (preserveFormulas) {
+    for (const mapping of sheetMappings) {
+      const formulaCells = new Set(sheets.find(sheet => sheet.name === mapping.sheetName)?.formulaCells ?? []);
+      for (const refs of Object.values(mapping.mapping)) for (const ref of Array.isArray(refs) ? refs : [refs]) {
+        if (formulaCells.has(ref)) validationErrors.push(`${mapping.sheetName}!${ref} contient une formule protégée.`);
+      }
+    }
+    for (const mapping of arrayMappings) {
+      const formulas = sheets.find(sheet => sheet.name === mapping.sheetName)?.formulaCells ?? [];
+      for (const ref of formulas) {
+        const match = /^([A-Z]+)(\d+)$/.exec(ref);
+        if (match && Object.values(mapping.columnMapping).includes(match[1]) && +match[2] >= mapping.startRow && +match[2] < mapping.startRow + (mapping.maxRows ?? 1)) {
+          validationErrors.push(`${mapping.sheetName}!${ref} contient une formule protégée.`);
+        }
+      }
+    }
+  }
   // Mapping en cours d'édition (mis à jour en continu par ExcelCellMapper) pour
   // pouvoir basculer de feuille sans perdre les associations.
   const editMappingRef = useRef<{ [fieldName: string]: string | string[] }>({});
@@ -147,6 +179,7 @@ export function ExcelMultiSheetMapper({
   };
 
   const handleComplete = () => {
+    if (validationErrors.length) return;
     onComplete(sheetMappings, {
       multiSheet: true,
       sheetCount: sheetMappings.length,
@@ -156,6 +189,7 @@ export function ExcelMultiSheetMapper({
   };
 
   const handleSave = () => {
+    if (validationErrors.length) return;
     if (onSave) {
       onComplete(sheetMappings, {
         multiSheet: true,
@@ -173,9 +207,7 @@ export function ExcelMultiSheetMapper({
       sheetMappings.find((sm) => sm.sheetName === editingSheet.name)?.mapping ?? {};
 
     // Filtrer les champs : ceux non mappés + ceux déjà mappés sur cette feuille
-    const availableFields = fields.filter(f =>
-      !mappedFields.has(f) || Object.keys(currentSheetMapping).includes(f)
-    );
+    const availableFields = fields;
 
     return (
       <div className="space-y-4">
@@ -212,7 +244,11 @@ export function ExcelMultiSheetMapper({
           spFields={spFields}
           initialMapping={currentSheetMapping}
           onMappingComplete={handleMappingComplete}
-          onMappingChange={(m) => { editMappingRef.current = m; }}
+          onMappingChange={(m) => {
+            editMappingRef.current = m;
+            onMappingsChange?.([...sheetMappings.filter(sm => sm.sheetName !== editingSheet.name), { sheetName: editingSheet.name, mapping: m }]);
+          }}
+          preserveFormulas={preserveFormulas}
           onBack={() => {
             upsertSheetMapping(editingSheet.name, editMappingRef.current);
             editMappingRef.current = {};
@@ -364,7 +400,7 @@ export function ExcelMultiSheetMapper({
       </div>
 
       {/* Ajouter une feuille */}
-      {remainingFields.length > 0 && (
+      {sheets.length > 0 && (
         <div id="excel-sheet-selector" className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 mb-3">
             Ajouter une feuille
@@ -432,6 +468,12 @@ export function ExcelMultiSheetMapper({
         </>
       )}
 
+      {validationErrors.length > 0 && (
+        <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-medium">Corrigez le mapping avant de sauvegarder :</p>
+          <ul className="mt-2 list-disc pl-5">{Array.from(new Set(validationErrors)).map(error => <li key={error}>{error}</li>)}</ul>
+        </div>
+      )}
       {/* Actions */}
       <div className="flex justify-between pt-6 border-t border-gray-200">
         <button
@@ -444,7 +486,7 @@ export function ExcelMultiSheetMapper({
           {onSave && (
             <button
               onClick={handleSave}
-              disabled={sheetMappings.length === 0 && arrayMappings.length === 0}
+              disabled={isSaving || validationErrors.length > 0 || (sheetMappings.length === 0 && arrayMappings.length === 0)}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               Sauvegarder
@@ -453,7 +495,7 @@ export function ExcelMultiSheetMapper({
           <button
             id="btn-save-excel-template"
             onClick={handleComplete}
-            disabled={sheetMappings.length === 0 && arrayMappings.length === 0}
+            disabled={isSaving || validationErrors.length > 0 || (sheetMappings.length === 0 && arrayMappings.length === 0)}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Continuer ({sheetMappings.length + arrayMappings.length > 0 ? 'Mapping configuré' : 'Configurer au moins un élément'})

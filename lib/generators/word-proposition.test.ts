@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({ storage: { from: () => ({ upload, getPublicUrl }) } }),
 }));
 
-function makeDocx(): Buffer {
+function makeDocx(text = '{{societe}} - {{sp_reference}} - {{sp_date_limite_souscription-15}}'): Buffer {
   const zip = new PizZip();
   zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -21,7 +21,7 @@ function makeDocx(): Buffer {
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`);
   zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{{societe}} - {{sp_reference}} - {{sp_date_limite_souscription-15}}</w:t></w:r></w:p></w:body></w:document>`);
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`);
   return zip.generate({ type: 'nodebuffer' });
 }
 
@@ -32,6 +32,18 @@ afterEach(() => {
 });
 
 describe('generatePropositionFile Word', () => {
+  it('rend le nouveau prix total dans une boucle sans changer quantité ni tarif', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const docx = makeDocx('{{#lignes}}{{quantite}} | {{tarif}} | {{prix_total}}{{/lignes}}');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => Uint8Array.from(docx).buffer }));
+    await generatePropositionFile({
+      template: { id: 'word', file_type: 'word', file_url: 'https://storage.example.test/template.docx', file_config: {}, champs_actifs: [] },
+      donnees: { lignes: [{ designation: 'Forfait', quantite: 3, tarif: 45.9 }] },
+      organization_id: 'org-1', proposition_id: 'prop-1',
+    });
+    const xml = new PizZip(Buffer.from(upload.mock.calls[0][1])).file('word/document.xml')!.asText();
+    expect(xml).toContain('3 | 45.9 | 137,70 €');
+  });
   it('rend un DOCX avec mapping, référence et date dynamique sans dépendre du rendu Excel', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
     const docx = makeDocx();

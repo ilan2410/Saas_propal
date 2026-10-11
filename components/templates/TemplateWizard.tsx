@@ -131,11 +131,12 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
     }
   };
 
-  const handleComplete = async () => {
+  const handleComplete = async (excelUpdate?: Partial<TemplateData>) => {
     try {
       // S'assurer qu'on a un nom
       const dataToSend = {
         ...templateData,
+        ...(excelUpdate?.file_type === 'excel' ? excelUpdate : {}),
         nom: templateData.nom || `Template ${new Date().toLocaleDateString('fr-FR')}`,
       };
       
@@ -251,6 +252,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
             updateTemplateData={updateTemplateData}
             excelState={excelState}
             updateExcelState={updateExcelState}
+            onExcelSave={mode === 'edit' ? handleComplete : undefined}
             secteur={secteur}
             onNext={nextStep}
             onPrev={prevStep}

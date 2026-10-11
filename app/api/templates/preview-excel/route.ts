@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { createClient } from '@/lib/supabase/server';
-import { buildPropositionBaseData } from '@/lib/generators/base-data';
+import { buildExcelSourceData, buildPropositionBaseData } from '@/lib/generators/base-data';
 import { fillExcelWorkbook } from '@/lib/generators/excel-proposition';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
+import type { EntrepriseOrgFields } from '@/lib/generators/word-data-utils';
 import type {
   SuggestionsSpCompletes,
   SpQuestion,
@@ -72,7 +74,8 @@ export async function POST(request: NextRequest) {
     if (uploadedFile && uploadedFile instanceof File) {
       templateBuffer = await uploadedFile.arrayBuffer();
     } else if (template.file_url) {
-      const response = await fetch(template.file_url);
+      if (!isAllowedFetchUrl(template.file_url)) return NextResponse.json({ error: 'URL du template non autorisée.' }, { status: 400 });
+      const response = await fetch(template.file_url, { redirect: 'error' });
       if (!response.ok) {
         return NextResponse.json(
           { error: 'Impossible de charger le fichier Excel du template' },
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
     // 3. Récupérer la proposition source : en priorité la plus récente AYANT des
     //    données SP ; à défaut la plus récente tout court (SA uniquement).
     const baseSelect =
-      'template_id, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(sp_questions, preferences)';
+      'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(*)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -126,7 +129,17 @@ export async function POST(request: NextRequest) {
       : {};
     const donnees: UnknownRecord = { ...extracted, ...filled };
 
-    const fileConfig: UnknownRecord = isPlainObject(template.file_config) ? template.file_config : {};
+    let fileConfig: UnknownRecord = isPlainObject(template.file_config) ? template.file_config : {};
+    const pendingConfig = formData.get('fileConfig');
+    if (typeof pendingConfig === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(pendingConfig);
+        if (!isPlainObject(parsed)) throw new Error('Configuration invalide');
+        fileConfig = parsed;
+      } catch {
+        return NextResponse.json({ error: 'Configuration Excel invalide.' }, { status: 400 });
+      }
+    }
 
     const orgRaw = (proposition as Record<string, unknown>).organizations;
     const org = isPlainObject(orgRaw)
@@ -174,11 +187,13 @@ export async function POST(request: NextRequest) {
       wordConfig.sp_table_product_orders,
     );
 
+    const previewDonnees = buildExcelSourceData(donnees, spCompletes);
+
     // Clauses conditionnelles → variables sp_clause_<cle>
     const clauses = Array.isArray(fileConfig.spClausesConditionnelles)
       ? (fileConfig.spClausesConditionnelles as unknown as SpClauseConditionnelle[])
       : [];
-    const sp_clauses_rendered = renderClauses(clauses, spCompletes, spReponses, donnees, catalogue);
+    const sp_clauses_rendered = renderClauses(clauses, spCompletes, spReponses, previewDonnees, catalogue);
 
     // Référence proposition → sp_reference
     const sp_reference = buildSpReference(
@@ -186,7 +201,7 @@ export async function POST(request: NextRequest) {
       spReponses,
       templateQuestions,
       catalogue,
-      donnees,
+      previewDonnees,
       spConfigLoyer,
       orgPreferences.sp_config_mois_offerts,
       spPreferencesProduits,
@@ -201,17 +216,20 @@ export async function POST(request: NextRequest) {
         file_config: fileConfig,
         champs_actifs: [],
       },
-      donnees,
+      donnees: previewDonnees,
       organization_id: ctx.organizationId,
       proposition_id: '',
       suggestions_sp_completes: spCompletes,
       sp_clauses_rendered,
       sp_reference,
+      organization_profile: await buildPropositionAuthorProfile(supabase, org, ctx, proposition.created_by) as EntrepriseOrgFields,
     });
 
     let uint8Array: Uint8Array;
     try {
-      uint8Array = await fillExcelWorkbook(templateBuffer, donnees, baseData, fileConfig);
+      uint8Array = await fillExcelWorkbook(templateBuffer, previewDonnees, baseData, fileConfig, {
+        createdAt: proposition.created_at,
+      });
     } catch (error) {
       return NextResponse.json(
         { error: `Erreur lors du remplissage du fichier Excel : ${error instanceof Error ? error.message : 'Erreur inconnue'}` },

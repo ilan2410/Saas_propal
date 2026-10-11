@@ -2,6 +2,8 @@
 import ExcelJS from 'exceljs';
 import { createClient } from '@/lib/supabase/server';
 import { ExcelConfig } from '@/types';
+import { fillExcelWorkbook } from './excel-workbook';
+import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 
 /**
  * Remplit un template Excel en le dupliquant et en le modifiant
@@ -22,69 +24,14 @@ export async function fillExcelTemplate(
     const supabase = await createClient();
 
     // 1. Télécharger le template master
-    const response = await fetch(templateUrl);
+    if (!isAllowedFetchUrl(templateUrl)) throw new Error('URL du template non autorisée.');
+    const response = await fetch(templateUrl, { redirect: 'error' });
     if (!response.ok) {
       throw new Error('Échec du téléchargement du template');
     }
     const templateBuffer = await response.arrayBuffer();
 
-    // 2. Charger le workbook
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(templateBuffer);
-
-    // 3. Sélectionner la feuille cible
-    const worksheet = workbook.getWorksheet(fileConfig.feuilleCiblee);
-
-    if (!worksheet) {
-      throw new Error(`Feuille "${fileConfig.feuilleCiblee}" introuvable`);
-    }
-
-    // 4. Remplir les cellules selon le mapping (MODIFICATION DIRECTE)
-    for (const [cellAddress, dataKey] of Object.entries(
-      fileConfig.cellMappings
-    )) {
-      // Skip les cellules avec formules à préserver
-      if (fileConfig.cellulesAvecFormules?.includes(cellAddress)) {
-        continue;
-      }
-
-      const cell = worksheet.getCell(cellAddress);
-
-      // Préserver le style de la cellule
-      const originalStyle = { ...cell.style };
-      const originalNumFmt = cell.numFmt;
-
-      // Injecter la valeur
-      const value = data[dataKey];
-
-      // Gérer les types de données
-      if (value === null || value === undefined) {
-        cell.value = '';
-      } else if (typeof value === 'number') {
-        cell.value = value;
-      } else if (value instanceof Date) {
-        cell.value = value;
-      } else {
-        cell.value = value.toString();
-      }
-
-      // Réappliquer le style ET le format numérique
-      cell.style = originalStyle;
-      if (originalNumFmt) {
-        cell.numFmt = originalNumFmt; // Ex: '#,##0.00 €' pour les montants
-      }
-    }
-
-    // 5. Forcer le recalcul des formules
-    if (fileConfig.preserverFormules !== false) {
-      workbook.calcProperties = {
-        fullCalcOnLoad: true,
-      };
-    }
-
-    // 6. Générer le buffer du fichier modifié
-    const filledBuffer = await workbook.xlsx.writeBuffer();
-
+    const filledBuffer = await fillExcelWorkbook(templateBuffer, data, data, fileConfig as unknown as Record<string, unknown>);
     // 7. Upload vers Supabase Storage
     const fileName = `proposition-${Date.now()}.xlsx`;
     const { error } = await supabase.storage
@@ -125,18 +72,17 @@ export async function generateExcelPreview(
 ): Promise<string> {
   try {
     // Télécharger le template
-    const response = await fetch(templateUrl);
+    if (!isAllowedFetchUrl(templateUrl)) throw new Error('URL du template non autorisée.');
+    const response = await fetch(templateUrl, { redirect: 'error' });
     const templateBuffer = await response.arrayBuffer();
 
-    // Charger le workbook
+    if (!response.ok) throw new Error('Impossible de charger le template Excel.');
+    const filled = await fillExcelWorkbook(templateBuffer, data, data, fileConfig as unknown as Record<string, unknown>);
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(templateBuffer);
-
-    const worksheet = workbook.getWorksheet(fileConfig.feuilleCiblee);
-    if (!worksheet) {
-      return '<p class="text-red-500">Feuille introuvable</p>';
-    }
-
+    await workbook.xlsx.load(filled.buffer.slice(filled.byteOffset, filled.byteOffset + filled.byteLength) as ArrayBuffer);
+    const worksheet = workbook.getWorksheet(fileConfig.feuilleCiblee ?? fileConfig.sheetMappings?.[0]?.sheetName ?? 1);
+    if (!worksheet) return '<p class="text-red-500">Feuille introuvable</p>';
+    const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
     // Générer un preview HTML (10 premières lignes)
     let html = '<table class="border-collapse border border-gray-300 text-sm">';
     let rowCount = 0;
@@ -149,18 +95,12 @@ export async function generateExcelPreview(
         if (colNumber > 10) return;
 
         // Vérifier si cette cellule sera remplie
-        const willBeFilled = Object.keys(fileConfig.cellMappings).includes(
+        const willBeFilled = Object.keys(fileConfig.cellMappings ?? {}).includes(
           cell.address
         );
         const bgColor = willBeFilled ? 'bg-green-50' : '';
 
-        const filledValue = willBeFilled
-          ? data[fileConfig.cellMappings[cell.address]]
-          : undefined;
-        const value =
-          filledValue === undefined || filledValue === null ? cell.value : filledValue;
-
-        html += `<td class="border border-gray-300 p-2 ${bgColor}">${value === undefined || value === null ? '' : String(value)}</td>`;
+        html += `<td class="border border-gray-300 p-2 ${bgColor}">${escapeHtml(cell.text)}</td>`;
       });
 
       html += '</tr>';

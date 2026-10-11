@@ -165,6 +165,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (SP_OPTIONS.some((o) => selected.has(o)) && sourceConfig.spEnabled !== undefined) {
       newFileConfig.spEnabled = sourceConfig.spEnabled;
     }
+    if (original.file_type === 'excel' && selected.has('mapping')) {
+      for (const key of ['fieldTypes', 'imageWidth', 'imageHeight', 'multiSheet', 'sheetCount']) {
+        if (sourceConfig[key] !== undefined) newFileConfig[key] = sourceConfig[key];
+      }
+    }
 
     const insertData: Record<string, unknown> = {
       organization_id: ctx.organizationId,

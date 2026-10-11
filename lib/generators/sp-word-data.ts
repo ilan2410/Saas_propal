@@ -1,6 +1,7 @@
 import type { SuggestionsSpCompletes, SpAdresse, SpTableauFusionne } from '@/types';
 import { deepApplyTitleCase } from '@/lib/generators/word-data-utils';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
+import { withTableTotals } from './table-row-total';
 
 function sanitizeLineNumber(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -42,8 +43,8 @@ export function buildSpWordData(
   const adresseFact = sp.sp_adresse_facturation;
   // Pour la variable 1-ligne formatée, livraison = facturation si identique
   const adresseLivDisplay = sp.sp_livraison_identique ? adresseFact : sp.sp_adresse_livraison;
-  // Pour les 9 champs SP, livraison est vide si identique (les champs facturation suffisent)
-  const adresseLiv = sp.sp_livraison_identique ? null : sp.sp_adresse_livraison;
+  // Pour les champs SP, livraison reprend la facturation lorsque les adresses sont identiques.
+  const adresseLiv = sp.sp_livraison_identique ? adresseFact : sp.sp_adresse_livraison;
 
   const data: Record<string, unknown> = {
     sp_economie_mensuelle: sp.sp_economie_mensuelle ?? '',
@@ -60,20 +61,26 @@ export function buildSpWordData(
     sp_livraison_identique: sp.sp_livraison_identique ? 'Oui' : 'Non',
 
     Adresse_facturation_SP_societe:      adresseFact?.societe ?? '',
+    Adresse_facturation_SP_nom:          adresseFact?.nom ?? '',
+    Adresse_facturation_SP_prenom:       adresseFact?.prenom ?? '',
+    Adresse_facturation_SP_fonction:     adresseFact?.fonction ?? '',
     Adresse_facturation_SP_adresse:      adresseFact?.adresse ?? '',
     Adresse_facturation_SP_cp:           adresseFact?.code_postal ?? '',
     Adresse_facturation_SP_ville:        adresseFact?.ville ?? '',
-    Adresse_facturation_SP_contact:      adresseFact?.contact ?? '',
+    Adresse_facturation_SP_contact:      adresseFact?.contact ?? [adresseFact?.nom, adresseFact?.prenom].filter(Boolean).join(' '),
     Adresse_facturation_SP_ligne_fixe:   normalizePhoneNumber(adresseFact?.ligne_fixe ?? ''),
     Adresse_facturation_SP_ligne_mobile: normalizePhoneNumber(adresseFact?.ligne_mobile ?? ''),
     Adresse_facturation_SP_email:        adresseFact?.email ?? '',
     Adresse_facturation_SP_siret:        adresseFact?.siret ?? '',
 
     Adresse_livraison_SP_societe:        adresseLiv?.societe ?? '',
+    Adresse_livraison_SP_nom:            adresseLiv?.nom ?? '',
+    Adresse_livraison_SP_prenom:         adresseLiv?.prenom ?? '',
+    Adresse_livraison_SP_fonction:       adresseLiv?.fonction ?? '',
     Adresse_livraison_SP_adresse:        adresseLiv?.adresse ?? '',
     Adresse_livraison_SP_cp:             adresseLiv?.code_postal ?? '',
     Adresse_livraison_SP_ville:          adresseLiv?.ville ?? '',
-    Adresse_livraison_SP_contact:        adresseLiv?.contact ?? '',
+    Adresse_livraison_SP_contact:        adresseLiv?.contact ?? [adresseLiv?.nom, adresseLiv?.prenom].filter(Boolean).join(' '),
     Adresse_livraison_SP_ligne_fixe:     normalizePhoneNumber(adresseLiv?.ligne_fixe ?? ''),
     Adresse_livraison_SP_ligne_mobile:   normalizePhoneNumber(adresseLiv?.ligne_mobile ?? ''),
     Adresse_livraison_SP_email:          adresseLiv?.email ?? '',
@@ -151,7 +158,7 @@ export function buildSpWordData(
     }
   }
 
-  return deepApplyTitleCase(data) as Record<string, unknown>;
+  return withTableTotals(deepApplyTitleCase(data) as Record<string, unknown>);
 }
 
 function formatAdresse(a: SpAdresse): string {

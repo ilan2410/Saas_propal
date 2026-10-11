@@ -8,6 +8,7 @@
 import { buildSituationActuelleLines } from '@/lib/sp/buildExportSaSpData';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
+import { withTableTotals } from './table-row-total';
 
 import { isPlainObject, type UnknownRecord } from './data-utils';
 export { isPlainObject, getNestedValue, setNestedValue, findValueInData, type UnknownRecord } from './data-utils';
@@ -295,7 +296,7 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
     }
   }
 
-  return deepApplyTitleCase(out) as UnknownRecord;
+  return withTableTotals(deepApplyTitleCase(out) as UnknownRecord);
 }
 
 export function toTitleCase(s: string): string {

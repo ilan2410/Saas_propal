@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FloatingModal } from '@/components/ui/floating-modal';
 import type { SpQuestion, SpQuestionReponse, CatalogueProduit, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig, SpCustomization } from '@/types';
 import { buildQuestionnaireBgBackdrop } from '@/lib/sp/buildQuestionnaireBg';
+import { resolveSpAddressPreferences } from '@/lib/sp/questionVariables';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 import { FloatingClientCoordonnees } from '@/components/propositions/FloatingClientCoordonnees';
@@ -111,9 +112,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
       const fournisseurRep = reponses.find((r) =>
         activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'boutons_choix_unique' && q.source === 'catalogue')
       );
-      const adresseRep = reponses.find((r) =>
-        activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'adresse_complete')
-      );
+      const addressPreferences = resolveSpAddressPreferences(activeQuestions, reponses);
       const materielRep = reponses.find((r) =>
         activeQuestions.find((q) => q.id === r.question_id && q.affichage === 'oui_non')
       );
@@ -146,8 +145,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
         preferences: {
           fournisseur_prefere: fournisseurRep ? String(fournisseurRep.valeur) : undefined,
           proposer_materiel: materielRep ? (materielRep.valeur === true || materielRep.valeur === 'Oui') : false,
-          adresse_facturation: adresseRep?.valeur,
-          livraison_identique: true,
+          ...addressPreferences,
         },
       };
 
@@ -267,6 +265,7 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
               key={sessionKey}
               questions={activeQuestions}
               donneesExtraites={donneesExtraites}
+              onUpdateDonneesExtraites={setDonneesExtraites}
               catalogue={catalogue}
               fournisseurs={fournisseurs}
               discountRules={discountRules}

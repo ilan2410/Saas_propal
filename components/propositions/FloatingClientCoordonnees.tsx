@@ -45,7 +45,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Champs plats de `client.*` relus par la template Word et le comparatif SA/SP. */
-type ClientEdit = {
+export type ClientEdit = {
   raison_sociale: string;
   nom: string;
   prenom: string;
@@ -82,6 +82,14 @@ function initEdit(donneesExtraites: Record<string, unknown>): ClientEdit {
   };
 }
 
+export function reconcileClientEdit(previous: ClientEdit, current: ClientEdit, incoming: ClientEdit): ClientEdit {
+  const next = { ...current };
+  for (const key of Object.keys(incoming) as (keyof ClientEdit)[]) {
+    if (current[key] === previous[key]) next[key] = incoming[key];
+  }
+  return next;
+}
+
 /** Géométrie initiale du panneau (ancré en haut à droite). */
 function initGeometry() {
   if (typeof window === 'undefined') {
@@ -93,6 +101,40 @@ function initGeometry() {
   return { left, top: 88, width, height };
 }
 
+export function ClientCoordonneesFields({ value, onChange, idPrefix = 'client' }: {
+  value: ClientEdit;
+  onChange: (key: keyof ClientEdit, value: string) => void;
+  idPrefix?: string;
+}) {
+  const inputClass = 'h-8 text-sm border border-gray-300 rounded px-2 w-full';
+  const labelClass = 'text-[11px] font-medium text-gray-500 mb-0.5 block';
+  const field = (key: keyof ClientEdit, label: string, placeholder: string, type = 'text') => (
+    <div className="min-w-0 flex-1">
+      <label className={labelClass} htmlFor={`${idPrefix}-${key}`}>{label}</label>
+      <input id={`${idPrefix}-${key}`} type={type} value={value[key]}
+        onChange={(e) => onChange(key, type === 'tel' ? maskPhoneInput(e.target.value) : e.target.value)}
+        onBlur={type === 'tel' ? (e) => onChange(key, normalizePhoneNumber(e.target.value)) : undefined}
+        className={inputClass} placeholder={placeholder} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-2.5">
+      {field('raison_sociale', 'Raison sociale', 'Société')}
+      <div className="flex gap-2">{field('nom', 'Nom', 'Nom')}{field('prenom', 'Prénom', 'Prénom')}</div>
+      {field('fonction', 'Fonction', 'Fonction')}
+      {field('email', 'E-mail', 'Adresse e-mail', 'email')}
+      <div className="flex gap-2">{field('mobile', 'Ligne mobile', 'Mobile', 'tel')}{field('fixe', 'Ligne fixe', 'Fixe', 'tel')}</div>
+      {field('adresse', 'Adresse', 'Adresse (rue, numéro)')}
+      <div className="flex gap-2">
+        <div className="w-28 shrink-0">{field('code_postal', 'Code postal', 'C.P.')}</div>
+        {field('ville', 'Ville', 'Ville')}
+      </div>
+      {field('siret', 'SIRET', 'Numéro de SIRET')}
+    </div>
+  );
+}
+
 export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onSave }: Props) {
   // Le composant est monté à l'ouverture (rendu conditionnel côté parent) : on
   // initialise géométrie et formulaire en lazy initializers, sans effet de sync.
@@ -101,6 +143,13 @@ export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onS
   const [width, setWidth] = useState(() => initGeometry().width);
   const [height, setHeight] = useState(() => initGeometry().height);
   const [edit, setEdit] = useState<ClientEdit>(() => initEdit(donneesExtraites));
+  const sourceClientRef = useRef(donneesExtraites.client);
+  useEffect(() => {
+    if (sourceClientRef.current === donneesExtraites.client) return;
+    const previous = initEdit({ client: sourceClientRef.current });
+    sourceClientRef.current = donneesExtraites.client;
+    setEdit((current) => reconcileClientEdit(previous, current, initEdit(donneesExtraites)));
+  }, [donneesExtraites]);
   const dragStateRef = useRef<DragState>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -163,9 +212,6 @@ export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onS
 
   if (!open) return null;
 
-  const setField = (key: keyof ClientEdit) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setEdit((p) => ({ ...p, [key]: e.target.value }));
-
   const handleSave = () => {
     const client = isRecord(donneesExtraites.client) ? donneesExtraites.client : {};
     const next: Record<string, unknown> = {
@@ -188,9 +234,6 @@ export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onS
     onSave(next);
     onClose();
   };
-
-  const inputClass = 'h-8 text-sm border border-gray-300 rounded px-2 w-full';
-  const labelClass = 'text-[11px] font-medium text-gray-500 mb-0.5 block';
 
   return (
     <div
@@ -239,71 +282,8 @@ export function FloatingClientCoordonnees({ open, onClose, donneesExtraites, onS
       </div>
 
       <div className="h-[calc(100%-45px)] overflow-auto p-3 bg-green-50/30 flex flex-col">
-        <div className="space-y-2.5 flex-1">
-          <div>
-            <label className={labelClass}>Raison sociale</label>
-            <input value={edit.raison_sociale} onChange={setField('raison_sociale')} className={inputClass} placeholder="Société" />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className={labelClass}>Nom</label>
-              <input value={edit.nom} onChange={setField('nom')} className={inputClass} placeholder="Nom" />
-            </div>
-            <div className="flex-1">
-              <label className={labelClass}>Prénom</label>
-              <input value={edit.prenom} onChange={setField('prenom')} className={inputClass} placeholder="Prénom" />
-            </div>
-          </div>
-          <div>
-            <label className={labelClass}>Fonction</label>
-            <input value={edit.fonction} onChange={setField('fonction')} className={inputClass} placeholder="Fonction" />
-          </div>
-          <div>
-            <label className={labelClass}>E-mail</label>
-            <input value={edit.email} onChange={setField('email')} className={inputClass} placeholder="Adresse e-mail" />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className={labelClass}>Ligne mobile</label>
-              <input
-                type="tel"
-                value={edit.mobile}
-                onChange={(e) => setEdit((p) => ({ ...p, mobile: maskPhoneInput(e.target.value) }))}
-                onBlur={(e) => setEdit((p) => ({ ...p, mobile: normalizePhoneNumber(e.target.value) }))}
-                className={inputClass}
-                placeholder="Mobile"
-              />
-            </div>
-            <div className="flex-1">
-              <label className={labelClass}>Ligne fixe</label>
-              <input
-                type="tel"
-                value={edit.fixe}
-                onChange={(e) => setEdit((p) => ({ ...p, fixe: maskPhoneInput(e.target.value) }))}
-                onBlur={(e) => setEdit((p) => ({ ...p, fixe: normalizePhoneNumber(e.target.value) }))}
-                className={inputClass}
-                placeholder="Fixe"
-              />
-            </div>
-          </div>
-          <div>
-            <label className={labelClass}>Adresse</label>
-            <input value={edit.adresse} onChange={setField('adresse')} className={inputClass} placeholder="Adresse (rue, numéro)" />
-          </div>
-          <div className="flex gap-2">
-            <div className="w-28">
-              <label className={labelClass}>Code postal</label>
-              <input value={edit.code_postal} onChange={setField('code_postal')} className={inputClass} placeholder="C.P." />
-            </div>
-            <div className="flex-1">
-              <label className={labelClass}>Ville</label>
-              <input value={edit.ville} onChange={setField('ville')} className={inputClass} placeholder="Ville" />
-            </div>
-          </div>
-          <div>
-            <label className={labelClass}>SIRET</label>
-            <input value={edit.siret} onChange={setField('siret')} className={inputClass} placeholder="Numéro de SIRET" />
-          </div>
+        <div className="flex-1">
+          <ClientCoordonneesFields value={edit} onChange={(key, value) => setEdit((p) => ({ ...p, [key]: value }))} />
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-3 mt-1 border-t border-green-100">

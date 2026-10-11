@@ -1051,20 +1051,23 @@ export async function POST(request: NextRequest) {
     let templateQuestions: SpQuestion[] = [];
     let resiliationConfig: SpConfigResiliation | undefined;
     let propositionCreatedAt: string | undefined;
+    let isExcelTemplate = false;
+    let existingFilledData: UnknownRecord = {};
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
       const { data: prop } = await scopePropositionsQuery(
         supabase
           .from('propositions')
-          .select('template_id, created_at')
+          .select('template_id, created_at, filled_data')
           .eq('id', proposition_id),
         ctx
       ).single();
       propositionCreatedAt = typeof prop?.created_at === 'string' ? prop.created_at : undefined;
+      existingFilledData = isPlainObject(prop?.filled_data) ? prop.filled_data : {};
       if (prop?.template_id) {
         const [{ data: tmpl }, { data: org }] = await Promise.all([
           supabase
             .from('proposition_templates')
-            .select('file_config')
+            .select('file_config, file_type')
             .eq('id', prop.template_id)
             .single(),
           supabase
@@ -1073,6 +1076,7 @@ export async function POST(request: NextRequest) {
             .eq('id', ctx.organizationId)
             .single(),
         ]);
+        isExcelTemplate = tmpl?.file_type === 'excel';
         if (isPlainObject(tmpl?.file_config)) {
           wordCfg = tmpl.file_config as unknown as WordConfig;
         }
@@ -1191,6 +1195,11 @@ export async function POST(request: NextRequest) {
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0) {
       const updatePayload: UnknownRecord = { suggestions_sp_completes: suggestionsSpCompletes };
+      // Excel previews and exports read filled_data, including edits made in
+      // the SA widget during a simulation. Word keeps its existing save path.
+      if (isExcelTemplate && isPlainObject(donneesForCart.situation_actuelle)) {
+        updatePayload.filled_data = { ...existingFilledData, ...donneesForCart };
+      }
       if (spReponses.length > 0) {
         updatePayload.sp_reponses = spReponses;
       }

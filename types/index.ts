@@ -161,8 +161,29 @@ export interface PropositionTemplate {
 export type FileConfig = ExcelConfig | WordConfig | PDFConfig;
 
 export interface ExcelConfig {
-  feuilleCiblee: string;
-  cellMappings: Record<string, string>;
+  /** Legacy single-sheet mapping, still accepted by the Excel generator. */
+  feuilleCiblee?: string;
+  cellMappings?: Record<string, string>;
+  multiSheet?: boolean;
+  sheetCount?: number;
+  sheetMappings?: Array<{ sheetName: string; mapping: Record<string, string | string[]> }>;
+  arrayMappings?: Array<{
+    arrayId: string;
+    sheetName: string;
+    startRow: number;
+    stopCondition: 'empty_first_col' | 'max_rows';
+    maxRows?: number;
+    columnMapping: Record<string, string>;
+    overflowMode?: 'error' | 'insert_rows';
+  }>;
+  /** Explicit field types take priority over automatic money/identifier handling. */
+  fieldTypes?: Record<string, 'text' | 'number' | 'date' | 'boolean' | 'image'>;
+  forcerMajusculesVariables?: boolean;
+  spVariablesCustom?: SpVariableCustom[];
+  spTableauxFusionnes?: SpTableauFusionne[];
+  spClausesConditionnelles?: SpClauseConditionnelle[];
+  imageWidth?: number;
+  imageHeight?: number;
   preserverFormules?: boolean;
   cellulesAvecFormules?: string[];
   tableauxDynamiques?: unknown[];
@@ -701,6 +722,9 @@ export interface SpProduitLibre {
 
 export interface SpAdresse {
   societe?: string;
+  nom?: string;
+  prenom?: string;
+  fonction?: string;
   adresse: string;
   complement?: string;
   code_postal: string;

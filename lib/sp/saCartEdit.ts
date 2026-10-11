@@ -23,6 +23,7 @@
 // compté) afin de ne pas faire basculer le régime de comptage.
 
 import { calculateSaCartSummary, SA_RESIDUAL_LABEL, SA_VARIABLE_AGGREGATE_LABEL } from './calculateSaCart';
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
 
 export type SaSection = 'abonnement' | 'location' | 'variable';
 export type SaLigneType = 'fixe' | 'mobile' | 'internet';
@@ -212,7 +213,7 @@ function readLine(
     id,
     section,
     designation: designation || DEFAULT_LABELS[section],
-    numero: section === 'variable' ? '' : resolveNumero(item, sa),
+    numero: section === 'variable' ? '' : normalizePhoneNumber(resolveNumero(item, sa)),
     quantite: Math.max(1, toNumber(item.quantite) || 1),
     montant,
     isResidual: item._sa_residual === true,
@@ -397,7 +398,7 @@ function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
   const quantite = Math.max(1, Math.round(input.quantite) || 1);
   const montant = Math.max(0, input.montant) || 0;
   const designation = input.designation.trim() || DEFAULT_LABELS[input.section];
-  const numero = (input.numero ?? '').trim();
+  const numero = normalizePhoneNumber(input.numero ?? '');
 
   if (input.section === 'variable') {
     // Pas de quantité : `calculateSaCartSummary` ne multiplie pas les charges.
@@ -486,7 +487,7 @@ function applyPatchToItem(
 ): void {
   const isCharge = array === 'charges_variables';
   if (patch.designation !== undefined) item.libelle = patch.designation;
-  if (patch.numero !== undefined && !isCharge) item.numero_ligne = patch.numero;
+  if (patch.numero !== undefined && !isCharge) item.numero_ligne = normalizePhoneNumber(patch.numero);
   if (patch.quantite !== undefined && !isCharge) item.quantite = Math.max(1, Math.round(patch.quantite) || 1);
   if (patch.montant !== undefined) {
     const value = Math.max(0, patch.montant) || 0;

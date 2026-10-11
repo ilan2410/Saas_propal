@@ -13,10 +13,12 @@ const SP_STANDARD_VARIABLES = [
   'sp_reference',
   // Adresses
   'sp_adresse_facturation', 'sp_adresse_livraison', 'sp_livraison_identique',
-  'Adresse_facturation_SP_societe', 'Adresse_facturation_SP_adresse', 'Adresse_facturation_SP_cp',
+  'Adresse_facturation_SP_societe', 'Adresse_facturation_SP_nom', 'Adresse_facturation_SP_prenom',
+  'Adresse_facturation_SP_fonction', 'Adresse_facturation_SP_adresse', 'Adresse_facturation_SP_cp',
   'Adresse_facturation_SP_ville', 'Adresse_facturation_SP_contact', 'Adresse_facturation_SP_ligne_fixe',
   'Adresse_facturation_SP_ligne_mobile', 'Adresse_facturation_SP_email', 'Adresse_facturation_SP_siret',
-  'Adresse_livraison_SP_societe', 'Adresse_livraison_SP_adresse', 'Adresse_livraison_SP_cp',
+  'Adresse_livraison_SP_societe', 'Adresse_livraison_SP_nom', 'Adresse_livraison_SP_prenom',
+  'Adresse_livraison_SP_fonction', 'Adresse_livraison_SP_adresse', 'Adresse_livraison_SP_cp',
   'Adresse_livraison_SP_ville', 'Adresse_livraison_SP_contact', 'Adresse_livraison_SP_ligne_fixe',
   'Adresse_livraison_SP_ligne_mobile', 'Adresse_livraison_SP_email', 'Adresse_livraison_SP_siret',
   // Récurrent / Ponctuel

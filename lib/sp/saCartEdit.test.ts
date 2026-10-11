@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateSaCartSummary } from './calculateSaCart';
 import { applySaEdit, getSaEditableLines } from './saCartEdit';
+import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
 
 /**
  * SA telle que produite par le pipeline d'extraction : les lignes détaillées ET
@@ -107,6 +108,36 @@ describe('applySaEdit — recalcul des totaux', () => {
     const sa = makeSa();
     applySaEdit(sa, { kind: 'update', id: lineIdByLabel(sa, 'Connect Pro Open Fibre'), patch: { montant: 100 } });
     expect(summaryOf(sa).totalMensuel).toBe(126.48);
+  });
+});
+
+describe('numéros du widget SA', () => {
+  it('formate un numéro existant, ajouté ou modifié en groupes de deux chiffres', () => {
+    const sa = makeSa();
+    (sa.abonnements as Record<string, unknown>[])[0].numero_ligne = '0155665522';
+    expect(getSaEditableLines(sa).find((line) => line.designation === 'Connect Pro Open Fibre')?.numero).toBe('01 55 66 55 22');
+
+    const added = applySaEdit(sa, { kind: 'add', input: {
+      section: 'abonnement', type: 'mobile', designation: 'Mobile ajouté', numero: '06.12.34.56.78', quantite: 1, montant: 20,
+    } });
+    const newLine = getSaEditableLines(added).find((line) => line.designation === 'Mobile ajouté');
+    expect(newLine?.numero).toBe('06 12 34 56 78');
+    expect((added.lignes as Record<string, unknown>[]).at(-1)?.numero_ligne).toBe('06 12 34 56 78');
+    expect((added.abonnements as Record<string, unknown>[]).at(-1)?.numero_ligne).toBe('06 12 34 56 78');
+
+    const updated = applySaEdit(added, { kind: 'update', id: newLine!.id, patch: { numero: '+33 7 11 22 33 44' } });
+    expect(getSaEditableLines(updated).find((line) => line.designation === 'Mobile ajouté')?.numero).toBe('07 11 22 33 44');
+    expect((updated.lignes as Record<string, unknown>[]).at(-1)?.numero_ligne).toBe('07 11 22 33 44');
+    expect(maskPhoneInput('0612345678')).toBe('06 12 34 56 78');
+    expect(normalizePhoneNumber('poste 42')).toBe('poste 42');
+  });
+
+  it('affiche aussi le numéro existant retrouvé sur une ligne liée à un abonnement', () => {
+    const sa = makeSa();
+    (sa.abonnements as Record<string, unknown>[])[0].engagement_ref = 'contrat-1';
+    sa.lignes = [{ engagement_ref: 'contrat-1', numero_ligne: '0155665522', type: 'fixe' }];
+    expect(getSaEditableLines(sa).find((line) => line.designation === 'Connect Pro Open Fibre')?.numero)
+      .toBe('01 55 66 55 22');
   });
 });
 

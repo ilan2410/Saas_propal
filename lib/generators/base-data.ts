@@ -8,6 +8,8 @@ import {
   type EntrepriseOrgFields,
 } from './word-data-utils';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
+import { spAddressToClient } from '@/lib/sp/questionVariables';
+import { withTableTotals } from './table-row-total';
 import type { SuggestionsSpCompletes, WordConfig } from '@/types';
 
 export interface GenerateOptions {
@@ -40,6 +42,17 @@ export interface GenerateOptions {
  * Word y superpose ensuite son `mappedData` (issu de fieldMappings) ; Excel l'utilise
  * comme source de résolution (fallback) pour le mapping de cellules / tableaux.
  */
+export function buildExcelSourceData(donnees: UnknownRecord, sp: SuggestionsSpCompletes | null): UnknownRecord {
+  if (!sp?.sp_adresse_facturation) return donnees;
+  const result = spAddressToClient(donnees, sp.sp_adresse_facturation);
+  const client = result.client as UnknownRecord;
+  for (const [key, value] of Object.entries(client)) {
+    const dottedKey = `client.${key}`;
+    if (Object.prototype.hasOwnProperty.call(donnees, dottedKey)) result[dottedKey] = value;
+  }
+  return result;
+}
+
 export function buildPropositionBaseData(options: GenerateOptions): UnknownRecord {
   const { template, donnees } = options;
   const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
@@ -79,5 +92,5 @@ export function buildPropositionBaseData(options: GenerateOptions): UnknownRecor
     flatData['client.fixe'] = normalizePhoneNumber(flatData['client.fixe']);
   }
 
-  return { ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData };
+  return withTableTotals({ ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData });
 }

@@ -19,6 +19,7 @@ export interface ArrayMapping {
   startRow: number;
   stopCondition: 'empty_first_col' | 'max_rows';
   maxRows?: number;
+  overflowMode?: 'error' | 'insert_rows';
   // Mapping colonne -> champ (ex: "numero" -> "B", "type" -> "C")
   columnMapping: { [fieldId: string]: string };
 }
@@ -95,6 +96,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
       sheetName: sheets[0]?.name || '',
       startRow: 2,
       stopCondition: 'empty_first_col',
+      overflowMode: 'error',
       columnMapping: {},
     });
   };
@@ -109,6 +111,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
       startRow: editingMapping.startRow || 2,
       stopCondition: editingMapping.stopCondition || 'empty_first_col',
       maxRows: editingMapping.maxRows,
+      overflowMode: editingMapping.overflowMode ?? 'error',
       columnMapping: editingMapping.columnMapping || {},
     };
 
@@ -139,8 +142,8 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     : null;
 
   // Dimensions de la grille
-  const maxRows = selectedSheet ? (selectedSheet.rows || 50) : 30;
-  const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 26) : 10;
+  const maxRows = selectedSheet ? Math.min(selectedSheet.rows || 50, 200) : 30;
+  const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 100) : 10;
 
   // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
   const mergeInfo = (() => {
@@ -221,7 +224,8 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             <ul className="text-xs space-y-1 ml-4">
               <li>• Sélectionnez un champ à gauche</li>
               <li>• Cliquez sur une cellule dans la grille pour associer sa <strong>colonne</strong></li>
-              <li>• Le système lira toutes les lignes de cette colonne à partir de la ligne de départ</li>
+              <li>• Le système remplit les lignes à partir de la ligne de départ</li>
+              <li>• Réservez une zone pour éviter d’écraser le contenu situé en dessous</li>
             </ul>
           </div>
         </div>
@@ -268,7 +272,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
           {/* Condition d'arrêt */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Arrêter quand
+              Fin des données
             </label>
             <select
               value={editingMapping.stopCondition || 'empty_first_col'}
@@ -278,10 +282,29 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
               })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm"
             >
-              <option value="empty_first_col">1ère colonne vide</option>
-              <option value="max_rows">Nombre max de lignes</option>
+              <option value="empty_first_col">Premier champ mappé vide</option>
+              <option value="max_rows">Toutes les lignes reçues</option>
             </select>
           </div>
+        </div>
+
+        <div className="grid gap-4 rounded-lg bg-gray-50 p-4 md:grid-cols-2">
+          <label className="text-sm font-medium text-gray-700">Nombre de lignes réservées dans le template
+            <input type="number" min={1} max={10000} value={editingMapping.maxRows ?? ''} placeholder="Détection automatique"
+              className="mt-1 w-full rounded border border-gray-300 p-2"
+              onChange={e => setEditingMapping({ ...editingMapping, maxRows: e.target.value === '' ? undefined : Math.max(1, Math.min(10000, Number(e.target.value))) })} />
+          </label>
+          <label className="text-sm font-medium text-gray-700">Si les données dépassent la zone
+            <select value={editingMapping.overflowMode ?? 'error'} className="mt-1 w-full rounded border border-gray-300 p-2"
+              onChange={e => setEditingMapping({ ...editingMapping, overflowMode: e.target.value as 'error' | 'insert_rows' })}>
+              <option value="error">Signaler le dépassement</option>
+              <option value="insert_rows">Insérer des lignes et déplacer le contenu suivant</option>
+            </select>
+          </label>
+          <p className="text-xs text-gray-600 md:col-span-2">
+            Laissez le nombre vide pour détecter les lignes vides du tableau dans le fichier. Les lignes inutilisées sont vidées dans les colonnes mappées. Les lignes insérées reprennent le style et les formules de la première ligne.
+            Pour les tableaux structurés ou les zones avec validation et mise en forme conditionnelle, réservez suffisamment de lignes.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

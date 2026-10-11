@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server';
+import { withTableTotals } from './table-row-total';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { renderWordWithImages } from './word-image';
 import { resolveDynamicWordVar } from './dynamic-vars';
@@ -56,7 +57,7 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
   // Dictionnaire complet SA + SP + clauses + référence, partagé avec la génération Excel.
   // Ordre de priorité : base (flat SA < SA < SP < clauses < référence) < mapping utilisateur.
   const propositionBase = buildPropositionBaseData(options);
-  const finalData = { ...propositionBase, ...mappedData };
+  const finalData = withTableTotals({ ...propositionBase, ...mappedData });
 
   // Date de référence des variables dynamiques {{sp_date_limite_souscription[-N]}}.
   const propositionCreatedAt = options.proposition_created_at ?? new Date();
