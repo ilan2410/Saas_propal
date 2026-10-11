@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { SpQuestion } from '@/types';
 
@@ -19,8 +19,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   }
 
   const { orderedIds }: { orderedIds: string[] } = await req.json();
-  const { data: org } = await supabase
-    .from('organizations')
+  const { data: org } = await createServiceClient().from('organizations')
     .select('sp_questions')
     .eq('id', ctx.organizationId)
     .single();
@@ -32,6 +31,6 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return newOrdre >= 0 ? { ...q, ordre: newOrdre + 1 } : q;
   });
 
-  await supabase.from('organizations').update({ sp_questions: reordered }).eq('id', ctx.organizationId);
+  await createServiceClient().from('organizations').update({ sp_questions: reordered }).eq('id', ctx.organizationId);
   return NextResponse.json({ success: true });
 }

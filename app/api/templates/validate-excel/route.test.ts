@@ -49,3 +49,5 @@ describe('validation du mapping Excel', () => {
     expect(query.select).not.toHaveBeenCalled();
   });
 });
+
+vi.mock('@/lib/security/storage-access', () => ({ signedOrganizationStorageUrl: async (_client: unknown, url: string) => url }));

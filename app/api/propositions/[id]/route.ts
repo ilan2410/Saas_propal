@@ -1,3 +1,5 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -5,19 +7,6 @@ import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
 import { isMissingRelationError } from '@/lib/supabase/errors';
 
-function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
-  if (!url) return null;
-  const marker = `/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx < 0) return null;
-  const rawPathWithParams = url.slice(idx + marker.length);
-  const rawPath = rawPathWithParams.split('?')[0].split('#')[0];
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    return rawPath;
-  }
-}
 
 export async function GET(
   request: NextRequest,
@@ -46,7 +35,7 @@ export async function GET(
         .from('propositions')
         .select(`
           *,
-          template:proposition_templates(*)
+          template:proposition_templates(${CLIENT_TEMPLATE_COLUMNS})
         `)
         .eq('id', id),
       ctx
@@ -113,15 +102,15 @@ export async function DELETE(
     }
 
     const documentsPaths = urls
-      .map((u) => extractStoragePathFromPublicUrl(u, 'documents'))
+      .map((u) => organizationStoragePath(u, 'documents', ctx.organizationId))
       .filter(Boolean) as string[];
 
     const templatesPaths = urls
-      .map((u) => extractStoragePathFromPublicUrl(u, 'templates'))
+      .map((u) => organizationStoragePath(u, 'templates', ctx.organizationId))
       .filter(Boolean) as string[];
 
     const propositionsPaths = urls
-      .map((u) => extractStoragePathFromPublicUrl(u, 'propositions'))
+      .map((u) => organizationStoragePath(u, 'propositions', ctx.organizationId))
       .filter(Boolean) as string[];
 
     if (documentsPaths.length > 0) {
@@ -157,6 +146,7 @@ export async function DELETE(
       storage_provider: attachment.storage_provider as AttachmentStorageProvider,
       storage_bucket: attachment.storage_bucket,
       storage_key: attachment.storage_key,
+      organization_id: ctx.organizationId,
     }).catch((storageError) => console.error('Error deleting attachment object:', storageError))));
 
     // L'archive d'export n'a pas de FK vers propositions : purge explicite.

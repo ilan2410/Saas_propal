@@ -193,7 +193,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
-  if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+  if (ctx.role !== 'owner') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

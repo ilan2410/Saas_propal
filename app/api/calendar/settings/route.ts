@@ -11,7 +11,7 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [{ data: settings }, { data: organization, error: organizationError }] = await Promise.all([
     supabase.from('calendar_user_settings').select('timezone').eq('user_id', user.id).maybeSingle(),
-    supabase.from('organizations').select('note_title_template').eq('id', ctx.organizationId).single(),
+    createServiceClient().from('organizations').select('note_title_template').eq('id', ctx.organizationId).single(),
   ]);
   const templateUnavailable = organizationError?.code === '42703' || organizationError?.code === 'PGRST204';
   if (organizationError && !templateUnavailable) {

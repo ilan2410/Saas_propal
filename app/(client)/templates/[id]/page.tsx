@@ -1,13 +1,14 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  FileSpreadsheet, 
-  FileText, 
-  File, 
-  Calendar, 
-  CheckCircle2, 
+import {
+  ArrowLeft,
+  FileSpreadsheet,
+  FileText,
+  File,
+  Calendar,
+  CheckCircle2,
   Clock,
   Settings,
   Layers,
@@ -37,7 +38,7 @@ export default async function TemplateDetailPage({ params }: Props) {
   // Récupérer le template
   const { data: template, error } = await supabase
     .from('proposition_templates')
-    .select('*')
+    .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('id', id)
     .single();
 
@@ -110,7 +111,7 @@ export default async function TemplateDetailPage({ params }: Props) {
               >
                 <ArrowLeft className="w-5 h-5 text-gray-600 group-hover:-translate-x-1 transition-transform" />
               </Link>
-              
+
               {/* Icon et titre */}
               <div className="flex items-start gap-4 flex-1">
                 <div className={`w-16 h-16 bg-gradient-to-br ${fileIconConfig.gradient} rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0`}>
@@ -123,7 +124,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                   ) : (
                     <p className="text-gray-400 italic">Pas de description</p>
                   )}
-                  
+
                   {/* Meta info */}
                   <div className="flex items-center gap-4 mt-4">
                     <div className={`flex items-center gap-2 px-4 py-2 ${statusConfig.bg} ${statusConfig.border} border rounded-xl`}>
@@ -166,7 +167,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                   Fichier template
                 </h2>
               </div>
-              
+
               <div className="flex items-center gap-4 p-6 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-200 hover:shadow-md transition-all">
                 <div className={`w-14 h-14 bg-gradient-to-br ${fileIconConfig.gradient} rounded-xl flex items-center justify-center shadow-lg flex-shrink-0`}>
                   <FileIcon className="w-7 h-7 text-white" />
@@ -195,7 +196,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                   {champsActifs.length} champs
                 </span>
               </div>
-              
+
               {champsActifs.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {champsActifs.map((champ: string) => (
@@ -228,7 +229,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     Configuration du mapping
                   </h2>
                 </div>
-                
+
                 <div className="space-y-4">
                   {fileConfig.sheetMappings.map((sheetMapping: Record<string, unknown>, idx: number) => (
                     <div key={idx} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all bg-gradient-to-r from-gray-50 to-white">
@@ -267,7 +268,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     Tableaux configurés
                   </h2>
                 </div>
-                
+
                 <div className="space-y-4">
                   {fileConfig.arrayMappings.map((arrayMapping: Record<string, unknown>, idx: number) => (
                     <div key={idx} className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 hover:shadow-lg transition-all">
@@ -318,7 +319,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                   Informations
                 </h2>
               </div>
-              
+
               <dl className="space-y-4">
                 <div className="pb-4 border-b border-gray-100">
                   <dt className="text-sm font-medium text-gray-500 mb-2">Créé le</dt>
@@ -331,7 +332,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     })}
                   </dd>
                 </div>
-                
+
                 <div className="pb-4 border-b border-gray-100">
                   <dt className="text-sm font-medium text-gray-500 mb-2">Dernière modification</dt>
                   <dd className="text-sm font-semibold text-gray-900 flex items-center gap-2">
@@ -343,7 +344,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     })}
                   </dd>
                 </div>
-                
+
                 <div className="pb-4 border-b border-gray-100">
                   <dt className="text-sm font-medium text-gray-500 mb-2">Type de fichier</dt>
                   <dd className={`inline-flex items-center gap-2 px-3 py-1.5 ${fileIconConfig.bg} ${fileIconConfig.text} rounded-lg text-sm font-bold uppercase`}>
@@ -351,7 +352,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     {template.file_type}
                   </dd>
                 </div>
-                
+
                 {template.file_name && (
                   <div className="pb-4 border-b border-gray-100">
                     <dt className="text-sm font-medium text-gray-500 mb-2">Fichier</dt>
@@ -360,7 +361,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     </dd>
                   </div>
                 )}
-                
+
                 <div>
                   <dt className="text-sm font-medium text-gray-500 mb-3">Statut</dt>
                   <dd>
@@ -388,7 +389,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                     Dernier test
                   </h2>
                 </div>
-                
+
                 <dl className="space-y-3">
                   <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-green-200">
                     <dt className="text-sm font-medium text-green-700">Champs extraits</dt>
@@ -422,7 +423,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                   Utilisation
                 </h2>
               </div>
-              
+
               <div className="text-center py-6">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <TrendingUp className="w-8 h-8 text-gray-400" />

@@ -102,6 +102,7 @@ export async function POST(
         const key = `${ctx.organizationId}/${id}/${safeStorageFileName(files[index].name, validation.extension)}`;
         const storage = await uploadAttachmentObject({
           key,
+          organizationId: ctx.organizationId,
           body: validation.buffer,
           contentType: validation.mime,
         });
@@ -113,7 +114,9 @@ export async function POST(
           original_name: files[index].name.slice(0, 255),
           mime_type: validation.mime,
           size_bytes: validation.buffer.byteLength,
-          ...storage,
+          storage_provider: storage.storage_provider,
+          storage_bucket: storage.storage_bucket,
+          storage_key: storage.storage_key,
         }).select('id, original_name, mime_type, size_bytes, created_at').single();
         if (error || !data) throw error ?? new Error('Enregistrement de la pièce jointe impossible');
         created.push(data);

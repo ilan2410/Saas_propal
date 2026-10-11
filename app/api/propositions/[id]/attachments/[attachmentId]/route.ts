@@ -36,6 +36,7 @@ export async function DELETE(
       storage_provider: attachment.storage_provider as AttachmentStorageProvider,
       storage_bucket: attachment.storage_bucket,
       storage_key: attachment.storage_key,
+      organization_id: ctx.organizationId,
     });
     const { error: deleteError } = await service
       .from('proposition_attachments')

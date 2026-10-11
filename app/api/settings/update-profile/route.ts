@@ -1,3 +1,4 @@
+import { clientOrganization } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -71,8 +72,7 @@ export async function PATCH(request: Request) {
     } = body;
 
     // Récupérer l'organisation de l'utilisateur
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
+    const { data: organization, error: orgError } = await createServiceClient().from('organizations')
       .select('*')
       .eq('id', ctx.organizationId)
       .single();
@@ -146,7 +146,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    return NextResponse.json(updatedOrg);
+    return NextResponse.json(clientOrganization(updatedOrg, ctx));
   } catch (error) {
     console.error('Erreur inattendue:', error);
     return NextResponse.json(

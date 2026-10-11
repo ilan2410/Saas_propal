@@ -43,6 +43,7 @@ export async function GET(
       storage_provider: attachment.storage_provider as AttachmentStorageProvider,
       storage_bucket: attachment.storage_bucket,
       storage_key: attachment.storage_key,
+      organization_id: ctx.organizationId,
     });
     const upstream = await fetch(url, { cache: 'no-store' });
     if (!upstream.ok || !upstream.body) {

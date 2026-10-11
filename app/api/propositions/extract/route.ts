@@ -1,3 +1,5 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
+import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis, validateClaudeApiKey } from '@/lib/ai/claude';
@@ -268,16 +270,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { template_id, documents_urls, nom_client, proposition_id } = body;
     const copieursCount = Math.max(1, Number(body?.copieurs_count || 1));
-    
+
     console.log('📥 Extraction demandée:', { template_id, documents_urls, nom_client, copieursCount });
 
     // Validation des entrées
     if (!template_id) {
       return NextResponse.json({ error: 'template_id manquant' }, { status: 400 });
     }
-    
+
     if (!documents_urls || !Array.isArray(documents_urls) || documents_urls.length === 0) {
       return NextResponse.json({ error: 'Aucun document fourni' }, { status: 400 });
+    }
+
+    if (!await validateSourceDocuments(supabase, documents_urls, ctx.organizationId)) {
+      return NextResponse.json({ error: 'Documents source invalides ou inaccessibles' }, { status: 400 });
     }
 
     // Restriction par template : une proposition existante garde son template même s'il
@@ -299,7 +305,7 @@ export async function POST(request: NextRequest) {
     // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter
     // qu'un utilisateur authentifié puisse déclencher une extraction sur un
     // template appartenant à une autre organisation).
-    const { data: template, error: templateError } = await supabase
+    const { data: template, error: templateError } = await serviceSupabase
       .from('proposition_templates')
       .select('*')
       .eq('id', template_id)
@@ -310,63 +316,16 @@ export async function POST(request: NextRequest) {
       console.error('Template non trouvé:', templateError);
       return NextResponse.json({ error: 'Template non trouvé', details: templateError?.message }, { status: 404 });
     }
-    
+
     console.log('📋 Template trouvé:', template.nom);
 
     // Récupérer l'organization
     console.log('🔍 Recherche de l\'organisation avec user.id:', user.id);
     console.log('📧 Email utilisateur:', user.email);
-    
-    let organization = null;
-    let orgError = null;
-    
-    // Essayer d'abord par ID (méthode normale)
-    const resultById = await supabase
-      .from('organizations')
-      .select('*')
-      .eq('id', ctx.organizationId)
-      .single();
-    
-    if (resultById.data && !resultById.error) {
-      organization = resultById.data;
-      console.log('✅ Organisation trouvée par ID');
-    } else {
-      console.log('❌ Organisation non trouvée par ID, essai par email...');
-      
-      // Si échec, essayer par email (fallback)
-      const resultByEmail = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('email', user.email)
-        .single();
-      
-      if (resultByEmail.data && !resultByEmail.error) {
-        organization = resultByEmail.data;
-        console.log('✅ Organisation trouvée par email, ID:', organization.id);
-        
-        // Vérifier si les ID correspondent - si non, il y a un problème de cohérence
-        if (organization.id !== ctx.organizationId) {
-          console.warn('⚠️ Incohérence détectée: ctx.organizationId != organization.id', {
-            expectedOrgId: ctx.organizationId,
-            orgId: organization.id
-          });
-        }
-      } else {
-        orgError = resultByEmail.error;
-        console.log('❌ Organisation non trouvée par email non plus');
-      }
-    }
-      
-    console.log('📊 Résultat recherche organisation:', { organization, orgError });
-      
-    if (!organization || orgError) {
-      console.error('❌ Organisation non trouvée ou erreur:', orgError);
-      return NextResponse.json({ 
-        error: 'Organisation non trouvée', 
-        details: `ID utilisateur: ${user.id}, Email: ${user.email}, Erreur: ${orgError?.message || 'Organisation introuvable'}` 
-      }, { status: 404 });
-    }
-    
+
+    const { data: organization, error: orgError } = await serviceSupabase.from('organizations').select('*').eq('id', ctx.organizationId).single();
+    if (orgError || !organization) return NextResponse.json({ error: 'Organisation non trouvée' }, { status: 404 });
+
     console.log('🏢 Organisation:', organization.nom);
     console.log('💰 Crédits actuels:', organization.credits, 'Type:', typeof organization.credits);
     console.log('💳 Tarif par proposition:', organization.tarif_par_proposition, 'Type:', typeof organization.tarif_par_proposition);
@@ -374,14 +333,14 @@ export async function POST(request: NextRequest) {
     // Convertir en nombres pour éviter les problèmes de type
     const credits = parseFloat(String(organization.credits || 0));
     const tarif = parseFloat(String(organization.tarif_par_proposition || 0));
-    
+
     console.log('💰 Crédits convertis:', credits);
     console.log('💳 Tarif converti:', tarif);
     console.log('🔍 Comparaison:', credits, '<', tarif, '=', credits < tarif);
 
     // Vérifier que les crédits sont suffisants
     if (credits < tarif) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Crédits insuffisants',
         details: `Crédits requis: ${tarif}€, Crédits disponibles: ${credits}€`
       }, { status: 402 });
@@ -553,7 +512,7 @@ INSTRUCTION COMPLÉMENTAIRE - RÉSUMÉ:
 - Le résumé doit être suffisamment détaillé pour pouvoir être réutilisé dans les étapes suivantes de génération de proposition commerciale.
 
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
-    
+
     console.log('🤖 Modèle utilisé:', modelToUse);
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
     const activeFields = Array.isArray(template.champs_actifs)
@@ -584,7 +543,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
       }
 
-      const { data: updated, error: updateDraftError } = await supabase
+      const { data: updated, error: updateDraftError } = await serviceSupabase
         .from('propositions')
         .update({
           template_id: template_id,
@@ -611,7 +570,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
       proposition = updated as PropositionRow;
     } else {
-      const { data: created, error: propError } = await supabase
+      const { data: created, error: propError } = await serviceSupabase
         .from('propositions')
         .insert({
           organization_id: ctx.organizationId,
@@ -653,6 +612,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       console.error('Erreur sync pièces jointes (documents source):', syncError);
     }
 
+    const signedDocuments = await Promise.all(documents_urls.map((url: string) => signedOrganizationStorageUrl(supabase, url, 'documents', ctx.organizationId)));
+
     // Extraire les données avec Claude
     console.log('🤖 Lancement extraction avec modèle:', modelToUse);
 
@@ -665,7 +626,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       const report = await runAndLogAiUsage(
         { organizationId: ctx.organizationId, propositionId: proposition.id, userId: user.id, operation: 'sa_analysis' },
         () => analyzeInvoicesForSa({
-          documents_urls,
+          documents_urls: signedDocuments,
           active_fields: activeFields,
           claude_model: modelToUse,
           claude_effort: effortToUse,
@@ -698,7 +659,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       extractedData = await runAndLogAiUsage(
         { organizationId: ctx.organizationId, propositionId: proposition.id, userId: user.id, operation: 'extraction' },
         () => extractDataFromDocuments({
-          documents_urls,
+          documents_urls: signedDocuments,
           champs_actifs: activeFields,
           prompt_template: promptToUse,
           claude_model: modelToUse,
@@ -751,7 +712,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       ? extractedDataFinal._extraction_control
       : null;
     const requiresReview = extractionControl?.status === 'review_required';
-    
+
     console.log('✅ Extraction réussie');
 
     // Débiter les crédits de l'organisation UNIQUEMENT si l'extraction a réussi
@@ -813,8 +774,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       console.error('Exception lors du débit des crédits:', debitError);
       // Supprimer la proposition si le débit échoue
       await supabase.from('propositions').delete().eq('id', proposition.id);
-      return NextResponse.json({ 
-        error: 'Erreur lors du débit des crédits', 
+      return NextResponse.json({
+        error: 'Erreur lors du débit des crédits',
         details: debitError instanceof Error ? debitError.message : 'Erreur inconnue'
       }, { status: 500 });
     }
@@ -857,7 +818,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
             // Import dynamique pour éviter de charger Stripe si non nécessaire
             const { attemptAutoRecharge } = await import('@/lib/stripe/auto-recharge');
             const result = await attemptAutoRecharge(organization.id, montant);
-            
+
             if (result.success && result.creditsAdded) {
               // Mettre à jour la valeur retournée au client
               updatedOrg.credits = (updatedOrg.credits || 0) + result.creditsAdded;
@@ -876,7 +837,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       donnees_extraites: extractedDataFinal,
       validation_status: requiresReview ? 'review_required' : 'valid',
       quality_issues: extractionControl && Array.isArray(extractionControl.issues) ? extractionControl.issues : [],
-      credits_restants: updatedOrg?.credits || 0,
+      ...(ctx.permissions.view_credits_billing ? { credits_restants: updatedOrg?.credits || 0 } : {}),
       montant_debite: tarif,
     });
   } catch (error) {

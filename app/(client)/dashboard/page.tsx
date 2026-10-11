@@ -1,13 +1,14 @@
-import { createClient } from '@/lib/supabase/server';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { 
-  Plus, 
-  FileText, 
-  Zap, 
-  TrendingUp, 
+import {
+  Plus,
+  FileText,
+  Zap,
+  TrendingUp,
   TrendingDown,
-  BarChart3, 
+  BarChart3,
   Calendar,
   Clock,
   CheckCircle2,
@@ -48,8 +49,7 @@ export default async function ClientDashboard() {
   }
 
   // Récupérer l'organization
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('*')
     .eq('id', ctx.organizationId)
     .single();
@@ -57,7 +57,7 @@ export default async function ClientDashboard() {
   // Récupérer les templates
   const { data: templates } = await supabase
     .from('proposition_templates')
-    .select('*')
+    .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx.organizationId)
     .order('created_at', { ascending: false });
 
@@ -86,13 +86,13 @@ export default async function ClientDashboard() {
     allPropositions?.filter((p) => p.statut === 'exported' || !!p.exported_at || !!p.duplicated_template_url)
       .length || 0;
   const totalDepense = transactions?.reduce((sum, t) => sum + (t.montant || 0), 0) || 0;
-  
+
   // Stats du mois en cours
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-  
+
   const propositionsCeMois = allPropositions?.filter(
     (p) => new Date(p.created_at) >= startOfMonth
   ).length || 0;
@@ -105,12 +105,12 @@ export default async function ClientDashboard() {
   ).length || 0;
 
   // Calculer la tendance
-  const tendancePropositions = propositionsMoisDernier > 0 
-    ? ((propositionsCeMois - propositionsMoisDernier) / propositionsMoisDernier) * 100 
+  const tendancePropositions = propositionsMoisDernier > 0
+    ? ((propositionsCeMois - propositionsMoisDernier) / propositionsMoisDernier) * 100
     : 0;
 
   // Taux de conversion
-  const tauxConversion = totalPropositions > 0 
+  const tauxConversion = totalPropositions > 0
     ? ((propositionsExportees / totalPropositions) * 100).toFixed(1)
     : 0;
 
@@ -122,7 +122,7 @@ export default async function ClientDashboard() {
       const propDate = new Date(p.created_at);
       return propDate >= date && propDate < nextMonth;
     }).length || 0;
-    
+
     return {
       mois: date.toLocaleDateString('fr-FR', { month: 'short' }),
       count
@@ -295,13 +295,13 @@ export default async function ClientDashboard() {
               </div>
               <BarChart3 className="w-5 h-5 text-gray-400" />
             </div>
-            
+
             {/* Graphique simple en barres */}
             <div className="space-y-4">
               {derniersMois.map((mois, idx) => {
                 const maxCount = Math.max(...derniersMois.map(m => m.count), 1);
                 const percentage = (mois.count / maxCount) * 100;
-                
+
                 return (
                   <div key={idx} className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
@@ -309,7 +309,7 @@ export default async function ClientDashboard() {
                       <span className="text-gray-900 font-semibold">{mois.count}</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                      <div 
+                      <div
                         className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-500"
                         style={{ width: `${percentage}%` }}
                       ></div>
@@ -429,7 +429,7 @@ export default async function ClientDashboard() {
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
-          
+
           {propositions && propositions.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">

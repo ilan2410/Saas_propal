@@ -1,3 +1,4 @@
+import { isOrganizationStorageKey } from '@/lib/security/storage-access';
 import 'server-only';
 
 import {
@@ -15,6 +16,7 @@ export type AttachmentStorageRef = {
   storage_provider: AttachmentStorageProvider;
   storage_bucket: string;
   storage_key: string;
+  organization_id: string;
 };
 
 const SUPABASE_BUCKET = 'proposition-attachments';
@@ -52,9 +54,11 @@ export function getAttachmentUploadProvider(): AttachmentStorageProvider {
 
 export async function uploadAttachmentObject(input: {
   key: string;
+  organizationId: string;
   body: Buffer;
   contentType: string;
 }): Promise<AttachmentStorageRef> {
+  if (!isOrganizationStorageKey(input.key, input.organizationId)) throw new Error('attachment_storage_forbidden');
   const provider = configuredProvider();
   if (provider === 'supabase') {
     const supabase = createServiceClient();
@@ -65,6 +69,7 @@ export async function uploadAttachmentObject(input: {
     if (error) throw error;
     return {
       storage_provider: 'supabase',
+      organization_id: input.organizationId,
       storage_bucket: SUPABASE_BUCKET,
       storage_key: input.key,
     };
@@ -77,13 +82,14 @@ export async function uploadAttachmentObject(input: {
     Body: input.body,
     ContentType: input.contentType,
   }));
-  return { storage_provider: 's3', storage_bucket: bucket, storage_key: input.key };
+  return { storage_provider: 's3', organization_id: input.organizationId, storage_bucket: bucket, storage_key: input.key };
 }
 
 export async function createAttachmentDownloadUrl(
   ref: AttachmentStorageRef,
   options?: { expiresIn?: number },
 ): Promise<string> {
+  assertAttachmentStorageRef(ref);
   const expiresIn = options?.expiresIn ?? 60;
   if (ref.storage_provider === 'supabase') {
     const supabase = createServiceClient();
@@ -102,6 +108,7 @@ export async function createAttachmentDownloadUrl(
 }
 
 export async function deleteAttachmentObject(ref: AttachmentStorageRef): Promise<void> {
+  assertAttachmentStorageRef(ref);
   if (ref.storage_provider === 'supabase') {
     const supabase = createServiceClient();
     const { error } = await supabase.storage.from(ref.storage_bucket).remove([ref.storage_key]);
@@ -114,4 +121,10 @@ export async function deleteAttachmentObject(ref: AttachmentStorageRef): Promise
     Bucket: ref.storage_bucket,
     Key: ref.storage_key,
   }));
+}
+
+function assertAttachmentStorageRef(ref: AttachmentStorageRef): void {
+  if (!isOrganizationStorageKey(ref.storage_key, ref.organization_id)) throw new Error('attachment_storage_forbidden');
+  if (ref.storage_provider === 'supabase' && ![SUPABASE_BUCKET, 'documents'].includes(ref.storage_bucket)) throw new Error('attachment_storage_forbidden');
+  if (ref.storage_provider === 's3' && ref.storage_bucket !== process.env.ATTACHMENTS_S3_BUCKET?.trim()) throw new Error('attachment_storage_forbidden');
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function GET() {
@@ -16,8 +16,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: org } = await supabase
-      .from('organizations')
+    if (!ctx.permissions.view_credits_billing) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    const { data: org } = await createServiceClient().from('organizations')
       .select('tarif_par_proposition, tarif_clone_site, credits')
       .eq('id', ctx.organizationId)
       .single();

@@ -1,6 +1,7 @@
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { organizationStoragePath, storagePathFromUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import mammoth from 'mammoth';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,11 +36,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
       }
 
-      if (!isAllowedFetchUrl(fileUrl)) {
+      const ctx = await resolveOrgContext(supabase, user);
+      const admin = user.app_metadata?.role === 'admin';
+      const key = admin ? storagePathFromUrl(fileUrl, 'templates') : ctx ? organizationStoragePath(fileUrl, 'templates', ctx.organizationId) : null;
+      if (!key) {
         return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
       }
 
-      const response = await fetch(fileUrl);
+      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error' });
       if (!response.ok) {
         return NextResponse.json(
           { error: 'Failed to download file', details: `Status: ${response.status}` },

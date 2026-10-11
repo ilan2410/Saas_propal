@@ -1,5 +1,7 @@
 'use client';
 
+import { storageFileUrl } from '@/lib/security/storage-file-url';
+
 import { useState } from 'react';
 import { Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
@@ -51,7 +53,7 @@ export function Step5Generate({
                 <span className="text-xs text-gray-400">Téléchargement non autorisé</span>
               ) : sp.file_url ? (
                 <a
-                  href={sp.file_url}
+                  href={storageFileUrl(sp.file_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
@@ -184,7 +186,7 @@ export function Step5Generate({
             <p className="text-gray-600 mb-6">Votre fichier est prêt à être téléchargé</p>
             <div className="flex flex-wrap gap-3 justify-center">
               <a
-                href={fileUrl}
+                href={storageFileUrl(fileUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"

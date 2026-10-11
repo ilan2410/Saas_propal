@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { CreditCard, Plus, History, TrendingUp, Zap, Shield } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
@@ -29,8 +29,7 @@ export default async function CreditsPage() {
   }
 
   // Récupérer l'organization
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('*')
     .eq('id', ctx.organizationId)
     .single();

@@ -1,21 +1,9 @@
+import { organizationStoragePath } from '@/lib/security/storage-access';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
 import { isMissingRelationError } from '@/lib/supabase/errors';
-
-function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
-  if (!url) return null;
-  const marker = `/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx < 0) return null;
-  const rawPath = url.slice(idx + marker.length);
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    return rawPath;
-  }
-}
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -81,12 +69,12 @@ export async function DELETE(request: Request) {
     const propositionPathsToDelete = filteredPropositions
       .map(p => p.duplicated_template_url)
       .filter((url): url is string => typeof url === 'string' && url.length > 0)
-      .map(url => extractStoragePathFromPublicUrl(url, 'propositions'))
+      .map(url => organizationStoragePath(url, 'propositions', ctx.organizationId))
       .filter((path): path is string => path !== null);
 
     const documentPathsToDelete = filteredPropositions
       .flatMap((p) => asStringArray(p.source_documents))
-      .map((url) => extractStoragePathFromPublicUrl(url, 'documents'))
+      .map((url) => organizationStoragePath(url, 'documents', ctx.organizationId))
       .filter((path): path is string => path !== null);
 
     // 3. Supprimer les fichiers du storage
@@ -94,7 +82,7 @@ export async function DELETE(request: Request) {
       const { error: storageError } = await serviceSupabase.storage
         .from('propositions')
         .remove(propositionPathsToDelete);
-        
+
       if (storageError) {
         console.error('Erreur suppression fichiers storage:', storageError);
         // On continue quand même pour supprimer les entrées BDD
@@ -131,6 +119,7 @@ export async function DELETE(request: Request) {
       storage_provider: attachment.storage_provider as AttachmentStorageProvider,
       storage_bucket: attachment.storage_bucket,
       storage_key: attachment.storage_key,
+      organization_id: ctx.organizationId,
     }).catch((storageError) => console.error('Erreur suppression pièce jointe:', storageError))));
 
     // 5. L'archive d'export n'a pas de FK vers propositions : purge explicite.

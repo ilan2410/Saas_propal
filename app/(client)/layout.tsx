@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { clientOrganization } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { ClientSidebar } from '@/components/client/ClientSidebar';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -35,8 +36,7 @@ export default async function ClientLayout({
   }
 
   // Récupérer les infos complètes de l'organisation (secteur, etc.)
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('*')
     .eq('id', ctx.organizationId)
     .single();
@@ -47,7 +47,7 @@ export default async function ClientLayout({
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <ClientSidebar user={user} organization={organization} role={ctx.role} permissions={ctx.permissions} />
+      <ClientSidebar user={{ email: user.email }} organization={clientOrganization(organization, ctx) as unknown as typeof organization} role={ctx.role} permissions={ctx.permissions} />
       <main className="md:ml-64 p-4 md:p-8 pt-16 md:pt-8">{children}</main>
     </div>
   );

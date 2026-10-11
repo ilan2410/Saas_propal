@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { propositionNoteCreateSchema } from '@/lib/calendar/validation';
 import { requireVisibleProposition } from '@/lib/propositions/note-access';
@@ -35,7 +35,7 @@ export async function GET(
       : { data: [] };
     const names = new Map((members ?? []).map((member) => [member.user_id, `${member.prenom ?? ''} ${member.nom ?? ''}`.trim()]));
     if (authorIds.includes(ctx.organizationId)) {
-      const { data: organization } = await supabase.from('organizations').select('contact_prenom, contact_nom').eq('id', ctx.organizationId).single();
+      const { data: organization } = await createServiceClient().from('organizations').select('contact_prenom, contact_nom').eq('id', ctx.organizationId).single();
       names.set(ctx.organizationId, `${organization?.contact_prenom ?? ''} ${organization?.contact_nom ?? ''}`.trim());
     }
     return NextResponse.json({

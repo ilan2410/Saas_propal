@@ -1,8 +1,9 @@
-import { createClient } from '@/lib/supabase/server';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
       );
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.view_credits_billing) {
+    if (ctx.role !== 'owner') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -33,14 +34,13 @@ export async function GET(request: Request) {
       { data: propositions },
       { data: transactions }
     ] = await Promise.all([
-      supabase
-        .from('organizations')
+      createServiceClient().from('organizations')
         .select('nom, email, secteur, created_at, logo_url, siret, adresse, code_postal, ville, numero_tva, nom_facturation, adresse_facturation, preferences')
         .eq('id', ctx.organizationId)
         .single(),
       supabase
         .from('proposition_templates')
-        .select('*')
+        .select(CLIENT_TEMPLATE_COLUMNS)
         .eq('organization_id', ctx.organizationId),
       supabase
         .from('propositions')

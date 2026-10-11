@@ -1,3 +1,4 @@
+import { clientPreferences } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { OrganizationPreferences } from '@/types';
@@ -57,8 +58,7 @@ export async function PATCH(request: Request) {
     }
 
     // Récupérer les préférences actuelles
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
+    const { data: organization, error: orgError } = await createServiceClient().from('organizations')
       .select('preferences')
       .eq('id', ctx.organizationId)
       .single();
@@ -71,13 +71,13 @@ export async function PATCH(request: Request) {
     }
 
     const currentPreferences = (organization.preferences as OrganizationPreferences) || {};
-    
+
     // Deep merge des préférences
-    // Note: Une implémentation simple de merge. 
+    // Note: Une implémentation simple de merge.
     // Si on utilisait lodash.merge ce serait plus robuste, mais on fait simple ici.
     // Pour les préférences JSONB, on peut souvent juste merger au premier niveau si la structure est plate,
     // mais ici on a des objets imbriqués (notifications, recharge_auto).
-    
+
     // Approche manuelle pour garantir la structure
     const updatedPreferences: OrganizationPreferences = {
       ...currentPreferences,
@@ -122,7 +122,7 @@ export async function PATCH(request: Request) {
     const supabaseAdmin = createServiceClient();
     const { data: updatedOrg, error: updateError } = await supabaseAdmin
       .from('organizations')
-      .update({ 
+      .update({
         preferences: updatedPreferences,
         updated_at: new Date().toISOString()
       })
@@ -138,7 +138,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const response = NextResponse.json({ preferences: updatedOrg.preferences });
+    const response = NextResponse.json({ preferences: clientPreferences(updatedOrg.preferences, ctx) });
 
     if (typeof updatedPreferences.theme === 'string') {
       response.cookies.set('appearance_theme', updatedPreferences.theme, {

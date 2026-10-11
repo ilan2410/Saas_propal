@@ -32,8 +32,7 @@ export async function POST(request: Request) {
     }
 
     // Récupérer le stripe_customer_id de l'organisation
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
+    const { data: organization, error: orgError } = await createServiceClient().from('organizations')
       .select('stripe_customer_id, email, nom')
       .eq('id', ctx.organizationId)
       .single();
@@ -69,7 +68,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const returnUrl = process.env.NEXT_PUBLIC_URL 
+    const returnUrl = process.env.NEXT_PUBLIC_URL
       ? `${process.env.NEXT_PUBLIC_URL}/settings?tab=facturation`
       : `${new URL(request.url).origin}/settings?tab=facturation`;
 

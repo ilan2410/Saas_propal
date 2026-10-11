@@ -1,3 +1,4 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -42,7 +43,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .update({ statut })
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
-      .select()
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .single();
 
     if (error) {

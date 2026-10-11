@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { BarChart3, TrendingUp, Calendar, DollarSign } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatting';
@@ -26,12 +26,13 @@ export default async function AnalyticsPage() {
     redirect('/dashboard');
   }
 
+  const canViewBilling = ctx.permissions.view_credits_billing;
+
   // Récupérer l'organization
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = canViewBilling ? await createServiceClient().from('organizations')
     .select('*')
     .eq('id', ctx.organizationId)
-    .single();
+    .single() : { data: null };
 
   // Récupérer toutes les propositions
   const { data: propositions } = await supabase
@@ -41,11 +42,11 @@ export default async function AnalyticsPage() {
     .order('created_at', { ascending: false });
 
   // Récupérer toutes les transactions
-  const { data: transactions } = await supabase
+  const { data: transactions } = canViewBilling ? await supabase
     .from('stripe_transactions')
     .select('*')
     .eq('organization_id', ctx.organizationId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }) : { data: null };
 
   // Calculer les stats globales
   const totalPropositions = propositions?.length || 0;
@@ -62,7 +63,7 @@ export default async function AnalyticsPage() {
   for (let i = 5; i >= 0; i--) {
     const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const nextDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-    
+
     const propositionsMonth = propositions?.filter(
       (p) => new Date(p.created_at) >= date && new Date(p.created_at) < nextDate
     ).length || 0;
@@ -91,7 +92,7 @@ export default async function AnalyticsPage() {
       </div>
 
       {/* Stats principales */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className={`grid grid-cols-1 ${canViewBilling ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-6`}>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -123,6 +124,7 @@ export default async function AnalyticsPage() {
           </div>
         </div>
 
+        {canViewBilling && <>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -150,6 +152,7 @@ export default async function AnalyticsPage() {
             </div>
           </div>
         </div>
+        </>}
       </div>
 
       {/* Évolution sur 6 mois */}
@@ -168,9 +171,9 @@ export default async function AnalyticsPage() {
                   <span className="text-blue-600">
                     {data.propositions} proposition{data.propositions > 1 ? 's' : ''}
                   </span>
-                  <span className="text-orange-600">
+                  {canViewBilling && <span className="text-orange-600">
                     {formatCurrency(data.depense)} dépensé{data.depense > 1 ? 's' : ''}
-                  </span>
+                  </span>}
                 </div>
               </div>
               <div className="flex gap-2">
@@ -181,13 +184,13 @@ export default async function AnalyticsPage() {
                     minWidth: data.propositions > 0 ? '2%' : '0',
                   }}
                 />
-                <div
+                {canViewBilling && <div
                   className="h-2 bg-orange-500 rounded"
                   style={{
                     width: `${totalDepense > 0 ? (data.depense / totalDepense) * 100 : 0}%`,
                     minWidth: data.depense > 0 ? '2%' : '0',
                   }}
-                />
+                />}
               </div>
             </div>
           ))}
@@ -231,7 +234,7 @@ export default async function AnalyticsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        {canViewBilling &&         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-6">
             Utilisation des crédits
           </h2>
@@ -261,7 +264,7 @@ export default async function AnalyticsPage() {
               </span>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

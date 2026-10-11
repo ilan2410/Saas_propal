@@ -1,5 +1,7 @@
 'use client';
 
+import { storageFileUrl } from '@/lib/security/storage-file-url';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -55,7 +57,7 @@ export function TemplateActions({ templateId, templateName, fileUrl, fileType, c
   const handleStatusChange = async (newStatus: string) => {
     setIsUpdatingStatus(true);
     setShowStatusMenu(false);
-    
+
     try {
       const response = await fetch(`/api/templates/${templateId}/status`, {
         method: 'PATCH',
@@ -103,10 +105,10 @@ export function TemplateActions({ templateId, templateName, fileUrl, fileType, c
         <Play className="w-4 h-4" />
         Créer une proposition
       </Link>
-      
+
       {fileUrl && (
         <a
-          href={fileUrl}
+          href={storageFileUrl(fileUrl)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -115,7 +117,7 @@ export function TemplateActions({ templateId, templateName, fileUrl, fileType, c
           Télécharger le template
         </a>
       )}
-      
+
       <Link
         href={`/templates/${templateId}/edit`}
         className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -146,7 +148,7 @@ export function TemplateActions({ templateId, templateName, fileUrl, fileType, c
           {getStatusLabel(currentStatus)}
           <ChevronDown className="w-4 h-4" />
         </button>
-        
+
         {showStatusMenu && (
           <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-40">
             {statuses.map((status) => (
@@ -167,7 +169,7 @@ export function TemplateActions({ templateId, templateName, fileUrl, fileType, c
           </div>
         )}
       </div>
-      
+
       <button
         onClick={handleDelete}
         disabled={isDeleting}

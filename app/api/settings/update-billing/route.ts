@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -34,8 +34,8 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { 
-      nom_facturation, 
+    const {
+      nom_facturation,
       email_facturation,
       telephone_facturation,
       adresse_ligne1_facturation,
@@ -46,8 +46,7 @@ export async function PATCH(request: Request) {
     } = body;
 
     // Mise à jour en BDD
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
+    const { data: organization, error: orgError } = await createServiceClient().from('organizations')
       .update({
         nom_facturation,
         email_facturation,
@@ -58,7 +57,7 @@ export async function PATCH(request: Request) {
         code_postal_facturation,
         pays_facturation,
         // Fallback pour l'ancien champ
-        adresse_facturation: adresse_ligne1_facturation, 
+        adresse_facturation: adresse_ligne1_facturation,
         updated_at: new Date().toISOString()
       })
       .eq('id', ctx.organizationId)
@@ -77,7 +76,7 @@ export async function PATCH(request: Request) {
     if (organization && organization.stripe_customer_id) {
       try {
         const stripeCustomerId = organization.stripe_customer_id;
-        
+
         // Update Stripe customer
         const updateParams: Stripe.CustomerUpdateParams = {
           name: nom_facturation,
@@ -88,7 +87,7 @@ export async function PATCH(request: Request) {
             line2: adresse_ligne2_facturation,
             city: ville_facturation,
             postal_code: code_postal_facturation,
-            country: pays_facturation, 
+            country: pays_facturation,
           },
         };
 

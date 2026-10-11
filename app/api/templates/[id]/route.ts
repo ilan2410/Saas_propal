@@ -1,6 +1,9 @@
+import { organizationStoragePath } from '@/lib/security/storage-access';
+import { generateMergedPrompt } from '@/components/admin/organizationFormConfig';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 interface RouteParams {
@@ -18,10 +21,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const ctx = await resolveOrgContext(supabase, user);
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { data: template, error } = await supabase
       .from('proposition_templates')
-      .select('*')
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .eq('id', id)
+      .eq('organization_id', ctx.organizationId)
       .single();
 
     if (error) {
@@ -104,8 +111,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // 2. Questions SP + objectifs SP (JSONB sur l'organisation, filtrés par template_id)
     try {
-      const { data: org } = await supabase
-        .from('organizations')
+      const { data: org } = await createServiceClient().from('organizations')
         .select('sp_questions, preferences')
         .eq('id', ctx.organizationId)
         .single();
@@ -129,8 +135,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         }
 
         if (Object.keys(updates).length > 0) {
-          await supabase
-            .from('organizations')
+          await createServiceClient().from('organizations')
             .update(updates)
             .eq('id', ctx.organizationId);
         }
@@ -169,10 +174,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-
-    if (body.prompt_template !== undefined) {
-      body.prompt_template = ensureChampsActifsPlaceholder(String(body.prompt_template));
+    const input = await request.json();
+    const allowed = ['nom', 'description', 'file_url', 'file_name', 'file_type', 'file_size_mb', 'file_config', 'champs_actifs', 'merge_config', 'statut'];
+    const body: Record<string, unknown> = Object.fromEntries(allowed.filter((key) => key in input).map((key) => [key, input[key]]));
+    if (body.file_url && (typeof body.file_url !== 'string' || !organizationStoragePath(body.file_url, 'templates', ctx.organizationId))) {
+      return NextResponse.json({ error: 'Fichier template invalide' }, { status: 400 });
+    }
+    const { data: current } = await createServiceClient().from('proposition_templates').select('*').eq('id', id).eq('organization_id', ctx.organizationId).single();
+    if (!current) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
+    if (body.champs_actifs !== undefined) {
+      if (!Array.isArray(body.champs_actifs) || body.champs_actifs.some((field) => typeof field !== 'string')) return NextResponse.json({ error: 'Champs invalides' }, { status: 400 });
+      let prompt = updateExpectedJsonStructureFromFields(current.prompt_template ?? '', body.champs_actifs, { prune: true });
+      const merges = body.merge_config ?? current.merge_config;
+      if (Array.isArray(merges) && merges.length > 1) prompt = generateMergedPrompt(prompt, merges);
+      body.prompt_template = prompt;
     }
 
     // Si l'URL du fichier change, supprimer l'ancien fichier
@@ -193,7 +208,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             const rawPath = urlParts[1];
             const filePath = decodeURIComponent(rawPath);
             console.log('Suppression de l\'ancien fichier (Client):', filePath);
-            
+
             const { error: removeError } = await supabase.storage
               .from('templates')
               .remove([filePath]);
@@ -212,12 +227,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const { data: template, error } = await supabase
+    const { data: template, error } = await createServiceClient()
       .from('proposition_templates')
       .update(body)
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
-      .select()
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .single();
 
     if (error) {

@@ -1,3 +1,4 @@
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
@@ -53,7 +54,8 @@ export async function POST(request: NextRequest) {
         .eq('id', propositionId)
         .eq('organization_id', ctx.organizationId)
         .maybeSingle();
-      attachToPropositionId = proposition ? proposition.id : null;
+      if (!proposition) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+      attachToPropositionId = proposition.id;
     }
 
     // Valider tous les fichiers AVANT tout upload : on rejette la requête

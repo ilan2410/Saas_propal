@@ -1,5 +1,6 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 import { safeStorageFileName } from '@/lib/security/validate-upload';
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const selected = new Set<DuplicateOption>(requested ?? [...ALL_OPTIONS]);
 
     // Template source
-    const { data: original, error: fetchError } = await supabase
+    const { data: original, error: fetchError } = await createServiceClient()
       .from('proposition_templates')
       .select('*')
       .eq('id', id)
@@ -105,8 +106,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // ils ne sont pas copiés non plus, et les réglages file_config copiés
     // sans questions gardent des références mortes sans impact).
     const { data: org } = selected.has('questions')
-      ? await supabase
-          .from('organizations')
+      ? await createServiceClient().from('organizations')
           .select('sp_questions, preferences')
           .eq('id', ctx.organizationId)
           .single()
@@ -197,10 +197,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       insertData.merge_config = original.merge_config;
     }
 
-    const { data: newTemplate, error: insertError } = await supabase
+    const { data: newTemplate, error: insertError } = await createServiceClient()
       .from('proposition_templates')
       .insert(insertData)
-      .select()
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .single();
 
     if (insertError || !newTemplate) {
@@ -246,8 +246,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     if (Object.keys(orgUpdates).length > 0) {
-      const { error: orgError } = await supabase
-        .from('organizations')
+      const { error: orgError } = await createServiceClient().from('organizations')
         .update(orgUpdates)
         .eq('id', ctx.organizationId);
 

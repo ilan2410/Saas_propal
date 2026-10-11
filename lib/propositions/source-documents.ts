@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { storagePathFromUrl, organizationStoragePath } from '@/lib/security/storage-access';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 
 export const SOURCE_DOCUMENTS_BUCKET = 'documents';
@@ -9,31 +10,7 @@ export function asStringArray(value: unknown): string[] {
 }
 
 export function extractStoragePathFromPublicUrl(url: string, bucket: string): string | null {
-  if (!url) return null;
-  const marker = `/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx < 0) return null;
-  const rawPath = url.slice(idx + marker.length);
-  try {
-    return decodeURIComponent(rawPath);
-  } catch {
-    return rawPath;
-  }
-}
-
-async function fetchObjectMetadata(url: string): Promise<{ size: number; mime: string } | null> {
-  try {
-    const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-    if (!response.ok) return null;
-    const size = Number(response.headers.get('content-length')) || 0;
-    if (size <= 0) return null;
-    return {
-      size,
-      mime: response.headers.get('content-type') || 'application/octet-stream',
-    };
-  } catch {
-    return null;
-  }
+  return storagePathFromUrl(url, bucket);
 }
 
 type SyncPropositionInput = {
@@ -65,7 +42,7 @@ export async function syncAllSourceDocumentsAsAttachments(
   const byProp = input.propositions.map((prop) => ({
     ...prop,
     docs: asStringArray(prop.sourceDocuments)
-      .map((url) => ({ url, key: extractStoragePathFromPublicUrl(url, SOURCE_DOCUMENTS_BUCKET) }))
+      .map((url) => ({ url, key: organizationStoragePath(url, SOURCE_DOCUMENTS_BUCKET, input.organizationId) }))
       .filter((doc): doc is { url: string; key: string } => Boolean(doc.key)),
   }));
 
@@ -106,8 +83,10 @@ export async function syncAllSourceDocumentsAsAttachments(
 
     for (const doc of prop.docs) {
       if (existing?.has(doc.key) || keyTakenGlobally.has(doc.key)) continue;
-      const metadata = await fetchObjectMetadata(doc.url);
-      if (!metadata) continue; // objet absent ou inaccessible : rien à référencer
+      const { data: object, error: objectError } = await serviceSupabase.storage.from(SOURCE_DOCUMENTS_BUCKET).info(doc.key);
+      const size = Number(object?.size ?? object?.metadata?.size ?? 0);
+      if (objectError || !object || size <= 0) continue;
+      const metadata = { size, mime: object.contentType ?? object.metadata?.mimetype ?? 'application/octet-stream' };
       keyTakenGlobally.add(doc.key);
       toInsert.push({
         organization_id: input.organizationId,

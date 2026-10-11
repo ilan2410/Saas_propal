@@ -1,5 +1,6 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { renderWordWithImages } from '@/lib/generators/word-image';
 import { withTableTotals } from '@/lib/generators/table-row-total';
 import { orderTablePhoneRows } from '@/lib/generators/table-phone-order';
@@ -44,6 +45,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!ctx.permissions.download_proposition) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const templateId = formData.get('templateId');
     const uploadedFile = formData.get('file');
@@ -69,7 +74,7 @@ export async function POST(request: NextRequest) {
     if (uploadedFile && uploadedFile instanceof File) {
       templateBuffer = await uploadedFile.arrayBuffer();
     } else if (template.file_url) {
-      const response = await fetch(template.file_url);
+      const response = await fetch(await signedOrganizationStorageUrl(supabase, template.file_url, 'templates', ctx.organizationId));
       if (!response.ok) {
         return NextResponse.json(
           { error: 'Impossible de charger le document Word du template' },
@@ -85,7 +90,7 @@ export async function POST(request: NextRequest) {
     //    Priorité : la plus récente proposition AYANT des données SP
     //    (suggestions_sp_completes non nul). À défaut, la plus récente tout
     //    court (les variables SA seront remplies, les tableaux SP resteront vides).
-    const baseSelect = 'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, preferences)';
+    const baseSelect = 'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(id)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -169,12 +174,8 @@ export async function POST(request: NextRequest) {
       flatData['client.fixe'] = normalizePhoneNumber(flatData['client.fixe']);
     }
 
-    const orgRaw = (proposition as Record<string, unknown>).organizations;
-    const org = isPlainObject(orgRaw)
-      ? orgRaw as UnknownRecord
-      : Array.isArray(orgRaw) && orgRaw.length > 0 && isPlainObject(orgRaw[0])
-        ? orgRaw[0] as UnknownRecord
-        : {};
+    const { data: orgData } = await createServiceClient().from('organizations').select('*').eq('id', ctx.organizationId).single();
+    const org: UnknownRecord = orgData ?? {};
     const allQuestions = Array.isArray(org.sp_questions) ? org.sp_questions as SpQuestion[] : [];
     const propositionTemplateId = typeof (proposition as Record<string, unknown>).template_id === 'string'
       ? (proposition as Record<string, unknown>).template_id as string

@@ -1,7 +1,10 @@
+import { DEFAULT_PROMPT } from '@/lib/templates/default-prompt';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { ensureChampsActifsPlaceholder, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { DEFAULT_CLAUDE_MODEL, generateMergedPrompt } from '@/components/admin/organizationFormConfig';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export async function POST(request: NextRequest) {
@@ -26,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as Record<string, unknown>;
-    
+
     console.log('Création template - body reçu:', JSON.stringify(body, null, 2));
 
     // Validation des champs requis
@@ -64,22 +67,24 @@ export async function POST(request: NextRequest) {
       champs_actifs: champsActifs,
       file_config: fileConfig,
       statut: 'brouillon',
-      claude_model:
-        typeof body.claude_model === 'string' && body.claude_model
-          ? body.claude_model
-          : DEFAULT_CLAUDE_MODEL,
+      claude_model: DEFAULT_CLAUDE_MODEL,
     };
 
-    if (body.prompt_template !== undefined) {
-      insertData.prompt_template = ensureChampsActifsPlaceholder(String(body.prompt_template));
+    if (insertData.file_url && (typeof insertData.file_url !== 'string' || !organizationStoragePath(insertData.file_url, 'templates', ctx.organizationId))) {
+      return NextResponse.json({ error: 'Fichier template invalide' }, { status: 400 });
     }
-    
-    console.log('Données à insérer:', JSON.stringify(insertData, null, 2));
+    const { data: org } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+    const { data: defaults } = await createServiceClient().from('prompt_defaults').select('prompt_template').eq('secteur', org?.secteur ?? 'telephonie').maybeSingle();
+    let prompt = updateExpectedJsonStructureFromFields(defaults?.prompt_template || DEFAULT_PROMPT, champsActifs, { prune: true });
+    const merges = Array.isArray(body.merge_config) ? body.merge_config.filter((key): key is string => typeof key === 'string') : [];
+    if (merges.length > 1) prompt = generateMergedPrompt(prompt, merges);
+    insertData.merge_config = merges;
+    insertData.prompt_template = ensureChampsActifsPlaceholder(prompt);
 
-    const { data: template, error } = await supabase
+    const { data: template, error } = await createServiceClient()
       .from('proposition_templates')
       .insert(insertData)
-      .select()
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .single();
 
     if (error) {

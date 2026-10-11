@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { SpQuestion } from '@/types';
 
@@ -21,8 +21,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const { questions } = await req.json() as { questions: SpQuestion[] };
 
-  const { data: org } = await supabase
-    .from('organizations')
+  const { data: org } = await createServiceClient().from('organizations')
     .select('sp_questions')
     .eq('id', ctx.organizationId)
     .single();
@@ -43,8 +42,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       actif: q.actif ?? true,
     }));
 
-  await supabase
-    .from('organizations')
+  await createServiceClient().from('organizations')
     .update({ sp_questions: [...otherTemplates, ...newQuestions] })
     .eq('id', ctx.organizationId);
 
