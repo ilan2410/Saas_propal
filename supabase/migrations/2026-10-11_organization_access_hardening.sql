@@ -1,6 +1,57 @@
 -- Apply with the matching application release. No remote database is modified by this file.
 BEGIN;
 
+-- Internal companion, executed inside the hardening migration transaction.
+-- Keep the first snapshot when the migration is reapplied.
+CREATE SCHEMA IF NOT EXISTS organization_access_backup;
+REVOKE ALL ON SCHEMA organization_access_backup FROM PUBLIC, anon, authenticated;
+CREATE TABLE IF NOT EXISTS organization_access_backup.hardening_20261011 (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  captured_at timestamptz NOT NULL DEFAULT now(),
+  state jsonb NOT NULL
+);
+REVOKE ALL ON organization_access_backup.hardening_20261011 FROM PUBLIC, anon, authenticated;
+DO $backup$
+DECLARE snapshot jsonb;
+BEGIN
+  IF EXISTS (SELECT 1 FROM organization_access_backup.hardening_20261011) THEN RETURN; END IF;
+  SELECT jsonb_build_object(
+    'policies', (SELECT COALESCE(jsonb_agg(to_jsonb(p)), '[]') FROM pg_policies p
+      WHERE (schemaname = 'public' AND tablename IN ('organizations', 'catalogues_produits',
+        'proposition_templates', 'propositions', 'usage_analytics', 'stripe_transactions',
+        'proposition_attachments', 'prompt_defaults')) OR (schemaname = 'storage' AND tablename = 'objects')),
+    'tables', (SELECT jsonb_agg(jsonb_build_object('schema', n.nspname, 'name', c.relname,
+      'acl', (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+        'privilege', a.privilege_type, 'grantable', a.is_grantable)), '[]')
+        FROM aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) a),
+      'columns', (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', col.attname,
+        'acl', (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+          'privilege', a.privilege_type, 'grantable', a.is_grantable)), '[]') FROM aclexplode(col.attacl) a))), '[]')
+        FROM pg_attribute col WHERE col.attrelid = c.oid AND col.attnum > 0 AND NOT col.attisdropped)))
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname IN ('organizations', 'proposition_templates', 'stripe_transactions')),
+    'functions', (SELECT jsonb_agg(jsonb_build_object('identity', signature,
+      'definition', CASE WHEN to_regprocedure(signature) IS NOT NULL THEN pg_get_functiondef(to_regprocedure(signature)) END,
+      'acl', (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+        'privilege', a.privilege_type, 'grantable', a.is_grantable)), '[]')
+        FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+        WHERE p.oid = to_regprocedure(signature))))
+      FROM unnest(ARRAY['public.is_platform_admin()', 'public.org_permission(uuid,text)',
+        'public.can_access_proposition(uuid,uuid)', 'public.can_use_org_template(uuid,uuid)',
+        'public.can_read_org_template(uuid,uuid)', 'public.guard_organization_records()',
+        'public.can_read_org_storage(text,text,text)', 'public.add_credits(uuid,numeric)',
+        'public.debit_credits(uuid,numeric)', 'public.update_analytics(uuid,uuid)']) f(signature)),
+    'triggers', (SELECT COALESCE(jsonb_agg(pg_get_triggerdef(t.oid)), '[]') FROM pg_trigger t
+      WHERE t.tgname = 'guard_organization_records' AND t.tgrelid IN ('public.propositions'::regclass, 'public.proposition_templates'::regclass)),
+    'buckets', (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'public', public)), '[]')
+      FROM storage.buckets WHERE id IN ('documents', 'templates', 'propositions', 'proposition-attachments'))
+  ) INTO snapshot;
+  INSERT INTO organization_access_backup.hardening_20261011(state) VALUES (snapshot);
+END
+$backup$;
+
+
+
 CREATE OR REPLACE FUNCTION public.is_platform_admin()
 RETURNS boolean LANGUAGE sql STABLE SET search_path = public
 AS $$ SELECT COALESCE(auth.jwt()->'app_metadata'->>'role' = 'admin', false) $$;

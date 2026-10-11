@@ -66,6 +66,33 @@ ALTER TABLE public.prompt_defaults ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated can view prompt defaults" ON public.prompt_defaults FOR SELECT USING (auth.uid() IS NOT NULL);
 GRANT SELECT ON public.prompt_defaults TO authenticated;
 INSERT INTO public.prompt_defaults VALUES ('telephonie','private default');
+-- Rollback must preserve custom policies, column grants, grant options and existing helpers.
+CREATE POLICY rollback_custom_policy ON public.catalogues_produits AS RESTRICTIVE FOR SELECT TO anon USING (false);
+GRANT SELECT (nom) ON public.organizations TO anon WITH GRANT OPTION;
+\if :{?rollback_without_helpers}
+-- Exercise removal of every helper introduced by hardening.
+\else
+CREATE FUNCTION public.is_platform_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+CREATE FUNCTION public.guard_organization_records() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+CREATE TRIGGER guard_organization_records BEFORE UPDATE ON public.propositions FOR EACH ROW EXECUTE FUNCTION public.guard_organization_records();
+\endif
+CREATE TEMP TABLE rollback_policies AS SELECT to_jsonb(p) AS state FROM pg_policies p;
+CREATE TEMP TABLE rollback_functions AS SELECT p.oid, pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public';
+CREATE TEMP TABLE rollback_grants AS
+  SELECT 'table' AS kind, c.oid AS object_id, 0::smallint AS column_id, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+    LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) a
+  WHERE n.nspname='public' AND c.relname IN ('organizations','proposition_templates','stripe_transactions')
+  UNION ALL SELECT 'column', col.attrelid, col.attnum, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_attribute col, LATERAL aclexplode(col.attacl) a
+  WHERE col.attrelid IN ('public.organizations'::regclass,'public.proposition_templates'::regclass,'public.stripe_transactions'::regclass)
+  UNION ALL SELECT 'function', p.oid, 0::smallint, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
+    LATERAL aclexplode(COALESCE(p.proacl, acldefault('f',p.proowner))) a WHERE n.nspname='public';
+CREATE TEMP TABLE rollback_buckets AS SELECT id, public FROM storage.buckets;
+CREATE TEMP TABLE rollback_triggers AS SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger
+  WHERE tgname='guard_organization_records';
 \ir ../../supabase/migrations/2026-10-11_organization_access_hardening.sql
 
 CREATE SCHEMA access_test;
@@ -82,6 +109,7 @@ SELECT access_test.assert_true((SELECT count(*) = 0 FROM public.stripe_transacti
 SELECT access_test.assert_true((SELECT count(*) = 0 FROM public.prompt_defaults),'no private default prompts');
 SELECT access_test.assert_true(access_test.denied('SELECT credits FROM public.organizations'),'direct credits denied');
 SELECT access_test.assert_true(access_test.denied('SELECT preferences FROM public.organizations'),'direct billing preferences denied');
+SELECT access_test.assert_true(access_test.denied('SELECT state FROM organization_access_backup.hardening_20261011'),'snapshot inaccessible to organization users');
 SELECT access_test.assert_true(access_test.denied('SELECT prompt_template FROM public.proposition_templates'),'direct prompt denied');
 WITH changed AS (UPDATE public.proposition_templates SET nom='hacked' RETURNING id) SELECT access_test.assert_true((SELECT count(*) = 0 FROM changed),'template writes denied without permission');
 SELECT access_test.assert_true(access_test.denied('INSERT INTO public.catalogues_produits(organization_id,nom) VALUES(NULL,''hacked'')'),'global insert denied');
@@ -126,4 +154,44 @@ UPDATE public.propositions SET source_documents='[]' WHERE id='dddddddd-dddd-ddd
 RESET ROLE;
 -- Reapplying the production migration must be safe.
 \ir ../../supabase/migrations/2026-10-11_organization_access_hardening.sql
+-- The first snapshot must survive reapplication and restore the real baseline.
+SELECT access_test.assert_true((SELECT count(*)=1 FROM organization_access_backup.hardening_20261011),'single original snapshot');
+\ir ../../supabase/rollbacks/rollback_14_organization_access_hardening.sql
+SELECT access_test.assert_true(NOT EXISTS (
+  (SELECT state FROM rollback_policies EXCEPT SELECT to_jsonb(p) FROM pg_policies p)
+  UNION ALL (SELECT to_jsonb(p) FROM pg_policies p EXCEPT SELECT state FROM rollback_policies)
+),'rollback restores every policy exactly');
+SELECT access_test.assert_true(NOT EXISTS (
+  (SELECT * FROM rollback_functions EXCEPT SELECT p.oid,pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT LIKE 'access_test%')
+  UNION ALL (SELECT p.oid,pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' EXCEPT SELECT * FROM rollback_functions)
+),'rollback preserves existing function definitions and removes introduced functions');
+CREATE TEMP TABLE restored_grants AS
+  SELECT 'table' AS kind, c.oid AS object_id, 0::smallint AS column_id, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+    LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) a
+  WHERE n.nspname='public' AND c.relname IN ('organizations','proposition_templates','stripe_transactions')
+  UNION ALL SELECT 'column', col.attrelid, col.attnum, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_attribute col, LATERAL aclexplode(col.attacl) a
+  WHERE col.attrelid IN ('public.organizations'::regclass,'public.proposition_templates'::regclass,'public.stripe_transactions'::regclass)
+  UNION ALL SELECT 'function', p.oid, 0::smallint, a.grantee, a.privilege_type, a.is_grantable
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
+    LATERAL aclexplode(COALESCE(p.proacl, acldefault('f',p.proowner))) a WHERE n.nspname='public';
+SELECT access_test.assert_true(NOT EXISTS (
+  (SELECT * FROM rollback_grants EXCEPT SELECT * FROM restored_grants)
+  UNION ALL (SELECT * FROM restored_grants EXCEPT SELECT * FROM rollback_grants)
+),'rollback restores table column and function grants including grant options');
+SELECT access_test.assert_true(NOT EXISTS (
+  (SELECT * FROM rollback_buckets EXCEPT SELECT id,public FROM storage.buckets)
+  UNION ALL (SELECT id,public FROM storage.buckets EXCEPT SELECT * FROM rollback_buckets)
+),'rollback restores bucket visibility');
+SELECT access_test.assert_true(NOT EXISTS (
+  (SELECT * FROM rollback_triggers EXCEPT SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='guard_organization_records')
+  UNION ALL (SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='guard_organization_records' EXCEPT SELECT * FROM rollback_triggers)
+),'rollback restores previous triggers');
+SELECT access_test.assert_true((SELECT count(*)=3 FROM public.propositions),'rollback preserves business rows');
+SELECT access_test.assert_true((SELECT count(*)=6 FROM storage.objects),'rollback preserves stored objects');
+SELECT access_test.assert_true((SELECT count(*)=0 FROM organization_access_backup.hardening_20261011),'rollback consumes snapshot');
+-- A new rollout after rollback takes a fresh snapshot.
+\ir ../../supabase/migrations/2026-10-11_organization_access_hardening.sql
+SELECT access_test.assert_true((SELECT count(*)=1 FROM organization_access_backup.hardening_20261011),'fresh snapshot after rollback');
 SELECT 'organization access integration checks passed' AS result;
