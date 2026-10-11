@@ -161,6 +161,8 @@ export interface PropositionTemplate {
 export type FileConfig = ExcelConfig | WordConfig | PDFConfig;
 
 export interface ExcelConfig {
+  /** Group complete SA/SP table rows with a phone number first; disabled by default. */
+  prioriserLignesAvecNumero?: boolean;
   /** Legacy single-sheet mapping, still accepted by the Excel generator. */
   feuilleCiblee?: string;
   cellMappings?: Record<string, string>;
@@ -201,6 +203,8 @@ export type SpSortableTableId =
 export type SpTableProductOrders = Partial<Record<SpSortableTableId, string[]>>;
 
 export interface WordConfig {
+  /** Group complete SA/SP table rows with a phone number first; disabled by default. */
+  prioriserLignesAvecNumero?: boolean;
   formatVariables: string;
   fieldMappings: Record<string, string>;
   /**

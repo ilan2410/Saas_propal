@@ -24,6 +24,7 @@ const FILE_CONFIG_KEYS: Partial<Record<DuplicateOption, string[]>> = {
     'sheetMappings', 'arrayMappings', 'fieldMappings', 'cellMappings',
     'formatVariables', 'feuilleCiblee', 'preserverFormules', 'cellulesAvecFormules',
     'tableauxDynamiques', 'imagesARemplacer', 'forcerMajusculesVariables',
+    'prioriserLignesAvecNumero',
     'custom_fields', 'custom_array_fields', 'champsFormulaire',
   ],
   variables: ['spVariablesActives', 'spVariablesCustom'],

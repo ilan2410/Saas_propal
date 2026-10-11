@@ -32,6 +32,24 @@ afterEach(() => {
 });
 
 describe('generatePropositionFile Word', () => {
+  it.each([false, true])('applique le regroupement optionnel des numéros aux tableaux Word (%s)', async enabled => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const docx = makeDocx('{{#lignes}}{{designation}}:{{numero}}:{{tarif}};{{/lignes}}');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => Uint8Array.from(docx).buffer }));
+    await generatePropositionFile({
+      template: { id: 'word', file_type: 'word', file_url: 'https://storage.example.test/template.docx',
+        file_config: { prioriserLignesAvecNumero: enabled }, champs_actifs: [] },
+      donnees: { lignes: [{ designation: 'Option', numero: '', tarif: 12 },
+        { designation: 'Mobile', numero: '0600225566', tarif: 13.83 },
+        { designation: 'Remise', numero: '', tarif: -20 },
+        { designation: 'Fixe', numero: '0155662255', tarif: 4.55 }] },
+      organization_id: 'org-1', proposition_id: 'prop-1',
+    });
+    const xml = new PizZip(Buffer.from(upload.mock.calls[0][1])).file('word/document.xml')!.asText();
+    expect(xml).toContain(enabled
+      ? 'Mobile:0600225566:13.83;Fixe:0155662255:4.55;Option::12;Remise::-20;'
+      : 'Option::12;Mobile:0600225566:13.83;Remise::-20;Fixe:0155662255:4.55;');
+  });
   it('rend le nouveau prix total dans une boucle sans changer quantité ni tarif', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
     const docx = makeDocx('{{#lignes}}{{quantite}} | {{tarif}} | {{prix_total}}{{/lignes}}');

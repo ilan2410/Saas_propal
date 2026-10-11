@@ -7,6 +7,7 @@ import { rewriteExcelFormula } from './excel-formulas';
 import { addExcelImage, clearExcelCellImages, loadExcelImage } from './excel-images';
 import { inferExcelTableCapacity } from './excel-table-capacity';
 import { withTableRowTotal } from './table-row-total';
+import { phoneRowsFirst } from './table-phone-order';
 
 const ARRAY_PATHS: Record<string, string> = {
   lignes_fixes: 'lignes.fixes', lignes_mobiles: 'lignes.mobiles', lignes_internet: 'lignes.internet',
@@ -225,7 +226,7 @@ export async function fillExcelWorkbook(
     if (rows !== undefined && rows !== null && !Array.isArray(rows)) throw new Error(`${mapping.arrayId} n'est pas un tableau.`);
     let items = (rows ?? []) as unknown[];
     if (!items.every(isPlainObject)) throw new Error(`${mapping.arrayId} contient une ligne invalide.`);
-      items = items.map(item => withTableRowTotal(item as UnknownRecord));
+    items = phoneRowsFirst(items.map(item => withTableRowTotal(item as UnknownRecord)), config.prioriserLignesAvecNumero === true);
     if (mapping.stopCondition === 'empty_first_col') {
       const firstField = Object.keys(mapping.columnMapping)[0];
       const emptyAt = firstField ? items.findIndex(item => {

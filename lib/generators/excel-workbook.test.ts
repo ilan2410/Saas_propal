@@ -29,6 +29,26 @@ const tableMapping = {
 };
 
 describe('fillExcelWorkbook', () => {
+  it.each(['lignes', 'sp_situation_proposee_complet'])('regroupe les numéros dans %s avec leurs offres et tarifs', async arrayId => {
+    const rows = [
+      { designation: 'Option', numero: '', tarif: 12 },
+      { designation: 'Mobile', numero: '0600225566', tarif: 13.83 },
+      { designation: 'Remise', numero: '', tarif: -20 },
+      { designation: 'Fixe', numero: '0155662255', tarif: 4.55 },
+    ];
+    const config = { arrayMappings: [{ arrayId, sheetName: 'Offre', startRow: 4, maxRows: 4,
+      stopCondition: 'max_rows', columnMapping: { numero: 'A', designation: 'B', tarif: 'C' } }],
+      prioriserLignesAvecNumero: true };
+    const bytes = await fillExcelWorkbook(await sourceWorkbook(), { [arrayId]: rows }, { [arrayId]: rows }, config);
+    const sheet = (await loadResult(bytes)).getWorksheet('Offre')!;
+    expect([4, 5, 6, 7].map(row => sheet.getCell(`B${row}`).value)).toEqual(['Mobile', 'Fixe', 'Option', 'Remise']);
+    expect(sheet.getCell('C4').value).toBe(13.83);
+    expect(sheet.getCell('C5').value).toBe(4.55);
+    expect(sheet.getCell('C7').value).toBe(-20);
+    const unsorted = await fillExcelWorkbook(await sourceWorkbook(), { [arrayId]: rows }, { [arrayId]: rows },
+      { ...config, prioriserLignesAvecNumero: false });
+    expect((await loadResult(unsorted)).getWorksheet('Offre')!.getCell('B4').value).toBe('Option');
+  });
   it('écrit quantité × tarif comme nombre Excel en conservant le prix unitaire', async () => {
     const bytes = await fillExcelWorkbook(await sourceWorkbook(),
       { articles: [{ quantite: 3, tarif: '45,90 €' }] }, {}, {

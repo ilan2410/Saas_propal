@@ -1375,6 +1375,20 @@ export function Step2UploadTemplate({
       </div>
 
       {/* Bouton d'aide flottant */}
+      {templateData.file_type === 'word' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
+          <h4 className="font-semibold text-gray-900">Options des tableaux Word</h4>
+          <label className="flex items-center gap-3 text-sm">
+            <input type="checkbox"
+              checked={(templateData.file_config as Record<string, unknown> | undefined)?.prioriserLignesAvecNumero === true}
+              onChange={event => updateTemplateData({ file_config: {
+                ...(templateData.file_config ?? {}), prioriserLignesAvecNumero: event.target.checked,
+              } })} />
+            Afficher d’abord les lignes avec un numéro de téléphone (tableaux SA et SP)
+          </label>
+          <p className="text-xs text-gray-600">La ligne entière est déplacée avec son offre, sa quantité et son prix. Les lignes sans numéro viennent ensuite, dans leur ordre initial.</p>
+        </div>
+      )}
       {step === 'preview-word' && (
         <button
           onClick={() => setShowHelp(true)}

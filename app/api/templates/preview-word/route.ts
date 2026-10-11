@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { renderWordWithImages } from '@/lib/generators/word-image';
 import { withTableTotals } from '@/lib/generators/table-row-total';
+import { orderTablePhoneRows } from '@/lib/generators/table-phone-order';
 import { resolveDynamicWordVar } from '@/lib/generators/dynamic-vars';
 import { buildSpWordData } from '@/lib/generators/sp-word-data';
 import {
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest) {
     );
     // Ordre de priorité : données extraites (flat) < SA < SP calculées < entreprise < clauses < référence < mapping utilisateur.
     // Les clés SP (ex: sp_materiel_detail) doivent écraser les données extraites du document source.
-    const finalData = withTableTotals({ ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData, ...mappedData });
+    const finalData = orderTablePhoneRows(withTableTotals({ ...flatData, ...saData, ...spData, ...entrepriseData, ...clausesData, ...referenceData, ...mappedData }), fileConfig.prioriserLignesAvecNumero === true);
 
     // 5. Rendre le DOCX rempli en mémoire (images supportées, y compris en boucle).
     // Date de référence des variables dynamiques {{sp_date_limite_souscription[-N]}} :

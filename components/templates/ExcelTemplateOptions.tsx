@@ -20,6 +20,11 @@ export function ExcelTemplateOptions({ config, fields, onChange }: Props) {
     <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
       <h4 className="font-semibold text-gray-900">Options du template Excel</h4>
       <label className="flex items-center gap-3 text-sm">
+        <input type="checkbox" checked={config.prioriserLignesAvecNumero === true} onChange={e => update({ prioriserLignesAvecNumero: e.target.checked })} />
+        Afficher d’abord les lignes avec un numéro de téléphone (tableaux SA et SP)
+      </label>
+      <p className="text-xs text-gray-600">La ligne entière est déplacée avec son offre, sa quantité et son prix. Les lignes sans numéro viennent ensuite, dans leur ordre initial.</p>
+      <label className="flex items-center gap-3 text-sm">
         <input type="checkbox" checked={config.preserverFormules !== false} onChange={e => update({ preserverFormules: e.target.checked })} />
         Protéger les cellules contenant des formules
       </label>
