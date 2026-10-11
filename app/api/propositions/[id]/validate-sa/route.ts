@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { InvoiceAnalysisReportSchema, calculateCanonicalSaAnalysis, hasTotalBlockingIssue } from '@/lib/sa/invoice-analysis';
@@ -45,8 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .eq('organization_id', ctx.organizationId)
     .single();
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('preferences')
     .eq('id', ctx.organizationId)
     .single();

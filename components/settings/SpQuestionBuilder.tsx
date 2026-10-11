@@ -89,12 +89,6 @@ const SA_DEFAULT_SCHEMA: Record<string, string[]> = {
   ],
 };
 
-function parseJsonFromPrompt(promptText: string): Record<string, unknown> | null {
-  const match = promptText.match(/STRUCTURE JSON ATTENDUE\s*:\s*(\{[\s\S]*?\})\s*(?:CHAMPS|RÈGLES)/);
-  if (!match) return null;
-  try { return JSON.parse(match[1]) as Record<string, unknown>; } catch { return null; }
-}
-
 function findArrayPathsInJson(obj: unknown, prefix = '', depth = 0): Record<string, string[]> {
   if (depth > 3 || obj == null || typeof obj !== 'object' || Array.isArray(obj)) return {};
   const result: Record<string, string[]> = {};
@@ -638,9 +632,8 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
       fetch(`/api/templates/${templateId}`).then((r) => r.json()),
       fetch(`/api/propositions/latest-extracted-data?template_id=${templateId}`).then((r) => r.json()),
     ])
-      .then(([tplData, latestData]) => {
-        const promptText: string = tplData?.template?.prompt_template ?? '';
-        const parsed = parseJsonFromPrompt(promptText);
+      .then(([, latestData]) => {
+        const parsed = latestData?.extracted_data ?? null;
         const fromPrompt = parsed ? findArrayPathsInJson(parsed) : {};
         const nextSchema = Object.keys(fromPrompt).length > 0
           ? { ...SA_DEFAULT_SCHEMA, ...fromPrompt }

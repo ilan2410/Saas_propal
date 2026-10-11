@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { formatCurrency } from '@/lib/utils/formatting';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -11,31 +10,26 @@ interface CreditsDisplayProps {
   tarifParProposition: number;
 }
 
-export function CreditsDisplay({ 
-  organizationId, 
-  initialCredits, 
-  tarifParProposition 
+export function CreditsDisplay({
+  organizationId,
+  initialCredits,
+  tarifParProposition
 }: CreditsDisplayProps) {
   const [credits, setCredits] = useState(initialCredits);
-  const supabase = createClient();
   const router = useRouter();
   const pathname = usePathname();
 
   const fetchCredits = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('credits')
-        .eq('id', organizationId)
-        .single();
-      
-      if (data && !error) {
-        setCredits(data.credits || 0);
+      const response = await fetch('/api/settings/tarifs', { cache: 'no-store' });
+      if (response.ok) {
+        const data = await response.json();
+        setCredits(data.credits ?? 0);
       }
     } catch (e) {
       console.error('Erreur fetch credits:', e);
     }
-  }, [organizationId, supabase]);
+  }, []);
 
   // Mettre à jour si les props changent
   useEffect(() => {
@@ -55,40 +49,19 @@ export function CreditsDisplay({
     // 2. Polling toutes les 10 secondes (backup si realtime échoue)
     const intervalId = setInterval(fetchCredits, 10000);
 
-    // 3. Souscription Realtime
-    const channel = supabase
-      .channel('credits-update')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'organizations',
-          filter: `id=eq.${organizationId}`,
-        },
-        (payload) => {
-          if (payload.new && typeof payload.new.credits === 'number') {
-            setCredits(payload.new.credits);
-            router.refresh();
-          }
-        }
-      )
-      .subscribe();
-
     // 4. Écouter un événement custom pour forcer le refresh
     const handleForceRefresh = () => {
         fetchCredits();
         router.refresh();
     };
-    
+
     window.addEventListener('force-credits-refresh', handleForceRefresh);
 
     return () => {
       clearInterval(intervalId);
-      supabase.removeChannel(channel);
       window.removeEventListener('force-credits-refresh', handleForceRefresh);
     };
-  }, [organizationId, supabase, router, fetchCredits]);
+  }, [organizationId, router, fetchCredits]);
 
   const propositionsRestantes = Math.floor(credits / (tarifParProposition || 1));
 

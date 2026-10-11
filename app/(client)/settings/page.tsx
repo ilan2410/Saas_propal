@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { clientOrganization } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import SettingsPage from '@/components/client/SettingsPage';
 import { Organization, Proposition, PropositionTemplate, StripeTransaction } from '@/types';
@@ -22,8 +23,7 @@ export default async function Settings() {
   }
 
   // Fetch Organization
-  const { data: organization, error: orgError } = await supabase
-    .from('organizations')
+  const { data: organization, error: orgError } = await createServiceClient().from('organizations')
     .select('*')
     .eq('id', ctx.organizationId)
     .single();
@@ -59,13 +59,13 @@ export default async function Settings() {
   const validTransactions = (transactions || []) as StripeTransaction[];
   const validPropositions = (propositions || []) as Proposition[];
   const validTemplates = (templates || []) as PropositionTemplate[];
-  
+
   // Calculate stats
   const successfulTransactions = validTransactions.filter(t => t.statut === 'succeeded');
-  
+
   const totalSpent = successfulTransactions.reduce((acc, curr) => acc + (curr.montant || 0), 0);
   const transactionCount = successfulTransactions.length;
-  
+
   const lastRechargeTransaction = successfulTransactions.length > 0 ? successfulTransactions[0] : null;
   const lastRecharge = lastRechargeTransaction ? {
     date: lastRechargeTransaction.created_at,
@@ -90,8 +90,8 @@ export default async function Settings() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <SettingsPage 
-        organization={organization as Organization} 
+      <SettingsPage
+        organization={clientOrganization(organization, ctx) as unknown as Organization}
         userEmail={user.email || ''}
         transactions={validTransactions}
         propositions={validPropositions}

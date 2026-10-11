@@ -38,6 +38,7 @@ export async function GET(
       storage_provider: attachment.storage_provider as AttachmentStorageProvider,
       storage_bucket: attachment.storage_bucket,
       storage_key: attachment.storage_key,
+      organization_id: ctx.organizationId,
     }, { expiresIn: PREVIEW_URL_EXPIRES_IN_SECONDS });
     return NextResponse.json({ url, mimeType: attachment.mime_type });
   } catch (error) {

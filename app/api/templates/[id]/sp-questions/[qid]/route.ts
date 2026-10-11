@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { SpQuestion } from '@/types';
 
@@ -44,8 +44,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   }
 
   const body = await req.json();
-  const { data: org } = await supabase
-    .from('organizations')
+  const { data: org } = await createServiceClient().from('organizations')
     .select('sp_questions')
     .eq('id', ctx.organizationId)
     .single();
@@ -55,7 +54,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   const updated = all.map((q) =>
     q.id === qid && q.template_id === template_id ? updatedQuestion : q
   );
-  await supabase.from('organizations').update({ sp_questions: updated }).eq('id', ctx.organizationId);
+  await createServiceClient().from('organizations').update({ sp_questions: updated }).eq('id', ctx.organizationId);
   return NextResponse.json({ question: updatedQuestion });
 }
 
@@ -72,8 +71,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: org } = await supabase
-    .from('organizations')
+  const { data: org } = await createServiceClient().from('organizations')
     .select('sp_questions')
     .eq('id', ctx.organizationId)
     .single();
@@ -81,6 +79,6 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   const all: SpQuestion[] = (org?.sp_questions ?? []) as SpQuestion[];
   const idsToDelete = collectDescendantQuestionIds(all, qid, template_id);
   const updated = all.filter((q) => !(q.template_id === template_id && idsToDelete.has(q.id)));
-  await supabase.from('organizations').update({ sp_questions: updated }).eq('id', ctx.organizationId);
+  await createServiceClient().from('organizations').update({ sp_questions: updated }).eq('id', ctx.organizationId);
   return NextResponse.json({ success: true, deletedIds: Array.from(idsToDelete) });
 }

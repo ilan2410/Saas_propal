@@ -264,3 +264,5 @@ describe('generatePropositionFile Excel', () => {
     expect(html).toContain('001'); expect(html).toContain('&lt;Client&gt;'); expect(html).not.toContain('Ancien');
   });
 });
+
+vi.mock('@/lib/security/storage-access', () => ({ signedOrganizationStorageUrl: async (_client: unknown, url: string) => url }));

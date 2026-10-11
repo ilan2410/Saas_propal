@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -30,8 +31,7 @@ export default async function ResumePropositionPage({
     redirect('/login');
   }
 
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('secteur')
     .eq('id', ctx.organizationId)
     .single();
@@ -40,7 +40,7 @@ export default async function ResumePropositionPage({
 
   const { data: templates } = await supabase
     .from('proposition_templates')
-    .select('*')
+    .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx.organizationId)
     .eq('statut', 'actif')
     .order('created_at', { ascending: false });

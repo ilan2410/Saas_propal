@@ -1,5 +1,7 @@
 'use client';
 
+import { storageFileUrl } from '@/lib/security/storage-file-url';
+
 import { useState, useRef, useEffect } from 'react';
 import { tableTotalSource, withTableTotalField } from '@/lib/generators/table-row-total';
 import { Upload, Loader2, FileSpreadsheet, FileText, X, Check, Play, HelpCircle, ChevronRight, ChevronLeft } from 'lucide-react';
@@ -402,7 +404,7 @@ export function Step2UploadTemplate({
   // Utiliser l'état Excel partagé du wizard
   const { file, fileName, sheets: excelSheets, mappings: savedMappings, arrayMappings: savedArrayMappings } = excelState;
   const hasSavedData = excelSheets.length > 0;
-  
+
   // Obtenir les champs de type tableau pour ce secteur, en tenant compte des fusions
   const baseArrayFields = getArrayFieldsForSecteur(secteur, templateData.merge_config);
   const fileConfig = (templateData.file_config || {}) as CustomFieldConfig;
@@ -576,7 +578,7 @@ export function Step2UploadTemplate({
     templateData.file_type ||
     selectedFileType ||
     inferFileTypeFromName(templateData.file_name);
-  
+
   const champsActifs = Array.isArray(templateData.champs_actifs) ? templateData.champs_actifs : [];
   const champsSimples = champsActifs.filter((f): f is string => typeof f === 'string' && !f.includes('[]'));
   const exempleTableau = arrayFields.find((a) => a.id === 'lignes') || arrayFields[0];
@@ -621,7 +623,7 @@ export function Step2UploadTemplate({
         } else {
           arrayBuffer = file
             ? await file.arrayBuffer()
-            : await fetch(templateData.file_url as string).then(async (response) => {
+            : await fetch(storageFileUrl(templateData.file_url as string)).then(async (response) => {
                 if (!response.ok) {
                   throw new Error("Impossible de charger le document Word existant.");
                 }
@@ -672,7 +674,7 @@ export function Step2UploadTemplate({
             ? new Blob([excelFilledBuffer.slice(0)], {
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
               })
-            : (rawSource as File | string);
+            : (typeof rawSource === 'string' ? storageFileUrl(rawSource) : rawSource as File);
         await previewer.preview(src);
       } catch (e) {
         const raw = typeof e === 'string' ? e : e && typeof e === 'object' ? JSON.stringify(e) : undefined;
@@ -1936,11 +1938,11 @@ export function Step2UploadTemplate({
                   Comment ça marche ?
                 </h3>
                 <p className="text-gray-700 text-base leading-relaxed mb-3">
-                  Imaginez votre document Word comme un formulaire papier avec des cases vides. 
+                  Imaginez votre document Word comme un formulaire papier avec des cases vides.
                   Au lieu d&apos;écrire &quot;Client : <span className="border-b-2 border-dashed border-gray-400 px-8"></span>&quot;, vous allez mettre &quot;Client : <span className="bg-yellow-200 px-2 py-0.5 rounded font-mono text-sm">&#123;&#123;nom_client&#125;&#125;</span>&quot;.
                 </p>
                 <p className="text-gray-700 text-base leading-relaxed">
-                  Quand vous créerez une proposition, le système remplacera automatiquement 
+                  Quand vous créerez une proposition, le système remplacera automatiquement
                   <span className="bg-yellow-200 px-2 py-0.5 rounded font-mono text-sm mx-1">&#123;&#123;nom_client&#125;&#125;</span> par le vrai nom du client !
                 </p>
               </div>
@@ -1952,7 +1954,7 @@ export function Step2UploadTemplate({
             <h3 className="text-lg font-bold text-gray-900 mb-6 text-center">
               3 étapes simples
             </h3>
-            
+
             <div className="space-y-6">
               {/* Étape 1 */}
               <div className="flex gap-4">
@@ -2022,7 +2024,7 @@ export function Step2UploadTemplate({
               <span className="text-2xl">📱</span>
               Exemple réel : Proposition mobile
             </h3>
-            
+
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
@@ -2039,7 +2041,7 @@ export function Step2UploadTemplate({
                   Il faut tout réécrire manuellement à chaque fois !
                 </p>
               </div>
-              
+
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
                   <Check className="w-4 h-4 text-green-600" />
@@ -2064,7 +2066,7 @@ export function Step2UploadTemplate({
               <span className="text-2xl">📝</span>
               Champs simples (informations uniques)
             </h4>
-            
+
             {/* Exemple avant/après amélioré */}
             <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
               <p className="text-sm font-semibold text-gray-900 mb-3">Exemples concrets :</p>
@@ -2116,8 +2118,8 @@ export function Step2UploadTemplate({
                       type="button"
                       onClick={() => copyAndMark(token, token)}
                       className={`text-sm px-3 py-1 border rounded transition-all ${
-                        copied 
-                          ? 'border-green-300 bg-white text-green-700 font-medium' 
+                        copied
+                          ? 'border-green-300 bg-white text-green-700 font-medium'
                           : 'border-gray-300 hover:bg-gray-50 hover:border-blue-400'
                       }`}
                     >
@@ -2143,7 +2145,7 @@ export function Step2UploadTemplate({
                 <span className="text-2xl">📊</span>
                 Les tableaux (ex: liste de lignes mobiles)
               </h3>
-              
+
               <div className="bg-white rounded-lg p-4 mb-4">
                 <p className="text-sm text-gray-600 leading-relaxed mb-4">
                   Dans Word, créez votre tableau avec une ligne de données (les en-têtes au-dessus). Puis cliquez sur <strong className="text-purple-700">&quot;Copier pour Word&quot;</strong> ci-dessous et collez dans la <strong>1ère cellule</strong> de votre ligne — le système remplira automatiquement une ligne par entrée.
@@ -2596,7 +2598,7 @@ export function Step2UploadTemplate({
             </button>
 
             <div className="flex items-center gap-3">
-              
+
               <button
                 id="btn-validate-template"
                 type="button"

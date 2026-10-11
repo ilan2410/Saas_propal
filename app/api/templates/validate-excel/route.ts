@@ -1,3 +1,4 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
         .eq('id', templateId).eq('organization_id', ctx.organizationId).maybeSingle();
       if (!template || template.file_type !== 'excel') return NextResponse.json({ error: 'Template Excel introuvable.' }, { status: 404 });
       if (!template.file_url || !isAllowedFetchUrl(template.file_url)) return NextResponse.json({ error: 'URL du template non autorisée.' }, { status: 400 });
-      const response = await fetch(template.file_url, { redirect: 'error' });
+      const response = await fetch(await signedOrganizationStorageUrl(supabase, template.file_url, 'templates', ctx.organizationId), { redirect: 'error' });
       if (!response.ok) return NextResponse.json({ error: 'Impossible de charger le template Excel.' }, { status: 502 });
       buffer = await response.arrayBuffer();
     }

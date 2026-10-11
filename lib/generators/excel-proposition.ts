@@ -1,3 +1,4 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { fillExcelWorkbook } from './excel-workbook';
 export { fillExcelWorkbook } from './excel-workbook';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -24,7 +25,7 @@ export async function generateExcelFile(options: GenerateOptions): Promise<strin
   }
 
   // Télécharger le template Excel
-  const response = await fetch(template.file_url, { redirect: 'error' });
+  const response = await fetch(await signedOrganizationStorageUrl(createServiceClient(), template.file_url, 'templates', organization_id), { redirect: 'error' });
   if (!response.ok) {
     console.error('❌ Erreur téléchargement template:', response.status, response.statusText);
     throw new Error(`Impossible de télécharger le template (${response.status}). Vérifiez que le fichier existe dans le storage.`);

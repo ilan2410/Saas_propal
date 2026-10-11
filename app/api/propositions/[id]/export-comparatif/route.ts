@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateComparatifPdf } from '@/lib/pdf/comparatif-generator';
 import { generateComparatifWord } from '@/lib/word/comparatif-generator';
 import { OrganizationPreferences, SpCustomization, SuggestionsGenerees } from '@/types';
@@ -160,16 +160,7 @@ export async function POST(
     const { data: proposition, error: propError } = await scopePropositionsQuery(
       supabase
         .from('propositions')
-        .select(`
-          *,
-          organizations (
-            nom,
-            pdf_header_logo_url,
-            pdf_footer_text,
-            logo_url,
-            preferences
-          )
-        `)
+        .select('*')
         .eq('id', id),
       ctx
     ).single();
@@ -183,12 +174,15 @@ export async function POST(
     const resolvedClientName =
       resolveClientNameFromProposition(proposition as UnknownRecord) || 'Client';
 
-    const orgValue: unknown = (proposition as { organizations?: unknown }).organizations;
-    const org: OrganizationPdfSettings | undefined = Array.isArray(orgValue)
-      ? (orgValue[0] as OrganizationPdfSettings | undefined)
-      : orgValue && typeof orgValue === 'object'
-        ? (orgValue as OrganizationPdfSettings)
-        : undefined;
+    const { data: orgData, error: orgError } = await createServiceClient()
+      .from('organizations')
+      .select('nom, pdf_header_logo_url, pdf_footer_text, logo_url, preferences')
+      .eq('id', ctx.organizationId)
+      .single();
+    if (orgError || !orgData) {
+      return NextResponse.json({ error: 'Erreur de chargement de la configuration du comparatif' }, { status: 500 });
+    }
+    const org = orgData as OrganizationPdfSettings;
 
     console.log('🔵 [PDF Export] Organisation:', org?.nom);
 

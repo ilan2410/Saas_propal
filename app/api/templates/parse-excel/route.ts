@@ -1,6 +1,7 @@
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import { organizationStoragePath, storagePathFromUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import ExcelJS from 'exceljs';
 
 // POST /api/templates/parse-excel
@@ -29,18 +30,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
       }
 
-      if (!isAllowedFetchUrl(fileUrl)) {
+      const ctx = await resolveOrgContext(supabase, user);
+      const admin = user.app_metadata?.role === 'admin';
+      const key = admin ? storagePathFromUrl(fileUrl, 'templates') : ctx ? organizationStoragePath(fileUrl, 'templates', ctx.organizationId) : null;
+      if (!key) {
         return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
       }
 
       // Télécharger le fichier depuis l'URL
       console.log('📥 Téléchargement du fichier Excel:', fileUrl);
-      const response = await fetch(fileUrl, { redirect: 'error' });
-      
+      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error' });
+
       if (!response.ok) {
-        return NextResponse.json({ 
-          error: 'Failed to download file', 
-          details: `Status: ${response.status}` 
+        return NextResponse.json({
+          error: 'Failed to download file',
+          details: `Status: ${response.status}`
         }, { status: 400 });
       }
 
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
             const cellRef = `${getColumnName(colNumber)}${rowNumber}`;
             if (cell.type === ExcelJS.ValueType.Formula) formulaCells.push(cellRef);
             let value = '';
-            
+
             // Gérer les différents types de valeurs
             if (typeof cell.value === 'object') {
               const raw = cell.value as unknown as Record<string, unknown>;
@@ -128,7 +132,7 @@ export async function POST(request: NextRequest) {
             } else {
               value = String(cell.value);
             }
-            
+
             value = value.substring(0, 100);
             cells[cellRef] = value;
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import type { WordConfig, SpVariableCustom, SpQuestion, SpClauseConditionnelle } from '@/types';
 
@@ -112,8 +112,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       .select('file_config')
       .eq('id', id)
       .single(),
-    supabase
-      .from('organizations')
+    createServiceClient().from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -153,8 +152,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       .select('file_config')
       .eq('id', id)
       .single(),
-    supabase
-      .from('organizations')
+    createServiceClient().from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -222,8 +220,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       .select('file_config')
       .eq('id', id)
       .single(),
-    supabase
-      .from('organizations')
+    createServiceClient().from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -271,8 +268,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       .from('proposition_templates')
       .update({ file_config: updatedConfig })
       .eq('id', id),
-    supabase
-      .from('organizations')
+    createServiceClient().from('organizations')
       .update({ sp_questions: updatedQuestions })
       .eq('id', ctx.organizationId),
   ]);

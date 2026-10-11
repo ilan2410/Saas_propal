@@ -1,3 +1,4 @@
+import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest) {
 
     const template_id = typeof body?.template_id === 'string' ? body.template_id : null;
     const nom_client = typeof body?.nom_client === 'string' ? body.nom_client : null;
-    const source_documents = Array.isArray(body?.source_documents) ? body.source_documents : [];
+    const source_documents = await validateSourceDocuments(supabase, body?.source_documents ?? [], ctx.organizationId);
+    if (!source_documents) return NextResponse.json({ error: 'Documents source invalides ou inaccessibles' }, { status: 400 });
     const current_step = typeof body?.current_step === 'number' ? body.current_step : 1;
 
     if (!template_id) {
@@ -39,7 +41,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
-    const { data: proposition, error } = await supabase
+    const { data: template } = await supabase.from('proposition_templates').select('id').eq('id', template_id).eq('organization_id', ctx.organizationId).maybeSingle();
+    if (!template) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
+
+    const { data: proposition, error } = await serviceSupabase
       .from('propositions')
       .insert({
         organization_id: ctx.organizationId,

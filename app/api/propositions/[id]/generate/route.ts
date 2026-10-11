@@ -1,5 +1,7 @@
+import { signedOrganizationStorageUrl, organizationStoragePath } from '@/lib/security/storage-access';
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
@@ -53,7 +55,7 @@ export async function POST(
     // template appartenant à une autre organisation).
     const { data: template, error: templateError } = await supabase
       .from('proposition_templates')
-      .select('*')
+      .select(CLIENT_TEMPLATE_COLUMNS)
       .eq('id', proposition.template_id)
       .eq('organization_id', ctx.organizationId)
       .single();
@@ -74,8 +76,7 @@ export async function POST(
         : {};
     const donnees = { ...extracted, ...filled };
 
-    const { data: organization } = await supabase
-      .from('organizations')
+    const { data: organization } = await createServiceClient().from('organizations')
       .select('nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, credits, tarif_par_proposition, preferences')
       .eq('id', ctx.organizationId)
       .single();
@@ -165,7 +166,7 @@ export async function POST(
     });
 
     // Mettre à jour la proposition avec les bons noms de colonnes
-    const { error: updateError } = await supabase
+    const { error: updateError } = await createServiceClient()
       .from('propositions')
       .update({
         duplicated_template_url: fileUrl,
@@ -182,10 +183,9 @@ export async function POST(
     const previousFileUrl = proposition.duplicated_template_url as string | undefined;
     if (previousFileUrl && previousFileUrl !== fileUrl) {
       try {
-        const urlParts = previousFileUrl.split('/templates/');
-        if (urlParts.length > 1) {
-          const filePath = decodeURIComponent(urlParts[1]);
-          const { error: removeError } = await supabase.storage.from('templates').remove([filePath]);
+        const filePath = organizationStoragePath(previousFileUrl, 'templates', ctx.organizationId);
+        if (filePath) {
+          const { error: removeError } = await createServiceClient().storage.from('templates').remove([filePath]);
           if (removeError) {
             // Cause historique de l'accumulation : l'erreur n'etait pas
             // regardee, et les policies RLS du bucket faisaient echouer la
@@ -206,10 +206,10 @@ export async function POST(
     // Note: les crédits sont débités lors de l'extraction (extract/route.ts),
     // pas ici. On ne déduit donc pas une seconde fois au téléchargement/génération.
 
-    return NextResponse.json({ success: true, file_url: fileUrl });
+    return NextResponse.json({ success: true, file_url: await signedOrganizationStorageUrl(supabase, fileUrl, 'templates', ctx.organizationId) });
   } catch (error) {
     console.error('Error generating proposition:', error);
-    
+
     // Marquer la proposition en erreur
     const { id } = await params;
     const supabase = await createClient();

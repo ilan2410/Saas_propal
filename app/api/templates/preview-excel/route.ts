@@ -1,6 +1,7 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { buildExcelSourceData, buildPropositionBaseData } from '@/lib/generators/base-data';
 import { fillExcelWorkbook } from '@/lib/generators/excel-proposition';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
@@ -49,6 +50,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!ctx.permissions.download_proposition) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const templateId = formData.get('templateId');
     const uploadedFile = formData.get('file');
@@ -75,7 +80,7 @@ export async function POST(request: NextRequest) {
       templateBuffer = await uploadedFile.arrayBuffer();
     } else if (template.file_url) {
       if (!isAllowedFetchUrl(template.file_url)) return NextResponse.json({ error: 'URL du template non autorisée.' }, { status: 400 });
-      const response = await fetch(template.file_url, { redirect: 'error' });
+      const response = await fetch(await signedOrganizationStorageUrl(supabase, template.file_url, 'templates', ctx.organizationId), { redirect: 'error' });
       if (!response.ok) {
         return NextResponse.json(
           { error: 'Impossible de charger le fichier Excel du template' },
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
     // 3. Récupérer la proposition source : en priorité la plus récente AYANT des
     //    données SP ; à défaut la plus récente tout court (SA uniquement).
     const baseSelect =
-      'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(*)';
+      'template_id, created_at, created_by, extracted_data, filled_data, suggestions_sp_completes, sp_reponses, organizations(id)';
 
     const { data: propWithSp } = await supabase
       .from('propositions')
@@ -141,12 +146,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const orgRaw = (proposition as Record<string, unknown>).organizations;
-    const org = isPlainObject(orgRaw)
-      ? (orgRaw as UnknownRecord)
-      : Array.isArray(orgRaw) && orgRaw.length > 0 && isPlainObject(orgRaw[0])
-        ? (orgRaw[0] as UnknownRecord)
-        : {};
+    const { data: orgData } = await createServiceClient().from('organizations').select('*').eq('id', ctx.organizationId).single();
+    const org: UnknownRecord = orgData ?? {};
 
     const allQuestions = Array.isArray(org.sp_questions) ? (org.sp_questions as SpQuestion[]) : [];
     const propositionTemplateId =

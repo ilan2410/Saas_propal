@@ -77,7 +77,9 @@
       "Bash(bash .claude/skills/security-audit/scripts/scan.sh .)",
       "Bash(python -)",
       "Bash(node -e \"console.log\\(process.version\\)\")",
-      "Bash(cat)"
+      "Bash(cat)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001)"
     ],
     "additionalDirectories": [
       "\\tmp"

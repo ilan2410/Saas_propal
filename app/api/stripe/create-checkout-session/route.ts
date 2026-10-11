@@ -52,8 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Récupérer l'organization (scopée via ctx.organizationId : couvre à la fois le
     // propriétaire, historiquement id === user.id, et un commercial sous-compte).
-    const { data: organization, error: orgError } = await supabase
-      .from('organizations')
+    const { data: organization, error: orgError } = await createServiceClient().from('organizations')
       .select('id, email, nom, stripe_customer_id')
       .eq('id', ctx.organizationId)
       .single();
@@ -151,7 +150,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Créer la transaction en BDD (statut: pending)
-    const { error: txError } = await supabase.from('stripe_transactions').insert({
+    const { error: txError } = await createServiceClient().from('stripe_transactions').insert({
       organization_id: ctx.organizationId,
       stripe_session_id: session.id,
       montant: montant,

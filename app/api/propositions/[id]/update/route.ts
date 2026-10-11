@@ -1,3 +1,4 @@
+import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
@@ -27,7 +28,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    
+
     console.log('Update proposition:', id);
     console.log('Body reçu:', body);
 
@@ -52,6 +53,8 @@ export async function PATCH(
           return NextResponse.json({ error: TEMPLATE_FORBIDDEN_MESSAGE }, { status: 403 });
         }
       }
+      const { data: target } = await supabase.from('proposition_templates').select('id').eq('id', body.template_id).eq('organization_id', ctx.organizationId).maybeSingle();
+      if (!target) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
       updateData.template_id = body.template_id;
     }
     if (body.nom_client !== undefined) {
@@ -78,7 +81,9 @@ export async function PATCH(
       }
     }
     if (body.source_documents !== undefined) {
-      updateData.source_documents = body.source_documents;
+      const documents = await validateSourceDocuments(supabase, body.source_documents, ctx.organizationId);
+      if (!documents) return NextResponse.json({ error: 'Documents source invalides ou inaccessibles' }, { status: 400 });
+      updateData.source_documents = documents;
     }
     if (body.current_step !== undefined) {
       updateData.current_step = body.current_step;
@@ -111,7 +116,7 @@ export async function PATCH(
 
     // Mettre à jour la proposition
     const { data: proposition, error } = await scopePropositionsQuery(
-      supabase.from('propositions').update(updateData).eq('id', id),
+      createServiceClient().from('propositions').update(updateData).eq('id', id),
       ctx
     )
       .select()

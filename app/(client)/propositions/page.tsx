@@ -130,7 +130,7 @@ export default async function PropositionsPage() {
     return !isEmptyDraft;
   });
 
-  const [membersResult, teleprosResult, preferencesResult] = ctx && user
+  const [membersResult, teleprosResult, preferencesResult, ownerResult] = ctx && user
     ? await Promise.all([
         serviceSupabase
           .from('organization_members')
@@ -148,8 +148,15 @@ export default async function PropositionsPage() {
           .eq('user_id', user.id)
           .eq('preference_key', 'propositions.visible_columns')
           .maybeSingle(),
+        // Nom du propriétaire : ctx.displayName est celui de l'utilisateur connecté
+        // (le commercial), pas celui du compte principal.
+        serviceSupabase
+          .from('organizations')
+          .select('contact_prenom, contact_nom')
+          .eq('id', ctx.organizationId)
+          .maybeSingle(),
       ])
-    : [{ data: [] }, { data: [] }, { data: null }];
+    : [{ data: [] }, { data: [] }, { data: null }, { data: null }];
 
   const memberNames = new Map<string, string>(
     (membersResult.data ?? []).map((member) => [
@@ -160,7 +167,7 @@ export default async function PropositionsPage() {
   if (ctx) {
     memberNames.set(
       ctx.organizationId,
-      `${ctx.displayName.prenom} ${ctx.displayName.nom}`.trim() || 'Compte principal',
+      `${ownerResult.data?.contact_prenom ?? ''} ${ownerResult.data?.contact_nom ?? ''}`.trim() || 'Compte principal',
     );
   }
   const teleproOptions = (teleprosResult.data ?? []).map((telepro) => ({

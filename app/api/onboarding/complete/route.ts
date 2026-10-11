@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 const VALID_TOUR_IDS = [
@@ -40,8 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch current state
-    const { data: org, error: fetchError } = await supabase
-      .from('organizations')
+    const { data: org, error: fetchError } = await createServiceClient().from('organizations')
       .select('onboarding_completed, onboarding_tours_seen, onboarding_completed_at')
       .eq('id', ctx.organizationId)
       .single();
@@ -60,8 +59,7 @@ export async function POST(request: NextRequest) {
 
     const isFirstCompletion = !org?.onboarding_completed;
 
-    const { error: updateError } = await supabase
-      .from('organizations')
+    const { error: updateError } = await createServiceClient().from('organizations')
       .update({
         onboarding_tours_seen: updatedTours,
         onboarding_completed: true,

@@ -1,5 +1,7 @@
 'use client';
 
+import { storageFileUrl } from '@/lib/security/storage-file-url';
+
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, AlertTriangle } from 'lucide-react';
@@ -481,7 +483,7 @@ export function PropositionWizard({
                         La proposition pour <span className="font-semibold">{currentSite.site_nom}</span> a été générée.
                       </p>
                       {canDownloadProposition && currentSite.file_url && (
-                        <a href={currentSite.file_url} target="_blank" rel="noopener noreferrer"
+                        <a href={storageFileUrl(currentSite.file_url)} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700">
                           Télécharger
                         </a>

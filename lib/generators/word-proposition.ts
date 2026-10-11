@@ -1,3 +1,4 @@
+import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { createServiceClient } from '@/lib/supabase/server';
 import { withTableTotals } from './table-row-total';
 import { orderTablePhoneRows } from './table-phone-order';
@@ -22,7 +23,7 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
     throw new Error('URL du template non autorisée.');
   }
 
-  const response = await fetch(template.file_url);
+  const response = await fetch(await signedOrganizationStorageUrl(createServiceClient(), template.file_url, 'templates', organization_id));
   if (!response.ok) {
     throw new Error(`Impossible de télécharger le template (${response.status}). Vérifiez que le fichier existe dans le storage.`);
   }

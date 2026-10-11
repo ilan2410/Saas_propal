@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { TemplateWizard } from '@/components/templates/TemplateWizard';
 import { TemplatePageTourTrigger } from '@/components/onboarding/TemplatePageTourTrigger';
 import type { Secteur } from '@/lib/onboarding/onboarding.types';
@@ -12,77 +12,22 @@ export const revalidate = 0;
 
 export default async function NewTemplatePage() {
   const supabase = await createClient();
-  
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) redirect('/login');
 
+  if (!ctx.permissions.manage_templates) redirect('/dashboard');
+
   // Récupérer l'organisation avec ses champs par défaut
-  const { data: organization } = await supabase
-    .from('organizations')
+  const { data: organization } = await createServiceClient().from('organizations')
     .select('champs_defaut, secteur')
     .eq('id', ctx.organizationId)
     .single();
 
-  const NEW_DEFAULT_PROMPT = `Tu es un expert en analyse de documents commerciaux (factures téléphonie, contrats, etc.).
-
-Analyse le(s) document(s) fourni(s) et extrais les informations demandées au format JSON.
-
-STRUCTURE JSON ATTENDUE:
-{
-  "resume": "Résumé en français (titres + listes) basé sur les informations trouvées",
-  "fournisseur": "Nom du fournisseur/distributeur actuel",
-  "client": {
-    "nom": "Nom du contact",
-    "prenom": "Prénom",
-    "email": "email@exemple.com",
-    "fonction": "Fonction",
-    "mobile": "06 XX XX XX XX",
-    "fixe": "01 XX XX XX XX",
-    "raison_sociale": "Nom de l'entreprise",
-    "adresse": "Adresse complète",
-    "code_postal": "75001",
-    "ville": "Paris",
-    "siret": "XXXXXXXXXXXXX",
-    "ape": "Code APE",
-    "capital": "Capital social",
-    "forme_juridique": "SAS/SARL/etc",
-    "rcs": "RCS"
-  },
-  "lignes": [
-    {"numero_ligne": "0XXXXXXXXX", "type": "mobile|fixe|internet", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"}
-  ],
-  "location_materiel": [
-    {"type": "Location", "quantite": "1", "materiel": "Description", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"}
-  ]
-}
-
-CHAMPS À EXTRAIRE:
-{liste_champs_actifs}
-
-RÈGLES:
-- Retourne UNIQUEMENT un JSON valide
-- Utilise null pour les informations absentes
-- Les tarifs sont des nombres (29.99 et non "29,99€")
-- Les tableaux peuvent contenir plusieurs éléments
-- Extrais TOUTES les lignes trouvées dans le document
-- Le champ "resume" doit être un texte structuré et lisible, sans inventer d'informations
-
-DOCUMENT(S):
-{documents}
-
-Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
-
   const secteur = organization?.secteur || 'telephonie';
-  const { data: promptDefault } = await supabase
-    .from('prompt_defaults')
-    .select('prompt_template')
-    .eq('secteur', secteur)
-    .single();
-
-  const promptForNewTemplate = (promptDefault?.prompt_template || '').trim() || NEW_DEFAULT_PROMPT;
 
   return (
     <div className="space-y-6">
@@ -110,7 +55,6 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       <TemplateWizard
         defaultFields={organization?.champs_defaut || []}
         secteur={secteur}
-        initialTemplate={{ prompt_template: promptForNewTemplate }}
       />
     </div>
   );

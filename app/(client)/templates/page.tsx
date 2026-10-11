@@ -1,3 +1,4 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -56,7 +57,7 @@ export default async function TemplatesPage() {
   // Récupérer tous les templates
   const { data: templates } = await supabase
     .from('proposition_templates')
-    .select('*')
+    .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx?.organizationId)
     .order('created_at', { ascending: false });
 
@@ -218,7 +219,7 @@ export default async function TemplatesPage() {
                         </span>
                       </div>
                     </div>
-                    
+
                     {/* Badge statut */}
                     <div className={`flex items-center gap-1.5 px-3 py-1.5 ${statusConfig.bg} ${statusConfig.text} rounded-full text-xs font-semibold flex-shrink-0`}>
                       <StatusIcon className="w-3 h-3" />
@@ -247,7 +248,7 @@ export default async function TemplatesPage() {
                       <span className="text-gray-600 font-medium">Champs mappés</span>
                       <span className="font-bold text-gray-900">{mappedFieldsCount}</span>
                     </div>
-                    
+
                     {/* Barre de progression */}
                     <div className="pt-2">
                       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
@@ -255,7 +256,7 @@ export default async function TemplatesPage() {
                         <span className="font-semibold">{Math.round(completionRate)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                        <div 
+                        <div
                           className={`bg-gradient-to-r ${fileConfig.bg} h-full rounded-full transition-all duration-500`}
                           style={{ width: `${completionRate}%` }}
                         />

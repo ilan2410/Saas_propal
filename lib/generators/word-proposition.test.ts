@@ -86,3 +86,5 @@ describe('generatePropositionFile Word', () => {
     expect(xml).toContain('22/09/2026');
   });
 });
+
+vi.mock('@/lib/security/storage-access', () => ({ signedOrganizationStorageUrl: async (_client: unknown, url: string) => url }));

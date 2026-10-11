@@ -1,3 +1,4 @@
+import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -619,12 +620,12 @@ function countTotalFields(data: unknown): number {
   if (data === null || data === undefined) return 0;
   if (typeof data !== 'object') return 1;
   if (Array.isArray(data)) return data.length;
-  
+
   let count = 0;
-  
+
   for (const value of Object.values(data as Record<string, unknown>)) {
     if (value === null || value === undefined) continue;
-    
+
     if (Array.isArray(value)) {
       count += value.length;
     } else if (typeof value === 'object') {
@@ -633,7 +634,7 @@ function countTotalFields(data: unknown): number {
       count += 1;
     }
   }
-  
+
   return count;
 }
 
@@ -694,7 +695,7 @@ export default async function PropositionDetailPage({
       .from('propositions')
       .select(`
         *,
-        template:proposition_templates(*)
+        template:proposition_templates(${CLIENT_TEMPLATE_COLUMNS})
       `)
       .eq('id', id),
     ctx
@@ -707,7 +708,7 @@ export default async function PropositionDetailPage({
 
   const templateRaw = (proposition as Record<string, unknown>).template;
   const template = isRecord(templateRaw) ? templateRaw : null;
-  
+
   const extractedDataRaw = proposition.extracted_data || proposition.donnees_extraites || {};
   const extractedDataRecord: Record<string, unknown> = isRecord(extractedDataRaw) ? extractedDataRaw : {};
   const normalizeKey = (k: string) =>
@@ -731,7 +732,7 @@ export default async function PropositionDetailPage({
     proposition.nom_client,
     'Proposition sans nom',
   );
-  
+
   const documentsUrls = proposition.source_documents || proposition.documents_urls || proposition.documents_sources_urls || [];
 
   // Les documents source de l'extraction sont exposés comme pièces jointes :
@@ -758,9 +759,8 @@ export default async function PropositionDetailPage({
     : [];
   const creatorId = typeof proposition.created_by === 'string' ? proposition.created_by : null;
   const [organizationResult, teleprosResult, creatorResult] = await Promise.all([
-    supabase
-      .from('organizations')
-      .select('sp_questions, preferences')
+    createServiceClient().from('organizations')
+      .select('sp_questions, preferences, contact_prenom, contact_nom')
       .eq('id', ctx.organizationId)
       .single(),
     serviceSupabase
@@ -785,7 +785,7 @@ export default async function PropositionDetailPage({
     actif: telepro.actif !== false,
   }));
   const creatorName = creatorId === ctx.organizationId
-    ? `${ctx.displayName.prenom} ${ctx.displayName.nom}`.trim() || 'Compte principal'
+    ? `${organization?.contact_prenom ?? ''} ${organization?.contact_nom ?? ''}`.trim() || 'Compte principal'
     : creatorResult.data
       ? `${creatorResult.data.prenom ?? ''} ${creatorResult.data.nom ?? ''}`.trim() || 'Commercial'
       : 'Non renseigné';

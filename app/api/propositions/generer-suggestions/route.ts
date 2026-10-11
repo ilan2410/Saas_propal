@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie, SpTableProductOrders } from '@/types';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
@@ -1070,8 +1070,7 @@ export async function POST(request: NextRequest) {
             .select('file_config, file_type')
             .eq('id', prop.template_id)
             .single(),
-          supabase
-            .from('organizations')
+          createServiceClient().from('organizations')
             .select('preferences, sp_questions')
             .eq('id', ctx.organizationId)
             .single(),
@@ -1105,8 +1104,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!spConfigLoyer) {
-      const { data: orgData } = await supabase
-        .from('organizations')
+      const { data: orgData } = await createServiceClient().from('organizations')
         .select('preferences')
         .eq('id', ctx.organizationId)
         .single();
@@ -1131,8 +1129,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!spConfigMoisOfferts) {
-      const { data: orgData } = await supabase
-        .from('organizations')
+      const { data: orgData } = await createServiceClient().from('organizations')
         .select('preferences')
         .eq('id', ctx.organizationId)
         .single();

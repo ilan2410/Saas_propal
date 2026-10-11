@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { SpQuestionReponse } from '@/types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
@@ -57,8 +57,7 @@ export async function POST(
     }
 
     // Load org for tarif_clone_site + credits
-    const { data: org } = await supabase
-      .from('organizations')
+    const { data: org } = await createServiceClient().from('organizations')
       .select('credits, tarif_clone_site')
       .eq('id', ctx.organizationId)
       .single();
@@ -77,7 +76,8 @@ export async function POST(
     }
 
     // Debit credits
-    await supabase.rpc('debit_credits', { org_id: ctx.organizationId, amount: tarif });
+    const { error: debitError } = await createServiceClient().rpc('debit_credits', { org_id: ctx.organizationId, amount: tarif });
+    if (debitError) throw debitError;
 
     // Update sp_reponses on the proposition
     await supabase

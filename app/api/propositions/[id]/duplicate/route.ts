@@ -1,3 +1,4 @@
+import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
@@ -52,7 +53,7 @@ export async function POST(
     // Extraire le nom du client
     const extractedData = originalProposition.filled_data || originalProposition.extracted_data || originalProposition.donnees_extraites || {};
     let clientName = 'Client';
-    
+
     if (extractedData.client?.nom) {
       clientName = extractedData.client.nom;
     } else if (extractedData['client.nom']) {
@@ -82,7 +83,7 @@ export async function POST(
     const duplicatedUrls: string[] = [];
     const duplicatedNames: Record<string, string> = {};
     for (const url of sourceUrls) {
-      const key = extractStoragePathFromPublicUrl(url, SOURCE_DOCUMENTS_BUCKET);
+      const key = organizationStoragePath(url, SOURCE_DOCUMENTS_BUCKET, ctx.organizationId);
       if (!key) {
         duplicatedUrls.push(url);
         continue;
