@@ -5,9 +5,20 @@ const HEADER_BG = (primary: string) => `FF${primary.replace('#', '').toUpperCase
 const TOTAL_BG = 'FFE3F2FD';
 const ALT_BG = 'FFF7F9FC';
 const BORDER_COLOR = 'FFCBD5E1';
+const EUR_FORMAT = '#,##0.00 "€";-#,##0.00 "€"';
 
 function eur(value: number): string {
   return `${value.toFixed(2).replace('.', ',')} €`;
+}
+
+function setMoney(cell: ExcelJS.Cell, value: number | ExcelJS.CellFormulaValue) {
+  cell.value = value;
+  cell.numFmt = EUR_FORMAT;
+  cell.alignment = { horizontal: 'right', vertical: 'middle' };
+}
+
+function sumFormula(column: string, first: number, last: number): string {
+  return first <= last ? `SUM(${column}${first}:${column}${last})` : '0';
 }
 
 function thinBorder() {
@@ -79,6 +90,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   const wb = new ExcelJS.Workbook();
   wb.creator = input.companyName;
   wb.created = new Date();
+  wb.calcProperties.fullCalcOnLoad = true;
 
   const ws = wb.addWorksheet('Récap', {
     pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
@@ -132,12 +144,13 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   r++;
 
   const saHeader = ws.getRow(r);
-  ['Opérateur', 'Date fin eng', 'Qté', 'Offre', 'Numéro', 'PRIX HT', 'Indemnités'].forEach(
+  ['Opérateur', 'Date fin eng', 'Qté', 'Offre', 'Numéro', 'PU HT', 'Indemnités'].forEach(
     (h, i) => (saHeader.getCell(i + 1).value = h),
   );
   styleHeaderRow(saHeader, primaryArgb);
   r++;
 
+  const saFirstRow = r;
   input.saLines.forEach((line, idx) => {
     const row = ws.getRow(r);
     row.getCell(1).value = line.operateur;
@@ -146,10 +159,9 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
     row.getCell(3).alignment = { horizontal: 'center' };
     row.getCell(4).value = line.offre;
     row.getCell(5).value = line.numero;
-    row.getCell(6).value = eur(line.prixHt);
-    row.getCell(6).alignment = { horizontal: 'right' };
-    row.getCell(7).value = eur(line.indemnites);
-    row.getCell(7).alignment = { horizontal: 'right' };
+    // Le panier SA fournit un montant par ligne : afficher le tarif unitaire pour que la quantité reste modifiable.
+    setMoney(row.getCell(6), line.prixHt / (line.quantite || 1));
+    setMoney(row.getCell(7), line.indemnites);
     styleDataRow(row, idx % 2 === 1);
     r++;
   });
@@ -158,10 +170,12 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   const saTotal = ws.getRow(r);
   saTotal.getCell(1).value = 'TOTAL';
   ws.mergeCells(r, 1, r, 5);
-  saTotal.getCell(6).value = eur(input.saTotalPrixHt);
-  saTotal.getCell(6).alignment = { horizontal: 'right' };
-  saTotal.getCell(7).value = eur(input.saTotalIndemnites);
-  saTotal.getCell(7).alignment = { horizontal: 'right' };
+  const saLastRow = r - 1;
+  setMoney(saTotal.getCell(6), {
+    formula: saFirstRow <= saLastRow ? `SUMPRODUCT(C${saFirstRow}:C${saLastRow},F${saFirstRow}:F${saLastRow})` : '0',
+    result: input.saTotalPrixHt,
+  });
+  setMoney(saTotal.getCell(7), { formula: sumFormula('G', saFirstRow, saLastRow), result: input.saTotalIndemnites });
   styleTotalRow(saTotal);
   r += 2;
 
@@ -182,6 +196,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   styleHeaderRow(spHeader, primaryArgb);
   r++;
 
+  const spFirstRow = r;
   input.spLines.forEach((line, idx) => {
     const row = ws.getRow(r);
     row.getCell(1).value = line.operateur;
@@ -189,10 +204,10 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
     row.getCell(2).alignment = { horizontal: 'center' };
     row.getCell(3).value = line.offre;
     row.getCell(4).value = line.numero;
-    row.getCell(5).value = line.isRemiseLine ? '' : eur(line.prixUnitaire);
-    row.getCell(5).alignment = { horizontal: 'right' };
-    row.getCell(6).value = eur(line.prixTotal);
-    row.getCell(6).alignment = { horizontal: 'right' };
+    if (!line.isRemiseLine) setMoney(row.getCell(5), line.prixUnitaire);
+    setMoney(row.getCell(6), line.isRemiseLine
+      ? line.prixTotal
+      : { formula: `B${r}*E${r}`, result: line.prixTotal });
 
     if (line.isRemiseLine) {
       // Style spécial pour la ligne "Remise" : italique, texte gris, pas d'alternance
@@ -209,8 +224,7 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   const spTotal = ws.getRow(r);
   spTotal.getCell(1).value = 'TOTAL';
   ws.mergeCells(r, 1, r, 5);
-  spTotal.getCell(6).value = eur(input.spTotalPrix);
-  spTotal.getCell(6).alignment = { horizontal: 'right' };
+  setMoney(spTotal.getCell(6), { formula: sumFormula('F', spFirstRow, r - 1), result: input.spTotalPrix });
   styleTotalRow(spTotal);
   r += 2;
 
@@ -252,8 +266,14 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
     ws.mergeCells(rowIdx, 7, rowIdx, 8);
     ws.getCell(rowIdx, 7).value = rr.label;
     ws.getCell(rowIdx, 7).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
-    ws.getCell(rowIdx, 9).value = eur(rr.value);
-    ws.getCell(rowIdx, 9).alignment = { horizontal: 'right', vertical: 'middle' };
+    const value = idx === 1
+      ? { formula: `G${saLastRow + 1}`, result: rr.value }
+      : idx === 2
+        ? { formula: `E${recapTitleRow + 2 + input.recapLines.length}`, result: rr.value }
+        : rr.isTotal
+          ? { formula: `SUM(I${remiseStartRow}:I${rowIdx - 1})`, result: rr.value }
+          : rr.value;
+    setMoney(ws.getCell(rowIdx, 9), value);
     for (const c of [7, 8, 9]) {
       const cell = ws.getCell(rowIdx, c);
       cell.font = { size: 10, bold: !!rr.isTotal };
@@ -270,16 +290,18 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
 
   // Recap lines (start at same row as remise values = recapTitleRow + 2)
   let recapR = r;
+  const recapFirstRow = recapR;
   input.recapLines.forEach((line, idx) => {
     const row = ws.getRow(recapR);
     row.getCell(1).value = recapTypeLabel(line.type);
     row.getCell(2).value = line.libelle;
-    row.getCell(3).value = line.puht != null ? eur(line.puht) : '—';
-    row.getCell(3).alignment = { horizontal: 'right' };
+    if (line.puht != null) setMoney(row.getCell(3), line.puht);
+    else row.getCell(3).value = '—';
     row.getCell(4).value = line.quantite != null ? line.quantite : '—';
     row.getCell(4).alignment = { horizontal: 'center' };
-    row.getCell(5).value = eur(line.ptht);
-    row.getCell(5).alignment = { horizontal: 'right' };
+    setMoney(row.getCell(5), line.puht != null && line.quantite != null
+      ? { formula: `C${recapR}*D${recapR}`, result: line.ptht }
+      : line.ptht);
     // style 5 cells of recap (cols 1-5)
     for (let c = 1; c <= 5; c++) {
       const cell = row.getCell(c);
@@ -297,8 +319,10 @@ export async function generateComparatifSaSpExcel(input: ExportSaSpInput): Promi
   const recapTotalR = recapR;
   ws.getCell(recapTotalR, 1).value = 'TOTAL';
   ws.mergeCells(recapTotalR, 1, recapTotalR, 4);
-  ws.getCell(recapTotalR, 5).value = eur(input.recapTotal);
-  ws.getCell(recapTotalR, 5).alignment = { horizontal: 'right' };
+  setMoney(ws.getCell(recapTotalR, 5), {
+    formula: sumFormula('E', recapFirstRow, recapTotalR - 1),
+    result: input.recapTotal,
+  });
   for (let c = 1; c <= 5; c++) {
     const cell = ws.getCell(recapTotalR, c);
     cell.font = { bold: true, size: 10 };
