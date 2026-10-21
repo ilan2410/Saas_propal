@@ -44,6 +44,16 @@ export async function loadExcelImage(url: string): Promise<ExcelImage> {
       offset += 2 + length;
     }
   }
+  if (bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
+    // Excel (via ExcelJS) cannot embed WebP, the format of catalogue images: convert to PNG.
+    try {
+      const { default: sharp } = await import('sharp');
+      const { data, info } = await sharp(bytes).png().toBuffer({ resolveWithObject: true });
+      return { bytes: data, extension: 'png', width: info.width, height: info.height };
+    } catch {
+      throw new Error("Impossible de convertir l'image WebP pour Excel. Utilisez PNG, JPEG ou GIF.");
+    }
+  }
   throw new Error('Image Excel non prise en charge : utilisez PNG, JPEG ou GIF.');
 }
 
@@ -62,4 +72,51 @@ export function addExcelImage(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Wor
     tl: { col: Number(cell.col) - 1, row: Number(cell.row) - 1 }, ext, editAs: 'oneCell',
   });
   worksheet.getRow(Number(cell.row)).height = Math.max(worksheet.getRow(Number(cell.row)).height ?? 15, ext.height * 0.75);
+  return ext;
+}
+
+const EMU_PER_PIXEL = 9525;
+
+/** Place an image against the right edge of the cell (or of its merged area), vertically centred. */
+export function addExcelImageRightCentered(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, image: ExcelImage, width = 110, height = 73) {
+  if (!image.width || !image.height) throw new Error("Dimensions de l'image invalides.");
+  const scale = Math.min(width / image.width, height / image.height);
+  const ext = { width: image.width * scale, height: image.height * scale };
+  const margin = 8;
+  // Gap kept between the picture and the right edge, so it sits inside the column rather than against the next one.
+  const rightGap = 100;
+
+  // Merged area of the cell (the cell is the master of its merge, if any).
+  const firstCol = Number(cell.col);
+  const firstRow = Number(cell.row);
+  let [lastCol, lastRow] = [firstCol, firstRow];
+  for (const range of worksheet.model.merges ?? []) {
+    const match = /^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$/i.exec(range);
+    if (!match) continue;
+    const column = (letters: string) => letters.toUpperCase().split('').reduce((n, char) => n * 26 + char.charCodeAt(0) - 64, 0);
+    if (column(match[1]) === firstCol && +match[2] === firstRow) { lastCol = column(match[3]); lastRow = +match[4]; break; }
+  }
+  const columnPixels = (col: number) => Math.round((worksheet.getColumn(col).width ?? worksheet.properties.defaultColWidth ?? 8.43) * 7 + 5);
+  const rowPixels = (row: number) => Math.round((worksheet.getRow(row).height ?? worksheet.properties.defaultRowHeight ?? 15) * 4 / 3);
+  const sum = (from: number, to: number, size: (index: number) => number) => { let total = 0; for (let i = from; i <= to; i++) total += size(i); return total; };
+
+  // Grow the first row if the merged area is too short for the picture.
+  const missing = ext.height + margin - sum(firstRow, lastRow, rowPixels);
+  if (missing > 0) worksheet.getRow(firstRow).height = (worksheet.getRow(firstRow).height ?? worksheet.properties.defaultRowHeight ?? 15) + missing * 0.75;
+
+  const areaWidth = sum(firstCol, lastCol, columnPixels);
+  const areaHeight = sum(firstRow, lastRow, rowPixels);
+  const walk = (start: number, offset: number, size: (index: number) => number) => {
+    let index = start;
+    while (offset >= size(index) && index < 16384) { offset -= size(index); index++; }
+    return { index, offset };
+  };
+  const x = walk(firstCol, Math.max(0, areaWidth - ext.width - rightGap), columnPixels);
+  const y = walk(firstRow, Math.max(0, (areaHeight - ext.height) / 2), rowPixels);
+  const imageId = workbook.addImage({ buffer: image.bytes as unknown as ExcelJS.Buffer, extension: image.extension });
+  worksheet.addImage(imageId, {
+    tl: { nativeCol: x.index - 1, nativeColOff: Math.round(x.offset * EMU_PER_PIXEL), nativeRow: y.index - 1, nativeRowOff: Math.round(y.offset * EMU_PER_PIXEL) },
+    ext, editAs: 'oneCell',
+  } as unknown as ExcelJS.ImageRange);
+  return ext;
 }

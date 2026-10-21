@@ -169,6 +169,7 @@ export interface ExcelConfig {
   multiSheet?: boolean;
   sheetCount?: number;
   sheetMappings?: Array<{ sheetName: string; mapping: Record<string, string | string[]> }>;
+  composedMappings?: Array<{ sheetName: string; cellRef: string; template: string }>;
   arrayMappings?: Array<{
     arrayId: string;
     sheetName: string;
@@ -176,7 +177,10 @@ export interface ExcelConfig {
     stopCondition: 'empty_first_col' | 'max_rows';
     maxRows?: number;
     columnMapping: Record<string, string>;
+    composedColumns?: Array<{ column: string; template: string }>;
     overflowMode?: 'error' | 'insert_rows';
+    /** Computed at generation time: worksheet rows per item (vertically merged template rows). */
+    rowSpan?: number;
   }>;
   /** Explicit field types take priority over automatic money/identifier handling. */
   fieldTypes?: Record<string, 'text' | 'number' | 'date' | 'boolean' | 'image'>;
@@ -792,6 +796,7 @@ export interface SpSituationProposeeLigne {
   sp_sp_numero?: string;
   sp_sp_quantite?: string;
   sp_sp_produit?: string;
+  sp_sp_description: string;
   sp_sp_fournisseur?: string;
   sp_sp_prix_actuel?: string;
   sp_sp_prix_propose: string;

@@ -4,6 +4,7 @@ import { calculateCartSummary } from './calculateCart';
 import { buildSolutionProposeeLines } from './buildExportSaSpData';
 import { orderProductsByPreference } from './productTableOrder';
 import { repairSpCompletesFromQuestionnaire } from './repairSpCompletes';
+import { buildSpWordData } from '@/lib/generators/sp-word-data';
 import { calculerBaseLoyer, calculerLoyer, resolveTotalMensuelFinal, DEFAULT_BAREME } from './calculLoyer';
 import { calculerPrixRemiseProduit, getEligibleDiscountProducts, resolveRemiseProduit } from './evaluateDiscountRules';
 
@@ -106,6 +107,31 @@ describe('calculateCartSummary — quantités des options', () => {
     expect(repaired?.sp_bdc_materiel_table?.[0]).toMatchObject({ sp_bdc_mat_nom: materiel.nom, sp_bdc_mat_quantite: '3' });
     expect(repaired?.sp_situation_proposee_complet?.map(({ sp_sp_produit, sp_sp_quantite }) => ({ sp_sp_produit, sp_sp_quantite })))
       .toEqual([{ sp_sp_produit: materiel.nom, sp_sp_quantite: '3' }, { sp_sp_produit: parent.nom, sp_sp_quantite: '1' }]);
+  });
+
+  it('reprend la description catalogue des forfaits jusque dans les données Word', () => {
+    const forfait = { ...parent, description: 'Fibre avec débit garanti' };
+    const sansDescription = { ...option };
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes,
+      [
+        { question_id: 'offre', valeur: forfait.nom },
+        { question_id: 'options_offre', valeur: JSON.stringify([sansDescription.id]) },
+      ],
+      questions,
+      [forfait, sansDescription],
+      {},
+    );
+
+    expect(repaired?.sp_situation_proposee_forfaits?.map(({ sp_sp_produit, sp_sp_description }) => ({
+      sp_sp_produit, sp_sp_description,
+    }))).toEqual([
+      { sp_sp_produit: forfait.nom, sp_sp_description: forfait.description },
+      { sp_sp_produit: sansDescription.nom, sp_sp_description: '' },
+    ]);
+    expect(repaired?.sp_situation_proposee_forfaits_sans_remise?.[0].sp_sp_description).toBe(forfait.description);
+    expect((buildSpWordData(repaired).sp_situation_proposee_forfaits as Array<{ sp_sp_description: string }>)[0].sp_sp_description)
+      .toBe('Fibre Avec Débit Garanti');
   });
 
   it('privilégie la quantité modifiée dans le panier et applique les tranches de prix des options', () => {

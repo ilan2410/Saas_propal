@@ -187,8 +187,8 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_situation_proposee_forfaits',
     label: 'Tableau solution proposée forfaits',
-    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
-    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet. Pour un tableau 100% SP, utilisez plutôt sp_sp_produit et sp_sp_prix_propose.',
+    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_description}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
+    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet. sp_sp_description reprend la description de la fiche produit. Pour un tableau 100% SP, utilisez plutôt sp_sp_produit et sp_sp_prix_propose.',
   },
   {
     arrayId: 'sp_situation_proposee_forfaits_sans_remise',
@@ -403,6 +403,7 @@ export function Step2UploadTemplate({
 }: Props) {
   // Utiliser l'état Excel partagé du wizard
   const { file, fileName, sheets: excelSheets, mappings: savedMappings, arrayMappings: savedArrayMappings } = excelState;
+  const savedComposedMappings = (templateData.file_config as ExcelConfig | undefined)?.composedMappings ?? [];
   const hasSavedData = excelSheets.length > 0;
 
   // Obtenir les champs de type tableau pour ce secteur, en tenant compte des fusions
@@ -565,7 +566,7 @@ export function Step2UploadTemplate({
   const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
   const [retainedExcelMappings, setRetainedExcelMappings] = useState(false);
   const retainedMappingIssues = retainedExcelMappings
-    ? validateExcelMappings({ sheetMappings: savedMappings, arrayMappings: savedArrayMappings }, excelSheets)
+    ? validateExcelMappings({ sheetMappings: savedMappings, arrayMappings: savedArrayMappings, composedMappings: savedComposedMappings }, excelSheets)
     : [];
 
   const hasExistingFile =
@@ -589,7 +590,7 @@ export function Step2UploadTemplate({
       validationResults.tables.some((t) => t.errors.some((e) => e.type === 'error')));
 
   const getInitialStep = (): Step => {
-    if (hasSavedData && savedMappings.length > 0) {
+    if (hasSavedData && (savedMappings.length > 0 || savedComposedMappings.length > 0)) {
       return 'map-sheets';
     }
     if (hasSavedData) {
@@ -916,7 +917,7 @@ export function Step2UploadTemplate({
 
     // Pour Excel, parser le fichier pour obtenir les feuilles
     if (type === 'excel') {
-      if ((savedMappings.length > 0 || savedArrayMappings.length > 0) &&
+      if ((savedMappings.length > 0 || savedArrayMappings.length > 0 || savedComposedMappings.length > 0) &&
           (templateData.file_type === 'excel' || selectedFileType === 'excel')) {
         setPendingExcelFile(selectedFile);
       } else {
@@ -1502,10 +1503,10 @@ export function Step2UploadTemplate({
                 </div>
               </div>
 
-              {savedMappings.length > 0 && (
+              {(savedMappings.length > 0 || savedComposedMappings.length > 0) && (
                 <div className="border border-green-200 rounded-lg p-4 bg-green-50">
                   <h4 className="font-semibold text-green-900 mb-2">
-                    ✓ Mappings configurés ({savedMappings.length} feuille{savedMappings.length > 1 ? 's' : ''})
+                    ✓ Mappings configurés
                   </h4>
                   <div className="space-y-2">
                     {savedMappings.map((sm, idx) => (
@@ -1513,6 +1514,7 @@ export function Step2UploadTemplate({
                         <strong>{sm.sheetName}</strong> : {Object.keys(sm.mapping).length} champs
                       </div>
                     ))}
+                    {savedComposedMappings.length > 0 && <p className="text-sm text-green-800">{savedComposedMappings.length} cellule{savedComposedMappings.length > 1 ? 's' : ''} composée{savedComposedMappings.length > 1 ? 's' : ''}</p>}
                   </div>
                 </div>
               )}
@@ -1521,7 +1523,7 @@ export function Step2UploadTemplate({
                 onClick={() => setStep('map-sheets')}
                 className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                {savedMappings.length > 0 ? 'Modifier le mapping' : 'Configurer le mapping'}
+                {savedMappings.length > 0 || savedComposedMappings.length > 0 ? 'Modifier le mapping' : 'Configurer le mapping'}
               </button>
             </div>
           ) : hasExistingFile && isLoading ? (
@@ -2722,11 +2724,13 @@ export function Step2UploadTemplate({
               arrayFields={excelMapperArrayFields}
               initialMappings={savedMappings}
               initialArrayMappings={savedArrayMappings}
+              initialComposedMappings={savedComposedMappings}
               onComplete={handleMultiSheetMappingComplete}
               onBack={handleBackFromMapping}
               onArrayMappingsChange={(arrayMappings) => updateExcelState({ arrayMappings })}
               onSave={onSave}
               onMappingsChange={sheetMappings => updateExcelState({ mappings: sheetMappings })}
+              onComposedMappingsChange={composedMappings => updateTemplateData({ file_config: { ...templateData.file_config, composedMappings } })}
               preserveFormulas={templateData.file_config?.preserverFormules !== false}
               isSaving={isValidatingExcel}
             />

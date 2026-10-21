@@ -128,7 +128,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
   };
 
   // Générer une grille bornée pour garder les grands classeurs utilisables.
-  const maxRows = Math.min(sheet.rows || 100, 200);
+  const maxRows = 500;
   const maxCols = Math.min(sheet.cols || 26, 100);
 
   const allCells = useMemo(() => {

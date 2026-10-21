@@ -29,6 +29,36 @@ const tableMapping = {
 };
 
 describe('fillExcelWorkbook', () => {
+  it('réutilise un tableau sur deux feuilles sans écraser les autres mappings', async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Offre');
+    workbook.addWorksheet('Récapitulatif');
+    const source = await workbook.xlsx.writeBuffer();
+    const second = { ...tableMapping, sheetName: 'Récapitulatif', startRow: 8, columnMapping: { prix: 'D' } };
+    const config = {
+      arrayMappings: [tableMapping, second],
+      sheetMappings: [{ sheetName: 'Récapitulatif', mapping: { client: 'A1' } }],
+    };
+    expect(validateExcelMappings(config, [{ name: 'Offre' }, { name: 'Récapitulatif' }])).toEqual([]);
+    const result = await loadResult(await fillExcelWorkbook(source, { client: 'Alice' },
+      { articles: [{ designation: 'Forfait', prix: 12 }, { designation: 'Option', prix: 5 }] }, config));
+    expect(result.getWorksheet('Offre')!.getCell('A4').value).toBe('Forfait');
+    expect(result.getWorksheet('Offre')!.getCell('B5').value).toBe(5);
+    expect(result.getWorksheet('Récapitulatif')!.getCell('D8').value).toBe(12);
+    expect(result.getWorksheet('Récapitulatif')!.getCell('D9').value).toBe(5);
+    expect(result.getWorksheet('Récapitulatif')!.getCell('A1').value).toBe('Alice');
+  });
+
+  it('refuse un deuxième emplacement du même tableau sur la même feuille ou une cellule occupée', () => {
+    const sheets = [{ name: 'Offre' }, { name: 'Récapitulatif' }];
+    const second = { ...tableMapping, sheetName: 'Récapitulatif', columnMapping: { designation: 'A' } };
+    expect(validateExcelMappings({ arrayMappings: [tableMapping, { ...tableMapping, startRow: 10 }] }, sheets))
+      .toContain('articles : déjà configuré sur la feuille Offre.');
+    expect(validateExcelMappings({ arrayMappings: [tableMapping, second],
+      sheetMappings: [{ sheetName: 'Récapitulatif', mapping: { nom: 'A4' } }] }, sheets).join(' '))
+      .toContain('Récapitulatif!A4 : conflit');
+  });
+
   it.each(['lignes', 'sp_situation_proposee_complet'])('regroupe les numéros dans %s avec leurs offres et tarifs', async arrayId => {
     const rows = [
       { designation: 'Option', numero: '', tarif: 12 },
@@ -111,15 +141,15 @@ describe('fillExcelWorkbook', () => {
     const sheetMappings = [{ sheetName: 'Ancienne feuille', mapping: { 'client.nom': 'B2' } }];
     const arrayMappings = [tableMapping];
     const existing = { spVariablesCustom: [{ key: 'sp_test' }], preserverFormules: true,
-      sheetMappings, arrayMappings, multiSheet: true, sheetCount: 1,
+      sheetMappings, arrayMappings, composedMappings: [{ sheetName: 'Ancienne feuille', cellRef: 'C2', template: '{{nom}} {{prenom}}' }], multiSheet: true, sheetCount: 1,
       feuilleCiblee: 'Ancienne feuille', cellMappings: { B2: 'client.nom' } };
     const retained = buildExcelReplacementConfig(existing, sheetMappings, arrayMappings, true);
     expect(retained).toMatchObject({ spVariablesCustom: existing.spVariablesCustom, preserverFormules: true,
-      sheetMappings, arrayMappings, sheetCount: 1 });
+      sheetMappings, arrayMappings, composedMappings: existing.composedMappings, sheetCount: 1 });
     expect(validateExcelMappings(retained, [{ name: 'Autre feuille' }])).toContain('Feuille introuvable : Ancienne feuille.');
     const cleared = buildExcelReplacementConfig(existing, sheetMappings, arrayMappings, false);
     expect(cleared).toMatchObject({ spVariablesCustom: existing.spVariablesCustom, preserverFormules: true,
-      sheetMappings: [], arrayMappings: [], sheetCount: 0 });
+      sheetMappings: [], arrayMappings: [], composedMappings: [], sheetCount: 0 });
     expect(cleared).not.toHaveProperty('cellMappings');
     expect(cleared).not.toHaveProperty('feuilleCiblee');
     expect(existing.sheetMappings).toEqual(sheetMappings);
@@ -242,6 +272,53 @@ describe('fillExcelWorkbook', () => {
     expect(result.getWorksheet('Résumé')!.getCell('A1').formula).toBe("'Offre'!B7");
   });
 
+  describe('lignes fusionnées verticalement', () => {
+    const blockTemplate = (reserved: number) => sourceWorkbook((_, sheet) => {
+      for (let i = 0; i < reserved; i++) {
+        const row = 4 + i * 2;
+        sheet.mergeCells(`A${row}:A${row + 1}`); sheet.mergeCells(`B${row}:B${row + 1}`);
+        sheet.getCell(`A${row}`).font = { bold: true };
+        sheet.getCell(`A${row}`).value = '{{designation}}';
+      }
+      sheet.getCell(`A${4 + reserved * 2}`).value = 'Total';
+    });
+    const items = [1, 2, 3].map(n => ({ designation: `Art ${n}`, prix: n }));
+    const mapping = { ...tableMapping, overflowMode: 'insert_rows' as const };
+
+    it('écrit un article par bloc de 2 lignes', async () => {
+      const result = await loadResult(await fillExcelWorkbook(await blockTemplate(3), {}, { articles: items }, { arrayMappings: [{ ...mapping, maxRows: 3 }] }));
+      const sheet = result.getWorksheet('Offre')!;
+      expect([4, 6, 8].map(row => sheet.getCell(`A${row}`).value)).toEqual(['Art 1', 'Art 2', 'Art 3']);
+      expect([4, 6, 8].map(row => sheet.getCell(`B${row}`).value)).toEqual([1, 2, 3]);
+      expect(sheet.getCell('A5').master.address).toBe('A4');
+    });
+
+    it('détecte la capacité en blocs sans maxRows', async () => {
+      const result = await loadResult(await fillExcelWorkbook(await blockTemplate(3), {}, { articles: items }, { arrayMappings: [{ ...mapping, maxRows: undefined }] }));
+      const sheet = result.getWorksheet('Offre')!;
+      expect([4, 6, 8].map(row => sheet.getCell(`A${row}`).value)).toEqual(['Art 1', 'Art 2', 'Art 3']);
+      expect(sheet.getCell('A10').value).toBe('Total');
+    });
+
+    it('duplique les blocs fusionnés quand les lignes sont insérées', async () => {
+      const result = await loadResult(await fillExcelWorkbook(await blockTemplate(1), {}, { articles: items }, { arrayMappings: [{ ...mapping, maxRows: 1 }] }));
+      const sheet = result.getWorksheet('Offre')!;
+      expect([4, 6, 8].map(row => sheet.getCell(`A${row}`).value)).toEqual(['Art 1', 'Art 2', 'Art 3']);
+      expect([5, 7, 9].map(row => sheet.getCell(`A${row}`).master.address)).toEqual(['A4', 'A6', 'A8']);
+      expect([5, 7, 9].map(row => sheet.getCell(`B${row}`).master.address)).toEqual(['B4', 'B6', 'B8']);
+      expect(sheet.getCell('A6').font.bold).toBe(true);
+      expect(sheet.getCell('A10').value).toBe('Total');
+    });
+
+    it('vide les blocs réservés inutilisés', async () => {
+      const result = await loadResult(await fillExcelWorkbook(await blockTemplate(3), {}, { articles: items.slice(0, 1) }, { arrayMappings: [{ ...mapping, maxRows: 3 }] }));
+      const sheet = result.getWorksheet('Offre')!;
+      expect(sheet.getCell('A4').value).toBe('Art 1');
+      expect(sheet.getCell('A6').value ?? '').toBe('');
+      expect(sheet.getCell('A8').value ?? '').toBe('');
+    });
+  });
+
   it('signale les feuilles, cellules, collisions et formules protégées', async () => {
     const source = await sourceWorkbook((_, sheet) => { sheet.getCell('A1').value = { formula: '1+1', result: 2 }; sheet.mergeCells('B1:C1'); });
     await expect(fillExcelWorkbook(source, {}, {}, { sheetMappings: [{ sheetName: 'Absente', mapping: { nom: 'A1' } }] })).rejects.toThrow('Feuille introuvable');
@@ -305,6 +382,161 @@ describe('fillExcelWorkbook', () => {
     expect(sheet.getCell('B1').numFmt).toBe('dd/mm/yyyy');
   });
 
+  it('compose plusieurs champs simples dans une cellule et conserve les autres mappings', async () => {
+    const source = await sourceWorkbook();
+    const result = await loadResult(await fillExcelWorkbook(source, { prenom: 'Alice', nom: 'Martin' }, {}, {
+      sheetMappings: [{ sheetName: 'Offre', mapping: { nom: 'B2' } }],
+      composedMappings: [{ sheetName: 'Offre', cellRef: 'A1', template: '{{prenom}} {{nom}}' }],
+    }));
+    expect(result.getWorksheet('Offre')!.getCell('A1').value).toBe('Alice Martin');
+    expect(result.getWorksheet('Offre')!.getCell('B2').value).toBe('Martin');
+  });
+
+  it('refuse les collisions et les expressions non composées', async () => {
+    const source = await sourceWorkbook();
+    const composedMappings = [{ sheetName: 'Offre', cellRef: 'A1', template: '{{prenom}} {{nom}}' }];
+    await expect(fillExcelWorkbook(source, {}, {}, {
+      sheetMappings: [{ sheetName: 'Offre', mapping: { nom: 'A1' } }], composedMappings,
+    })).rejects.toThrow('conflit');
+    expect(validateExcelMappings({ composedMappings: [{ ...composedMappings[0], template: '{{prenom}}' }] }, [{ name: 'Offre' }])).not.toEqual([]);
+    expect(validateExcelMappings({ composedMappings: [{ ...composedMappings[0], template: '{{#lignes}} {{nom}}' }] }, [{ name: 'Offre' }])).not.toEqual([]);
+    await expect(fillExcelWorkbook(source, { prenom: ['Alice'], nom: 'Martin' }, {}, { composedMappings })).rejects.toThrow('champ simple');
+  });
+
+  it('déplace les cellules composées après insertion de lignes', async () => {
+    const result = await loadResult(await fillExcelWorkbook(await sourceWorkbook(), {}, {
+      articles: [{ designation: 'A' }, { designation: 'B' }], prenom: 'Alice', nom: 'Martin',
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 1, overflowMode: 'insert_rows', columnMapping: { designation: 'A' } }],
+      composedMappings: [{ sheetName: 'Offre', cellRef: 'C6', template: '{{prenom}} {{nom}}' }],
+    }));
+    expect(result.getWorksheet('Offre')!.getCell('C7').value).toBe('Alice Martin');
+  });
+
+  it('supprime le séparateur après un premier champ vide dans les cellules composées', async () => {
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('D1').value = '{{type}} - {{designation}}';
+    });
+    const composedMappings = [{ sheetName: 'Offre', cellRef: 'A1', template: '{{type}} - {{designation}}' }];
+    const sheet = (await loadResult(await fillExcelWorkbook(source,
+      { type: '', designation: 'Abonnement SDA' },
+      { designation: 'Abonnement SDA' },
+      { composedMappings }))).getWorksheet('Offre')!;
+    expect(sheet.getCell('A1').value).toBe('Abonnement SDA');
+    expect(sheet.getCell('D1').value).toBe(' - Abonnement SDA'); // Texte libre inchangé.
+
+    const filled = (await loadResult(await fillExcelWorkbook(await sourceWorkbook(),
+      { type: 'Mobile', designation: 'Forfait Pro' }, {}, { composedMappings }))).getWorksheet('Offre')!;
+    expect(filled.getCell('A1').value).toBe('Mobile - Forfait Pro');
+
+    const missingSecond = (await loadResult(await fillExcelWorkbook(await sourceWorkbook(),
+      { type: 'Fixe' }, {}, { composedMappings }))).getWorksheet('Offre')!;
+    expect(missingSecond.getCell('A1').value).toBe('Fixe - ');
+
+    const threeFields = (await loadResult(await fillExcelWorkbook(await sourceWorkbook(),
+      { type: ' ', designation: 'Abonnement SDA', site: 'Paris' }, {}, {
+        composedMappings: [{ sheetName: 'Offre', cellRef: 'A1', template: '{{type}} - {{designation}} / {{site}}' }],
+      }))).getWorksheet('Offre')!;
+    expect(threeFields.getCell('A1').value).toBe('Abonnement SDA / Paris');
+  });
+
+  it('supprime le séparateur par ligne dans les colonnes composées sans toucher les autres colonnes', async () => {
+    const rows = [
+      { type: 'Mobile', designation: 'Forfait Pro' },
+      { type: '', designation: 'Abonnement SDA' },
+      { designation: 'Acces fibre' },
+      { type: 'Fixe', designation: 'Ligne fixe' },
+    ];
+    const sheet = (await loadResult(await fillExcelWorkbook(await sourceWorkbook(), {}, { articles: rows }, {
+      arrayMappings: [{
+        ...tableMapping, maxRows: 4, columnMapping: { designation: 'A' },
+        composedColumns: [{ column: 'C', template: '{{type}} - {{designation}}' }],
+      }],
+    }))).getWorksheet('Offre')!;
+    expect([4, 5, 6, 7].map(row => sheet.getCell(`C${row}`).value)).toEqual([
+      'Mobile - Forfait Pro', 'Abonnement SDA', 'Acces fibre', 'Fixe - Ligne fixe',
+    ]);
+    expect([4, 5, 6, 7].map(row => sheet.getCell(`A${row}`).value))
+      .toEqual(rows.map(row => row.designation));
+  });
+
+  it('protège les formules et les cellules fusionnées lors des compositions', async () => {
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('A1').value = { formula: '1+1', result: 2 };
+      sheet.mergeCells('B1:C1');
+    });
+    await expect(fillExcelWorkbook(source, {}, {}, {
+      composedMappings: [{ sheetName: 'Offre', cellRef: 'A1', template: '{{nom}} {{prenom}}' }],
+    })).rejects.toThrow('formule protégée');
+    await expect(fillExcelWorkbook(source, {}, {}, {
+      sheetMappings: [{ sheetName: 'Offre', mapping: { nom: 'B1' } }],
+      composedMappings: [{ sheetName: 'Offre', cellRef: 'C1', template: '{{nom}} {{prenom}}' }],
+    })).rejects.toThrow('conflit');
+  });
+
+  it('compose chaque ligne du bon tableau même avec deux tableaux côte à côte', async () => {
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('C4').value = 'Ancien texte';
+      sheet.getCell('C5').value = 'Ancien texte';
+    });
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'Mobile', numero: '0612345678' }, { designation: 'Option' }],
+      autres: [{ designation: 'Internet', numero: '0123456789' }, { designation: 'Fixe', numero: '0987654321' }],
+      numero: 'NE DOIT PAS ETRE UTILISE',
+    }, {
+      arrayMappings: [
+        { ...tableMapping, maxRows: 3, columnMapping: { designation: 'A' }, composedColumns: [{ column: 'C', template: '{{designation}} — {{numero}}' }] },
+        { ...tableMapping, arrayId: 'autres', maxRows: 3, columnMapping: { designation: 'E' }, composedColumns: [{ column: 'G', template: '{{designation}} / {{numero}}' }] },
+      ],
+    }));
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('C4').value).toBe('Mobile — 0612345678');
+    expect(sheet.getCell('C5').value).toBe('Option — ');
+    expect(sheet.getCell('C6').value).toBeNull();
+    expect(sheet.getCell('G4').value).toBe('Internet / 0123456789');
+    expect(sheet.getCell('G5').value).toBe('Fixe / 0987654321');
+    expect(sheet.getCell('G6').value).toBeNull();
+  });
+
+  it('détecte les lignes réservées des colonnes composées sans maxRows', async () => {
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('A4').value = 'Modèle';
+      sheet.getCell('C4').numFmt = '@';
+      sheet.getCell('C5').numFmt = '@';
+      sheet.getCell('A6').value = 'Total';
+    });
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'Mobile', numero: '01' }, { designation: 'Fixe', numero: '02' }],
+    }, { arrayMappings: [{ ...tableMapping, maxRows: undefined, columnMapping: { designation: 'A' }, composedColumns: [{ column: 'C', template: '{{designation}} {{numero}}' }] }] }));
+    expect(result.getWorksheet('Offre')!.getCell('C4').value).toBe('Mobile 01');
+    expect(result.getWorksheet('Offre')!.getCell('C5').value).toBe('Fixe 02');
+    expect(result.getWorksheet('Offre')!.getCell('A6').value).toBe('Total');
+  });
+
+  it('rejette les colonnes composées invalides, les collisions et les formules protégées', async () => {
+    const composedColumns = [{ column: 'C', template: '{{designation}} {{numero}}' }];
+    const mapping = { ...tableMapping, composedColumns };
+    expect(validateExcelMappings({ arrayMappings: [{ ...mapping, composedColumns: [{ column: 'A', template: composedColumns[0].template }] }] }, [{ name: 'Offre' }])).not.toEqual([]);
+    expect(validateExcelMappings({ arrayMappings: [{ ...mapping, composedColumns: [{ column: 'C', template: '{{designation}}' }] }] }, [{ name: 'Offre' }])).not.toEqual([]);
+    expect(validateExcelMappings({ arrayMappings: [{ ...mapping, composedColumns: [{ column: 'XFE', template: composedColumns[0].template }] }] }, [{ name: 'Offre' }])).not.toEqual([]);
+    const source = await sourceWorkbook((_, sheet) => { sheet.getCell('C4').value = { formula: '1+1', result: 2 }; });
+    await expect(fillExcelWorkbook(source, {}, { articles: [{ designation: 'Mobile', numero: '06' }] }, { arrayMappings: [mapping] })).rejects.toThrow('formule protégée');
+    await expect(fillExcelWorkbook(await sourceWorkbook(), {}, { articles: [{ designation: ['Mobile'], numero: '06' }] }, { arrayMappings: [mapping] })).rejects.toThrow('champ simple');
+  });
+
+  it('étend les colonnes composées lors de l’insertion de lignes', async () => {
+    const source = await sourceWorkbook((_, sheet) => { sheet.getCell('C5').value = 'Pied'; });
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'Mobile', numero: '01' }, { designation: 'Fixe', numero: '02' }],
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 1, overflowMode: 'insert_rows', composedColumns: [{ column: 'C', template: '{{designation}}: {{numero}}' }] }],
+    }));
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('C4').value).toBe('Mobile: 01');
+    expect(sheet.getCell('C5').value).toBe('Fixe: 02');
+    expect(sheet.getCell('C6').value).toBe('Pied');
+  });
+
   it('accepte les anciens mappings de cellules', async () => {
     const source = await sourceWorkbook();
     const result = await loadResult(await fillExcelWorkbook(source, { numero: '001' }, {}, { feuilleCiblee: 'Offre', cellMappings: { A1: 'numero', B1: 'numero' } }));
@@ -351,6 +583,65 @@ describe('fillExcelWorkbook', () => {
     expect(result.getWorksheet('Offre')!.getImages()).toHaveLength(2);
     expect(result.getWorksheet('Offre')!.getCell('A1').value).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('place l’image d’une colonne composée dans la cellule au lieu d’écrire son URL (WebP converti)', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const { default: sharp } = await import('sharp');
+    const webp = await sharp({ create: { width: 4, height: 2, channels: 3, background: '#f00' } }).webp().toBuffer();
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(new Uint8Array(webp)));
+    vi.stubGlobal('fetch', fetchMock);
+    const url = 'https://storage.example.test/box.webp';
+    const result = await loadResult(await fillExcelWorkbook(await sourceWorkbook(), {}, {
+      articles: [{ designation: 'Box Tv', image_url: url }, { designation: 'Sans image' }],
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 2, columnMapping: { prix: 'B' }, composedColumns: [{ column: 'A', template: '{{designation}} {{image_url}}' }] }],
+    }));
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('A4').value).toBe('Box Tv');
+    expect(sheet.getCell('A5').value).toBe('Sans image');
+    expect(sheet.getImages()).toHaveLength(1);
+    expect(sheet.getImages()[0].range.tl.nativeRow).toBe(3);
+    // Text is indented away from the border on every row of the column, with or without picture.
+    expect([sheet.getCell('A4').alignment.indent, sheet.getCell('A5').alignment.indent]).toEqual([2, 2]);
+  });
+
+  it('place l’image d’une colonne composée à droite de la cellule fusionnée, centrée verticalement', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(png)));
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getColumn(1).width = 80;
+      sheet.mergeCells('A4:A5'); sheet.getRow(4).height = 60; sheet.getRow(5).height = 60;
+    });
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'Box Tv', image_url: 'https://storage.example.test/box.png' }],
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 1, columnMapping: { prix: 'C' }, composedColumns: [{ column: 'A', template: '{{designation}} {{image_url}}' }] }],
+      imageWidth: 100, imageHeight: 100,
+    }));
+    const [image] = result.getWorksheet('Offre')!.getImages();
+    // Column A is 565 px wide: a 100 px picture sits 100 px from its right edge (565 - 100 - 100 = 365 px).
+    expect(image.range.tl.nativeCol).toBe(0);
+    expect(image.range.tl.nativeColOff / 9525).toBeCloseTo(365, 0);
+    // Merged height is 160 px: a 100 px picture starts 30 px below the top, in the first row (80 px).
+    expect(image.range.tl.nativeRow).toBe(3);
+    expect(image.range.tl.nativeRowOff / 9525).toBeCloseTo(30, 0);
+  });
+
+  it('conserve les retours à la ligne d’une colonne composée avec image', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(png)));
+    const result = await loadResult(await fillExcelWorkbook(await sourceWorkbook(), {}, {
+      articles: [{ designation: 'Box Tv', numero: 'Android TV 4K', image_url: 'https://storage.example.test/box.png' }],
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 1, columnMapping: { prix: 'B' }, composedColumns: [{ column: 'A', template: '{{designation}}\n{{numero}}\n{{image_url}}' }] }],
+    }));
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('A4').value).toBe('Box Tv\nAndroid TV 4K');
+    expect(sheet.getCell('A4').alignment.wrapText).toBe(true);
+    expect(sheet.getImages()).toHaveLength(1);
   });
 
   it('refuse une URL image hors du stockage autorisé', async () => {
