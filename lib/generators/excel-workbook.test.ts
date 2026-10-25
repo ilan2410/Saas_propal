@@ -29,6 +29,122 @@ const tableMapping = {
 };
 
 describe('fillExcelWorkbook', () => {
+  it('applique les styles par champ Excel sans modifier les autres cellules ni le modèle', async () => {
+    const source = await sourceWorkbook((_book, sheet) => {
+      sheet.getCell('A4').font = { name: 'Calibri', color: { argb: 'FF123456' }, size: 9 };
+      sheet.getCell('B4').font = { bold: true, size: 11 };
+      sheet.getCell('A1').alignment = { horizontal: 'right' };
+      sheet.getRow(4).height = 15;
+    });
+    const config = {
+      sheetMappings: [{ sheetName: 'Offre', mapping: { client: ['A1', 'A2'] },
+        fieldStyles: { client: { horizontal: 'center' as const, vertical: 'middle' as const, fontSize: 14, rowHeight: 24 } } }],
+      arrayMappings: [{ ...tableMapping, fieldStyles: {
+        designation: { bold: true, fontSize: 16, horizontal: 'center' as const, rowHeight: 35 },
+        prix: { bold: false, vertical: 'middle' as const, rowHeight: 28 },
+      } }],
+    };
+    const sheet = (await loadResult(await fillExcelWorkbook(source, { client: 'Alice' },
+      { articles: [{ designation: 'Forfait', prix: 12 }, { designation: 'Option', prix: 5 }] }, config))).getWorksheet('Offre')!;
+    expect(sheet.getCell('A1').alignment).toMatchObject({ horizontal: 'center', vertical: 'middle' });
+    expect(sheet.getRow(1).height).toBe(24);
+    expect(sheet.getRow(2).height).toBe(24);
+    expect(sheet.getCell('A4').font).toMatchObject({ name: 'Calibri', color: { argb: 'FF123456' }, bold: true, size: 16 });
+    expect(sheet.getCell('B4').font.size).toBe(11);
+    expect(sheet.getCell('B4').font.bold).not.toBe(true);
+    expect(sheet.getRow(4).height).toBe(35);
+    expect(sheet.getRow(5).height).toBe(35);
+  });
+
+  it('refuse les styles Excel invalides et les champs non mappés', async () => {
+    const invalid = { arrayMappings: [{ ...tableMapping, fieldStyles: { designation: { fontSize: 500 } } }] };
+    expect(validateExcelMappings(invalid, [{ name: 'Offre' }]).join(' ')).toContain('Style Excel invalide');
+    await expect(fillExcelWorkbook(await sourceWorkbook(), {}, {}, invalid)).rejects.toThrow('Style Excel invalide');
+    expect(validateExcelMappings({ arrayMappings: [{ ...tableMapping, fieldStyles: { absent: { bold: true } } }] }, [{ name: 'Offre' }]))
+      .toContain('Style Excel sans champ mappé : absent.');
+  });
+
+  it('applique aussi les styles aux colonnes et cellules composées', async () => {
+    const source = await sourceWorkbook((_book, sheet) => {
+      sheet.getCell('C4').font = { name: 'Calibri', size: 10 };
+      sheet.getCell('D2').font = { name: 'Calibri', size: 10 };
+    });
+    const result = await loadResult(await fillExcelWorkbook(source, { nom: 'Dupont', prenom: 'Léa' },
+      { articles: [{ designation: 'Mobile', numero: '0611' }, { designation: 'Fixe', numero: '0122' }] }, {
+        arrayMappings: [{ ...tableMapping, composedColumns: [{ column: 'C', template: '{{designation}}\n{{numero}}',
+          style: { bold: true, fontSize: 15, horizontal: 'center', vertical: 'middle', rowHeight: 38 } }] }],
+        composedMappings: [{ sheetName: 'Offre', cellRef: 'D2', template: '{{prenom}} {{nom}}',
+          style: { bold: true, fontSize: 13, horizontal: 'right', vertical: 'middle', rowHeight: 26 } }],
+      }));
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('C4').value).toBe('Mobile\n0611');
+    expect(sheet.getCell('C4').alignment).toMatchObject({ horizontal: 'center', vertical: 'middle', wrapText: true });
+    expect(sheet.getCell('C4').font).toMatchObject({ name: 'Calibri', bold: true, size: 15 });
+    expect(sheet.getRow(4).height).toBe(38);
+    expect(sheet.getRow(5).height).toBe(38);
+    expect(sheet.getCell('D2').value).toBe('Léa Dupont');
+    expect(sheet.getCell('D2').alignment).toMatchObject({ horizontal: 'right', vertical: 'middle' });
+    expect(sheet.getCell('D2').font).toMatchObject({ name: 'Calibri', bold: true, size: 13 });
+    expect(sheet.getRow(2).height).toBe(26);
+    expect(validateExcelMappings({ composedMappings: [{ sheetName: 'Offre', cellRef: 'D2', template: '{{prenom}} {{nom}}',
+      style: { rowHeight: 500 } }] }, [{ name: 'Offre' }]).join(' ')).toContain('Style Excel invalide');
+    expect(validateExcelMappings({ arrayMappings: [{ ...tableMapping, composedColumns: [{ column: 'C', template: '{{designation}} {{numero}}',
+      style: { fontSize: 0 } }] }] }, [{ name: 'Offre' }]).join(' ')).toContain('Style Excel invalide');
+    await expect(fillExcelWorkbook(source, {}, {}, { composedMappings: [{ sheetName: 'Offre', cellRef: 'D2',
+      template: '{{prenom}} {{nom}}', style: { fontSize: 500 } }] })).rejects.toThrow('Style Excel invalide');
+  });
+
+  it('met en gras uniquement le nom du produit dans une colonne composée, sans modifier la description', async () => {
+    const source = await sourceWorkbook((_workbook, sheet) => {
+      sheet.getCell('C4').font = { name: 'Calibri', size: 11, bold: true };
+    });
+    const config = { arrayMappings: [{
+      ...tableMapping, maxRows: 2, columnMapping: { designation: 'A' },
+      composedColumns: [{
+        column: 'C', template: '{{sp_sp_produit}}\n{{sp_sp_description}}',
+        style: { bold: true, fontSize: 12, rowHeight: 38 },
+        fieldStyles: { sp_sp_produit: { bold: true, fontSize: 14 }, sp_sp_description: { bold: false, fontSize: 10 } },
+      }],
+    }] };
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [
+        { designation: 'Ligne 1', sp_sp_produit: 'Licence Centrex', sp_sp_description: '1 licence = 1 poste' },
+        { designation: 'Ligne 2', sp_sp_produit: '', sp_sp_description: 'Description seule' },
+      ],
+    }, config));
+    const sheet = result.getWorksheet('Offre')!;
+    const cell = sheet.getCell('C4');
+    expect(cell.text).toBe('Licence Centrex\n1 licence = 1 poste');
+    expect(cell.font.bold).not.toBe(true);
+    const runs = (cell.value as ExcelJS.CellRichTextValue).richText;
+    expect(runs.map(run => run.text)).toEqual(['Licence Centrex', '\n', '1 licence = 1 poste']);
+    expect(runs[0].font).toMatchObject({ bold: true, size: 14, name: 'Calibri' });
+    expect(runs[1].font?.size).toBe(12);
+    expect(runs[2].font).toMatchObject({ size: 10, name: 'Calibri' });
+    expect(runs[2].font?.bold).not.toBe(true);
+    expect(sheet.getCell('C5').text).toBe('Description seule');
+    expect((sheet.getCell('C5').value as ExcelJS.CellRichTextValue).richText[0].font).toMatchObject({ size: 10 });
+    expect((sheet.getCell('C5').value as ExcelJS.CellRichTextValue).richText[0].font?.bold).not.toBe(true);
+    expect(sheet.getRow(4).height).toBe(38);
+  });
+
+  it('personnalise aussi les variables d’une cellule composée et refuse les styles obsolètes', async () => {
+    const config = { composedMappings: [{
+      sheetName: 'Offre', cellRef: 'D2', template: '{{sp_sp_produit}}\n{{sp_sp_description}}',
+      fieldStyles: { sp_sp_produit: { bold: true }, sp_sp_description: { bold: false } },
+    }] };
+    const sheet = (await loadResult(await fillExcelWorkbook(await sourceWorkbook(),
+      { sp_sp_produit: 'Centrex', sp_sp_description: 'Description' }, {}, config))).getWorksheet('Offre')!;
+    expect(sheet.getCell('D2').text).toBe('Centrex\nDescription');
+    const runs = (sheet.getCell('D2').value as ExcelJS.CellRichTextValue).richText;
+    expect(runs.map(run => run.text)).toEqual(['Centrex', '\n', 'Description']);
+    expect(runs[0].font?.bold).toBe(true);
+    expect(runs[2].font?.bold).not.toBe(true);
+    const invalid = { composedMappings: [{ ...config.composedMappings[0], fieldStyles: { absent: { bold: true } } }] };
+    expect(validateExcelMappings(invalid, [{ name: 'Offre' }]).join(' ')).toContain('Style de variable composée invalide');
+    await expect(fillExcelWorkbook(await sourceWorkbook(), {}, {}, invalid)).rejects.toThrow('Style de variable composée invalide');
+  });
+
   it('réutilise un tableau sur deux feuilles sans écraser les autres mappings', async () => {
     const workbook = new ExcelJS.Workbook();
     workbook.addWorksheet('Offre');
@@ -138,8 +254,8 @@ describe('fillExcelWorkbook', () => {
   });
 
   it('propose de garder les mappings Excel au remplacement sans perdre les réglages SP', () => {
-    const sheetMappings = [{ sheetName: 'Ancienne feuille', mapping: { 'client.nom': 'B2' } }];
-    const arrayMappings = [tableMapping];
+    const sheetMappings = [{ sheetName: 'Ancienne feuille', mapping: { 'client.nom': 'B2' }, fieldStyles: { 'client.nom': { fontSize: 12 } } }];
+    const arrayMappings = [{ ...tableMapping, fieldStyles: { designation: { bold: true, rowHeight: 32 } } }];
     const existing = { spVariablesCustom: [{ key: 'sp_test' }], preserverFormules: true,
       sheetMappings, arrayMappings, composedMappings: [{ sheetName: 'Ancienne feuille', cellRef: 'C2', template: '{{nom}} {{prenom}}' }], multiSheet: true, sheetCount: 1,
       feuilleCiblee: 'Ancienne feuille', cellMappings: { B2: 'client.nom' } };

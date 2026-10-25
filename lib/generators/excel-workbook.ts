@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
-import type { ExcelConfig } from '@/types';
-import { composedFields, validateExcelMappings, type ExcelArrayMapping, type ExcelComposedMapping, type ExcelSheetMapping } from '@/lib/excel/template-config';
+import type { ExcelConfig, ExcelFieldStyle, ExcelCompositionPartStyle } from '@/types';
+import { composedFields, parseExcelCompositionPartStyles, parseExcelFieldStyle, parseExcelFieldStyles, validateExcelMappings, type ExcelArrayMapping, type ExcelComposedMapping, type ExcelSheetMapping } from '@/lib/excel/template-config';
 import { findValueInData, getNestedValue, isPlainObject, type UnknownRecord } from './data-utils';
 import { formatExcelValue, resolveExcelDynamicValue, type ExcelFieldType } from './excel-values';
 import { rewriteExcelFormula } from './excel-formulas';
@@ -26,20 +26,38 @@ function excelRowValue(item: UnknownRecord, field: string): unknown {
   return value;
 }
 
-function renderComposedText(template: string, renderField: (field: string) => string): string {
+function renderComposedText(
+  template: string,
+  renderField: (field: string) => string,
+  fieldStyles?: Record<string, ExcelCompositionPartStyle>,
+  baseFont?: Partial<ExcelJS.Font>,
+): string | ExcelJS.CellRichTextValue {
   const token = /\{\{([^{}]+)\}\}/g;
-  let result = '';
+  const parts: Array<{ text: string; field?: string }> = [];
   let previousEnd = 0;
   let previousValue: string | undefined;
   for (const match of template.matchAll(token)) {
     const between = template.slice(previousEnd, match.index);
-    result += previousValue !== undefined && !previousValue.trim() ? '' : between;
-    const value = renderField(match[1].trim());
-    result += value.trim() ? value : '';
+    if (previousValue === undefined || previousValue.trim()) parts.push({ text: between });
+    const field = match[1].trim();
+    const value = renderField(field);
+    if (value.trim()) parts.push({ text: value, field });
     previousValue = value;
     previousEnd = match.index + match[0].length;
   }
-  return result + template.slice(previousEnd);
+  parts.push({ text: template.slice(previousEnd) });
+  if (!fieldStyles || !Object.keys(fieldStyles).length) return parts.map(part => part.text).join('');
+  const nonempty = parts.filter(part => part.text);
+  if (!nonempty.length) return '';
+  const font = { ...baseFont, bold: baseFont?.bold ?? false };
+  return { richText: nonempty.map(part => ({
+    text: part.text,
+    font: {
+      ...font,
+      ...(fieldStyles[part.field ?? '']?.bold !== undefined && { bold: fieldStyles[part.field ?? ''].bold }),
+      ...(fieldStyles[part.field ?? '']?.fontSize !== undefined && { size: fieldStyles[part.field ?? ''].fontSize }),
+    },
+  })) };
 }
 
 /** Validate stored JSON rather than silently dropping malformed mappings. */
@@ -54,7 +72,7 @@ function readConfig(raw: UnknownRecord): ExcelConfig {
       if (typeof refs !== 'string' && !(Array.isArray(refs) && refs.every(ref => typeof ref === 'string'))) throw new Error(`Mapping invalide pour ${field}.`);
       mapping[field] = refs as string | string[];
     }
-    sheets.push({ sheetName: entry.sheetName, mapping });
+    sheets.push({ sheetName: entry.sheetName, mapping, fieldStyles: parseExcelFieldStyles(entry.fieldStyles) });
   }
   if (!sheets.length && typeof raw.feuilleCiblee === 'string' && isPlainObject(raw.cellMappings)) {
     const mapping: ExcelSheetMapping['mapping'] = {};
@@ -69,7 +87,8 @@ function readConfig(raw: UnknownRecord): ExcelConfig {
   if (raw.composedMappings !== undefined && !Array.isArray(raw.composedMappings)) throw new Error('Compositions Excel invalides.');
   for (const entry of (raw.composedMappings ?? []) as unknown[]) {
     if (!isPlainObject(entry) || typeof entry.sheetName !== 'string' || typeof entry.cellRef !== 'string' || typeof entry.template !== 'string') throw new Error('Composition Excel invalide.');
-    composed.push({ sheetName: entry.sheetName, cellRef: entry.cellRef, template: entry.template });
+    composed.push({ sheetName: entry.sheetName, cellRef: entry.cellRef, template: entry.template, style: parseExcelFieldStyle(entry.style),
+      fieldStyles: parseExcelCompositionPartStyles(entry.fieldStyles, entry.template) });
   }
   if (raw.arrayMappings !== undefined && !Array.isArray(raw.arrayMappings)) throw new Error('Mapping des tableaux Excel invalide.');
   for (const entry of (raw.arrayMappings ?? []) as unknown[]) {
@@ -84,7 +103,11 @@ function readConfig(raw: UnknownRecord): ExcelConfig {
       stopCondition: (entry.stopCondition ?? 'empty_first_col') as ExcelArrayMapping['stopCondition'],
       maxRows: entry.maxRows as number | undefined,
       columnMapping: entry.columnMapping as Record<string, string>,
-      composedColumns: (entry.composedColumns as ExcelArrayMapping['composedColumns'] | undefined)?.map(column => ({ column: column.column, template: column.template })),
+      fieldStyles: parseExcelFieldStyles(entry.fieldStyles),
+      composedColumns: (entry.composedColumns as ExcelArrayMapping['composedColumns'] | undefined)?.map(column => ({
+        column: column.column, template: column.template, style: parseExcelFieldStyle(column.style),
+        fieldStyles: parseExcelCompositionPartStyles(column.fieldStyles, column.template),
+      })),
       overflowMode: entry.overflowMode as ExcelArrayMapping['overflowMode'],
     });
   }
@@ -264,6 +287,11 @@ export async function fillExcelWorkbook(
   // A line break in a composition needs wrapped text, otherwise Excel shows it on one line.
   const wrapCompositionText = (cell: ExcelJS.Cell, template: string) => { if (template.includes('\n')) cell.alignment = { ...cell.alignment, wrapText: true }; };
   const indentCompositionText = (cell: ExcelJS.Cell) => { cell.alignment = { ...cell.alignment, horizontal: 'left', indent: 2 }; };
+  const compositionFont = (cell: ExcelJS.Cell, style?: ExcelFieldStyle): Partial<ExcelJS.Font> => ({
+    ...cell.font,
+    ...(style?.bold !== undefined && { bold: style.bold }),
+    ...(style?.fontSize !== undefined && { size: style.fontSize }),
+  });
   const placeCompositionImage = async (sheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, urls: unknown[]) => {
     clearExcelCellImages(sheet, cell);
     const url = urls.find(value => value !== undefined && value !== null && value !== '');
@@ -314,11 +342,11 @@ export async function fillExcelWorkbook(
   const finalConfig = { ...config, arrayMappings: tables.map(t => ({ ...t.mapping, maxRows: t.capacity, rowSpan: t.span })) };
   const finalErrors = validateExcelMappings(finalConfig, workbook.worksheets);
   if (finalErrors.length) throw new Error(finalErrors.join('\n'));
-  const writes: Array<{ sheet: ExcelJS.Worksheet; cell: ExcelJS.Cell; field: string; value: unknown }> = [];
+  const writes: Array<{ sheet: ExcelJS.Worksheet; cell: ExcelJS.Cell; field: string; value: unknown; style?: ExcelFieldStyle }> = [];
   for (const mapping of config.sheetMappings ?? []) {
     const sheet = workbook.getWorksheet(mapping.sheetName)!;
     for (const [field, refs] of Object.entries(mapping.mapping)) {
-      for (const ref of Array.isArray(refs) ? refs : [refs]) writes.push({ sheet, cell: claim(sheet, ref, field), field, value: resolve(field) });
+      for (const ref of Array.isArray(refs) ? refs : [refs]) writes.push({ sheet, cell: claim(sheet, ref, field), field, value: resolve(field), style: mapping.fieldStyles?.[field] });
     }
   }
   for (const { mapping, items, capacity, span } of tables) {
@@ -326,18 +354,55 @@ export async function fillExcelWorkbook(
     for (let index = 0; index < capacity; index++) {
       for (const [field, column] of Object.entries(mapping.columnMapping)) {
         const ref = `${column}${mapping.startRow + index * span}`;
-        writes.push({ sheet, cell: claim(sheet, ref, `${mapping.arrayId}.${field}`), field,
+        writes.push({ sheet, cell: claim(sheet, ref, `${mapping.arrayId}.${field}`), field, style: mapping.fieldStyles?.[field],
           value: items[index] ? excelRowValue(items[index], field) : null });
       }
     }
   }
   const uniqueWrites = new Map(writes.map(entry => [`${entry.sheet.name}!${entry.cell.address}`, entry]));
-  for (const entry of uniqueWrites.values()) await write(entry.sheet, entry.cell, entry.field, entry.value);
+  const rowHeights = new Map<ExcelJS.Row, number>();
+  const applyStyle = (sheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, style?: ExcelFieldStyle) => {
+    if (!style) return;
+    // ExcelJS can share loaded style objects across cells with the same template formatting.
+    cell.style = { ...cell.style };
+    if (style.horizontal || style.vertical) cell.alignment = {
+      ...cell.alignment,
+      ...(style.horizontal && { horizontal: style.horizontal }),
+      ...(style.vertical && { vertical: style.vertical }),
+    };
+    if (style.bold !== undefined || style.fontSize !== undefined) cell.font = {
+      ...cell.font,
+      ...(style.bold !== undefined && { bold: style.bold }),
+      ...(style.fontSize !== undefined && { size: style.fontSize }),
+    };
+    if (style.rowHeight !== undefined) {
+      const row = sheet.getRow(Number(cell.row));
+      rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, style.rowHeight));
+    }
+  };
+  const applyCompositionStyle = (
+    sheet: ExcelJS.Worksheet,
+    cell: ExcelJS.Cell,
+    style?: ExcelFieldStyle,
+    fieldStyles?: Record<string, ExcelCompositionPartStyle>,
+  ) => {
+    applyStyle(sheet, cell, style);
+    // Keep the cell's base font regular so a run explicitly set to "Non" cannot
+    // inherit bold from the source template; other runs carry their own font.
+    if (Object.values(fieldStyles ?? {}).some(part => part.bold === false)) {
+      cell.font = { ...cell.font, bold: false };
+    }
+  };
+  for (const entry of uniqueWrites.values()) {
+    await write(entry.sheet, entry.cell, entry.field, entry.value);
+    applyStyle(entry.sheet, entry.cell, entry.style);
+  }
   for (const { mapping, items, capacity, span } of tables) {
     const sheet = workbook.getWorksheet(mapping.sheetName)!;
     for (let index = 0; index < capacity; index++) {
       for (const [compositionIndex, composition] of (mapping.composedColumns ?? []).entries()) {
         const cell = claim(sheet, `${composition.column}${mapping.startRow + index * span}`, `${mapping.arrayId}.composition-${compositionIndex + 1}`);
+        cell.style = { ...cell.style };
         const item = items[index];
         const template = withoutImageFields(composition.template);
         cell.value = item ? renderComposedText(template, (field) => {
@@ -345,11 +410,12 @@ export async function fillExcelWorkbook(
           if (value !== null && value !== undefined && typeof value === 'object' && !(value instanceof Date)) throw new Error(`${mapping.arrayId}.${field} n'est pas un champ simple.`);
           const formatted = formatExcelValue(value, field, config);
           return formatted === null ? '' : formatted instanceof Date ? formatted.toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : String(formatted);
-        }) : null;
+        }, composition.fieldStyles, compositionFont(cell, composition.style)) : null;
         cell.numFmt = '@';
         wrapCompositionText(cell, composition.template);
         if (compositionImageFields(composition.template).length) indentCompositionText(cell);
         await placeCompositionImage(sheet, cell, item ? compositionImageFields(composition.template).map(field => excelRowValue(item, field)) : []);
+        applyCompositionStyle(sheet, cell, composition.style, composition.fieldStyles);
       }
     }
   }
@@ -365,6 +431,7 @@ export async function fillExcelWorkbook(
   for (const [index, mapping] of (config.composedMappings ?? []).entries()) {
     const sheet = workbook.getWorksheet(mapping.sheetName)!;
     const cell = claim(sheet, mapping.cellRef, `composition ${index + 1}`);
+    cell.style = { ...cell.style };
     for (const field of composedFields(mapping.template)!) {
       const value = resolve(field);
       if (value !== null && value !== undefined && typeof value === 'object' && !(value instanceof Date)) throw new Error(`${field} n'est pas un champ simple.`);
@@ -372,12 +439,14 @@ export async function fillExcelWorkbook(
     cell.value = renderComposedText(withoutImageFields(mapping.template), (field) => {
       const value = formatExcelValue(resolve(field), field, config);
       return value === null ? '' : value instanceof Date ? value.toLocaleDateString('fr-FR', { timeZone: 'UTC' }) : String(value);
-    });
+    }, mapping.fieldStyles, compositionFont(cell, mapping.style));
     cell.numFmt = '@';
     wrapCompositionText(cell, mapping.template);
     if (compositionImageFields(mapping.template).length) indentCompositionText(cell);
     await placeCompositionImage(sheet, cell, compositionImageFields(mapping.template).map(field => resolve(field)));
+    applyCompositionStyle(sheet, cell, mapping.style, mapping.fieldStyles);
   }
+  for (const [row, height] of rowHeights) row.height = height;
   const inlineImages: Array<{ sheet: ExcelJS.Worksheet; cell: ExcelJS.Cell; field: string }> = [];
   workbook.eachSheet(sheet => sheet.eachRow(row => row.eachCell(cell => {
     if (cell.isMerged && cell.master !== cell) return;

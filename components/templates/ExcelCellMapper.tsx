@@ -6,6 +6,8 @@ import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
 } from '@/components/admin/organizationFormConfig';
+import type { ExcelFieldStyle } from '@/types';
+import { ExcelFieldStyleEditor } from './ExcelFieldStyleEditor';
 
 interface SheetInfo {
   name: string;
@@ -32,6 +34,8 @@ interface Props {
   secteur: string;
   spFields?: string[]; // Sous-ensemble de `fields` à regrouper dans la catégorie SP
   initialMapping?: CellMapping; // Mappings existants à restaurer
+  fieldStyles?: Record<string, ExcelFieldStyle>;
+  onFieldStylesChange?: (styles: Record<string, ExcelFieldStyle>) => void;
   onMappingComplete: (mapping: CellMapping, fileConfig: MappingContext) => void;
   onMappingChange?: (mapping: CellMapping) => void; // Notifie le parent en continu
   onBack: () => void;
@@ -49,7 +53,7 @@ function getColumnName(colIndex: number): string {
   return name;
 }
 
-export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMapping, onMappingComplete, onMappingChange, onBack, preserveFormulas = true }: Props) {
+export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMapping, fieldStyles, onFieldStylesChange, onMappingComplete, onMappingChange, onBack, preserveFormulas = true }: Props) {
   const [mapping, setMapping] = useState<CellMapping>(initialMapping || {});
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedField, setExpandedField] = useState<string | null>(fields[0] || null);
@@ -326,6 +330,7 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
                         >
                           <div className="flex items-center justify-between mb-1">
                             <p className="text-sm font-medium text-gray-900 truncate">{field}</p>
+                            {mappedCells.length > 0 && expandedField !== field && <p className="text-xs text-blue-700">Cliquer pour régler la mise en forme</p>}
                             {mappedCells.length > 0 && (
                               <span className="text-xs text-green-700 font-semibold">
                                 {mappedCells.length} cellule{mappedCells.length > 1 ? 's' : ''}
@@ -355,6 +360,18 @@ export function ExcelCellMapper({ sheet, fields, secteur, spFields, initialMappi
                                 </div>
                               ))}
                             </div>
+                          )}
+                          {mappedCells.length > 0 && expandedField === field && (
+                            <ExcelFieldStyleEditor
+                              field={field}
+                              style={fieldStyles?.[field]}
+                              onChange={style => {
+                                const next = { ...fieldStyles };
+                                if (style) next[field] = style;
+                                else delete next[field];
+                                onFieldStylesChange?.(next);
+                              }}
+                            />
                           )}
                         </div>
                       );

@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { composedFields, validateExcelMappings, type ExcelComposedMapping } from '@/lib/excel/template-config';
+import { composedFields, retainExcelCompositionPartStyles, validateExcelMappings, type ExcelComposedMapping } from '@/lib/excel/template-config';
 import { Trash2, FileSpreadsheet, Check, Table2, Plus } from 'lucide-react';
 import { ExcelCellMapper } from './ExcelCellMapper';
+import { ExcelFieldStyleEditor } from './ExcelFieldStyleEditor';
+import { ExcelCompositionPartStylesEditor } from './ExcelCompositionPartStylesEditor';
 import { ExcelArrayMapper, ArrayMapping } from './ExcelArrayMapper';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
+import type { ExcelFieldStyle } from '@/types';
 
 interface SheetInfo {
   name: string;
@@ -20,6 +23,7 @@ interface SheetInfo {
 interface SheetMapping {
   sheetName: string;
   mapping: { [fieldName: string]: string | string[] };
+  fieldStyles?: Record<string, ExcelFieldStyle>;
 }
 
 type MultiSheetFileConfig = {
@@ -123,7 +127,9 @@ export function ExcelMultiSheetMapper({
       if (Object.keys(mapping).length === 0) {
         return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
       }
-      const next: SheetMapping = { sheetName, mapping };
+      const fieldStyles = { ...prev[idx]?.fieldStyles };
+      for (const field of Object.keys(fieldStyles)) if (!mapping[field]) delete fieldStyles[field];
+      const next: SheetMapping = { sheetName, mapping, fieldStyles };
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = next;
@@ -286,10 +292,19 @@ export function ExcelMultiSheetMapper({
           secteur={secteur}
           spFields={spFields}
           initialMapping={currentSheetMapping}
+          fieldStyles={sheetMappings.find(sm => sm.sheetName === editingSheet.name)?.fieldStyles}
+          onFieldStylesChange={fieldStyles => {
+            setSheetMappings(prev => {
+              const current = prev.find(sm => sm.sheetName === editingSheet.name);
+              const mapping = editMappingRef.current;
+              const next = { sheetName: editingSheet.name, mapping, fieldStyles };
+              return current ? prev.map(sm => sm.sheetName === editingSheet.name ? next : sm) : [...prev, next];
+            });
+          }}
           onMappingComplete={handleMappingComplete}
           onMappingChange={(m) => {
             editMappingRef.current = m;
-            onMappingsChange?.([...sheetMappings.filter(sm => sm.sheetName !== editingSheet.name), { sheetName: editingSheet.name, mapping: m }]);
+            onMappingsChange?.([...sheetMappings.filter(sm => sm.sheetName !== editingSheet.name), { sheetName: editingSheet.name, mapping: m, fieldStyles: sheetMappings.find(sm => sm.sheetName === editingSheet.name)?.fieldStyles }]);
           }}
           preserveFormulas={preserveFormulas}
           onBack={() => {
@@ -519,19 +534,24 @@ export function ExcelMultiSheetMapper({
           <p className="mt-1 text-sm text-gray-600">Réunissez plusieurs variables simples dans une seule cellule, avec le texte et les espaces de votre choix.</p>
         </div>
         {composedMappings.map((mapping, index) => (
-          <div key={`${mapping.sheetName}-${mapping.cellRef}-${index}`} className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
+          <div key={`${mapping.sheetName}-${mapping.cellRef}-${index}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
             <div className="min-w-0 text-sm font-medium text-gray-700">{mapping.sheetName} · {mapping.cellRef}</div>
             <label className="block min-w-0 text-xs font-medium text-gray-700">
               Contenu de la cellule
               <input
                 value={mapping.template}
-                onChange={event => setComposedMappings(prev => prev.map((entry, i) => i === index ? { ...entry, template: event.target.value } : entry))}
+                onChange={event => setComposedMappings(prev => prev.map((entry, i) => i === index ? { ...entry, template: event.target.value, fieldStyles: retainExcelCompositionPartStyles(entry.fieldStyles, event.target.value) } : entry))}
                 className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </label>
             <button type="button" onClick={() => setComposedMappings(prev => prev.filter((_, i) => i !== index))} aria-label={`Supprimer la composition ${mapping.sheetName} ${mapping.cellRef}`} className="inline-flex items-center justify-center gap-1 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
               <Trash2 className="h-4 w-4" /> Supprimer
             </button>
+            </div>
+            <p className="mt-3 text-xs font-semibold text-gray-800">Mise en forme de toute la cellule</p>
+            <ExcelFieldStyleEditor field={`Cellule composée ${mapping.sheetName} ${mapping.cellRef}`} style={mapping.style} onChange={style => setComposedMappings(prev => prev.map((entry, i) => i === index ? { ...entry, style } : entry))} />
+            <ExcelCompositionPartStylesEditor template={mapping.template} styles={mapping.fieldStyles} onChange={fieldStyles => setComposedMappings(prev => prev.map((entry, i) => i === index ? { ...entry, fieldStyles } : entry))} />
           </div>
         ))}
         <div className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-end">

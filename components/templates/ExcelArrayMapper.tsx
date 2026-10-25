@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
-import { composedFields, validateExcelMappings, type ExcelSheetMapping, type ExcelComposedMapping } from '@/lib/excel/template-config';
+import { composedFields, retainExcelCompositionPartStyles, validateExcelMappings, type ExcelSheetMapping, type ExcelComposedMapping } from '@/lib/excel/template-config';
+import type { ExcelFieldStyle, ExcelCompositionPartStyle } from '@/types';
+import { ExcelFieldStyleEditor } from './ExcelFieldStyleEditor';
+import { ExcelCompositionPartStylesEditor } from './ExcelCompositionPartStylesEditor';
 
 interface SheetInfo {
   name: string;
@@ -23,7 +26,8 @@ export interface ArrayMapping {
   overflowMode?: 'error' | 'insert_rows';
   // Mapping colonne -> champ (ex: "numero" -> "B", "type" -> "C")
   columnMapping: { [fieldId: string]: string };
-  composedColumns?: Array<{ column: string; template: string }>;
+  fieldStyles?: Record<string, ExcelFieldStyle>;
+  composedColumns?: Array<{ column: string; template: string; style?: ExcelFieldStyle; fieldStyles?: Record<string, ExcelCompositionPartStyle> }>;
 }
 
 interface Props {
@@ -123,6 +127,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
       maxRows: editingMapping.maxRows,
       overflowMode: editingMapping.overflowMode ?? 'error',
       columnMapping: editingMapping.columnMapping || {},
+      fieldStyles: editingMapping.fieldStyles,
       composedColumns: editingMapping.composedColumns ?? [],
     };
     const nextMappings = editingMappingIndex === null
@@ -211,9 +216,12 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     if (!editingMapping) return;
     const newMapping = { ...editingMapping.columnMapping };
     delete newMapping[fieldId];
+    const fieldStyles = { ...editingMapping.fieldStyles };
+    delete fieldStyles[fieldId];
     setEditingMapping({
       ...editingMapping,
       columnMapping: newMapping,
+      fieldStyles,
     });
   };
 
@@ -229,6 +237,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
       maxRows: editingMapping.maxRows,
       overflowMode: editingMapping.overflowMode ?? 'error',
       columnMapping: editingMapping.columnMapping ?? {},
+      fieldStyles: editingMapping.fieldStyles,
       composedColumns,
     };
     const nextMappings = editingMappingIndex === null
@@ -393,6 +402,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                       <div>
                         <p className="text-sm font-medium text-gray-900">{field.label}</p>
                         <p className="text-xs text-gray-500">Type: {field.type}</p>
+                        {mappedColumn && !isSelected && <p className="text-xs text-blue-700">Cliquer pour régler la mise en forme</p>}
                       </div>
                       {mappedColumn && (
                         <div className="flex items-center gap-2">
@@ -415,6 +425,18 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                       <p className="text-xs text-purple-600 mt-1">
                         ⚡ Colonne de contrôle (arrêt si vide)
                       </p>
+                    )}
+                    {mappedColumn && isSelected && (
+                      <ExcelFieldStyleEditor
+                        field={field.label}
+                        style={editingMapping.fieldStyles?.[field.id]}
+                        onChange={style => {
+                          const fieldStyles = { ...editingMapping.fieldStyles };
+                          if (style) fieldStyles[field.id] = style;
+                          else delete fieldStyles[field.id];
+                          setEditingMapping({ ...editingMapping, fieldStyles });
+                        }}
+                      />
                     )}
                   </div>
                 );
@@ -550,15 +572,24 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             <p className="mt-1 text-sm text-purple-900">Chaque ligne réunit des champs de ce tableau uniquement. Conservez au moins une colonne classique pour déterminer la fin des données.</p>
           </div>
           {(editingMapping.composedColumns ?? []).map((composition, index) => (
-            <div key={`${composition.column}-${index}`} className="flex flex-col gap-2 rounded-md border border-purple-200 bg-white p-3 sm:flex-row sm:items-end">
-              <span className="shrink-0 font-mono text-sm font-semibold text-purple-800">Colonne {composition.column}</span>
-              <label className="min-w-0 flex-1 text-xs font-medium text-gray-700">
+            <div key={`${composition.column}-${index}`} className="rounded-md border border-purple-200 bg-white p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <span className="shrink-0 font-mono text-sm font-semibold text-purple-800">Colonne {composition.column}</span>
+                <label className="min-w-0 flex-1 text-xs font-medium text-gray-700">
                 Contenu répété sur chaque ligne
-                <textarea rows={Math.max(1, composition.template.split('\n').length)} value={composition.template} onChange={event => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, template: event.target.value } : entry) } : prev)} className="mt-1 w-full resize-y rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200" />
-              </label>
-              <button type="button" onClick={() => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.filter((_, i) => i !== index) } : prev)} aria-label={`Supprimer la colonne composée ${composition.column}`} className="inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-600">
-                <Trash2 className="h-4 w-4" /> Supprimer
-              </button>
+                <textarea rows={Math.max(1, composition.template.split('\n').length)} value={composition.template} onChange={event => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, template: event.target.value, fieldStyles: retainExcelCompositionPartStyles(entry.fieldStyles, event.target.value) } : entry) } : prev)} className="mt-1 w-full resize-y rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                </label>
+                <button type="button" onClick={() => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.filter((_, i) => i !== index) } : prev)} aria-label={`Supprimer la colonne composée ${composition.column}`} className="inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-600">
+                  <Trash2 className="h-4 w-4" /> Supprimer
+                </button>
+              </div>
+              <p className="mt-3 text-xs font-semibold text-gray-800">Mise en forme de toute la cellule</p>
+              <ExcelFieldStyleEditor field={`Colonne composée ${composition.column}`} style={composition.style} onChange={style => setEditingMapping(prev => prev ? {
+                ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, style } : entry),
+              } : prev)} />
+              <ExcelCompositionPartStylesEditor template={composition.template} styles={composition.fieldStyles} onChange={fieldStyles => setEditingMapping(prev => prev ? {
+                ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, fieldStyles } : entry),
+              } : prev)} />
             </div>
           ))}
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-end">
