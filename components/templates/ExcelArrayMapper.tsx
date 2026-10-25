@@ -1,8 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft } from 'lucide-react';
+import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
+import { composedFields, retainExcelCompositionPartStyles, validateExcelMappings, type ExcelSheetMapping, type ExcelComposedMapping } from '@/lib/excel/template-config';
+import type { ExcelFieldStyle, ExcelCompositionPartStyle } from '@/types';
+import { ExcelFieldStyleEditor } from './ExcelFieldStyleEditor';
+import { ExcelCompositionPartStylesEditor } from './ExcelCompositionPartStylesEditor';
 
 interface SheetInfo {
   name: string;
@@ -22,6 +26,8 @@ export interface ArrayMapping {
   overflowMode?: 'error' | 'insert_rows';
   // Mapping colonne -> champ (ex: "numero" -> "B", "type" -> "C")
   columnMapping: { [fieldId: string]: string };
+  fieldStyles?: Record<string, ExcelFieldStyle>;
+  composedColumns?: Array<{ column: string; template: string; style?: ExcelFieldStyle; fieldStyles?: Record<string, ExcelCompositionPartStyle> }>;
 }
 
 interface Props {
@@ -29,6 +35,8 @@ interface Props {
   arrayFields: ArrayFieldDefinition[];
   spArrayIds?: string[]; // Sous-ensemble d'arrayFields à regrouper sous la section SP
   initialMappings?: ArrayMapping[];
+  sheetMappings?: ExcelSheetMapping[];
+  composedMappings?: ExcelComposedMapping[];
   onMappingsChange: (mappings: ArrayMapping[]) => void;
 }
 
@@ -70,11 +78,15 @@ function parseMergeRange(range: string) {
   };
 }
 
-export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappings, onMappingsChange }: Props) {
+export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappings, sheetMappings, composedMappings, onMappingsChange }: Props) {
   const [mappings, setMappings] = useState<ArrayMapping[]>(initialMappings || []);
-  const [expandedArray, setExpandedArray] = useState<string | null>(null);
+  const [expandedMappingIndex, setExpandedMappingIndex] = useState<number | null>(null);
   const [editingArray, setEditingArray] = useState<ArrayFieldDefinition | null>(null);
   const [editingMapping, setEditingMapping] = useState<Partial<ArrayMapping> | null>(null);
+  const [editingMappingIndex, setEditingMappingIndex] = useState<number | null>(null);
+  const [newColumn, setNewColumn] = useState('');
+  const [newTemplate, setNewTemplate] = useState('');
+  const [mappingError, setMappingError] = useState<string | null>(null);
 
   // Mettre à jour le parent quand les mappings changent
   const updateMappings = (newMappings: ArrayMapping[]) => {
@@ -82,18 +94,20 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     onMappingsChange(newMappings);
   };
 
-  // Trouver le mapping existant pour un array
-  const getMappingForArray = (arrayId: string) => {
-    return mappings.find(m => m.arrayId === arrayId);
-  };
-
-  // Commencer à éditer un array
-  const startEditing = (arrayField: ArrayFieldDefinition) => {
-    const existing = getMappingForArray(arrayField.id);
+  // Un tableau peut être affiché sur plusieurs feuilles, avec un mapping par feuille.
+  const startEditing = (arrayField: ArrayFieldDefinition, index: number | null = null) => {
+    const existing = index === null ? null : mappings[index];
+    const availableSheet = sheets.find(sheet => !mappings.some(mapping =>
+      mapping.arrayId === arrayField.id && mapping.sheetName === sheet.name,
+    ));
     setEditingArray(arrayField);
+    setEditingMappingIndex(index);
+    setNewColumn('');
+    setNewTemplate('');
+    setMappingError(null);
     setEditingMapping(existing || {
       arrayId: arrayField.id,
-      sheetName: sheets[0]?.name || '',
+      sheetName: availableSheet?.name || '',
       startRow: 2,
       stopCondition: 'empty_first_col',
       overflowMode: 'error',
@@ -113,24 +127,34 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
       maxRows: editingMapping.maxRows,
       overflowMode: editingMapping.overflowMode ?? 'error',
       columnMapping: editingMapping.columnMapping || {},
+      fieldStyles: editingMapping.fieldStyles,
+      composedColumns: editingMapping.composedColumns ?? [],
     };
-
-    const existingIndex = mappings.findIndex(m => m.arrayId === editingArray.id);
-    if (existingIndex >= 0) {
-      const updated = [...mappings];
-      updated[existingIndex] = newMapping;
-      updateMappings(updated);
-    } else {
-      updateMappings([...mappings, newMapping]);
+    const nextMappings = editingMappingIndex === null
+      ? [...mappings, newMapping]
+      : mappings.map((mapping, index) => index === editingMappingIndex ? newMapping : mapping);
+    const errors = validateExcelMappings({ sheetMappings, composedMappings, arrayMappings: nextMappings }, sheets);
+    for (const composition of newMapping.composedColumns ?? []) {
+      const unknown = composedFields(composition.template)?.find(field => !editingArray.rowFields.some(row => row.id === field));
+      if (unknown) errors.push(`${editingArray.label} : ${unknown} n'appartient pas à ce tableau.`);
     }
+    if (errors.length) {
+      setMappingError(errors[0]);
+      return;
+    }
+    setMappingError(null);
+
+    updateMappings(nextMappings);
 
     setEditingArray(null);
     setEditingMapping(null);
+    setEditingMappingIndex(null);
   };
 
-  // Supprimer un mapping
-  const removeMapping = (arrayId: string) => {
-    updateMappings(mappings.filter(m => m.arrayId !== arrayId));
+  // Supprimer uniquement l'emplacement choisi, pas les autres feuilles du tableau.
+  const removeMapping = (index: number) => {
+    updateMappings(mappings.filter((_, mappingIndex) => mappingIndex !== index));
+    setExpandedMappingIndex(null);
   };
 
   // État pour le champ sélectionné dans l'éditeur
@@ -142,7 +166,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     : null;
 
   // Dimensions de la grille
-  const maxRows = selectedSheet ? Math.min(selectedSheet.rows || 50, 200) : 30;
+  const maxRows = selectedSheet ? 500 : 30;
   const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 100) : 10;
 
   // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
@@ -173,6 +197,11 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     if (!selectedField || !editingMapping) return;
     
     const column = getColumnFromRef(cellRef);
+    if (editingMapping.composedColumns?.some(entry => entry.column === column)) {
+      setMappingError(`La colonne ${column} est déjà composée. Supprimez cette composition avant d'y mapper un champ.`);
+      return;
+    }
+    setMappingError(null);
     setEditingMapping({
       ...editingMapping,
       columnMapping: {
@@ -187,10 +216,44 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     if (!editingMapping) return;
     const newMapping = { ...editingMapping.columnMapping };
     delete newMapping[fieldId];
+    const fieldStyles = { ...editingMapping.fieldStyles };
+    delete fieldStyles[fieldId];
     setEditingMapping({
       ...editingMapping,
       columnMapping: newMapping,
+      fieldStyles,
     });
+  };
+
+  const addComposedColumn = () => {
+    if (!editingArray || !editingMapping) return;
+    const composition = { column: newColumn.trim().toUpperCase(), template: newTemplate };
+    const composedColumns = [...(editingMapping.composedColumns ?? []), composition];
+    const candidate: ArrayMapping = {
+      arrayId: editingArray.id,
+      sheetName: editingMapping.sheetName || sheets[0]?.name || '',
+      startRow: editingMapping.startRow || 2,
+      stopCondition: editingMapping.stopCondition || 'empty_first_col',
+      maxRows: editingMapping.maxRows,
+      overflowMode: editingMapping.overflowMode ?? 'error',
+      columnMapping: editingMapping.columnMapping ?? {},
+      fieldStyles: editingMapping.fieldStyles,
+      composedColumns,
+    };
+    const nextMappings = editingMappingIndex === null
+      ? [...mappings, candidate]
+      : mappings.map((mapping, index) => index === editingMappingIndex ? candidate : mapping);
+    const errors = validateExcelMappings({ sheetMappings, composedMappings, arrayMappings: nextMappings }, sheets);
+    const unknown = composedFields(composition.template)?.find(field => !editingArray.rowFields.some(row => row.id === field));
+    if (unknown) errors.push(`${editingArray.label} : ${unknown} n'appartient pas à ce tableau.`);
+    if (errors.length) {
+      setMappingError(errors[0]);
+      return;
+    }
+    setEditingMapping({ ...editingMapping, composedColumns });
+    setNewColumn('');
+    setNewTemplate('');
+    setMappingError(null);
   };
 
   // Si on est en mode édition
@@ -199,6 +262,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
 
     return (
       <div className="space-y-6">
+        {mappingError && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{mappingError}</p>}
         {/* Header */}
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -206,6 +270,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
               onClick={() => {
                 setEditingArray(null);
                 setEditingMapping(null);
+                setEditingMappingIndex(null);
                 setSelectedField(null);
               }}
               className="text-gray-500 hover:text-gray-700"
@@ -243,11 +308,16 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                 ...editingMapping,
                 sheetName: e.target.value,
                 columnMapping: {},
+                composedColumns: [],
               })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm"
             >
               {sheets.map(sheet => (
-                <option key={sheet.name} value={sheet.name}>{sheet.name}</option>
+                <option key={sheet.name} value={sheet.name}
+                  disabled={mappings.some((mapping, index) => index !== editingMappingIndex &&
+                    mapping.arrayId === editingArray.id && mapping.sheetName === sheet.name)}>
+                  {sheet.name}
+                </option>
               ))}
             </select>
           </div>
@@ -332,6 +402,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                       <div>
                         <p className="text-sm font-medium text-gray-900">{field.label}</p>
                         <p className="text-xs text-gray-500">Type: {field.type}</p>
+                        {mappedColumn && !isSelected && <p className="text-xs text-blue-700">Cliquer pour régler la mise en forme</p>}
                       </div>
                       {mappedColumn && (
                         <div className="flex items-center gap-2">
@@ -354,6 +425,18 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                       <p className="text-xs text-purple-600 mt-1">
                         ⚡ Colonne de contrôle (arrêt si vide)
                       </p>
+                    )}
+                    {mappedColumn && isSelected && (
+                      <ExcelFieldStyleEditor
+                        field={field.label}
+                        style={editingMapping.fieldStyles?.[field.id]}
+                        onChange={style => {
+                          const fieldStyles = { ...editingMapping.fieldStyles };
+                          if (style) fieldStyles[field.id] = style;
+                          else delete fieldStyles[field.id];
+                          setEditingMapping({ ...editingMapping, fieldStyles });
+                        }}
+                      />
                     )}
                   </div>
                 );
@@ -397,6 +480,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                           ([, col]) => col === colName
                         );
                         const mappedToField = mappedToFieldEntry?.[0];
+                        const composed = editingMapping.composedColumns?.find(entry => entry.column === colName);
                         const fieldDef = mappedToField 
                           ? editingArray.rowFields.find(f => f.id === mappedToField)
                           : null;
@@ -405,12 +489,13 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                           <th 
                             key={i} 
                             className={`border border-gray-300 px-2 py-1 min-w-16 ${
-                              mappedToField ? 'bg-green-200' : 'bg-gray-200'
+                              mappedToField ? 'bg-green-200' : composed ? 'bg-purple-200' : 'bg-gray-200'
                             }`}
-                            title={fieldDef ? `Mappé à: ${fieldDef.label}` : colName}
+                            title={fieldDef ? `Mappé à: ${fieldDef.label}` : composed?.template ?? colName}
                           >
                             {colName}
                             {mappedToField && <span className="block text-green-700">✓</span>}
+                            {composed && <span className="block text-purple-800">Mixte</span>}
                           </th>
                         );
                       })}
@@ -444,6 +529,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                               ([, col]) => col === colName
                             );
                             const mappedToField = mappedToFieldEntry?.[0];
+                            const composed = editingMapping.composedColumns?.some(entry => entry.column === colName);
 
                             return (
                               <td
@@ -454,6 +540,8 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                                 className={`border border-gray-300 px-2 py-1 truncate max-w-24 transition-colors text-xs ${
                                   mappedToField
                                     ? 'bg-green-100 text-green-800'
+                                    : composed
+                                    ? 'bg-purple-100 text-purple-900'
                                     : selectedField
                                     ? 'hover:bg-purple-100 cursor-pointer'
                                     : 'bg-white'
@@ -477,6 +565,56 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             </p>
           </div>
         </div>
+
+        <section className="space-y-3 rounded-lg border border-purple-200 bg-purple-50 p-4" aria-labelledby="array-composed-columns-title">
+          <div>
+            <h4 id="array-composed-columns-title" className="font-semibold text-purple-900">Colonnes composées du tableau</h4>
+            <p className="mt-1 text-sm text-purple-900">Chaque ligne réunit des champs de ce tableau uniquement. Conservez au moins une colonne classique pour déterminer la fin des données.</p>
+          </div>
+          {(editingMapping.composedColumns ?? []).map((composition, index) => (
+            <div key={`${composition.column}-${index}`} className="rounded-md border border-purple-200 bg-white p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <span className="shrink-0 font-mono text-sm font-semibold text-purple-800">Colonne {composition.column}</span>
+                <label className="min-w-0 flex-1 text-xs font-medium text-gray-700">
+                Contenu répété sur chaque ligne
+                <textarea rows={Math.max(1, composition.template.split('\n').length)} value={composition.template} onChange={event => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, template: event.target.value, fieldStyles: retainExcelCompositionPartStyles(entry.fieldStyles, event.target.value) } : entry) } : prev)} className="mt-1 w-full resize-y rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200" />
+                </label>
+                <button type="button" onClick={() => setEditingMapping(prev => prev ? { ...prev, composedColumns: prev.composedColumns?.filter((_, i) => i !== index) } : prev)} aria-label={`Supprimer la colonne composée ${composition.column}`} className="inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-600">
+                  <Trash2 className="h-4 w-4" /> Supprimer
+                </button>
+              </div>
+              <p className="mt-3 text-xs font-semibold text-gray-800">Mise en forme de toute la cellule</p>
+              <ExcelFieldStyleEditor field={`Colonne composée ${composition.column}`} style={composition.style} onChange={style => setEditingMapping(prev => prev ? {
+                ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, style } : entry),
+              } : prev)} />
+              <ExcelCompositionPartStylesEditor template={composition.template} styles={composition.fieldStyles} onChange={fieldStyles => setEditingMapping(prev => prev ? {
+                ...prev, composedColumns: prev.composedColumns?.map((entry, i) => i === index ? { ...entry, fieldStyles } : entry),
+              } : prev)} />
+            </div>
+          ))}
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-end">
+            <label className="text-xs font-medium text-purple-900">
+              Colonne Excel
+              <input value={newColumn} onChange={event => setNewColumn(event.target.value.toUpperCase())} placeholder="D" className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200" />
+            </label>
+            <label className="text-xs font-medium text-purple-900">
+              Ajouter un champ du tableau
+              <select value="" onChange={event => setNewTemplate(prev => `${prev}${prev.endsWith('}}') ? ' ' : ''}{{${event.target.value}}}`)} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200">
+                <option value="">Choisir un champ…</option>
+                {editingArray.rowFields.map(field => <option key={field.id} value={field.id}>{field.label}</option>)}
+              </select>
+              <button type="button" onClick={() => setNewTemplate(prev => `${prev}\n`)} className="mt-1 text-xs font-medium text-purple-700 underline hover:text-purple-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-600">Ajouter un retour à la ligne</button>
+            </label>
+            <label className="text-xs font-medium text-purple-900 sm:col-span-2">
+              Contenu (au moins deux champs distincts, Entrée = retour à la ligne dans la cellule)
+              <textarea rows={Math.max(2, newTemplate.split('\n').length)} value={newTemplate} onChange={event => setNewTemplate(event.target.value)} placeholder="{{designation}} — {{numero}}" className="mt-1 w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200" />
+            </label>
+            {mappingError && <p className="text-sm text-red-700 sm:col-span-2">{mappingError}</p>}
+            <button type="button" onClick={addComposedColumn} className="inline-flex w-fit items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 sm:col-span-2">
+              <Plus className="h-4 w-4" /> Ajouter la colonne
+            </button>
+          </div>
+        </section>
 
         {/* Résumé du mapping */}
         {mappedCount > 0 && (
@@ -506,6 +644,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             onClick={() => {
               setEditingArray(null);
               setEditingMapping(null);
+              setEditingMappingIndex(null);
               setSelectedField(null);
             }}
             className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -517,7 +656,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             disabled={mappedCount === 0}
             className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Enregistrer ({mappedCount} colonnes)
+            Enregistrer ({mappedCount + (editingMapping.composedColumns?.length ?? 0)} colonnes)
           </button>
         </div>
       </div>
@@ -534,7 +673,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
 
       <p className="text-sm text-gray-600 mb-4">
         Ces champs représentent des listes de données (lignes répétées). 
-        Configurez le mapping pour chaque tableau.
+        Configurez un emplacement par feuille pour chaque tableau.
       </p>
 
       <div className="space-y-2">
@@ -542,8 +681,9 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
           .map((af) => ({ af, isSp: (spArrayIds ?? []).includes(af.id) }))
           .sort((x, y) => Number(x.isSp) - Number(y.isSp))
           .map(({ af: arrayField, isSp }, idx, arr) => {
-          const mapping = getMappingForArray(arrayField.id);
-          const isConfigured = !!mapping;
+          const locations = mappings.map((mapping, index) => ({ mapping, index }))
+            .filter(({ mapping }) => mapping.arrayId === arrayField.id);
+          const isConfigured = locations.length > 0;
           const showSaHeader = idx === 0 && !isSp;
           const showSpHeader = isSp && (idx === 0 || !arr[idx - 1].isSp);
 
@@ -568,71 +708,53 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                   <div>
                     <div className="font-medium text-gray-900">{arrayField.label}</div>
                     <div className="text-sm text-gray-500">{arrayField.description}</div>
-                    {isConfigured && mapping && (
-                      <div className="text-xs text-green-700 mt-1">
-                        Feuille «{mapping.sheetName}» • Ligne {mapping.startRow} • 
-                        {Object.keys(mapping.columnMapping).length} colonnes mappées
-                      </div>
-                    )}
+                    {isConfigured && <div className="text-xs text-green-700 mt-1">{locations.length} feuille{locations.length > 1 ? 's' : ''} configurée{locations.length > 1 ? 's' : ''}</div>}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {isConfigured && (
-                    <button
-                      onClick={() => removeMapping(arrayField.id)}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      Supprimer
-                    </button>
-                  )}
-                  <button
-                    onClick={() => startEditing(arrayField)}
-                    className={`px-3 py-1.5 rounded-lg text-sm ${
-                      isConfigured
-                        ? 'border border-green-600 text-green-700 hover:bg-green-100'
-                        : 'bg-purple-600 text-white hover:bg-purple-700'
-                    }`}
-                  >
-                    {isConfigured ? 'Modifier' : 'Configurer'}
+                {locations.length < sheets.length && (
+                  <button onClick={() => startEditing(arrayField)}
+                    className={`px-3 py-1.5 rounded-lg text-sm ${isConfigured
+                      ? 'border border-green-600 text-green-700 hover:bg-green-100'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'}`}>
+                    {isConfigured ? 'Ajouter une feuille' : 'Configurer'}
                   </button>
-                </div>
+                )}
               </div>
 
-              {/* Détails du mapping si configuré */}
-              {isConfigured && mapping && expandedArray === arrayField.id && (
-                <div className="px-4 py-3 bg-white border-t border-green-200">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    {Object.entries(mapping.columnMapping).map(([fieldId, column]) => {
-                      const fieldDef = arrayField.rowFields.find(f => f.id === fieldId);
-                      return (
-                        <div key={fieldId} className="flex items-center gap-2">
-                          <span className="text-gray-600">{fieldDef?.label || fieldId}:</span>
-                          <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">
-                            Colonne {column}
-                          </span>
-                        </div>
-                      );
-                    })}
+              {locations.map(({ mapping, index }) => (
+                <div key={index} className="border-t border-green-200">
+                  <div className="flex items-center justify-between gap-2 px-4 py-2">
+                    <span className="text-sm text-green-800">
+                      Feuille «{mapping.sheetName}» · Ligne {mapping.startRow} · {Object.keys(mapping.columnMapping).length + (mapping.composedColumns?.length ?? 0)} colonnes
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => setExpandedMappingIndex(expandedMappingIndex === index ? null : index)}
+                        className="text-sm text-green-700 hover:underline">
+                        {expandedMappingIndex === index ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        <span className="sr-only">Détails de {mapping.sheetName}</span>
+                      </button>
+                      <button onClick={() => startEditing(arrayField, index)} className="text-sm text-green-700 hover:underline">Modifier</button>
+                      <button onClick={() => removeMapping(index)} className="text-sm text-red-600 hover:underline"
+                        aria-label={`Supprimer le tableau de ${mapping.sheetName}`}>Supprimer</button>
+                    </div>
                   </div>
+                  {expandedMappingIndex === index && (
+                    <div className="grid grid-cols-2 gap-2 bg-white px-4 py-3 text-sm">
+                      {Object.entries(mapping.columnMapping).map(([fieldId, column]) => (
+                        <div key={fieldId}>
+                          {arrayField.rowFields.find(field => field.id === fieldId)?.label || fieldId} : <span className="font-mono">Colonne {column}</span>
+                        </div>
+                      ))}
+                      {mapping.composedColumns?.map((composition, compositionIndex) => (
+                        <div key={`${composition.column}-${compositionIndex}`}>
+                          {composition.template.replace(/\n/g, ' ↵ ')} : <span className="font-mono">Colonne {composition.column}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {/* Toggle détails */}
-              {isConfigured && (
-                <button
-                  onClick={() => setExpandedArray(
-                    expandedArray === arrayField.id ? null : arrayField.id
-                  )}
-                  className="w-full px-4 py-2 bg-green-100 text-green-700 text-sm flex items-center justify-center gap-1 hover:bg-green-200"
-                >
-                  {expandedArray === arrayField.id ? (
-                    <>Masquer les détails <ChevronDown className="w-4 h-4" /></>
-                  ) : (
-                    <>Voir les détails <ChevronRight className="w-4 h-4" /></>
-                  )}
-                </button>
-              )}
+              ))}
             </div>
             </div>
           );

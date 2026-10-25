@@ -93,4 +93,77 @@ describe('buildSaWordData', () => {
       { sa_type_ligne: 'Fixe', sa_numero: '01 23 45 67 89', sa_prix_mensuel_ht: euro(29) },
     ]);
   });
+
+  it('conserve le type de chaque ligne SA dans le tableau de secours sans se fier à son rang', () => {
+    const source: UnknownRecord = {
+      situation_actuelle: {
+        lignes: [
+          { libelle: 'Acces fibre', numero_ligne: '09 87 65 43 21', type: 'internet', tarif_net_mensuel: 40 },
+          { libelle: 'Forfait mobile', numero_ligne: '06 12 34 56 78', type: 'mobile', tarif_net_mensuel: 20 },
+          { libelle: 'Ligne fixe', numero_ligne: '01 23 45 67 89', type: 'fixe', tarif_net_mensuel: 30 },
+        ],
+        abonnements: [
+          { libelle: 'Ligne fixe', tarif_net_mensuel: 30 },
+          { libelle: 'Acces fibre', tarif_net_mensuel: 40 },
+          { libelle: 'Forfait mobile', tarif_net_mensuel: 20 },
+        ],
+      },
+    };
+    const lines = buildSaWordData(source).lignes as UnknownRecord[];
+
+    expect(lines.map(({ designation, type }) => [designation, type])).toEqual([
+      ['Ligne Fixe', 'Fixe'],
+      ['Acces Fibre', 'Internet'],
+      ['Forfait Mobile', 'Mobile'],
+    ]);
+    expect(lines.map(({ designation, prix_mensuel_ht }) => [designation, prix_mensuel_ht])).toEqual([
+      ['Ligne Fixe', euro(30)],
+      ['Acces Fibre', euro(40)],
+      ['Forfait Mobile', euro(20)],
+    ]);
+  });
+
+  it('ne change ni lignes ni montants pour un modele SA sans {{type}}', () => {
+    const source: UnknownRecord = {
+      situation_actuelle: {
+        lignes: [
+          { libelle: 'Forfait mobile', numero_ligne: '06 12 34 56 78', type: 'mobile', tarif_net_mensuel: 20 },
+          { libelle: 'Acces fibre', type: 'internet', tarif_net_mensuel: 40 },
+        ],
+      },
+    };
+    const lines = buildSaWordData(source).lignes as UnknownRecord[];
+    expect(lines.map(({ type: _type, ...fields }) => fields)).toEqual([
+      {
+        designation: 'Forfait Mobile', libelle: 'Forfait Mobile', numero: '06 12 34 56 78',
+        numero_ligne: '06 12 34 56 78', quantite: 1, prix_mensuel_ht: euro(20), tarif: euro(20),
+        prix_total: '20,00 €',
+      },
+      {
+        designation: 'Acces Fibre', libelle: 'Acces Fibre', numero: '',
+        numero_ligne: '', quantite: 1, prix_mensuel_ht: euro(40), tarif: euro(40),
+        prix_total: '40,00 €',
+      },
+    ]);
+    expect(lines.map(({ type }) => type)).toEqual(['Mobile', 'Internet']);
+  });
+
+  it('ne devine pas un type lorsque le libelle et le numero ne permettent pas de le determiner', () => {
+    const lines = buildSaWordData({
+      situation_actuelle: { lignes: [{ libelle: 'Service Pro', tarif_net_mensuel: 15 }] },
+    }).lignes as UnknownRecord[];
+    expect(lines[0].type).toBe('');
+  });
+
+  it('complete le type a partir du libelle ou du numero si la SA ne le fournit pas', () => {
+    const lines = buildSaWordData({
+      situation_actuelle: {
+        lignes: [
+          { libelle: 'Acces fibre pro', numero_ligne: '09 87 65 43 21', type: null, tarif_net_mensuel: 40 },
+          { libelle: 'Forfait Pro', numero_ligne: '06 12 34 56 78', type: null, tarif_net_mensuel: 20 },
+        ],
+      },
+    }).lignes as UnknownRecord[];
+    expect(lines.map(({ type }) => type)).toEqual(['Internet', 'Mobile']);
+  });
 });

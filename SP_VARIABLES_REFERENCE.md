@@ -289,6 +289,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 | `sp_sp_numero` | Numéro de téléphone / ligne lié au forfait, nettoyé quand détectable | `{{sp_sp_numero}}` |
 | `sp_sp_quantite` | Quantité choisie pour le produit / forfait (si disponible) | `{{sp_sp_quantite}}` |
 | `sp_sp_produit` | Nom du produit proposé (recommandé pour la désignation SP) | `{{sp_sp_produit}}` |
+| `sp_sp_description` | Description de la fiche produit (vide si absente) | `{{sp_sp_description}}` |
 | `sp_sp_fournisseur` | Fournisseur | `{{sp_sp_fournisseur}}` |
 | `sp_sp_prix_actuel` | Prix actuel SA (texte formaté, optionnel) | `{{sp_sp_prix_actuel}}` |
 | `sp_sp_prix_propose` | Prix proposé SP (texte formaté, recommandé) | `{{sp_sp_prix_propose}}` |
@@ -302,12 +303,12 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 **Syntaxe boucle :**
 ```
 {{#sp_situation_proposee_forfaits}}
-{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
+{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_description}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}
 {{/sp_situation_proposee_forfaits}}
 ```
 > **Explication** : Situation proposée limitée aux forfaits uniquement (exclut le matériel). Pour un tableau 100% SP, utilisez en priorité `sp_sp_produit` et `sp_sp_prix_propose`.
 
-**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
+**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_description`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
 
 ---
 
@@ -321,7 +322,7 @@ Ces tableaux agrègent automatiquement plusieurs catégories.
 ```
 > **Explication** : Reprend les forfaits proposés avec les tarifs catalogue avant remise. Si au moins un forfait est remisé, une dernière ligne `Remise` est ajoutée automatiquement avec le montant total de la remise dans `sp_sp_prix_propose`.
 
-**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
+**Champs internes :** Identiques à `sp_situation_proposee_complet` (`sp_sp_type`, `sp_sp_nom`, `sp_sp_numero`, `sp_sp_quantite`, `sp_sp_produit`, `sp_sp_description`, `sp_sp_fournisseur`, `sp_sp_prix_actuel`, `sp_sp_prix_propose`, `sp_sp_economie`, `sp_sp_analyse`)
 
 ---
 

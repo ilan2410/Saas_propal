@@ -160,6 +160,17 @@ export interface PropositionTemplate {
 // Configuration spécifique au format de fichier
 export type FileConfig = ExcelConfig | WordConfig | PDFConfig;
 
+export interface ExcelFieldStyle {
+  horizontal?: 'left' | 'center' | 'right';
+  vertical?: 'top' | 'middle' | 'bottom';
+  bold?: boolean;
+  fontSize?: number;
+  /** Excel row height in points; shared by all cells on that row. */
+  rowHeight?: number;
+}
+
+export type ExcelCompositionPartStyle = Pick<ExcelFieldStyle, 'bold' | 'fontSize'>;
+
 export interface ExcelConfig {
   /** Group complete SA/SP table rows with a phone number first; disabled by default. */
   prioriserLignesAvecNumero?: boolean;
@@ -168,7 +179,8 @@ export interface ExcelConfig {
   cellMappings?: Record<string, string>;
   multiSheet?: boolean;
   sheetCount?: number;
-  sheetMappings?: Array<{ sheetName: string; mapping: Record<string, string | string[]> }>;
+  sheetMappings?: Array<{ sheetName: string; mapping: Record<string, string | string[]>; fieldStyles?: Record<string, ExcelFieldStyle> }>;
+  composedMappings?: Array<{ sheetName: string; cellRef: string; template: string; style?: ExcelFieldStyle; fieldStyles?: Record<string, ExcelCompositionPartStyle> }>;
   arrayMappings?: Array<{
     arrayId: string;
     sheetName: string;
@@ -176,7 +188,11 @@ export interface ExcelConfig {
     stopCondition: 'empty_first_col' | 'max_rows';
     maxRows?: number;
     columnMapping: Record<string, string>;
+    fieldStyles?: Record<string, ExcelFieldStyle>;
+    composedColumns?: Array<{ column: string; template: string; style?: ExcelFieldStyle; fieldStyles?: Record<string, ExcelCompositionPartStyle> }>;
     overflowMode?: 'error' | 'insert_rows';
+    /** Computed at generation time: worksheet rows per item (vertically merged template rows). */
+    rowSpan?: number;
   }>;
   /** Explicit field types take priority over automatic money/identifier handling. */
   fieldTypes?: Record<string, 'text' | 'number' | 'date' | 'boolean' | 'image'>;
@@ -792,6 +808,7 @@ export interface SpSituationProposeeLigne {
   sp_sp_numero?: string;
   sp_sp_quantite?: string;
   sp_sp_produit?: string;
+  sp_sp_description: string;
   sp_sp_fournisseur?: string;
   sp_sp_prix_actuel?: string;
   sp_sp_prix_propose: string;

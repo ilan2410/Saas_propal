@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
       // Parcourir les cellules avec contenu
       worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        if (rowNumber > 200) return;
+        if (rowNumber > 500) return;
         maxRow = Math.max(maxRow, rowNumber);
 
         row.eachCell({ includeEmpty: false }, (cell, colNumber) => {

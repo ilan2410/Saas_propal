@@ -41,6 +41,19 @@ function inferSaLineType(item: UnknownRecord, arrayKey: string): string | undefi
   return undefined;
 }
 
+function inferSaTelecomType(item: UnknownRecord, arrayKey: string): string {
+  const explicit = inferSaLineType(item, arrayKey);
+  if (explicit) return explicit;
+  const label = normalizeText(pickFirstString(item, ['libelle', 'designation', 'forfait']) ?? '');
+  if (/\b(mobile|cellulaire)\b/.test(label)) return 'mobile';
+  if (/\b(internet|fibre|adsl|sdsl|ftth|ftto)\b/.test(label)) return 'internet';
+  if (/\b(fixe|rtc|sda|trunk sip)\b/.test(label)) return 'fixe';
+  const numero = (pickFirstString(item, ['numero_ligne', 'numero']) ?? '').replace(/\D/g, '');
+  if (/^0[67]\d{8}$/.test(numero)) return 'mobile';
+  if (/^0[1-5]\d{8}$/.test(numero)) return 'fixe';
+  return '';
+}
+
 function looksLikeSaCommercialRow(item: UnknownRecord, arrayKey: string): boolean {
   const commercialArrays = new Set([
     'lignes',
@@ -130,6 +143,9 @@ function normalizeSaArrayItem(item: unknown, arrayKey: string): unknown {
 
   return {
     ...item,
+    ...(arrayKey === 'lignes' || arrayKey.startsWith('lignes_')
+      ? { type: inferSaTelecomType(item, arrayKey) }
+      : {}),
     designation,
     libelle: pickFirstString(item, ['libelle']) ?? designation,
     numero,
@@ -240,6 +256,27 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   out.sa_lignes_telephoniques = buildSaTelephoneLines(baseData);
 
   const currentLines = Array.isArray(out.lignes) ? out.lignes : [];
+  const sa = isPlainObject(baseData.situation_actuelle) ? baseData.situation_actuelle : {};
+  const sourceLines = [baseData, sa].flatMap((source) =>
+    ['lignes', 'lignes_mobiles', 'lignes_fixes', 'lignes_internet'].flatMap((key) =>
+      Array.isArray(source[key])
+        ? source[key].filter(isPlainObject).map((row: UnknownRecord) => ({ row, key }))
+        : []));
+  const typeForExportLine = (offre: string, numero: string): string => {
+    const sameNumber = numero.replace(/\D/g, '');
+    const byNumber = sameNumber ? sourceLines.filter(({ row }) =>
+      (pickFirstString(row, ['numero_ligne', 'numero']) ?? '').replace(/\D/g, '') === sameNumber) : [];
+    const byLabel = sourceLines.filter(({ row }) =>
+      ['libelle', 'designation', 'forfait'].some((key) =>
+        normalizeText(pickFirstString(row, [key]) ?? '') === normalizeText(offre)));
+    // Le panier SA peut ordonner les abonnements autrement que les lignes extraites.
+    for (const matches of [byNumber, byLabel]) {
+      const types = new Set(matches.map(({ row, key }) => inferSaTelecomType(row, key)).filter(Boolean));
+      if (types.size === 1) return [...types][0];
+      if (types.size > 1 && matches === byLabel) return '';
+    }
+    return inferSaTelecomType({ libelle: offre, numero_ligne: numero }, 'lignes');
+  };
   const fallbackSaLines = buildSituationActuelleLines(baseData, 0).lines.map((line, index) => {
     const existing = isPlainObject(currentLines[index]) ? currentLines[index] : {};
     const numero = line.numero || pickFirstString(existing, ['numero', 'numero_ligne']) || '';
@@ -252,7 +289,7 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
       quantite: line.quantite,
       prix_mensuel_ht: prixFormatted,
       tarif: prixFormatted,
-      type: '',
+      type: typeForExportLine(line.offre, line.numero),
     };
   });
   if (scoreSaArray(fallbackSaLines) >= scoreSaArray(out.lignes)) {
