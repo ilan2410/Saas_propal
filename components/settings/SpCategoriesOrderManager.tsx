@@ -204,9 +204,10 @@ function ProductTablesOrderSection({ templates }: Props) {
   }, [compatibleTemplates, templateId]);
 
   useEffect(() => {
+    if (!templateId) return;
     let cancelled = false;
     setIsCatalogueLoading(true);
-    fetch('/api/catalogue')
+    fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`)
       .then((response) => {
         if (!response.ok) throw new Error('Erreur catalogue');
         return response.json();
@@ -219,7 +220,7 @@ function ProductTablesOrderSection({ templates }: Props) {
       .catch(() => { if (!cancelled) toast.error('Impossible de charger le catalogue'); })
       .finally(() => { if (!cancelled) setIsCatalogueLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [templateId]);
 
   useEffect(() => {
     if (!templateId) {

@@ -119,6 +119,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">{template.nom}</h1>
+                  <span className="inline-block px-2 py-1 mb-2 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md">{template.secteur === 'bureautique' ? 'Bureautique' : 'Téléphonie'}</span>
                   {template.description ? (
                     <p className="text-gray-600 leading-relaxed">{template.description}</p>
                   ) : (

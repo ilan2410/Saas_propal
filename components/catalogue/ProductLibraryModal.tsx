@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { X, Library, Search, Download, Check, Loader2 } from 'lucide-react';
-import type { CatalogueCategorie, CatalogueProduit, Secteur } from '@/types';
+import type { CatalogueCategorie, CatalogueProduit, CatalogueSecteur } from '@/types';
 import { useRouter } from 'next/navigation';
 
 interface ProductLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  secteur: CatalogueSecteur;
 }
 
 type ProductKeyInput = {
@@ -17,7 +17,7 @@ type ProductKeyInput = {
   fournisseur?: string | null;
 };
 
-export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProps) {
+export function ProductLibraryModal({ isOpen, onClose, secteur }: ProductLibraryModalProps) {
   const router = useRouter();
   const [products, setProducts] = useState<CatalogueProduit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,12 +25,9 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
   const [searchQuery, setSearchQuery] = useState('');
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [importedKeys, setImportedKeys] = useState<Set<string>>(new Set());
-  const [clientSecteur, setClientSecteur] = useState<Secteur | null>(null);
   const [selectedCategorie, setSelectedCategorie] = useState<'all' | CatalogueCategorie>('all');
   const [selectedFournisseur, setSelectedFournisseur] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  const supabase = createClient();
 
   useEffect(() => {
     if (isOpen) {
@@ -41,7 +38,7 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
       setImportedIds(new Set());
       fetchLibraryProducts();
     }
-  }, [isOpen]);
+  }, [isOpen, secteur]);
 
   const normalizeText = (value: string) => value.trim().toLowerCase();
 
@@ -51,38 +48,13 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
   const fetchLibraryProducts = async () => {
     try {
       setLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setProducts([]);
-        setClientSecteur(null);
-        setImportedKeys(new Set());
-        return;
-      }
-
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('secteur')
-        .eq('id', user.id)
-        .single();
-
-      const secteur = (org?.secteur as Secteur) ?? 'telephonie';
-      setClientSecteur(secteur);
-
-      const allowedCatalogSectors = secteur === 'mixte' ? ['telephonie', 'bureautique'] : [secteur];
-
-      const { data: userProducts, error: userProductsError } = await supabase
-        .from('catalogues_produits')
-        .select('categorie, nom, fournisseur')
-        .eq('organization_id', user.id)
-        .eq('actif', true);
-
-      if (userProductsError) throw userProductsError;
+      // Récupérer les produits globaux (organization_id est NULL)
+      const response = await fetch(`/api/catalogue/library?secteur=${secteur}`);
+      if (!response.ok) throw new Error('Erreur chargement bibliothèque');
+      const { products: data, own: userProducts } = await response.json() as { products: CatalogueProduit[]; own: ProductKeyInput[] };
 
       const userKeySet = new Set<string>(
-        (userProducts || []).map((p) =>
+        userProducts.map((p) =>
           buildProductKey({
             categorie: (p as ProductKeyInput).categorie,
             nom: (p as ProductKeyInput).nom,
@@ -91,21 +63,7 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
         )
       );
 
-      // Récupérer les produits globaux (organization_id est NULL)
-      const { data, error } = await supabase
-        .from('catalogues_produits')
-        .select('*')
-        .is('organization_id', null)
-        .eq('actif', true)
-        .order('nom', { ascending: true });
-
-      if (error) throw error;
-      const filtered = (data || []).filter((p) => {
-        const secteurCatalogue = ((p as { secteur_catalogue?: unknown })?.secteur_catalogue ?? 'telephonie') as string;
-        return allowedCatalogSectors.includes(secteurCatalogue);
-      });
-
-      const notAlreadyImported = filtered.filter((p) => {
+      const notAlreadyImported = data.filter((p) => {
         const key = buildProductKey({
           categorie: (p as ProductKeyInput).categorie,
           nom: (p as ProductKeyInput).nom,
@@ -123,9 +81,9 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
     }
   };
 
-  const insertProductForUser = async (userId: string, product: CatalogueProduit) => {
-    const { error } = await supabase.from('catalogues_produits').insert({
-      organization_id: userId,
+  const insertProductForUser = async (product: CatalogueProduit) => {
+    const response = await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      secteur_catalogue: secteur,
       categorie: product.categorie,
       nom: product.nom,
       description: product.description,
@@ -141,21 +99,15 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
       tags: product.tags,
       est_produit_base: false,
       actif: true,
-    });
-
-    if (error) throw error;
+    }) });
+    if (!response.ok) throw new Error((await response.json()).error ?? "Erreur d'import");
   };
 
   const handleImport = async (product: CatalogueProduit) => {
     try {
       setImporting(product.id);
       
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-
-      await insertProductForUser(user.id, product);
+      await insertProductForUser(product);
 
       setImportedIds(prev => new Set(prev).add(product.id));
       setProducts(prev => prev.filter((x) => x.id !== product.id));
@@ -187,14 +139,9 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
 
     try {
       setImporting('bulk');
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-
       for (const product of toImport) {
         setImporting(product.id);
-        await insertProductForUser(user.id, product);
+        await insertProductForUser(product);
 
         setImportedIds(prev => new Set(prev).add(product.id));
         setImportedKeys(prev => {
@@ -394,9 +341,7 @@ export function ProductLibraryModal({ isOpen, onClose }: ProductLibraryModalProp
             </div>
           ) : (
             <div className="text-center py-12 text-gray-500">
-              {clientSecteur === 'bureautique'
-                ? "La bibliothèque Bureautique n'est pas encore disponible."
-                : importedKeys.size > 0
+              {importedKeys.size > 0
                 ? "Aucun nouveau produit à importer dans la bibliothèque"
                 : 'Aucun produit trouvé dans la bibliothèque'}
             </div>

@@ -4,13 +4,17 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { CatalogueProduitForm } from '@/components/catalogue/CatalogueProduitForm';
 import type { CatalogueProduit } from '@/types';
+import { createServiceClient } from '@/lib/supabase/server';
+import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
+import { resolveOrgContext } from '@/lib/auth/org-context';
+import type { Secteur } from '@/types';
 
 export const revalidate = 0;
 
 export default async function NewCatalogueProductPage({
   searchParams,
 }: {
-  searchParams: { duplicate?: string };
+  searchParams: Promise<{ duplicate?: string; secteur?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -18,7 +22,14 @@ export default async function NewCatalogueProductPage({
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { duplicate } = searchParams;
+  const { duplicate, secteur: requested } = await searchParams;
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) redirect('/login');
+  const { data: organization } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+  const orgSecteur = organization?.secteur as Secteur;
+  if (!orgSecteur) redirect('/dashboard');
+  const secteur = requested ?? defaultSecteur(orgSecteur);
+  if (!isAllowedSecteur(orgSecteur, secteur)) redirect('/catalogue');
 
   let produitDuplique: Record<string, unknown> | null = null;
   if (duplicate) {
@@ -26,6 +37,8 @@ export default async function NewCatalogueProductPage({
       .from('catalogues_produits')
       .select('*')
       .eq('id', duplicate)
+      .eq('organization_id', ctx.organizationId)
+      .eq('secteur_catalogue', secteur)
       .single();
 
     if (data) {
@@ -37,7 +50,7 @@ export default async function NewCatalogueProductPage({
     <div className="space-y-6">
       <div>
         <Link
-          href="/catalogue"
+          href={`/catalogue?secteur=${secteur}`}
           className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -64,10 +77,12 @@ export default async function NewCatalogueProductPage({
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <CatalogueProduitForm
           mode="create"
+          secteur={secteur}
           initialProduit={
             produitDuplique
               ? ({
                   categorie: produitDuplique.categorie,
+                  secteur_catalogue: secteur,
                   nom: produitDuplique.nom,
                   description: produitDuplique.description,
                   fournisseur: produitDuplique.fournisseur,

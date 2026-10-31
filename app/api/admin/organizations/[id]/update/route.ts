@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 
 export async function PATCH(
   request: NextRequest,
@@ -53,18 +52,19 @@ export async function PATCH(
     }
 
     // Mettre à jour l'organization
+    const updates = {
+      nom,
+      secteur,
+      ...(credits !== undefined ? { credits } : {}),
+      ...(tarif_par_proposition !== undefined ? { tarif_par_proposition } : {}),
+      ...(claude_model !== undefined ? { claude_model } : {}),
+      ...(prompt_template !== undefined ? { prompt_template: ensureChampsActifsPlaceholder(String(prompt_template)) } : {}),
+      ...(champs_defaut !== undefined ? { champs_defaut } : {}),
+      updated_at: new Date().toISOString(),
+    };
     const { data: organization, error: updateError } = await supabaseAdmin
       .from('organizations')
-      .update({
-        nom,
-        secteur,
-        credits: credits || 0,
-        tarif_par_proposition: tarif_par_proposition || 5,
-        claude_model: claude_model || DEFAULT_CLAUDE_MODEL,
-        prompt_template: ensureChampsActifsPlaceholder(String(prompt_template || '')),
-        champs_defaut: champs_defaut || [],
-        updated_at: new Date().toISOString(),
-      })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

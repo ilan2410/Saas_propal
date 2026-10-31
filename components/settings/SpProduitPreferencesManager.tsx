@@ -225,9 +225,10 @@ export function SpProduitPreferencesManager({ templates }: Props) {
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!templateId) return;
     let cancelled = false;
     setIsLoading(true);
-    fetch('/api/catalogue')
+    fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled && Array.isArray(data?.produits)) {
@@ -237,7 +238,7 @@ export function SpProduitPreferencesManager({ templates }: Props) {
       .catch(() => {})
       .finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [templateId]);
 
   // Re-fetch template file_config from API whenever templateId changes
   useEffect(() => {

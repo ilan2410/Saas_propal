@@ -130,6 +130,7 @@ export async function extractDataFromDocuments(options: {
   prompt_template: string;
   claude_model: string;
   claude_effort?: string | null;
+  secteur?: string;
 }): Promise<WithUsage<Record<string, unknown>>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
   if (isDeepSeekSaModel(claude_model)) throw new Error('DeepSeek V4.1 Flash est réservé au pipeline SA.');
@@ -139,7 +140,7 @@ export async function extractDataFromDocuments(options: {
   const finalPrompt = prompt_template
     .replace('{liste_champs_actifs}', champs_actifs.map(f => `- ${f}`).join('\n'))
     .replace('{documents}', '[Documents fournis ci-dessus]')
-    .replace('{secteur}', 'télécom'); // Valeur par défaut
+    .replace('{secteur}', options.secteur === 'bureautique' ? 'bureautique' : 'télécom');
 
   // Appel à Claude
   console.log(`🤖 Appel à Claude avec modèle: ${claude_model || 'claude-sonnet-4-5-20250929'}`);
@@ -366,4 +367,3 @@ ${JSON.stringify(options.canonical)}`;
   }
   return { data: normalizeStructuredSaOutput(message.parsed_output), usage };
 }
-

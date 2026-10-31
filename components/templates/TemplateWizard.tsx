@@ -16,6 +16,7 @@ const STEPS = [
 
 export interface TemplateData {
   id?: string;
+  secteur?: 'telephonie' | 'bureautique';
   nom: string;
   description: string;
   prompt_template?: string;
@@ -74,6 +75,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
   const [templateData, setTemplateData] = useState<Partial<TemplateData>>({
     champs_actifs: initialTemplate?.champs_actifs || [],
     ...initialTemplate,
+    secteur: initialTemplate?.secteur ?? (secteur === 'bureautique' ? 'bureautique' : secteur === 'mixte' ? undefined : 'telephonie'),
   });
   
   // État Excel persistant
@@ -136,6 +138,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
       // S'assurer qu'on a un nom
       const dataToSend = {
         ...templateData,
+        secteur: templateData.secteur,
         ...(excelUpdate?.file_type === 'excel' ? excelUpdate : {}),
         nom: templateData.nom || `Template ${new Date().toLocaleDateString('fr-FR')}`,
       };
@@ -237,14 +240,40 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
       {/* Step Content */}
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         {currentStep === 1 && (
-          <Step1SelectFields
-            templateData={templateData}
-            updateTemplateData={updateTemplateData}
-            onNext={nextStep}
-            onSave={mode === 'edit' ? handleComplete : undefined}
-            defaultFields={defaultFields}
-            secteur={secteur}
-          />
+          <>
+            {mode === 'create' && secteur === 'mixte' && (
+              <div className="mb-6">
+                <label htmlFor="template-secteur" className="block text-sm font-medium text-gray-700 mb-2">Activité du template *</label>
+                <select
+                  id="template-secteur"
+                  value={templateData.secteur ?? ''}
+                  onChange={(e) => setTemplateData((prev) => ({
+                    nom: prev.nom,
+                    description: prev.description,
+                    secteur: e.target.value as TemplateData['secteur'],
+                    champs_actifs: [],
+                    file_config: {},
+                  }))}
+                  className="rounded-lg border border-gray-300 p-2"
+                >
+                  <option value="">Choisir une activité</option>
+                  <option value="telephonie">Téléphonie</option>
+                  <option value="bureautique">Bureautique</option>
+                </select>
+              </div>
+            )}
+            {templateData.secteur && (
+              <Step1SelectFields
+                key={templateData.secteur}
+                templateData={templateData}
+                updateTemplateData={updateTemplateData}
+                onNext={nextStep}
+                onSave={mode === 'edit' ? handleComplete : undefined}
+                defaultFields={secteur === 'mixte' && templateData.secteur === 'bureautique' ? [] : defaultFields}
+                secteur={templateData.secteur}
+              />
+            )}
+          </>
         )}
         {currentStep === 2 && (
           <Step2UploadTemplate
@@ -253,7 +282,7 @@ export function TemplateWizard({ defaultFields, secteur, initialTemplate, mode =
             excelState={excelState}
             updateExcelState={updateExcelState}
             onExcelSave={mode === 'edit' ? handleComplete : undefined}
-            secteur={secteur}
+            secteur={templateData.secteur ?? secteur}
             onNext={nextStep}
             onPrev={prevStep}
             isLoading={isLoading}

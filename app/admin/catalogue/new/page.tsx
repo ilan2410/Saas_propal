@@ -27,6 +27,7 @@ export default async function NewAdminProductPage({
 
   const resolvedSearchParams = await searchParams;
   const categorieParam = typeof resolvedSearchParams.categorie === 'string' ? resolvedSearchParams.categorie : undefined;
+  const secteur = resolvedSearchParams.secteur === 'bureautique' ? 'bureautique' : 'telephonie';
 
   const isCatalogueCategorie = (value: string): value is CatalogueCategorie =>
     value === 'mobile' ||
@@ -60,6 +61,7 @@ export default async function NewAdminProductPage({
           mode="create" 
           initialProduit={categorie ? { categorie } : {}} 
           isAdmin={true}
+          secteur={secteur}
         />
       </div>
     </div>

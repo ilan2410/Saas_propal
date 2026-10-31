@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar, Users } from 'lucide-react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar, Users, ChevronDown } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreditsDisplay } from '@/components/shared/CreditsDisplay';
 import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
@@ -18,6 +18,7 @@ interface ClientSidebarProps {
     credits: number;
     tarif_par_proposition: number;
     logo_url?: string | null;
+    secteur?: string;
   };
   // Câblés par Task 2. `role` pilote le lien "Équipe" (Task 5) et, avec
   // `permissions`, le masquage des autres liens (Task 9).
@@ -27,7 +28,9 @@ interface ClientSidebarProps {
 
 export function ClientSidebar({ user, organization, role, permissions }: ClientSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isOpen, setIsOpen] = useState(false);
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
 
   const closeSidebar = () => setIsOpen(false);
 
@@ -113,7 +116,24 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
             <span className="font-medium">Propositions</span>
           </Link>
 
-          {(role === 'owner' || permissions?.manage_catalogue) && (
+          {(role === 'owner' || permissions?.manage_catalogue) && (organization.secteur === 'mixte' ? (
+            <div className="group" id="nav-catalogue">
+              <div className={`flex items-center rounded-lg ${pathname.startsWith('/catalogue') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}>
+                <Link href="/catalogue?secteur=telephonie" onClick={closeSidebar} className="flex flex-1 items-center gap-3 px-4 py-3">
+                  <Package className="w-5 h-5" /><span className="font-medium">Catalogue</span>
+                </Link>
+                <button type="button" aria-label="Afficher les activités du catalogue" aria-expanded={catalogueOpen} onClick={() => setCatalogueOpen((open) => !open)} className="p-3 md:hidden"><ChevronDown className="w-4 h-4" /></button>
+              </div>
+              <div className={`${catalogueOpen ? 'block' : 'hidden'} group-hover:block group-focus-within:block pl-8`}>
+                {(['telephonie', 'bureautique'] as const).map((secteur) => (
+                  <Link key={secteur} href={`/catalogue?secteur=${secteur}`} onClick={closeSidebar}
+                    className={`block px-4 py-2 rounded-lg text-sm ${pathname === '/catalogue' && searchParams.get('secteur') === secteur ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}>
+                    {secteur === 'telephonie' ? 'Téléphonie' : 'Bureautique'}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : (
             <Link
               href="/catalogue"
               onClick={closeSidebar}
@@ -125,7 +145,7 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
               <Package className="w-5 h-5" />
               <span className="font-medium">Catalogue</span>
             </Link>
-          )}
+          ))}
 
           {(role === 'owner' || permissions?.view_credits_billing) && (
             <Link

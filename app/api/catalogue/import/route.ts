@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { createServiceClient } from '@/lib/supabase/server';
+import { defaultSecteur, isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 import { CatalogueCategorie, UpdateMode } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -15,19 +18,29 @@ export async function POST(request: NextRequest) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { products, is_global, update_mode } = await request.json() as {
+    const { products, is_global, update_mode, secteur_catalogue } = await request.json() as {
       products: unknown[];
       is_global?: boolean;
       update_mode?: UpdateMode;
+      secteur_catalogue?: string;
     };
+    const isGlobalImport = is_global === true && user.app_metadata?.role === 'admin';
+    if (!ctx && !isGlobalImport) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!isGlobalImport && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const service = createServiceClient();
+    const { data: organization } = isGlobalImport ? { data: null } : await service.from('organizations')
+      .select('secteur').eq('id', ctx!.organizationId).single();
+    const orgSecteur = organization?.secteur as Secteur;
+    const secteur = secteur_catalogue ?? (orgSecteur && defaultSecteur(orgSecteur));
+    if (isGlobalImport ? !isCatalogueSecteur(secteur) : !orgSecteur || (orgSecteur === 'mixte' && secteur_catalogue === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
+      return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
 
     if (!Array.isArray(products)) {
       return NextResponse.json({ error: 'Format invalide' }, { status: 400 });
@@ -36,8 +49,6 @@ export async function POST(request: NextRequest) {
     const mode: UpdateMode = update_mode === 'upsert' ? 'upsert' : 'skip';
 
     // Vérifier le rôle admin si is_global est demandé
-    const role = user.app_metadata?.role;
-    const isGlobalImport = is_global === true && role === 'admin';
 
     let created = 0;
     let updated = 0;
@@ -94,14 +105,16 @@ export async function POST(request: NextRequest) {
         bdc_materiel: parseBool(p.destinations_bdc_materiel ?? p.bdc_materiel),
       };
 
-      const orgId = isGlobalImport ? null : ctx.organizationId;
+      const orgId = isGlobalImport ? null : ctx!.organizationId;
 
       // Check duplicate by nom + fournisseur + tarif
-      const { data: matches } = await supabase
+      let matchesQuery = (isGlobalImport ? service : supabase)
         .from('catalogues_produits')
         .select('id, fournisseur, prix_mensuel, prix_vente')
         .eq('nom', p.nom)
-        .eq('organization_id', orgId);
+        .eq('secteur_catalogue', secteur);
+      matchesQuery = orgId === null ? matchesQuery.is('organization_id', null) : matchesQuery.eq('organization_id', orgId);
+      const { data: matches } = await matchesQuery;
 
       const existing = matches?.find((m) => {
         const sameFournisseur = (m.fournisseur ?? '') === ((p.fournisseur as string) ?? '');
@@ -112,7 +125,8 @@ export async function POST(request: NextRequest) {
       });
 
       const payload = {
-        organization_id: isGlobalImport ? null : ctx.organizationId,
+        organization_id: isGlobalImport ? null : ctx!.organizationId,
+        secteur_catalogue: secteur,
         nom: p.nom,
         categorie,
         description: (p.description as string) || null,
@@ -136,7 +150,7 @@ export async function POST(request: NextRequest) {
       try {
         if (existing) {
           if (mode === 'upsert') {
-            const { error } = await supabase
+            const { error } = await (isGlobalImport ? service : supabase)
               .from('catalogues_produits')
               .update(payload)
               .eq('id', existing.id);
@@ -151,7 +165,7 @@ export async function POST(request: NextRequest) {
             skipped++;
           }
         } else {
-          const { error } = await supabase.from('catalogues_produits').insert(payload);
+          const { error } = await (isGlobalImport ? service : supabase).from('catalogues_produits').insert(payload);
 
           if (error) {
             errors.push(`Ligne ${rowNum}: ${error.message}`);

@@ -56,6 +56,7 @@ export default async function TemplateDetailPage({
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">{template.nom}</h1>
+                <span className="text-sm font-semibold text-slate-600">{template.secteur === 'bureautique' ? 'Bureautique' : 'Téléphonie'}</span>
                 <p className="text-gray-600 mt-1">
                   Template de <span className="font-medium">{org.nom}</span>
                 </p>

@@ -38,6 +38,7 @@ import {
   type ViewMode,
 } from '@/components/admin/organizationFormConfig';
 import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
 interface Props {
   templateData: Partial<TemplateData>;
@@ -268,7 +269,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
       return false;
     }
 
-    const allFields = getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
+    const allFields = withRequiredTemplateFields(secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
     
     if (allFields.length === 0) {
       alert('Veuillez sélectionner au moins un champ');

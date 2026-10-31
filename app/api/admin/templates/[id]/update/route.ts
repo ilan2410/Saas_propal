@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
 export async function PATCH(
   request: NextRequest,
@@ -41,7 +42,14 @@ export async function PATCH(
     if (body.file_url !== undefined) updateData.file_url = body.file_url;
     if (body.file_name !== undefined) updateData.file_name = body.file_name;
     if (body.file_size_mb !== undefined) updateData.file_size_mb = body.file_size_mb;
-    if (body.champs_actifs !== undefined) updateData.champs_actifs = body.champs_actifs;
+    if (body.champs_actifs !== undefined) {
+      const { data: current } = await supabase.from('proposition_templates')
+        .select('secteur').eq('id', id).single();
+      if (!current || !Array.isArray(body.champs_actifs) || body.champs_actifs.some((field: unknown) => typeof field !== 'string')) {
+        return NextResponse.json({ error: 'Champs invalides' }, { status: 400 });
+      }
+      updateData.champs_actifs = withRequiredTemplateFields(current.secteur ?? 'telephonie', body.champs_actifs);
+    }
     if (body.file_config !== undefined) updateData.file_config = body.file_config;
     if (body.statut !== undefined) updateData.statut = body.statut;
     if (body.test_result !== undefined) updateData.test_result = body.test_result;

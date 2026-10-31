@@ -275,6 +275,7 @@ export function Step1SelectTemplate({
                       <h3 className="font-bold text-gray-900 text-lg mb-1 truncate">
                         {template.nom}
                       </h3>
+                      <span className="text-xs font-semibold text-slate-600">{template.secteur === 'bureautique' ? 'Bureautique' : 'Téléphonie'}</span>
                       <span className={`inline-block px-2 py-1 ${config.lightBg} ${config.text} text-xs font-semibold rounded-md uppercase tracking-wide`}>
                         {template.file_type}
                       </span>

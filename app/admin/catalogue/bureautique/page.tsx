@@ -12,7 +12,7 @@ export default async function AdminBureautiquePage() {
     .from('catalogues_produits')
     .select('*')
     .is('organization_id', null)
-    .in('categorie', ['internet', 'cloud', 'equipement', 'autre'])
+    .eq('secteur_catalogue', 'bureautique')
     .eq('actif', true)
     .order('nom', { ascending: true });
 
@@ -24,7 +24,7 @@ export default async function AdminBureautiquePage() {
           <p className="text-gray-500">Connexions, équipements et services cloud globaux</p>
         </div>
         <Link
-          href="/admin/catalogue/new?categorie=internet"
+          href="/admin/catalogue/new?secteur=bureautique&categorie=internet"
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto justify-center"
         >
           <Plus className="w-4 h-4" />

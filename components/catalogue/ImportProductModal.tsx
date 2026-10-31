@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Upload, X, Check, AlertCircle, FileSpreadsheet, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { CatalogueSecteur } from '@/types';
 
 type ImportStep = 'upload' | 'mapping' | 'preview' | 'importing';
 type UpdateMode = 'skip' | 'upsert';
@@ -12,6 +13,7 @@ interface ImportProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   isAdmin?: boolean;
+  secteur?: CatalogueSecteur;
 }
 
 interface MappedField {
@@ -42,7 +44,7 @@ const SYSTEM_FIELDS: MappedField[] = [
   { systemField: 'destinations_bdc_materiel', fileHeader: null, required: false, label: 'Destination BDC Matériel (oui/non)' },
 ];
 
-export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportProductModalProps) {
+export function ImportProductModal({ isOpen, onClose, isAdmin = false, secteur }: ImportProductModalProps) {
   const router = useRouter();
   const [step, setStep] = useState<ImportStep>('upload');
   const [file, setFile] = useState<File | null>(null);
@@ -52,6 +54,7 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [resultStats, setResultStats] = useState({ created: 0, updated: 0, skipped: 0 });
   const [updateMode, setUpdateMode] = useState<UpdateMode>('skip');
+  const [importSecteur, setImportSecteur] = useState<CatalogueSecteur>(secteur ?? 'telephonie');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -146,6 +149,7 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
           products: productsToImport,
           is_global: isAdmin,
           update_mode: updateMode,
+          secteur_catalogue: isAdmin ? importSecteur : secteur,
         }),
       });
 
@@ -187,6 +191,15 @@ export function ImportProductModal({ isOpen, onClose, isAdmin = false }: ImportP
         </div>
 
         <div className="p-6 overflow-y-auto flex-1">
+          {isAdmin && (
+            <div className="mb-4">
+              <label htmlFor="import-secteur" className="block text-sm font-medium text-gray-700 mb-2">Secteur des produits importés</label>
+              <select id="import-secteur" value={importSecteur} onChange={(e) => setImportSecteur(e.target.value as CatalogueSecteur)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                <option value="telephonie">Téléphonie</option>
+                <option value="bureautique">Bureautique</option>
+              </select>
+            </div>
+          )}
           {step === 'upload' && (
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
                  onClick={() => fileInputRef.current?.click()}>

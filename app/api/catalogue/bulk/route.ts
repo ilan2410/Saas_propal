@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -14,26 +16,25 @@ export async function DELETE(request: NextRequest) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const body = await request.json();
+    const { ids, is_global } = body;
+    const isGlobalOperation = is_global === true && user.app_metadata?.role === 'admin';
+    if (!ctx && !isGlobalOperation) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    if (!isGlobalOperation && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { ids, is_global } = body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'No IDs provided' }, { status: 400 });
     }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.app_metadata?.role;
-    const isGlobalOperation = is_global === true && role === 'admin';
 
-    let query = supabase
+    let query = (isGlobalOperation ? createServiceClient() : supabase)
       .from('catalogues_produits')
       .delete()
       .in('id', ids);
@@ -41,7 +42,7 @@ export async function DELETE(request: NextRequest) {
     if (isGlobalOperation) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', ctx.organizationId);
+      query = query.eq('organization_id', ctx!.organizationId);
     }
 
     const { error } = await query;
@@ -71,17 +72,25 @@ export async function PATCH(request: NextRequest) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const body = await request.json();
+    const { ids, updates, is_global } = body;
+    const isGlobalOperation = is_global === true && user.app_metadata?.role === 'admin';
+    if (!ctx && !isGlobalOperation) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    if (!isGlobalOperation && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { ids, updates, is_global } = body;
-    const { is_global: _ignored, ...sanitizedUpdates } = updates ?? {};
+    const { is_global: _ignored, organization_id: _org, ...sanitizedUpdates } = updates ?? {};
+    if (sanitizedUpdates.secteur_catalogue !== undefined) {
+      const { data: organization } = isGlobalOperation ? { data: null } : await createServiceClient().from('organizations')
+        .select('secteur').eq('id', ctx!.organizationId).single();
+      if (isGlobalOperation ? !isCatalogueSecteur(sanitizedUpdates.secteur_catalogue) : !organization || !isAllowedSecteur(organization.secteur as Secteur, sanitizedUpdates.secteur_catalogue)) {
+        return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+      }
+    }
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'No IDs provided' }, { status: 400 });
@@ -92,10 +101,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.app_metadata?.role;
-    const isGlobalOperation = is_global === true && role === 'admin';
 
-    let query = supabase
+    let query = (isGlobalOperation ? createServiceClient() : supabase)
       .from('catalogues_produits')
       .update(sanitizedUpdates)
       .in('id', ids);
@@ -103,7 +110,7 @@ export async function PATCH(request: NextRequest) {
     if (isGlobalOperation) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', ctx.organizationId);
+      query = query.eq('organization_id', ctx!.organizationId);
     }
 
     const { error } = await query;

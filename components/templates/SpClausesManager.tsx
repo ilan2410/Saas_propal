@@ -84,7 +84,7 @@ export function SpClausesManager({ templateId, fileConfig, onSaved }: Props) {
     if (!templateId) return;
     Promise.all([
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()).catch(() => ({})),
-      fetch('/api/catalogue').then((r) => r.json()).catch(() => ({})),
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()).catch(() => ({})),
     ]).then(([qData, catData]) => {
       const qs: SpQuestion[] = ((qData.questions ?? []) as SpQuestion[])
         .filter((q) => q.actif)

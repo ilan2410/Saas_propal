@@ -8,6 +8,7 @@ import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpTableProductOrders } from '@/types';
 import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
+import { catalogueForSecteur } from '@/lib/sectors';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
@@ -90,7 +91,7 @@ export async function POST(
     const allQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
     const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
     const spReponses = Array.isArray(proposition.sp_reponses) ? proposition.sp_reponses as SpQuestionReponse[] : [];
-    const catalogue = Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [];
+    const catalogue = catalogueForSecteur(Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [], template.secteur ?? 'telephonie');
     const templateFileCfg = typeof template.file_config === 'object' && template.file_config !== null ? template.file_config as UnknownRecord : {};
     const spPreferencesProduits = typeof templateFileCfg.sp_preferences_produits === 'object' && templateFileCfg.sp_preferences_produits !== null
       ? templateFileCfg.sp_preferences_produits as SpPreferencesProduits

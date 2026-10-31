@@ -109,6 +109,7 @@ export default async function ClientTemplatesPage({
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900 text-lg">{template.nom}</h3>
+                      <span className="text-xs text-slate-600">{template.secteur === 'bureautique' ? 'Bureautique' : 'Téléphonie'}</span>
                       <p className="text-sm text-gray-500">
                         {template.type_fichier?.toUpperCase() || 'EXCEL'}
                       </p>

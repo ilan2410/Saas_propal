@@ -1,0 +1,22 @@
+{
+  "word/document.xml": {
+    "tokens": 147,
+    "preserved": true,
+    "replacements": 123
+  },
+  "word/footer1.xml": {
+    "tokens": 1,
+    "preserved": true,
+    "replacements": 3
+  },
+  "changed_parts": [
+    "word/document.xml",
+    "word/_rels/document.xml.rels",
+    "word/footer1.xml",
+    "word/media/image1.jpeg",
+    "word/media/image2.png",
+    "word/media/image5.png",
+    "docProps/core.xml"
+  ],
+  "source_unchanged": "4e70d6be780138250f079ff3511b3ba21dbdc089f1774537a66988c28e9249e1"
+}
