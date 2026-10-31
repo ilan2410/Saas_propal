@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     // 1. Récupérer le template (config + file_url) en vérifiant l'organisation
     const { data: template, error: templateError } = await supabase
       .from('proposition_templates')
-      .select('id, file_url, file_config')
+      .select('id, file_url, file_config, secteur')
       .eq('id', templateId)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('actif', true)
       .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
-    const catalogue = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]) : [];
+    const catalogue = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template.secteur ?? 'telephonie')) : [];
 
     const spPreferencesProduits = isPlainObject(fileConfig.sp_preferences_produits)
       ? (fileConfig.sp_preferences_produits as unknown as SpPreferencesProduits)

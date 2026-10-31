@@ -6,6 +6,7 @@ import { formatCurrency, formatFileSize, formatTokens } from '@/lib/utils/format
 import { formatUsd, parseUsdToEurRate, usdToEur } from '@/lib/admin/currency';
 import { fetchStorageUsage } from '@/lib/admin/storage-usage';
 import { fetchAllRows } from '@/lib/admin/paginate';
+import { propositionMetrics, type AnalyticsProposition } from '@/lib/admin/proposition-metrics';
 import {
   aggregateAdminTests,
   aggregateByOrganization,
@@ -82,7 +83,7 @@ export default async function AdminAnalyticsPage({
           .range(from, to);
         return (data ?? []) as unknown as CostOnlyRow[];
       }),
-      service.from('organizations').select('id, nom'),
+      service.from('organizations').select('id, nom, tarif_par_proposition'),
       service.from('platform_settings').select('key, value'),
       fetchStorageUsage(service),
     ]);
@@ -92,6 +93,9 @@ export default async function AdminAnalyticsPage({
   );
 
   const names = new Map((organizationsResult.data ?? []).map((org) => [String(org.id), String(org.nom)]));
+  const tariffs = new Map(
+    (organizationsResult.data ?? []).map((org) => [String(org.id), org.tarif_par_proposition]),
+  );
 
   // Une organisation qui occupe du stockage reste listée même sans extraction
   // sur la période : sinon un client qui accumule des fichiers devient invisible.
@@ -109,13 +113,15 @@ export default async function AdminAnalyticsPage({
   // Les noms ne sont chargés que pour les lignes affichées : un `in` construit
   // sur tout le mois dépasserait la longueur d'URL acceptée et ferait afficher
   // « Proposition supprimée » partout.
-  const propositionIds = byExtraction.map((row) => row.propositionId);
+  const propositionIds = [...new Set(byExtraction.map((row) => row.propositionId))];
   const propositionsResult = propositionIds.length
-    ? await service.from('propositions').select('id, nom_client').in('id', propositionIds)
-    : { data: [] as { id: string; nom_client: string | null }[] };
+    ? await service.from('propositions')
+        .select('id, nom_client, extracted_data, filled_data, source_documents')
+        .in('id', propositionIds)
+    : { data: [] as AnalyticsProposition[] };
 
-  const propositionNames = new Map(
-    (propositionsResult.data ?? []).map((prop) => [String(prop.id), String(prop.nom_client ?? 'Sans nom')]),
+  const propositionDetails = new Map(
+    (propositionsResult.data ?? []).map((prop) => [String(prop.id), propositionMetrics(prop)]),
   );
 
   const monthTotals = byOrganization.reduce(
@@ -207,7 +213,11 @@ export default async function AdminAnalyticsPage({
 
       <section className="space-y-3">
         <h2 className="text-xl font-bold text-gray-900">Dernières extractions</h2>
-        <ExtractionCostTable rows={byExtraction} names={names} propositionNames={propositionNames} rate={rate} />
+        <p className="text-sm text-gray-600">
+          Bénéfice estimé : tarif actuel de la proposition moins coût IA converti en euros.
+          Le tarif facturé au moment de l&apos;extraction n&apos;est pas historisé.
+        </p>
+        <ExtractionCostTable rows={byExtraction} names={names} propositionDetails={propositionDetails} tariffs={tariffs} rate={rate} />
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">

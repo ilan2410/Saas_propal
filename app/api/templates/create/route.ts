@@ -1,4 +1,6 @@
 import { DEFAULT_PROMPT } from '@/lib/templates/default-prompt';
+import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
@@ -6,6 +8,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import { DEFAULT_CLAUDE_MODEL, generateMergedPrompt } from '@/components/admin/organizationFormConfig';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +33,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as Record<string, unknown>;
+    const { data: org } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+    const orgSecteur = org?.secteur as Secteur;
+    const secteur = body.secteur ?? (orgSecteur && defaultSecteur(orgSecteur));
+    if (!orgSecteur || (orgSecteur === 'mixte' && body.secteur === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
+      return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
 
     console.log('Création template - body reçu:', JSON.stringify(body, null, 2));
 
@@ -44,9 +54,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Créer le template dans la BDD
-    const champsActifs = Array.isArray(body.champs_actifs)
+    const requestedFields = Array.isArray(body.champs_actifs)
       ? (body.champs_actifs.filter((v): v is string => typeof v === 'string') as string[])
       : [];
+    const champsActifs = withRequiredTemplateFields(secteur, requestedFields);
     const fileConfig =
       body.file_config && typeof body.file_config === 'object' && !Array.isArray(body.file_config)
         ? body.file_config
@@ -54,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     const insertData: Record<string, unknown> = {
       organization_id: ctx.organizationId,
+      secteur,
       nom,
       description: typeof body.description === 'string' ? body.description : null,
       file_type: fileType,
@@ -73,9 +85,12 @@ export async function POST(request: NextRequest) {
     if (insertData.file_url && (typeof insertData.file_url !== 'string' || !organizationStoragePath(insertData.file_url, 'templates', ctx.organizationId))) {
       return NextResponse.json({ error: 'Fichier template invalide' }, { status: 400 });
     }
-    const { data: org } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
-    const { data: defaults } = await createServiceClient().from('prompt_defaults').select('prompt_template').eq('secteur', org?.secteur ?? 'telephonie').maybeSingle();
-    let prompt = updateExpectedJsonStructureFromFields(defaults?.prompt_template || DEFAULT_PROMPT, champsActifs, { prune: true });
+    const { data: defaults } = await createServiceClient().from('prompt_defaults').select('prompt_template').eq('secteur', secteur).maybeSingle();
+    let prompt = updateExpectedJsonStructureFromFields(
+      defaults?.prompt_template || (secteur === 'bureautique' ? BUREAUTIQUE_DEFAULT_PROMPT : DEFAULT_PROMPT),
+      champsActifs,
+      { prune: true },
+    );
     const merges = Array.isArray(body.merge_config) ? body.merge_config.filter((key): key is string => typeof key === 'string') : [];
     if (merges.length > 1) prompt = generateMergedPrompt(prompt, merges);
     insertData.merge_config = merges;

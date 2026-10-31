@@ -101,6 +101,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   // 3. Récupérer les questions SP de l'organisation, filtrées par template
   const allQuestions = Array.isArray(org?.sp_questions) ? (org!.sp_questions as SpQuestion[]) : [];
   const templateId = (proposition as Record<string, unknown>).template_id;
+  const { data: sectorTemplate } = typeof templateId === 'string'
+    ? await supabase.from('proposition_templates').select('secteur').eq('id', templateId).eq('organization_id', ctx.organizationId).single()
+    : { data: null };
   const questions: SpQuestion[] = templateId
     ? allQuestions.filter((q) => q.template_id === templateId)
     : allQuestions;
@@ -112,7 +115,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     .eq('actif', true)
     .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
   const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows)
-    ? (catalogueRows as CatalogueProduit[])
+    ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (sectorTemplate?.secteur ?? 'telephonie'))
     : [];
 
   // 5. Réponses SP (peuvent être absentes pour d'anciennes propositions)

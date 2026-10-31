@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,12 +15,28 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const categories = searchParams.get('categories')?.split(',').filter(Boolean) ?? [];
+    const { data: organization } = await createServiceClient().from('organizations')
+      .select('secteur').eq('id', ctx.organizationId).single();
+    const orgSecteur = organization?.secteur as Secteur;
+    if (!orgSecteur) return NextResponse.json({ error: 'Organisation introuvable' }, { status: 404 });
+    let secteur: unknown = searchParams.get('secteur') ?? defaultSecteur(orgSecteur);
+    const templateId = searchParams.get('template_id');
+    if (templateId) {
+      const { data: template } = await supabase.from('proposition_templates')
+        .select('secteur').eq('id', templateId).eq('organization_id', ctx.organizationId).single();
+      if (!template || (searchParams.has('secteur') && secteur !== template.secteur)) {
+        return NextResponse.json({ error: 'Template ou secteur invalide' }, { status: 400 });
+      }
+      secteur = template.secteur;
+    }
+    if (!isAllowedSecteur(orgSecteur, secteur)) return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
 
     let query = supabase
       .from('catalogues_produits')
       .select('fournisseur')
       .eq('actif', true)
       .eq('organization_id', ctx.organizationId)
+      .eq('secteur_catalogue', secteur)
       .not('fournisseur', 'is', null);
 
     if (categories.length > 0) {

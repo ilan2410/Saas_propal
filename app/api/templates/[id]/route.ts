@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -184,7 +185,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (!current) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
     if (body.champs_actifs !== undefined) {
       if (!Array.isArray(body.champs_actifs) || body.champs_actifs.some((field) => typeof field !== 'string')) return NextResponse.json({ error: 'Champs invalides' }, { status: 400 });
-      let prompt = updateExpectedJsonStructureFromFields(current.prompt_template ?? '', body.champs_actifs, { prune: true });
+      body.champs_actifs = withRequiredTemplateFields(current.secteur ?? 'telephonie', body.champs_actifs as string[]);
+      let prompt = updateExpectedJsonStructureFromFields(current.prompt_template ?? '', body.champs_actifs as string[], { prune: true });
       const merges = body.merge_config ?? current.merge_config;
       if (Array.isArray(merges) && merges.length > 1) prompt = generateMergedPrompt(prompt, merges);
       body.prompt_template = prompt;

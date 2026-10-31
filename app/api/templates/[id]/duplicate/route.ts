@@ -4,6 +4,9 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 import { safeStorageFileName } from '@/lib/security/validate-upload';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
+import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
+import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import type { OrganizationPreferences, SpObjectifConfig, SpQuestion } from '@/types';
 
 interface RouteParams {
@@ -174,13 +177,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const insertData: Record<string, unknown> = {
       organization_id: ctx.organizationId,
+      secteur: original.secteur,
       nom: `${original.nom} (copie)`,
       description: selected.has('description') ? original.description : null,
       file_type: original.file_type,
       file_url: fileUrl,
       file_name: fileName,
       file_size_mb: fileSizeMb,
-      champs_actifs: selected.has('champs') ? original.champs_actifs ?? [] : [],
+      champs_actifs: withRequiredTemplateFields(original.secteur ?? 'telephonie', selected.has('champs') ? original.champs_actifs ?? [] : []),
       file_config: remapQuestionRefs(newFileConfig, idMap),
       statut: 'brouillon',
       test_result: null,
@@ -192,6 +196,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (selected.has('prompt') && original.prompt_template) {
       insertData.prompt_template = original.prompt_template;
+    } else if (original.secteur === 'bureautique') {
+      insertData.prompt_template = updateExpectedJsonStructureFromFields(
+        BUREAUTIQUE_DEFAULT_PROMPT, insertData.champs_actifs as string[], { prune: true },
+      );
     }
     if (selected.has('merge') && original.merge_config) {
       insertData.merge_config = original.merge_config;

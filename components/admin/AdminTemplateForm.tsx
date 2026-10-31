@@ -6,16 +6,18 @@ import { Loader2, Save, FileText, Settings, Sparkles, Upload, ArrowLeft } from '
 import { Step2UploadTemplate } from '../templates/Step2UploadTemplate';
 import { TemplateData, ExcelState } from '../templates/TemplateWizard';
 import { renderPromptTemplate, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 import { SA_EXTRACTION_MODELS, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
 import { CustomFieldsEditor, type CustomArrayCategory, type CustomCategory, type CustomFieldDefinition } from '@/components/shared/CustomFieldsEditor';
 import { UpdateExpectedJsonStructureButton } from '@/components/shared/UpdateExpectedJsonStructureButton';
 import {
-  ALL_FIELDS,
   DEFAULT_CLAUDE_MODEL,
   CLAUDE_EFFORT_LEVELS,
   DEFAULT_CLAUDE_EFFORT,
   supportsClaudeEffort,
-  getCategoryLabel,
+  getCategoryLabelForSecteur,
+  getFieldsByCategoryForSecteur,
   getQuestionsForSecteur,
   syncSimpleToAdvanced,
   syncAdvancedToSimple,
@@ -37,6 +39,7 @@ interface Props {
   template?: TemplateInput;
   isEditing?: boolean;
   initialPromptTemplate?: string;
+  promptDefaults?: Record<string, string>;
 }
 
 type TemplateFileConfigInput = {
@@ -80,6 +83,7 @@ export function AdminTemplateForm({
   template,
   isEditing = false,
   initialPromptTemplate,
+  promptDefaults,
 }: Props) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +92,9 @@ export function AdminTemplateForm({
   const [showUpload, setShowUpload] = useState(false);
   const [isFileLoading, setIsFileLoading] = useState(false);
   
-  const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
+  const [selectedQuestions, setSelectedQuestions] = useState<string[]>(
+    (template?.secteur ?? secteur) === 'telephonie' ? ['situation_actuelle'] : [],
+  );
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [legacyCustomFields, setLegacyCustomFields] = useState<string[]>([]);
@@ -169,6 +175,7 @@ DOCUMENT(S):
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
   const [formData, setFormData] = useState({
+    secteur: (template?.secteur as string | undefined) || (secteur === 'mixte' ? '' : secteur),
     nom: template?.nom || '',
     file_type: template?.file_type || 'excel',
     file_url: template?.file_url || '',
@@ -177,7 +184,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     file_config: template?.file_config || {},
     description: template?.description || '',
     claude_model: template?.claude_model || DEFAULT_CLAUDE_MODEL,
-    prompt_template: template?.prompt_template || initialPromptTemplate || DEFAULT_PROMPT,
+    prompt_template: template?.prompt_template || promptDefaults?.[secteur] || initialPromptTemplate || (secteur === 'bureautique' ? BUREAUTIQUE_DEFAULT_PROMPT : DEFAULT_PROMPT),
   });
 
   // Charger les feuilles Excel si on édite un template existant avec un fichier Excel
@@ -206,7 +213,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     }
   }, [template?.file_type, template?.file_url, excelState.sheets.length]);
 
-  const currentQuestions = getQuestionsForSecteur(secteur);
+  const currentQuestions = getQuestionsForSecteur(formData.secteur);
 
   // Initialiser les champs sélectionnés si on édite
   useEffect(() => {
@@ -228,19 +235,22 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       const questionsToSelect = currentQuestions
         .filter((q) => q.fields.length > 0 && q.fields.every((f) => existingFields.includes(f)))
         .map((q) => q.id);
-      setSelectedQuestions(questionsToSelect);
+      setSelectedQuestions((template?.secteur ?? secteur) === 'telephonie'
+        ? [...new Set([...questionsToSelect, 'situation_actuelle'])]
+        : questionsToSelect);
 
       if (template?.merge_config) {
         setActiveMerges(template.merge_config);
       }
     }
-  }, [currentQuestions, template?.champs_actifs, template?.file_config?.custom_fields, template?.merge_config]);
+  }, [currentQuestions, secteur, template?.secteur, template?.champs_actifs, template?.file_config?.custom_fields, template?.merge_config]);
 
   const customFieldsList = [...customFieldDefinitions.map((d) => d.fieldPath), ...legacyCustomFields].filter(Boolean);
 
   const fieldsCount = getFieldsCount(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
+  const sectorFields = getFieldsByCategoryForSecteur(formData.secteur);
 
-  const allFieldsForPrompt = getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
+  const allFieldsForPrompt = withRequiredTemplateFields(formData.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
 
   const [isExpectedJsonOutOfSync, setIsExpectedJsonOutOfSync] = useState(false);
   const didInitExpectedJsonSync = useRef(false);
@@ -278,14 +288,19 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     setError('');
 
     try {
-      const allFields = getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
+      const allFields = withRequiredTemplateFields(formData.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
       
       if (allFields.length === 0) {
         setError('Veuillez sélectionner au moins un champ à extraire');
         setIsLoading(false);
         return;
       }
-      if (isDeepSeekSaModel(formData.claude_model) && !isSaExtractionEligible(secteur, allFields)) {
+      if (!formData.secteur) {
+        setError('Choisissez une activité');
+        setIsLoading(false);
+        return;
+      }
+      if (isDeepSeekSaModel(formData.claude_model) && !isSaExtractionEligible(formData.secteur, allFields)) {
         setError('DeepSeek V4.1 Flash nécessite un template SA téléphonie.');
         setIsLoading(false);
         return;
@@ -307,6 +322,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organization_id: organizationId,
+          secteur: formData.secteur,
           nom: formData.nom,
           description: formData.description,
           file_type: formData.file_type,
@@ -339,6 +355,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
   };
 
   const toggleQuestion = (questionId: string) => {
+    if (formData.secteur === 'telephonie' && questionId === 'situation_actuelle') return;
     const newQuestions = selectedQuestions.includes(questionId) 
       ? selectedQuestions.filter((id) => id !== questionId) 
       : [...selectedQuestions, questionId];
@@ -357,7 +374,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
   const selectAllQuestions = () => {
     const newQuestions = selectedQuestions.length === currentQuestions.length 
-      ? [] 
+      ? formData.secteur === 'telephonie' ? ['situation_actuelle'] : []
       : currentQuestions.map((q) => q.id);
     
     setSelectedQuestions(newQuestions);
@@ -369,13 +386,15 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
   };
 
   const toggleField = (field: string) => {
+    if (formData.secteur === 'telephonie' && field.startsWith('situation_actuelle.')) return;
     setSelectedFields((prev) =>
       prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
     );
   };
 
   const selectAllInCategory = (category: string) => {
-    const fields = ALL_FIELDS[category as keyof typeof ALL_FIELDS] || [];
+    if (formData.secteur === 'telephonie' && category === 'situation_actuelle') return;
+    const fields = sectorFields[category] || [];
     const allSelected = fields.every((f) => selectedFields.includes(f));
     if (allSelected) {
       setSelectedFields((prev) => prev.filter((f) => !fields.includes(f)));
@@ -417,13 +436,14 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     if (mode === 'advanced') {
       setSelectedFields(syncSimpleToAdvanced(selectedQuestions, currentQuestions, selectedFields));
     } else {
-      setSelectedQuestions(syncAdvancedToSimple(selectedFields, currentQuestions));
+      const next = syncAdvancedToSimple(selectedFields, currentQuestions);
+      setSelectedQuestions(formData.secteur === 'telephonie' ? [...new Set([...next, 'situation_actuelle'])] : next);
     }
     setViewMode(mode);
   };
 
   // Calculer les champs actifs actuels pour les passer au wizard
-  const currentAllFields = getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
+  const currentAllFields = withRequiredTemplateFields(formData.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
   const templateDataWithFields = {
     ...formData,
     champs_actifs: currentAllFields
@@ -446,7 +466,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
             updateTemplateData={(data) => setFormData(prev => ({ ...prev, ...data }))}
             excelState={excelState}
             updateExcelState={(data) => setExcelState(prev => ({ ...prev, ...data }))}
-            secteur={secteur}
+            secteur={formData.secteur}
             onNext={() => setShowUpload(false)}
             onPrev={() => setShowUpload(false)}
             isLoading={isFileLoading}
@@ -466,6 +486,30 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
       {/* Informations de base */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
+        {secteur === 'mixte' && (
+          <div className="mb-6">
+            <label htmlFor="admin-template-secteur" className="block text-sm font-medium text-gray-700 mb-2">Activité du template *</label>
+            <select
+              id="admin-template-secteur"
+              required
+              disabled={isEditing}
+              value={formData.secteur}
+              onChange={(e) => {
+                const next = e.target.value;
+                setFormData((prev) => ({ ...prev, secteur: next, prompt_template: promptDefaults?.[next] || (next === 'bureautique' ? BUREAUTIQUE_DEFAULT_PROMPT : DEFAULT_PROMPT) }));
+                setSelectedQuestions(next === 'telephonie' ? ['situation_actuelle'] : []);
+                setSelectedFields([]);
+                setActiveMerges([]);
+                setSelectedCategory('all');
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="">Choisir une activité</option>
+              <option value="telephonie">Téléphonie</option>
+              <option value="bureautique">Bureautique</option>
+            </select>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-purple-100 rounded-lg">
             <FileText className="w-5 h-5 text-purple-600" />
@@ -561,7 +605,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
               onChange={(e) => setFormData({ ...formData, claude_model: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {(isSaExtractionEligible(secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList))
+              {(isSaExtractionEligible(formData.secteur, allFieldsForPrompt)
                 ? SA_EXTRACTION_MODELS
                 : SA_EXTRACTION_MODELS.filter((m) => !isDeepSeekSaModel(m.value) || m.value === formData.claude_model)
               ).map((m) => (
@@ -651,7 +695,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                     ? generateMergedPrompt(formData.prompt_template, activeMerges)
                     : formData.prompt_template,
                 champs_actifs: allFieldsForPrompt,
-                secteur: secteur,
+            secteur: formData.secteur,
               })}
             </pre>
             <p className="text-sm text-gray-500 mt-2">
@@ -720,14 +764,16 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                 <div
                   key={q.id}
                   onClick={() => toggleQuestion(q.id)}
+                  aria-disabled={formData.secteur === 'telephonie' && q.id === 'situation_actuelle'}
                   className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                    selectedQuestions.includes(q.id) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    (selectedQuestions.includes(q.id) || formData.secteur === 'telephonie' && q.id === 'situation_actuelle') ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      checked={selectedQuestions.includes(q.id)}
+                      checked={selectedQuestions.includes(q.id) || formData.secteur === 'telephonie' && q.id === 'situation_actuelle'}
+                      disabled={formData.secteur === 'telephonie' && q.id === 'situation_actuelle'}
                       onChange={() => {}}
                       className="w-5 h-5 text-blue-600 rounded mt-1"
                     />
@@ -832,7 +878,7 @@ ${activeMerges.map((catId) => {
               >
                 Toutes
               </button>
-              {Object.keys(ALL_FIELDS).map((cat) => (
+              {Object.keys(sectorFields).map((cat) => (
                 <button
                   key={cat}
                   type="button"
@@ -841,7 +887,7 @@ ${activeMerges.map((catId) => {
                     selectedCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
                   }`}
                 >
-                  {getCategoryLabel(cat)}
+                  {getCategoryLabelForSecteur(formData.secteur, cat)}
                 </button>
               ))}
               {customCategories.map((cat) => (
@@ -858,12 +904,12 @@ ${activeMerges.map((catId) => {
               ))}
             </div>
 
-            {Object.entries(ALL_FIELDS)
+            {Object.entries(sectorFields)
               .filter(([cat]) => selectedCategory === 'all' || selectedCategory === cat)
               .map(([cat, fields]) => (
                 <div key={cat} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-gray-900">{getCategoryLabel(cat)}</h3>
+                    <h3 className="font-semibold text-gray-900">{getCategoryLabelForSecteur(formData.secteur, cat)}</h3>
                     <button
                       type="button"
                       onClick={() => selectAllInCategory(cat)}
@@ -877,7 +923,8 @@ ${activeMerges.map((catId) => {
                       <label key={field} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-50">
                         <input
                           type="checkbox"
-                          checked={selectedFields.includes(field)}
+                          checked={selectedFields.includes(field) || formData.secteur === 'telephonie' && field.startsWith('situation_actuelle.')}
+                          disabled={formData.secteur === 'telephonie' && field.startsWith('situation_actuelle.')}
                           onChange={() => toggleField(field)}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
@@ -889,7 +936,7 @@ ${activeMerges.map((catId) => {
               ))}
 
             <CustomFieldsEditor
-              secteur={secteur}
+              secteur={formData.secteur}
               activeMerges={activeMerges}
               selectedCategory={selectedCategory}
               reservedFieldPaths={getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, [])}

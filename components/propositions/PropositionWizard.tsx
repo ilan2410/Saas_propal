@@ -52,6 +52,7 @@ export interface PropositionData {
 
 export type PropositionTemplateSummary = {
   id: string;
+  secteur?: 'telephonie' | 'bureautique';
   nom: string;
   file_type: string;
   description?: string | null;
@@ -120,6 +121,7 @@ export function PropositionWizard({
     copieurs_count: 1,
     ...(initialData || {}),
   });
+  const selectedSecteur = templates.find((template) => template.id === propositionData.template_id)?.secteur ?? (secteur === 'bureautique' ? 'bureautique' : 'telephonie');
   const [showMultisiteModal, setShowMultisiteModal] = useState(false);
   const [tarifCloneSite, setTarifCloneSite] = useState(1);
   const [reEditSiteIndex, setReEditSiteIndex] = useState<number | null>(null);
@@ -279,7 +281,7 @@ export function PropositionWizard({
       };
 
       // Load catalogue for SP generation
-      const catalogueData = await fetch('/api/catalogue')
+      const catalogueData = await fetch(`/api/catalogue?template_id=${encodeURIComponent(propositionData.template_id ?? '')}`)
         .then((r) => r.json())
         .then((d) => d.produits ?? [])
         .catch(() => []);
@@ -427,7 +429,7 @@ export function PropositionWizard({
           <div id="step1-template-selector">
             <Step1SelectTemplate
               templates={templates}
-              secteur={secteur}
+              secteur={selectedSecteur}
               propositionData={propositionData}
               updatePropositionData={updatePropositionData}
               onNext={nextStep}
@@ -447,7 +449,7 @@ export function PropositionWizard({
         {currentStep === 3 && (
           <div id="step3-extracted-data">
             <Step3ExtractData
-              secteur={secteur}
+              secteur={selectedSecteur}
               propositionData={propositionData}
               updatePropositionData={updatePropositionData}
               onNext={handleAfterExtraction}

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { formatCurrency, formatDate, formatFileSize, formatTokens } from '@/lib/utils/formatting';
 import { formatUsd, usdToEur } from '@/lib/admin/currency';
+import { estimatedProfitEur, type propositionMetrics } from '@/lib/admin/proposition-metrics';
 import type { OrgUsageTotals, PropositionUsageTotals, UsageTotals } from '@/lib/admin/usage-report';
 import type { StorageCategoryUsage } from '@/lib/admin/storage-usage';
 
@@ -77,12 +78,14 @@ export function OrganizationCostTable({
 export function ExtractionCostTable({
   rows,
   names,
-  propositionNames,
+  propositionDetails,
+  tariffs,
   rate,
 }: {
   rows: PropositionUsageTotals[];
   names: Map<string, string>;
-  propositionNames: Map<string, string>;
+  propositionDetails: Map<string, ReturnType<typeof propositionMetrics>>;
+  tariffs: Map<string, number | string | null>;
   rate: number;
 }) {
   if (rows.length === 0) {
@@ -101,30 +104,45 @@ export function ExtractionCostTable({
             <th className="px-4 py-2 text-left font-medium text-gray-500">Date</th>
             <th className="px-4 py-2 text-left font-medium text-gray-500">Client</th>
             <th className="px-4 py-2 text-left font-medium text-gray-500">Proposition</th>
+            <th className="px-4 py-2 text-right font-medium text-gray-500" title="Documents source utilisés pour l'extraction">PJ utilisées</th>
             <th className="px-4 py-2 text-left font-medium text-gray-500">Modèle</th>
             <th className="px-4 py-2 text-right font-medium text-gray-500">Appels</th>
             <th className="px-4 py-2 text-right font-medium text-gray-500">Tokens</th>
             <th className="px-4 py-2 text-right font-medium text-gray-500">Coût</th>
+            <th className="px-4 py-2 text-right font-medium text-gray-500">Bénéfice estimé</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {rows.map((row) => (
-            <tr key={row.propositionId}>
-              <td className="px-4 py-3 text-gray-600">{formatDate(row.lastCallAt, 'short')}</td>
-              <td className="px-4 py-3 text-gray-900">
-                {row.organizationId ? (names.get(row.organizationId) ?? row.organizationId) : '—'}
-              </td>
-              <td className="px-4 py-3 text-gray-600">
-                {propositionNames.get(row.propositionId) ?? 'Proposition supprimée'}
-              </td>
-              <td className="px-4 py-3 text-gray-600">{row.models.join(', ')}</td>
-              <td className="px-4 py-3 text-right text-gray-900">{row.totals.calls}</td>
-              <td className="px-4 py-3 text-right text-gray-600">
-                {formatTokens(row.totals.inputTokens + row.totals.outputTokens)}
-              </td>
-              <td className="px-4 py-3 text-right"><CostCell totals={row.totals} rate={rate} /></td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const details = propositionDetails.get(row.propositionId);
+            const profit = estimatedProfitEur(
+              row.organizationId ? tariffs.get(row.organizationId) : null,
+              row.totals.costUsd,
+              rate,
+              row.totals.hasUnknownPricing,
+            );
+            return (
+              <tr key={row.propositionId}>
+                <td className="px-4 py-3 text-gray-600">{formatDate(row.lastCallAt, 'short')}</td>
+                <td className="px-4 py-3 text-gray-900">
+                  {row.organizationId ? (names.get(row.organizationId) ?? row.organizationId) : '—'}
+                </td>
+                <td className="px-4 py-3 text-gray-600 break-words max-w-64">
+                  {details?.name ?? 'Proposition supprimée'}
+                </td>
+                <td className="px-4 py-3 text-right text-gray-900 tabular-nums">{details?.documentCount ?? '—'}</td>
+                <td className="px-4 py-3 text-gray-600">{row.models.join(', ')}</td>
+                <td className="px-4 py-3 text-right text-gray-900">{row.totals.calls}</td>
+                <td className="px-4 py-3 text-right text-gray-600">
+                  {formatTokens(row.totals.inputTokens + row.totals.outputTokens)}
+                </td>
+                <td className="px-4 py-3 text-right"><CostCell totals={row.totals} rate={rate} /></td>
+                <td className="px-4 py-3 text-right text-gray-900 tabular-nums whitespace-nowrap">
+                  {details && profit !== null ? formatCurrency(profit) : '—'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Package, Pencil, Search, LayoutGrid, List, Filter, ChevronLeft, ChevronRight, ImageIcon, Trash2, X, Copy } from 'lucide-react';
-import { CatalogueProduit, CatalogueCategorie } from '@/types';
+import { CatalogueProduit, CatalogueCategorie, CatalogueSecteur } from '@/types';
 import { CatalogueHeader } from './CatalogueHeader';
 import { BulkEditModal } from './BulkEditModal';
 import { OnboardingGuide } from '@/components/onboarding/OnboardingGuide';
@@ -15,6 +15,7 @@ interface CatalogueViewProps {
   initialProducts: CatalogueProduit[];
   showHeader?: boolean;
   isAdmin?: boolean;
+  secteur?: CatalogueSecteur;
 }
 
 function formatPrice(value: unknown): string {
@@ -31,7 +32,7 @@ function getFasModeLabel(produit: CatalogueProduit): string {
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100, 200];
 
-export function CatalogueView({ initialProducts, showHeader = true, isAdmin = false }: CatalogueViewProps) {
+export function CatalogueView({ initialProducts, showHeader = true, isAdmin = false, secteur }: CatalogueViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tourParam = searchParams.get('tour');
@@ -181,6 +182,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           categorie: produit.categorie,
+          secteur_catalogue: produit.secteur_catalogue ?? secteur,
           nom: `${produit.nom} - Copie`,
           description: produit.description,
           fournisseur: produit.fournisseur,
@@ -217,7 +219,7 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
   return (
     <div className="space-y-6">
       {showTour && <CatalogueTourSession key="catalogue" />}
-      {showHeader && <CatalogueHeader />}
+      {showHeader && <CatalogueHeader secteur={secteur} />}
 
       {/* Filters Bar */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4 md:space-y-0 md:flex md:items-center md:justify-between gap-4">

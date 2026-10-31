@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { defaultSecteur, isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const categorie = searchParams.get('categorie');
+    const requestedSecteur = searchParams.get('secteur');
+    const templateId = searchParams.get('template_id');
 
     const {
       data: { user },
@@ -20,11 +24,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const service = createServiceClient();
+    const { data: organization } = await service.from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+    const orgSecteur = organization?.secteur as Secteur;
+    if (!orgSecteur) return NextResponse.json({ error: 'Organisation introuvable' }, { status: 404 });
+    let secteur: unknown = requestedSecteur ?? defaultSecteur(orgSecteur);
+    if (templateId) {
+      const { data: template } = await supabase.from('proposition_templates')
+        .select('secteur').eq('id', templateId).eq('organization_id', ctx.organizationId).single();
+      if (!template || (requestedSecteur && requestedSecteur !== template.secteur)) {
+        return NextResponse.json({ error: 'Template ou secteur invalide' }, { status: 400 });
+      }
+      secteur = template.secteur;
+    }
+    if (!isAllowedSecteur(orgSecteur, secteur)) return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+
     let query = supabase
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
       .eq('organization_id', ctx.organizationId)
+      .eq('secteur_catalogue', secteur)
       .order('est_produit_base', { ascending: false })
       .order('nom', { ascending: true });
 
@@ -54,26 +74,35 @@ export async function POST(request: NextRequest) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const body = await request.json();
+    const role = user.app_metadata?.role;
+    const isGlobalProduct = body?.is_global === true && role === 'admin';
+    if (!ctx && !isGlobalProduct) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    if (!isGlobalProduct && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
+    const service = createServiceClient();
+    const { data: organization } = isGlobalProduct ? { data: null } : await service.from('organizations')
+      .select('secteur').eq('id', ctx!.organizationId).single();
+    const orgSecteur = organization?.secteur as Secteur;
+    const secteur = body?.secteur_catalogue ?? (orgSecteur && defaultSecteur(orgSecteur));
+    if (isGlobalProduct ? !isCatalogueSecteur(secteur) : !orgSecteur || (orgSecteur === 'mixte' && body?.secteur_catalogue === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
+      return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.app_metadata?.role;
     // Si isAdminRequest est true et que l'utilisateur est admin, on crée un produit global (organization_id = null)
     // Sinon, on crée un produit pour l'organisation de l'utilisateur
-    const isGlobalProduct = body?.is_global === true && role === 'admin';
 
-    const { data, error } = await supabase
+    const { data, error } = await (isGlobalProduct ? service : supabase)
       .from('catalogues_produits')
       .insert({
-        organization_id: isGlobalProduct ? null : ctx.organizationId,
+        organization_id: isGlobalProduct ? null : ctx!.organizationId,
+        secteur_catalogue: secteur,
         categorie: body?.categorie,
         nom: body?.nom,
         description: body?.description ?? null,

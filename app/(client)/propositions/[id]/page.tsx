@@ -817,7 +817,7 @@ export default async function PropositionDetailPage({
       .select('*')
       .eq('actif', true)
       .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
-    const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]) : [];
+    const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template?.secteur ?? 'telephonie')) : [];
 
     const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
     const templateFileCfg = isRecord(template?.file_config) ? (template.file_config as Record<string, unknown>) : {};

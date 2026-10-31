@@ -33,12 +33,17 @@ export default async function NewPropositionPage() {
   const secteur = organization?.secteur || 'telephonie';
 
   // Récupérer les templates actifs
-  const { data: allTemplates } = await supabase
+  const { data: allTemplates, error: templatesError } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx.organizationId)
     .eq('statut', 'actif')
     .order('created_at', { ascending: false });
+
+  if (templatesError) {
+    console.error('Erreur chargement templates pour proposition:', templatesError);
+    return <p role="alert">Impossible de charger les templates. Réessayez après vérification des droits d&apos;accès.</p>;
+  }
 
   // Un commercial restreint ne voit que les templates qui lui sont attribués
   const templates = (allTemplates ?? []).filter((t) => canUseTemplate(ctx, t.id));

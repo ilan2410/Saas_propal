@@ -55,11 +55,20 @@ export default async function TemplatesPage() {
   }
 
   // Récupérer tous les templates
-  const { data: templates } = await supabase
+  const { data: templates, error: templatesError } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx?.organizationId)
     .order('created_at', { ascending: false });
+
+  if (templatesError) {
+    console.error('Erreur chargement templates:', templatesError);
+    return (
+      <div role="alert" className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">
+        Impossible de charger les templates. Réessayez après vérification des droits d&apos;accès.
+      </div>
+    );
+  }
 
   // Stats
   const totalTemplates = templates?.length || 0;
@@ -214,6 +223,7 @@ export default async function TemplatesPage() {
                         <h3 className="font-bold text-gray-900 text-lg truncate group-hover:text-blue-600 transition-colors">
                           {template.nom}
                         </h3>
+                        <span className="inline-block mr-2 px-2 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-md mt-1">{template.secteur === 'bureautique' ? 'Bureautique' : 'Téléphonie'}</span>
                         <span className={`inline-block px-2 py-1 ${fileConfig.lightBg} ${fileConfig.text} text-xs font-semibold rounded-md uppercase tracking-wide mt-1`}>
                           {template.file_type}
                         </span>

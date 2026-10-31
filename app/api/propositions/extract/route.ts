@@ -14,6 +14,8 @@ import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
 import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
+import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
+import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -325,6 +327,7 @@ export async function POST(request: NextRequest) {
 
     const { data: organization, error: orgError } = await serviceSupabase.from('organizations').select('*').eq('id', ctx.organizationId).single();
     if (orgError || !organization) return NextResponse.json({ error: 'Organisation non trouvée' }, { status: 404 });
+    const secteurTemplate = template.secteur ?? (organization.secteur === 'bureautique' ? 'bureautique' : 'telephonie');
 
     console.log('🏢 Organisation:', organization.nom);
     console.log('💰 Crédits actuels:', organization.credits, 'Type:', typeof organization.credits);
@@ -450,7 +453,7 @@ DOCUMENT(S):
 
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
-    let promptToUse = template.prompt_template || organization.prompt_template || DEFAULT_PROMPT;
+    let promptToUse = template.prompt_template || (secteurTemplate === 'bureautique' ? BUREAUTIQUE_DEFAULT_PROMPT : organization.prompt_template || DEFAULT_PROMPT);
     const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
 
     // Niveau d'effort de raisonnement, réglable par template (file_config.claude_effort).
@@ -467,7 +470,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       (isRecord(template.file_config) ? template.file_config.inclure_charges_variables_sa : undefined) !== false;
 
     // Bureautique : aider l'extraction à produire un nombre cohérent de lignes (si l'utilisateur a indiqué N copieurs)
-    if (organization.secteur === 'bureautique' && copieursCount > 1) {
+    if (secteurTemplate === 'bureautique' && copieursCount > 1) {
       promptToUse = `${promptToUse.trim()}
 
 CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
@@ -477,7 +480,7 @@ CONTRAINTE BUREAUTIQUE - NOMBRE DE COPIEURS:
 `;
     }
 
-    promptToUse = `${promptToUse.trim()}
+    if (secteurTemplate !== 'bureautique') promptToUse = `${promptToUse.trim()}
 
 CONTRAINTE ABSOLUE - MONTANTS HORS TAXES DE LA SITUATION ACTUELLE:
 - Tous les montants utilisés dans situation_actuelle doivent être HORS TAXES (HT), sans exception : tarifs, loyers, remises, abonnements, lignes, locations et totaux source ou calculés.
@@ -515,10 +518,11 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     console.log('🤖 Modèle utilisé:', modelToUse);
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
-    const activeFields = Array.isArray(template.champs_actifs)
+    const selectedFields = Array.isArray(template.champs_actifs)
       ? template.champs_actifs.filter((field: unknown): field is string => typeof field === 'string')
       : [];
-    const useSaPipeline = isSaExtractionEligible(organization.secteur, activeFields);
+    const activeFields = withRequiredTemplateFields(secteurTemplate, selectedFields);
+    const useSaPipeline = isSaExtractionEligible(secteurTemplate, activeFields);
     if (isDeepSeekSaModel(modelToUse) && !useSaPipeline) {
       return NextResponse.json({ error: 'DeepSeek V4.1 Flash est réservé aux extractions SA.' }, { status: 400 });
     }
@@ -664,6 +668,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           prompt_template: promptToUse,
           claude_model: modelToUse,
           claude_effort: effortToUse,
+          secteur: secteurTemplate,
         }),
       );
     }
@@ -705,7 +710,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     const propositionCreatedAt = typeof proposition.created_at === 'string' ? proposition.created_at : null;
     const enrichedExtractedData = enrichSituationActuelle(extractedData, resiliationConfig, propositionCreatedAt, inclureChargesVariables);
     const extractedDataFinal =
-      organization.secteur === 'bureautique'
+      secteurTemplate === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)
         : enrichedExtractedData;
     const extractionControl = isRecord(extractedDataFinal._extraction_control)

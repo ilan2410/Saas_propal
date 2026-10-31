@@ -143,6 +143,7 @@ export interface SpCustomization {
 export interface PropositionTemplate {
   id: string;
   organization_id: string;
+  secteur?: CatalogueSecteur;
   nom: string;
   description?: string;
   file_url: string;

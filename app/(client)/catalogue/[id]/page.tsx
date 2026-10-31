@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { CatalogueProduitForm } from '@/components/catalogue/CatalogueProduitForm';
+import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -18,11 +19,14 @@ export default async function EditCatalogueProductPage({
   } = await supabase.auth.getUser();
 
   if (!user) redirect('/login');
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) redirect('/login');
 
   const { data: produit, error } = await supabase
     .from('catalogues_produits')
     .select('*')
     .eq('id', id)
+    .eq('organization_id', ctx.organizationId)
     .single();
 
   if (error || !produit) {
@@ -33,7 +37,7 @@ export default async function EditCatalogueProductPage({
     <div className="space-y-6">
       <div>
         <Link
-          href="/catalogue"
+          href={`/catalogue?secteur=${produit.secteur_catalogue ?? 'telephonie'}`}
           className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -52,4 +56,3 @@ export default async function EditCatalogueProductPage({
     </div>
   );
 }
-

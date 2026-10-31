@@ -1,0 +1,118 @@
+{
+  "[Content_Types].xml": {
+    "size": 2784,
+    "sha256": "7117607eef0f90efb506f1fc7271b95025a8747a6fb933f061c503d0c65bdd8d"
+  },
+  "_rels/.rels": {
+    "size": 590,
+    "sha256": "e19238d7a71fa7a2490776252686f70e2de6238c87cd509b5e3a3cc07c2ea4df"
+  },
+  "word/document.xml": {
+    "size": 492914,
+    "sha256": "cc432f6b42aa448fbaea592f5ec74a8bd999ddfab1965485423b0a4c59520f23"
+  },
+  "word/_rels/document.xml.rels": {
+    "size": 3207,
+    "sha256": "a88146cfc5cf4fd4ef756772e4b7013beff3bfc13ff8f4d4ee53a667c387ef3a"
+  },
+  "word/footnotes.xml": {
+    "size": 3021,
+    "sha256": "65250733ca3ca8bc2719e24619c5d209140c63093547a871daae8175c80ccc91"
+  },
+  "word/endnotes.xml": {
+    "size": 3015,
+    "sha256": "c5066baefd5e4c8ca916dc7230bd776b0529406db5e3e972be8952b3e880d63c"
+  },
+  "word/footer1.xml": {
+    "size": 12038,
+    "sha256": "61182341f16973ba9f797eed65be37a2035e638eb1f7a14ff39c298069f65103"
+  },
+  "word/media/image1.jpeg": {
+    "size": 457700,
+    "sha256": "7783126f6338140c6c03742119bedebb35e87964f4c04608fc3fb7909f0200e3"
+  },
+  "word/media/image2.png": {
+    "size": 9354,
+    "sha256": "9b1e9801d43e510ee0866d00fcc13f12c1924c2428a515bf083ed2a81f39fd75"
+  },
+  "word/media/image3.jpeg": {
+    "size": 78500,
+    "sha256": "9211f5317f21a4d207646d8a3342742aa36648502bd90ecf6cefe492f851d458"
+  },
+  "word/media/image4.jpeg": {
+    "size": 187927,
+    "sha256": "6885d7965c542646b05581e6c1f9ec8bb704d8fe77c380f94fd23f1c2666fd7a"
+  },
+  "word/media/image5.png": {
+    "size": 186130,
+    "sha256": "50e6dcceeb1194eec032da19b4a7088318146b7ca15b4aa686a9378d79cb80d6"
+  },
+  "word/theme/theme1.xml": {
+    "size": 8727,
+    "sha256": "a9bc230d7e6a54642ec821eca695700f4f45436e2c23daf650c1bee621b52288"
+  },
+  "word/settings.xml": {
+    "size": 12670,
+    "sha256": "c1a1d303c0cd323898b934815d8a828096f462efe5569986b9f1656d8dfc83f4"
+  },
+  "word/glossary/document.xml": {
+    "size": 3099,
+    "sha256": "04acbfebc2b7b33ece6ead3b02f0d96543540e854157697ff966ac67422dd1c5"
+  },
+  "word/glossary/settings.xml": {
+    "size": 5048,
+    "sha256": "7f509b16bc02f759df192bee9a74d09eebc0095d07125d0f7227f17f70fc2b3e"
+  },
+  "word/glossary/_rels/document.xml.rels": {
+    "size": 685,
+    "sha256": "6a5cb307510ec859954146b9b86e3884fa5b108ee3701a21427d0efc883352b9"
+  },
+  "customXml/item1.xml": {
+    "size": 289,
+    "sha256": "b30b8fd758aa47aada70ee7d8d8287349d6a21eb03c79bcb2e8930a1789022cc"
+  },
+  "customXml/itemProps1.xml": {
+    "size": 341,
+    "sha256": "c7ae36be71aa4df3951a179e7f347d176a62e6a173869e48576093493494c781"
+  },
+  "word/numbering.xml": {
+    "size": 15122,
+    "sha256": "4b80243a45957dd1055b043e53449d39894395b9a29a761abba84270762bf429"
+  },
+  "word/styles.xml": {
+    "size": 45906,
+    "sha256": "35cd0bffd7a75cc530360c20217428b6e14eac7bebf4157cd47434bf6b2a0dd9"
+  },
+  "word/webSettings.xml": {
+    "size": 36498,
+    "sha256": "1c3d02c9fa7b3d95588c8bbd49d4f487910bb22883fcc338e982ac304bd8b1b8"
+  },
+  "word/fontTable.xml": {
+    "size": 4487,
+    "sha256": "f5d88353dc3e2f3e7c0e9b3845972275d321a1bae4bd85622e4ee91710ff735c"
+  },
+  "word/glossary/styles.xml": {
+    "size": 29977,
+    "sha256": "31e959d0e93e893fad9bac1551e40d4a132aae2741c4e8e3f7d291cca4d74769"
+  },
+  "word/glossary/webSettings.xml": {
+    "size": 894,
+    "sha256": "a935be2dde349160ee390cc5b6a06aa057cfd44feac230f6eff440889f53902f"
+  },
+  "word/glossary/fontTable.xml": {
+    "size": 5025,
+    "sha256": "200701ba5bc07e5e02167cd572a5487a33fa124743ca64617a38955d3ff337bb"
+  },
+  "docProps/core.xml": {
+    "size": 1130,
+    "sha256": "7a812dde981643144da5c3ff92840d05155a9e6e378f4461765a55e2c6daaec0"
+  },
+  "docProps/app.xml": {
+    "size": 1000,
+    "sha256": "77f289e2c411dd225324c5d411c031caaff6fede862b1e3e925e4355ee908cd6"
+  },
+  "customXml/_rels/item1.xml.rels": {
+    "size": 296,
+    "sha256": "80482f86e196171d66001e0e74d1900408a3aaf2463e54005d251b5f2db9a0b0"
+  }
+}

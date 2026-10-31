@@ -57,8 +57,8 @@ export function SpWorkflowSimulatorModal({ questions, templateId, templateNom, o
   useEffect(() => {
     Promise.all([
       fetch(`/api/propositions/latest-extracted-data?template_id=${templateId}`).then((r) => r.json()),
-      fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
-      fetch('/api/catalogue').then((r) => r.json()),
+      fetch(`/api/catalogue/fournisseurs?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
       fetch('/api/settings/preferences').then((r) => r.json()),
       fetch(`/api/templates/${templateId}`).then((r) => r.json()),
     ]).then(([latestData, fData, cData, prefsData, templateData]) => {

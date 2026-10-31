@@ -66,7 +66,7 @@ export function SpLoyerManager({ templates }: Props) {
     if (!templateId) return;
     Promise.all([
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()),
-      fetch('/api/catalogue').then((r) => r.json()),
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
     ]).then(([qData, cData]) => {
       const qs: SpQuestion[] = ((qData.questions ?? []) as SpQuestion[])
         .filter((q) => q.actif)

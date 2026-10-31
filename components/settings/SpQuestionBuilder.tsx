@@ -597,7 +597,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
     // Charger le catalogue dès l'ouverture : nécessaire pour la source 'catalogue'
     // ET pour les conditions d'affichage basées sur les produits sélectionnés (Bloc 2).
     if (!produitsLoaded) {
-      fetch('/api/catalogue')
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`)
         .then((r) => r.json())
         .then((d: { produits?: CatalogueProduit[] }) => {
           setAllProduits(d.produits ?? []);

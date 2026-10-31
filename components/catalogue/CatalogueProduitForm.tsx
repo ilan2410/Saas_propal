@@ -3,7 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, ImageIcon, Trash2, Plus, Search } from 'lucide-react';
-import type { CatalogueCategorie, CatalogueProduit, CatalogueProduitTranche, ProduitDestinations } from '@/types';
+import type { CatalogueCategorie, CatalogueProduit, CatalogueProduitTranche, ProduitDestinations, CatalogueSecteur } from '@/types';
 
 type FormState = {
   categorie: CatalogueCategorie;
@@ -30,10 +30,12 @@ export function CatalogueProduitForm({
   mode,
   initialProduit,
   isAdmin = false,
+  secteur,
 }: {
   mode: 'create' | 'edit';
   initialProduit?: Partial<CatalogueProduit>;
   isAdmin?: boolean;
+  secteur?: CatalogueSecteur;
 }) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -84,6 +86,7 @@ export function CatalogueProduitForm({
   }, [initialProduit]);
 
   const [form, setForm] = useState<FormState>(initialState);
+  const [productSecteur, setProductSecteur] = useState<CatalogueSecteur>(initialProduit?.secteur_catalogue ?? secteur ?? 'telephonie');
   const [catalogueProduits, setCatalogueProduits] = useState<CatalogueProduit[]>([]);
   const [optionsSearch, setOptionsSearch] = useState('');
 
@@ -91,7 +94,7 @@ export function CatalogueProduitForm({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/catalogue');
+        const res = await fetch(`/api/catalogue?secteur=${productSecteur}`);
         if (!res.ok) return;
         const json = await res.json();
         if (!cancelled && Array.isArray(json?.produits)) {
@@ -102,7 +105,7 @@ export function CatalogueProduitForm({
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [productSecteur]);
 
   const optionCandidates = useMemo(
     () => catalogueProduits.filter((p) => p.id !== initialProduit?.id),
@@ -207,7 +210,7 @@ export function CatalogueProduitForm({
         throw new Error(json?.error || 'Erreur lors de la suppression');
       }
 
-      router.push(isAdmin ? '/admin/catalogue/tous' : '/catalogue');
+      router.push(isAdmin ? '/admin/catalogue/tous' : `/catalogue?secteur=${productSecteur}`);
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erreur lors de la suppression');
@@ -257,6 +260,7 @@ export function CatalogueProduitForm({
         prix_par_tranche: form.tranches_actives && form.tranches.length > 0 ? form.tranches : null,
         options_produits_ids: form.options_produits_ids.length > 0 ? form.options_produits_ids : null,
         is_global: isAdmin,
+        secteur_catalogue: productSecteur,
       };
 
       if (!payload.nom) {
@@ -300,7 +304,7 @@ export function CatalogueProduitForm({
         throw new Error(json?.error || 'Erreur serveur');
       }
 
-      router.push(isAdmin ? '/admin/catalogue/tous' : '/catalogue');
+      router.push(isAdmin ? '/admin/catalogue/tous' : `/catalogue?secteur=${productSecteur}`);
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
@@ -311,6 +315,7 @@ export function CatalogueProduitForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {isAdmin && <div><label htmlFor="product-secteur" className="block text-sm font-medium text-gray-700 mb-1">Secteur</label><select id="product-secteur" value={productSecteur} onChange={(e) => setProductSecteur(e.target.value as CatalogueSecteur)} className="w-full px-3 py-2 border border-gray-300 rounded-lg"><option value="telephonie">Téléphonie</option><option value="bureautique">Bureautique</option></select></div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>

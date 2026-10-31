@@ -99,8 +99,8 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     if (!templateId) return;
     Promise.all([
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()),
-      fetch('/api/catalogue/fournisseurs').then((r) => r.json()),
-      fetch('/api/catalogue').then((r) => r.json()),
+      fetch(`/api/catalogue/fournisseurs?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
       fetch('/api/settings/preferences').then((r) => r.json()),
       fetch(`/api/templates/${templateId}`).then((r) => r.json()),
     ]).then(([qData, fData, cData, pData, tData]) => {

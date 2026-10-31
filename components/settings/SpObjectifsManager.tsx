@@ -82,7 +82,7 @@ export function SpObjectifsManager({ templates }: Props) {
     Promise.all([
       fetch('/api/settings/preferences').then((r) => r.json()),
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()),
-      fetch('/api/catalogue').then((r) => r.json()),
+      fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
     ]).then(([prefData, qData, catData]) => {
       const allObjectifs: SpObjectifConfig[] = prefData.preferences?.sp_objectifs_config ?? [];
       setObjectifs(allObjectifs.filter((o) => o.template_id === templateId).sort((a, b) => a.ordre - b.ordre));

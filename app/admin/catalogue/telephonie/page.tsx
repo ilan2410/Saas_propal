@@ -11,6 +11,7 @@ export default async function AdminTelephoniePage() {
     .from('catalogues_produits')
     .select('*')
     .is('organization_id', null)
+    .eq('secteur_catalogue', 'telephonie')
     // .eq('categorie', 'mobile') // Temporairement désactivé pour afficher tous les produits
     .eq('actif', true)
     .order('nom', { ascending: true });

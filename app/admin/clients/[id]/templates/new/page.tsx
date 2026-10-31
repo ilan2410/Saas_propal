@@ -29,11 +29,10 @@ export default async function NewTemplatePage({
   }
 
   const secteur = org.secteur || 'telephonie';
-  const { data: promptDefault } = await supabase
+  const { data: promptDefaults } = await supabase
     .from('prompt_defaults')
-    .select('prompt_template')
-    .eq('secteur', secteur)
-    .single();
+    .select('secteur,prompt_template')
+    .in('secteur', secteur === 'mixte' ? ['telephonie', 'bureautique'] : [secteur]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -65,7 +64,8 @@ export default async function NewTemplatePage({
           organizationId={id} 
           organizationName={org.nom}
           secteur={secteur}
-          initialPromptTemplate={promptDefault?.prompt_template}
+          initialPromptTemplate={promptDefaults?.find((row) => row.secteur === secteur)?.prompt_template}
+          promptDefaults={Object.fromEntries((promptDefaults ?? []).map((row) => [row.secteur, row.prompt_template]))}
         />
       </div>
     </div>

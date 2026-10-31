@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
+import type { Secteur } from '@/types';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -18,29 +20,35 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const { id } = await params;
+    const body = await request.json();
+    const { is_global, organization_id: _organizationId, ...updates } = body ?? {};
+    const isGlobalProduct = is_global === true && user.app_metadata?.role === 'admin';
+    if (!ctx && !isGlobalProduct) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    if (!isGlobalProduct && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { id } = await params;
-    const body = await request.json();
-    const { is_global, ...updates } = body ?? {};
+    if (updates.secteur_catalogue !== undefined) {
+      const { data: organization } = isGlobalProduct ? { data: null } : await createServiceClient().from('organizations')
+        .select('secteur').eq('id', ctx!.organizationId).single();
+      if (isGlobalProduct ? !isCatalogueSecteur(updates.secteur_catalogue) : !organization || !isAllowedSecteur(organization.secteur as Secteur, updates.secteur_catalogue)) {
+        return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+      }
+    }
 
     // Vérifier si l'utilisateur est admin
-    const role = user.app_metadata?.role;
     // Si is_global est true et que l'utilisateur est admin, on modifie un produit global (organization_id = null)
     // Sinon, on modifie un produit pour l'organisation de l'utilisateur
-    const isGlobalProduct = is_global === true && role === 'admin';
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    let query = supabase
+    let query = (isGlobalProduct ? createServiceClient() : supabase)
       .from('catalogues_produits')
       .update(updates)
       .eq('id', id);
@@ -48,7 +56,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', ctx.organizationId);
+      query = query.eq('organization_id', ctx!.organizationId);
     }
 
     const { data, error } = await query.select().single();
@@ -75,24 +83,22 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const { id } = await params;
+    const body = await request.json().catch(() => ({})); // Body optionnel
+    const isGlobalProduct = body?.is_global === true && user.app_metadata?.role === 'admin';
+    if (!ctx && !isGlobalProduct) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (ctx.role !== 'owner' && !ctx.permissions.manage_catalogue) {
+    if (!isGlobalProduct && ctx?.role !== 'owner' && !ctx?.permissions.manage_catalogue) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { id } = await params;
-    const body = await request.json().catch(() => ({})); // Body optionnel
-
     // Vérifier si l'utilisateur est admin
-    const role = user.app_metadata?.role;
     // Si is_global est true et que l'utilisateur est admin, on supprime un produit global (organization_id = null)
     // Sinon, on supprime un produit pour l'organisation de l'utilisateur
-    const isGlobalProduct = body?.is_global === true && role === 'admin';
 
-    let query = supabase
+    let query = (isGlobalProduct ? createServiceClient() : supabase)
       .from('catalogues_produits')
       .delete()
       .eq('id', id);
@@ -100,7 +106,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (isGlobalProduct) {
       query = query.is('organization_id', null);
     } else {
-      query = query.eq('organization_id', ctx.organizationId);
+      query = query.eq('organization_id', ctx!.organizationId);
     }
 
     const { error } = await query;
