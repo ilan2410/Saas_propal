@@ -1,7 +1,7 @@
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
 import { safeStorageFileName } from '@/lib/security/validate-upload';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .select('*')
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
+      .in('secteur', allowedSecteurs(ctx))
       .single();
 
     if (fetchError || !original) {

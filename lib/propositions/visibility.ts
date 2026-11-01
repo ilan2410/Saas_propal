@@ -4,6 +4,7 @@
 // === true (voir resolveOrgContext), donc le filtre created_by ne s'applique
 // jamais pour lui : pas besoin de branche spéciale supplémentaire.
 import type { OrgContext } from '@/lib/auth/org-context';
+import { createServiceClient } from '@/lib/supabase/server';
 
 // Interface structurelle minimale : tout query builder Supabase (PostgrestFilterBuilder)
 // expose `.eq(column, value)` et se retourne lui-même pour permettre le chaînage.
@@ -33,4 +34,33 @@ export function scopePropositionsQuery<T>(query: T, ctx: OrgContext): T {
   }
 
   return scoped as unknown as T;
+}
+
+/**
+ * Vrai si la proposition appartient à un autre secteur que celui auquel le commercial est limité
+ * (organisations mixtes). Sans restriction de secteur, aucune requête n'est faite.
+ */
+export async function propositionSecteurBlocked(ctx: OrgContext, propositionId: string): Promise<boolean> {
+  if (!ctx.secteur) return false;
+  const { data } = await createServiceClient()
+    .from('propositions')
+    .select('template:proposition_templates(secteur)')
+    .eq('id', propositionId)
+    .eq('organization_id', ctx.organizationId)
+    .maybeSingle();
+  const template = (data as { template?: { secteur?: string } | { secteur?: string }[] | null } | null)?.template;
+  const secteur = Array.isArray(template) ? template[0]?.secteur : template?.secteur;
+  return Boolean(secteur) && secteur !== ctx.secteur;
+}
+
+/** Vrai si le template appartient à un autre secteur que celui du commercial. */
+export async function templateSecteurBlocked(ctx: OrgContext, templateId: string): Promise<boolean> {
+  if (!ctx.secteur) return false;
+  const { data } = await createServiceClient()
+    .from('proposition_templates')
+    .select('secteur')
+    .eq('id', templateId)
+    .eq('organization_id', ctx.organizationId)
+    .maybeSingle();
+  return Boolean(data?.secteur) && data?.secteur !== ctx.secteur;
 }

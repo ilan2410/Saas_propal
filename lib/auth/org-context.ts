@@ -24,6 +24,11 @@ export interface OrgContext {
   permissions: OrgPermissions; // toujours entièrement peuplé ; tout `true` pour un propriétaire
   /** Templates utilisables pour créer une proposition. null = tous (propriétaire, ou commercial sans restriction). */
   allowedTemplateIds: string[] | null;
+  /**
+   * Secteur auquel le commercial est limité (organisations « mixte » uniquement).
+   * null = aucun secteur imposé (propriétaire, organisation mono-secteur, ou commercial sans secteur).
+   */
+  secteur: 'telephonie' | 'bureautique' | null;
   displayName: {
     prenom: string;
     nom: string;
@@ -70,6 +75,18 @@ export function canUseTemplate(ctx: OrgContext, templateId: string): boolean {
   return ctx.allowedTemplateIds === null || ctx.allowedTemplateIds.includes(templateId);
 }
 
+/** Vrai si l'utilisateur peut accéder à ce secteur (templates, catalogue, propositions). */
+export function canAccessSecteur(ctx: Pick<OrgContext, 'secteur'>, secteur: unknown): boolean {
+  return ctx.secteur === null || ctx.secteur === secteur;
+}
+
+/** Secteurs accessibles, utilisable avec `.in('secteur', …)` sur les templates. */
+export function allowedSecteurs(ctx: Pick<OrgContext, 'secteur'>): string[] {
+  return ctx.secteur ? [ctx.secteur] : ['telephonie', 'bureautique'];
+}
+
+export const SECTEUR_FORBIDDEN_MESSAGE = "Vous n'avez pas accès à ce secteur. Contactez votre administrateur.";
+
 export const TEMPLATE_FORBIDDEN_MESSAGE =
   "Vous n'avez pas accès à ce template. Contactez votre administrateur.";
 
@@ -92,6 +109,7 @@ export async function resolveOrgContext(
       memberUserId: null,
       permissions: { ...ALL_PERMISSIONS_TRUE },
       allowedTemplateIds: null,
+      secteur: null,
       displayName: {
         prenom: ownerOrg.contact_prenom ?? '',
         nom: ownerOrg.contact_nom ?? '',
@@ -104,7 +122,7 @@ export async function resolveOrgContext(
   // 2. Cas commercial : sous-compte actif rattaché à une organisation via organization_members.
   const { data: member } = await supabase
     .from('organization_members')
-    .select('*, organizations!inner(commercial_default_permissions)')
+    .select('*, organizations!inner(commercial_default_permissions, secteur)')
     .eq('user_id', user.id)
     .eq('actif', true)
     .maybeSingle();
@@ -125,6 +143,11 @@ export async function resolveOrgContext(
       memberUserId: member.user_id,
       permissions,
       allowedTemplateIds: Array.isArray(member.allowed_template_ids) ? member.allowed_template_ids : null,
+      secteur:
+        member.organizations?.secteur === 'mixte'
+        && (member.secteur === 'telephonie' || member.secteur === 'bureautique')
+          ? member.secteur
+          : null,
       displayName: {
         prenom: member.prenom ?? '',
         nom: member.nom ?? '',

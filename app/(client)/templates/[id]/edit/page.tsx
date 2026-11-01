@@ -30,7 +30,7 @@ export default async function EditTemplatePage({ params }: PageProps) {
   return (
     <EditTemplateForm
       templateId={id}
-      secteur={organization?.secteur || 'telephonie'}
+      secteur={ctx.secteur ?? organization?.secteur ?? 'telephonie'}
       defaultFields={organization?.champs_defaut || []}
     />
   );

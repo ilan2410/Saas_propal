@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
 
@@ -43,6 +43,7 @@ export async function DELETE(request: NextRequest) {
       query = query.is('organization_id', null);
     } else {
       query = query.eq('organization_id', ctx!.organizationId);
+      if (ctx!.secteur) query = query.eq('secteur_catalogue', ctx!.secteur);
     }
 
     const { error } = await query;
@@ -84,6 +85,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { is_global: _ignored, organization_id: _org, ...sanitizedUpdates } = updates ?? {};
+    if (!isGlobalOperation && ctx && sanitizedUpdates.secteur_catalogue !== undefined && !canAccessSecteur(ctx, sanitizedUpdates.secteur_catalogue)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+    }
     if (sanitizedUpdates.secteur_catalogue !== undefined) {
       const { data: organization } = isGlobalOperation ? { data: null } : await createServiceClient().from('organizations')
         .select('secteur').eq('id', ctx!.organizationId).single();
@@ -111,6 +115,7 @@ export async function PATCH(request: NextRequest) {
       query = query.is('organization_id', null);
     } else {
       query = query.eq('organization_id', ctx!.organizationId);
+      if (ctx!.secteur) query = query.eq('secteur_catalogue', ctx!.secteur);
     }
 
     const { error } = await query;

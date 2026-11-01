@@ -4,7 +4,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 export default async function ResumePropositionPage({
@@ -36,13 +36,14 @@ export default async function ResumePropositionPage({
     .eq('id', ctx.organizationId)
     .single();
 
-  const secteur = organization?.secteur || 'telephonie';
+  const secteur = ctx.secteur ?? organization?.secteur ?? 'telephonie';
 
   const { data: templates } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx.organizationId)
     .eq('statut', 'actif')
+    .in('secteur', allowedSecteurs(ctx))
     .order('created_at', { ascending: false });
 
   if (!templates || templates.length === 0) {
@@ -56,6 +57,11 @@ export default async function ResumePropositionPage({
 
   if (error || !proposition) {
     notFound();
+  }
+  // Proposition d'un autre secteur que celui du commercial
+  if (ctx.secteur && proposition.template_id && !templates.some((t) => t.id === proposition.template_id)) {
+    const { data: propTemplate } = await supabase.from('proposition_templates').select('secteur').eq('id', proposition.template_id).maybeSingle();
+    if (propTemplate && propTemplate.secteur !== ctx.secteur) notFound();
   }
 
   const sourceDocuments = proposition.source_documents;

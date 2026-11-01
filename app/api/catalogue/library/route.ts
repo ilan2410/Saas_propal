@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
 
@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
     .select('secteur').eq('id', ctx.organizationId).single();
   const orgSecteur = organization?.secteur as Secteur;
   if (!orgSecteur) return NextResponse.json({ error: 'Organisation introuvable' }, { status: 404 });
-  const secteur = new URL(request.url).searchParams.get('secteur') ?? defaultSecteur(orgSecteur);
+  const secteur = new URL(request.url).searchParams.get('secteur') ?? ctx.secteur ?? defaultSecteur(orgSecteur);
   if (!isAllowedSecteur(orgSecteur, secteur)) return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+  if (!canAccessSecteur(ctx, secteur)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
   const [{ data: products, error }, { data: own, error: ownError }] = await Promise.all([
     service.from('catalogues_produits').select('*').is('organization_id', null).eq('actif', true)

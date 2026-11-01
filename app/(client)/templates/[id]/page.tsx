@@ -1,6 +1,7 @@
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -35,11 +36,18 @@ export default async function TemplateDetailPage({ params }: Props) {
     redirect('/login');
   }
 
-  // Récupérer le template
+  const ctx = await resolveOrgContext(supabase, user);
+  if (!ctx) {
+    redirect('/login');
+  }
+
+  // Récupérer le template (limité au secteur du commercial le cas échéant)
   const { data: template, error } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('id', id)
+    .eq('organization_id', ctx.organizationId)
+    .in('secteur', allowedSecteurs(ctx))
     .single();
 
   if (error || !template) {

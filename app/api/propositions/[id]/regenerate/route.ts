@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { SpQuestionReponse } from '@/types';
-import { resolveOrgContext } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +20,10 @@ export async function POST(
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await propositionSecteurBlocked(ctx, id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     if (ctx.role !== 'owner' && !ctx.permissions.download_proposition) {

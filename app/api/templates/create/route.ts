@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import { DEFAULT_CLAUDE_MODEL, generateMergedPrompt } from '@/components/admin/organizationFormConfig';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
 
@@ -35,9 +35,12 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>;
     const { data: org } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
     const orgSecteur = org?.secteur as Secteur;
-    const secteur = body.secteur ?? (orgSecteur && defaultSecteur(orgSecteur));
+    const secteur = body.secteur ?? ctx.secteur ?? (orgSecteur && defaultSecteur(orgSecteur));
     if (!orgSecteur || (orgSecteur === 'mixte' && body.secteur === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
       return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
+    if (!canAccessSecteur(ctx, secteur)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     console.log('Création template - body reçu:', JSON.stringify(body, null, 2));

@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
 import { PropositionPageTourTrigger } from '@/components/onboarding/PropositionPageTourTrigger';
 import type { Secteur } from '@/lib/onboarding/onboarding.types';
-import { canUseTemplate, resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, canUseTemplate, resolveOrgContext } from '@/lib/auth/org-context';
 
 export default async function NewPropositionPage() {
   const supabase = await createClient();
@@ -30,7 +30,7 @@ export default async function NewPropositionPage() {
     .eq('id', ctx.organizationId)
     .single();
 
-  const secteur = organization?.secteur || 'telephonie';
+  const secteur = ctx.secteur ?? organization?.secteur ?? 'telephonie';
 
   // Récupérer les templates actifs
   const { data: allTemplates, error: templatesError } = await supabase
@@ -46,8 +46,8 @@ export default async function NewPropositionPage() {
   }
 
   // Un commercial restreint ne voit que les templates qui lui sont attribués
-  const templates = (allTemplates ?? []).filter((t) => canUseTemplate(ctx, t.id));
-  const restricted = ctx.allowedTemplateIds !== null && (allTemplates ?? []).length > 0;
+  const templates = (allTemplates ?? []).filter((t) => canUseTemplate(ctx, t.id) && canAccessSecteur(ctx, t.secteur));
+  const restricted = (ctx.allowedTemplateIds !== null || ctx.secteur !== null) && (allTemplates ?? []).length > 0;
 
   // Vérifier qu'il y a au moins un template
   if (templates.length === 0) {

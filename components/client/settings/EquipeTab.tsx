@@ -60,11 +60,37 @@ export interface TeamMember {
   permissions_override: PermissionsOverride | null;
   /** null = tous les templates ; sinon uniquement ceux-ci pour créer une proposition */
   allowed_template_ids?: string[] | null;
+  /** Organisations mixtes : secteur auquel le commercial est limité (null = tous) */
+  secteur?: 'telephonie' | 'bureautique' | null;
   created_at: string;
 }
 
 interface EquipeTabProps {
   initialDefaultPermissions: PermissionsRecord;
+  /** Organisation « mixte » : affiche le choix du secteur des commerciaux */
+  isMixte?: boolean;
+}
+
+const SECTEUR_LABELS = { telephonie: 'Téléphonie', bureautique: 'Bureautique' } as const;
+
+function SecteurSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">Secteur</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      >
+        <option value="">Tous les secteurs</option>
+        <option value="telephonie">Téléphonie</option>
+        <option value="bureautique">Bureautique</option>
+      </select>
+      <p className="text-xs text-gray-500 mt-1">
+        Si un secteur est choisi, le commercial n&apos;accède qu&apos;au catalogue, aux templates et aux propositions de ce secteur.
+      </p>
+    </div>
+  );
 }
 
 const EMPTY_DEFAULTS: PermissionsRecord = {
@@ -120,7 +146,7 @@ function permissionsSummary(member: TeamMember, defaults: PermissionsRecord): st
   return `${active.length} permission${active.length > 1 ? 's' : ''} active${active.length > 1 ? 's' : ''}`;
 }
 
-export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
+export function EquipeTab({ initialDefaultPermissions, isMixte = false }: EquipeTabProps) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
 
@@ -274,6 +300,7 @@ export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Nom</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Email</th>
+                  {isMixte && <th className="px-4 py-2 text-left font-medium text-gray-500">Secteur</th>}
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Statut</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Permissions</th>
                   <th className="px-4 py-2 text-right font-medium text-gray-500">Actions</th>
@@ -286,6 +313,11 @@ export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
                       {(member.prenom || member.nom) ? `${member.prenom ?? ''} ${member.nom ?? ''}`.trim() : '—'}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{member.email ?? '—'}</td>
+                    {isMixte && (
+                      <td className="px-4 py-3 text-gray-600">
+                        {member.secteur ? SECTEUR_LABELS[member.secteur] : 'Tous'}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -359,6 +391,7 @@ export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
 
       {showCreateModal && (
         <CreateMemberModal
+          isMixte={isMixte}
           onClose={() => setShowCreateModal(false)}
           onCreated={(member) => {
             setMembers((prev) => [...prev, member]);
@@ -369,6 +402,7 @@ export function EquipeTab({ initialDefaultPermissions }: EquipeTabProps) {
 
       {editMember && (
         <EditMemberModal
+          isMixte={isMixte}
           member={editMember}
           onClose={() => setEditMember(null)}
           onSaved={(updated) => {
@@ -449,9 +483,11 @@ function ModalShell({
 }
 
 function CreateMemberModal({
+  isMixte,
   onClose,
   onCreated,
 }: {
+  isMixte: boolean;
   onClose: () => void;
   onCreated: (member: TeamMember) => void;
 }) {
@@ -462,6 +498,7 @@ function CreateMemberModal({
     nom: '',
     telephone_fixe: '',
     telephone_mobile: '',
+    secteur: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -479,7 +516,7 @@ function CreateMemberModal({
       const res = await fetch('/api/settings/team/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, secteur: isMixte && form.secteur ? form.secteur : null }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Erreur de création');
@@ -555,6 +592,9 @@ function CreateMemberModal({
             />
           </div>
         </div>
+        {isMixte && (
+          <SecteurSelect value={form.secteur} onChange={(value) => setForm((prev) => ({ ...prev, secteur: value }))} />
+        )}
       </div>
       <div className="flex justify-end gap-3 pt-4">
         <Button variant="outline" onClick={onClose}>
@@ -570,10 +610,12 @@ function CreateMemberModal({
 }
 
 function EditMemberModal({
+  isMixte,
   member,
   onClose,
   onSaved,
 }: {
+  isMixte: boolean;
   member: TeamMember;
   onClose: () => void;
   onSaved: (member: TeamMember) => void;
@@ -583,6 +625,7 @@ function EditMemberModal({
     nom: member.nom ?? '',
     telephone_fixe: member.telephone_fixe ?? '',
     telephone_mobile: member.telephone_mobile ?? '',
+    secteur: member.secteur ?? '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -592,7 +635,7 @@ function EditMemberModal({
       const res = await fetch(`/api/settings/team/members/${member.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(isMixte ? { ...form, secteur: form.secteur || null } : { ...form, secteur: undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Erreur de sauvegarde');
@@ -650,6 +693,9 @@ function EditMemberModal({
             />
           </div>
         </div>
+        {isMixte && (
+          <SecteurSelect value={form.secteur} onChange={(value) => setForm((prev) => ({ ...prev, secteur: value }))} />
+        )}
       </div>
       <div className="flex justify-end gap-3 pt-4">
         <Button variant="outline" onClick={onClose}>

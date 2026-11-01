@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { isCatalogueSecteur } from '@/lib/sectors';
 
 const PERMISSION_KEYS = [
   'view_all_propositions',
@@ -48,13 +49,27 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { prenom, nom, telephone_fixe, telephone_mobile, permissions_override, allowed_template_ids } = body ?? {};
+    const { prenom, nom, telephone_fixe, telephone_mobile, permissions_override, allowed_template_ids, secteur } = body ?? {};
 
     const updates: Record<string, unknown> = {};
     if (prenom !== undefined) updates.prenom = prenom;
     if (nom !== undefined) updates.nom = nom;
     if (telephone_fixe !== undefined) updates.telephone_fixe = telephone_fixe;
     if (telephone_mobile !== undefined) updates.telephone_mobile = telephone_mobile;
+
+    // null/'' = tous les secteurs ; sinon limité à ce secteur (organisation « mixte » uniquement)
+    if (secteur !== undefined) {
+      if (secteur === null || secteur === '') {
+        updates.secteur = null;
+      } else {
+        const { data: org } = await createServiceClient()
+          .from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+        if (org?.secteur !== 'mixte' || !isCatalogueSecteur(secteur)) {
+          return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+        }
+        updates.secteur = secteur;
+      }
+    }
 
     if (permissions_override !== undefined) {
       if (permissions_override === null) {

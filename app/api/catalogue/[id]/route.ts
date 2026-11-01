@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
 
@@ -32,6 +32,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    if (!isGlobalProduct && ctx && updates.secteur_catalogue !== undefined && !canAccessSecteur(ctx, updates.secteur_catalogue)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+    }
+
     if (updates.secteur_catalogue !== undefined) {
       const { data: organization } = isGlobalProduct ? { data: null } : await createServiceClient().from('organizations')
         .select('secteur').eq('id', ctx!.organizationId).single();
@@ -57,6 +61,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       query = query.is('organization_id', null);
     } else {
       query = query.eq('organization_id', ctx!.organizationId);
+      if (ctx!.secteur) query = query.eq('secteur_catalogue', ctx!.secteur);
     }
 
     const { data, error } = await query.select().single();
@@ -107,6 +112,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       query = query.is('organization_id', null);
     } else {
       query = query.eq('organization_id', ctx!.organizationId);
+      if (ctx!.secteur) query = query.eq('secteur_catalogue', ctx!.secteur);
     }
 
     const { error } = await query;

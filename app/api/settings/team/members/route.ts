@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { isCatalogueSecteur } from '@/lib/sectors';
 
 // GET /api/settings/team/members — liste des commerciaux de l'organisation (propriétaire uniquement)
 export async function GET() {
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, password, prenom, nom, telephone_fixe, telephone_mobile } = body ?? {};
+    const { email, password, prenom, nom, telephone_fixe, telephone_mobile, secteur } = body ?? {};
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
@@ -75,6 +76,17 @@ export async function POST(request: NextRequest) {
     }
 
     const supabaseAdmin = createServiceClient();
+
+    // Secteur du commercial : uniquement pour une organisation « mixte »
+    let memberSecteur: string | null = null;
+    if (secteur !== undefined && secteur !== null && secteur !== '') {
+      const { data: org } = await supabaseAdmin
+        .from('organizations').select('secteur').eq('id', ctx.organizationId).single();
+      if (org?.secteur !== 'mixte' || !isCatalogueSecteur(secteur)) {
+        return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+      }
+      memberSecteur = secteur;
+    }
 
     // 1. Créer le compte Auth Supabase pour le commercial
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -104,6 +116,7 @@ export async function POST(request: NextRequest) {
         telephone_fixe: telephone_fixe ?? null,
         telephone_mobile: telephone_mobile ?? null,
         actif: true,
+        secteur: memberSecteur,
         permissions_override: null,
       })
       .select()

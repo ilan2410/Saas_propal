@@ -42,7 +42,7 @@ import { calculateCartSummary, resolveIndemnites, type SpCartSummary } from '@/l
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { EditableClientName } from '@/components/propositions/EditableClientName';
@@ -708,6 +708,9 @@ export default async function PropositionDetailPage({
 
   const templateRaw = (proposition as Record<string, unknown>).template;
   const template = isRecord(templateRaw) ? templateRaw : null;
+  if (template && typeof template.secteur === 'string' && !canAccessSecteur(ctx, template.secteur)) {
+    notFound();
+  }
 
   const extractedDataRaw = proposition.extracted_data || proposition.donnees_extraites || {};
   const extractedDataRecord: Record<string, unknown> = isRecord(extractedDataRaw) ? extractedDataRaw : {};
