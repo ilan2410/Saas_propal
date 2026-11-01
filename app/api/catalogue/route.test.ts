@@ -7,8 +7,9 @@ const state = vi.hoisted(() => ({
   queries: [] as Array<{ table: string; filters: Record<string, unknown> }>,
 }));
 
-vi.mock('@/lib/auth/org-context', () => ({
-  resolveOrgContext: async () => ({ organizationId: 'org-a', role: 'owner', permissions: { manage_catalogue: true } }),
+vi.mock('@/lib/auth/org-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/org-context')>()),
+  resolveOrgContext: async () => ({ organizationId: 'org-a', role: 'owner', secteur: null, permissions: { manage_catalogue: true } }),
 }));
 
 vi.mock('@/lib/supabase/server', () => {

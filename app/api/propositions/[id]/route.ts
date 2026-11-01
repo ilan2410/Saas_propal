@@ -2,8 +2,8 @@ import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 import { deleteAttachmentObject, type AttachmentStorageProvider } from '@/lib/propositions/attachment-storage';
 import { isMissingRelationError } from '@/lib/supabase/errors';
 
@@ -27,6 +27,10 @@ export async function GET(
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await propositionSecteurBlocked(ctx, id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     // Récupérer la proposition avec le template
@@ -78,6 +82,10 @@ export async function DELETE(
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await propositionSecteurBlocked(ctx, id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     const { data: proposition, error: fetchError } = await scopePropositionsQuery(

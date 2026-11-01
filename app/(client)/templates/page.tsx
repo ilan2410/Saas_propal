@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, FileText, Settings, TrendingUp, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import { DuplicateTemplateDialog } from '@/components/templates/DuplicateTemplateDialog';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -59,6 +59,7 @@ export default async function TemplatesPage() {
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('organization_id', ctx?.organizationId)
+    .in('secteur', ctx ? allowedSecteurs(ctx) : ['telephonie', 'bureautique'])
     .order('created_at', { ascending: false });
 
   if (templatesError) {

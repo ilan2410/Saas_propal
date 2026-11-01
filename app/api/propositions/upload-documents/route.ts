@@ -1,8 +1,8 @@
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { propositionSecteurBlocked, scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { SOURCE_DOCUMENTS_BUCKET } from '@/lib/propositions/source-documents';
 
 // Types réellement supportés en aval : envoyés tels quels à Claude
@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
         .eq('organization_id', ctx.organizationId)
         .maybeSingle();
       if (!proposition) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+      if (await propositionSecteurBlocked(ctx, propositionId)) {
+        return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+      }
       attachToPropositionId = proposition.id;
     }
 

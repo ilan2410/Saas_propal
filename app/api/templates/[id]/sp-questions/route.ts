@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { templateSecteurBlocked } from '@/lib/propositions/visibility';
 import type { SpQuestion } from '@/types';
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -13,6 +14,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (await templateSecteurBlocked(ctx, template_id)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
   const { data: org } = await createServiceClient().from('organizations')
     .select('sp_questions')
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (await templateSecteurBlocked(ctx, template_id)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
   if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

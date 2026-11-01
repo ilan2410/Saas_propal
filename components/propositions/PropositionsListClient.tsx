@@ -43,6 +43,8 @@ export type PropositionListItem = {
   statut: string;
   statutCommercial: StatutCommercial;
   templateNom: string;
+  /** Secteur du template (téléphonie / bureautique) */
+  secteur: string;
   clientName: string;
   fieldsCount: number;
   notesCount: number;
@@ -88,6 +90,11 @@ const COLUMN_LABELS: Record<PropositionOptionalColumn, string> = {
   attachments: 'Pièces jointes',
 };
 
+const SECTEUR_OPTIONS = [
+  { id: 'telephonie', name: 'Téléphonie' },
+  { id: 'bureautique', name: 'Bureautique' },
+];
+
 const RESUMABLE = ['draft', 'ready', 'extracted'];
 
 // Normalise pour une recherche insensible à la casse et aux accents.
@@ -120,12 +127,15 @@ export function PropositionsListClient({
   teleproOptions,
   initialColumns,
   canManageTelepros,
+  showSecteurFilter = false,
 }: {
   propositions: PropositionListItem[];
   counts: PropositionCounts;
   teleproOptions: TeleprospecteurOption[];
   initialColumns: PropositionOptionalColumn[];
   canManageTelepros: boolean;
+  /** Organisation mixte et utilisateur non limité à un secteur */
+  showSecteurFilter?: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(propositions);
@@ -133,6 +143,7 @@ export function PropositionsListClient({
   const [filter, setFilter] = useState<FilterKey>('toutes');
   const [teamFilters, setTeamFilters] = useState<string[]>([]);
   const [teleproFilters, setTeleproFilters] = useState<string[]>([]);
+  const [secteurFilters, setSecteurFilters] = useState<string[]>([]);
   const [columns, setColumns] = useState<PropositionOptionalColumn[]>(initialColumns);
   const [savingColumns, setSavingColumns] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'updatedAt', dir: 'desc' });
@@ -151,6 +162,21 @@ export function PropositionsListClient({
     return [{ id: 'unassigned', name: 'Non assigné' }, ...[...names].map(([id, name]) => ({ id, name }))];
   }, [rows, teleproOptions]);
 
+  // Compteurs des pastilles : suivent le filtre Secteur quand il est actif
+  const displayCounts = useMemo<PropositionCounts>(() => {
+    if (!showSecteurFilter || !secteurFilters.length) return counts;
+    const scoped = rows.filter((row) => secteurFilters.includes(row.secteur));
+    const count = (key: FilterKey) => scoped.filter((row) => matchesFilter(row, key)).length;
+    return {
+      toutes: scoped.length,
+      brouillons: count('brouillons'),
+      en_cours: count('en_cours'),
+      en_attente_client: count('en_attente_client'),
+      signee: count('signee'),
+      perdue: count('perdue'),
+    };
+  }, [counts, rows, secteurFilters, showSecteurFilter]);
+
   const visible = useMemo(() => {
     const q = normalize(query);
     const terms = q ? q.split(/\s+/).filter(Boolean) : [];
@@ -158,6 +184,7 @@ export function PropositionsListClient({
       if (!matchesFilter(prop, filter)) return false;
       if (teamFilters.length && !teamFilters.includes(prop.creatorId ?? 'unassigned')) return false;
       if (teleproFilters.length && !teleproFilters.includes(prop.teleproId ?? 'unassigned')) return false;
+      if (showSecteurFilter && secteurFilters.length && !secteurFilters.includes(prop.secteur)) return false;
       if (!terms.length) return true;
       const haystack = normalize([
         prop.clientName,
@@ -182,7 +209,7 @@ export function PropositionsListClient({
       if (cmp === 0) cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
       return cmp * dir;
     });
-  }, [rows, query, filter, teamFilters, teleproFilters, sort]);
+  }, [rows, query, filter, teamFilters, teleproFilters, secteurFilters, showSecteurFilter, sort]);
 
   const toggleSort = (key: SortKey) => {
     setSort((previous) => previous.key === key
@@ -226,11 +253,14 @@ export function PropositionsListClient({
           {FILTERS.map(({ key, label }) => (
             <button key={key} type="button" onClick={() => setFilter(key)} className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors', filter === key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')}>
               {label}
-              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', filter === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500')}>{counts[key]}</span>
+              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', filter === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500')}>{displayCounts[key]}</span>
             </button>
           ))}
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap">
+          {showSecteurFilter && (
+            <MultiFilter label="Secteur" options={SECTEUR_OPTIONS} values={secteurFilters} onChange={setSecteurFilters} />
+          )}
           <MultiFilter label="Équipe" options={teamOptions} values={teamFilters} onChange={setTeamFilters} />
           <MultiFilter label="Télépros" options={filterTelepros} values={teleproFilters} onChange={setTeleproFilters} />
           <div className="relative min-w-[180px] flex-1 xl:w-56 xl:flex-none">

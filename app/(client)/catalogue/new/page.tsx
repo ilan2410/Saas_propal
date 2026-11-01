@@ -6,7 +6,7 @@ import { CatalogueProduitForm } from '@/components/catalogue/CatalogueProduitFor
 import type { CatalogueProduit } from '@/types';
 import { createServiceClient } from '@/lib/supabase/server';
 import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 import type { Secteur } from '@/types';
 
 export const revalidate = 0;
@@ -28,8 +28,8 @@ export default async function NewCatalogueProductPage({
   const { data: organization } = await createServiceClient().from('organizations').select('secteur').eq('id', ctx.organizationId).single();
   const orgSecteur = organization?.secteur as Secteur;
   if (!orgSecteur) redirect('/dashboard');
-  const secteur = requested ?? defaultSecteur(orgSecteur);
-  if (!isAllowedSecteur(orgSecteur, secteur)) redirect('/catalogue');
+  const secteur = requested ?? ctx.secteur ?? defaultSecteur(orgSecteur);
+  if (!isAllowedSecteur(orgSecteur, secteur) || !canAccessSecteur(ctx, secteur)) redirect('/catalogue');
 
   let produitDuplique: Record<string, unknown> | null = null;
   if (duplicate) {

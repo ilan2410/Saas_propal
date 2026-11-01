@@ -8,8 +8,9 @@ const state = vi.hoisted(() => ({
   promptAvailable: true,
 }));
 
-vi.mock('@/lib/auth/org-context', () => ({
-  resolveOrgContext: async () => ({ organizationId: 'org-a', role: 'owner', permissions: { manage_templates: true } }),
+vi.mock('@/lib/auth/org-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/org-context')>()),
+  resolveOrgContext: async () => ({ organizationId: 'org-a', role: 'owner', secteur: null, permissions: { manage_templates: true } }),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({

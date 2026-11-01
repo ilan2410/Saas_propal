@@ -9,7 +9,7 @@ import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-docu
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calculateSaCart';
 import type { SpConfigResiliation, WordConfig } from '@/types';
-import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { canAccessSecteur, canUseTemplate, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
 import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
@@ -317,6 +317,10 @@ export async function POST(request: NextRequest) {
     if (templateError || !template) {
       console.error('Template non trouvé:', templateError);
       return NextResponse.json({ error: 'Template non trouvé', details: templateError?.message }, { status: 404 });
+    }
+
+    if (!canAccessSecteur(ctx, template.secteur)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     console.log('📋 Template trouvé:', template.nom);

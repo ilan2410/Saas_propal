@@ -14,8 +14,8 @@ import { generateComparatifSaSpExcel } from '@/lib/excel/comparatif-sa-sp-genera
 import { generateComparatifSaSpWord } from '@/lib/word/comparatif-sa-sp-generator';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { buildExportSaSpData } from '@/lib/sp/buildExportSaSpData';
-import { resolveOrgContext } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -33,6 +33,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
   const ctx = await resolveOrgContext(supabase, user);
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (await propositionSecteurBlocked(ctx, id)) {
+    return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+  }
 
   if (ctx.role !== 'owner' && !ctx.permissions.download_comparatif_sa_sp) {
     return NextResponse.json(

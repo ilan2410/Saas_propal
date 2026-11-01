@@ -7,9 +7,9 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpTableProductOrders } from '@/types';
-import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
+import { resolveOrgContext, buildPropositionAuthorProfile, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { catalogueForSecteur } from '@/lib/sectors';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -32,6 +32,10 @@ export async function POST(
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await propositionSecteurBlocked(ctx, id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     if (ctx.role !== 'owner' && !ctx.permissions.download_proposition) {

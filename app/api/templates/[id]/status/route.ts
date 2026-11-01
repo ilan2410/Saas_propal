@@ -1,7 +1,7 @@
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -43,6 +43,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .update({ statut })
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
+      .in('secteur', allowedSecteurs(ctx))
       .select(CLIENT_TEMPLATE_COLUMNS)
       .single();
 

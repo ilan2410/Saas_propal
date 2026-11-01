@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Plus, FileText, Sparkles } from 'lucide-react';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { syncAllSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
 import { parsePropositionColumns } from '@/lib/propositions/list-preferences';
@@ -75,7 +75,7 @@ export default async function PropositionsPage() {
     .from('propositions')
     .select(`
       *,
-      template:proposition_templates(nom),
+      template:proposition_templates(nom, secteur),
       teleprospecteur:teleprospecteurs(id, prenom, nom, actif),
       proposition_attachments(count),
       proposition_notes(count)
@@ -95,7 +95,7 @@ export default async function PropositionsPage() {
       .from('propositions')
       .select(`
         *,
-        template:proposition_templates(nom)
+        template:proposition_templates(nom, secteur)
       `);
     const fallbackResult = ctx
       ? await scopePropositionsQuery(fallbackQuery, ctx).order('created_at', { ascending: false })
@@ -118,6 +118,10 @@ export default async function PropositionsPage() {
     const hasDocs =
       Array.isArray(sourceDocuments) && sourceDocuments.some((v) => typeof v === 'string' && v.trim());
     const hasAnyData = Boolean(prop.extracted_data) || Boolean(prop.donnees_extraites) || Boolean(prop.filled_data);
+
+    // Commercial limité à un secteur : uniquement les propositions de son secteur
+    const templateSecteur = isRecord(prop.template) && typeof prop.template.secteur === 'string' ? prop.template.secteur : null;
+    if (ctx && templateSecteur && !canAccessSecteur(ctx, templateSecteur)) return false;
 
     const isEmptyDraft =
       statut === 'draft' &&
@@ -152,7 +156,7 @@ export default async function PropositionsPage() {
         // (le commercial), pas celui du compte principal.
         serviceSupabase
           .from('organizations')
-          .select('contact_prenom, contact_nom')
+          .select('contact_prenom, contact_nom, secteur')
           .eq('id', ctx.organizationId)
           .maybeSingle(),
       ])
@@ -191,6 +195,10 @@ export default async function PropositionsPage() {
       (isRecord(prop.template) && typeof prop.template.nom === 'string'
         ? prop.template.nom
         : '') || '',
+    secteur:
+      isRecord(prop.template) && typeof prop.template.secteur === 'string'
+        ? prop.template.secteur
+        : 'telephonie',
     clientName: resolvePropositionClientName(
       prop.extracted_data || prop.donnees_extraites,
       prop.nom_client,
@@ -255,6 +263,7 @@ export default async function PropositionsPage() {
             teleproOptions={teleproOptions}
             initialColumns={initialColumns}
             canManageTelepros={enhancedSchemaAvailable && ctx?.role === 'owner'}
+            showSecteurFilter={enhancedSchemaAvailable && ownerResult.data?.secteur === 'mixte' && !ctx?.secteur}
           />
         ) : (
           /* Empty State */

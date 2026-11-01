@@ -10,8 +10,8 @@ import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
-import { resolveOrgContext } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { propositionSecteurBlocked, scopePropositionsQuery } from '@/lib/propositions/visibility';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -1002,6 +1002,10 @@ export async function POST(request: NextRequest) {
       force_regenerate,
       sp_fas_total,
     } = body ?? {};
+
+    if (typeof proposition_id === 'string' && proposition_id.length > 0 && await propositionSecteurBlocked(ctx, proposition_id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+    }
 
     const adresse_facturation: SpAdresse | undefined = isPlainObject(preferences) && isPlainObject(preferences.adresse_facturation) ? preferences.adresse_facturation as unknown as SpAdresse : undefined;
     const adresse_livraison: SpAdresse | null | undefined = isPlainObject(preferences) ? (isPlainObject(preferences.adresse_livraison) ? preferences.adresse_livraison as unknown as SpAdresse : null) : undefined;

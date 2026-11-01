@@ -27,7 +27,8 @@ export default async function NewTemplatePage() {
     .eq('id', ctx.organizationId)
     .single();
 
-  const secteur = organization?.secteur || 'telephonie';
+  // Un commercial limité à un secteur crée uniquement des templates de ce secteur
+  const secteur = ctx.secteur ?? organization?.secteur ?? 'telephonie';
 
   return (
     <div className="space-y-6">

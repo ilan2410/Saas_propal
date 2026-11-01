@@ -11,11 +11,13 @@ export async function GET() {
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data, error } = await supabase
+    let categoriesQuery = supabase
       .from('catalogues_produits')
       .select('categorie')
       .eq('actif', true)
       .eq('organization_id', ctx.organizationId);
+    if (ctx.secteur) categoriesQuery = categoriesQuery.eq('secteur_catalogue', ctx.secteur);
+    const { data, error } = await categoriesQuery;
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

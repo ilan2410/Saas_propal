@@ -24,9 +24,11 @@ interface ClientSidebarProps {
   // `permissions`, le masquage des autres liens (Task 9).
   role?: OrgRole;
   permissions?: OrgPermissions;
+  /** Commercial d'une organisation mixte limité à un secteur */
+  memberSecteur?: 'telephonie' | 'bureautique' | null;
 }
 
-export function ClientSidebar({ user, organization, role, permissions }: ClientSidebarProps) {
+export function ClientSidebar({ user, organization, role, permissions, memberSecteur = null }: ClientSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isOpen, setIsOpen] = useState(false);
@@ -116,7 +118,7 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
             <span className="font-medium">Propositions</span>
           </Link>
 
-          {(role === 'owner' || permissions?.manage_catalogue) && (organization.secteur === 'mixte' ? (
+          {(role === 'owner' || permissions?.manage_catalogue) && (organization.secteur === 'mixte' && !memberSecteur ? (
             <div className="group" id="nav-catalogue">
               <div className={`flex items-center rounded-lg ${pathname.startsWith('/catalogue') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}>
                 <Link href="/catalogue?secteur=telephonie" onClick={closeSidebar} className="flex flex-1 items-center gap-3 px-4 py-3">
@@ -135,7 +137,7 @@ export function ClientSidebar({ user, organization, role, permissions }: ClientS
             </div>
           ) : (
             <Link
-              href="/catalogue"
+              href={memberSecteur ? `/catalogue?secteur=${memberSecteur}` : '/catalogue'}
               onClick={closeSidebar}
               id="nav-catalogue"
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${

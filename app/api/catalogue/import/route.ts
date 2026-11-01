@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { createServiceClient } from '@/lib/supabase/server';
 import { defaultSecteur, isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
@@ -37,9 +37,12 @@ export async function POST(request: NextRequest) {
     const { data: organization } = isGlobalImport ? { data: null } : await service.from('organizations')
       .select('secteur').eq('id', ctx!.organizationId).single();
     const orgSecteur = organization?.secteur as Secteur;
-    const secteur = secteur_catalogue ?? (orgSecteur && defaultSecteur(orgSecteur));
+    const secteur = secteur_catalogue ?? ctx?.secteur ?? (orgSecteur && defaultSecteur(orgSecteur));
     if (isGlobalImport ? !isCatalogueSecteur(secteur) : !orgSecteur || (orgSecteur === 'mixte' && secteur_catalogue === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
       return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
+    if (!isGlobalImport && ctx && !canAccessSecteur(ctx, secteur)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     if (!Array.isArray(products)) {

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
-import { resolveOrgContext } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery, templateSecteurBlocked } from '@/lib/propositions/visibility';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -48,6 +48,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'template_id requis' }, { status: 400 });
     }
 
+    if (await templateSecteurBlocked(ctx, templateId)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+    }
+
     const { data: proposition } = await scopePropositionsQuery(
       supabase
         .from('propositions')
@@ -70,11 +74,22 @@ export async function GET(request: NextRequest) {
       // pour que le simulateur reste utilisable avec des données réelles. proposition_id reste
       // null dans ce cas : cette proposition appartient à un autre template, il ne faut pas que
       // l'export du simulateur écrive dessus.
+      // Commercial limité à un secteur : le repli reste dans les templates de son secteur
+      let sectorTemplateIds: string[] | null = null;
+      if (ctx.secteur) {
+        const { data: sectorTemplates } = await createServiceClient()
+          .from('proposition_templates')
+          .select('id')
+          .eq('organization_id', ctx.organizationId)
+          .eq('secteur', ctx.secteur);
+        sectorTemplateIds = (sectorTemplates ?? []).map((row) => row.id);
+      }
+      const fallbackBase = supabase
+        .from('propositions')
+        .select('id, extracted_data, filled_data')
+        .or('extracted_data.not.is.null,filled_data.not.is.null');
       const { data: fallbackProposition } = await scopePropositionsQuery(
-        supabase
-          .from('propositions')
-          .select('id, extracted_data, filled_data')
-          .or('extracted_data.not.is.null,filled_data.not.is.null'),
+        sectorTemplateIds ? fallbackBase.in('template_id', sectorTemplateIds) : fallbackBase,
         ctx
       )
         .order('created_at', { ascending: false })

@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { CatalogueProduitForm } from '@/components/catalogue/CatalogueProduitForm';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
 
@@ -29,7 +29,7 @@ export default async function EditCatalogueProductPage({
     .eq('organization_id', ctx.organizationId)
     .single();
 
-  if (error || !produit) {
+  if (error || !produit || !canAccessSecteur(ctx, produit.secteur_catalogue ?? 'telephonie')) {
     notFound();
   }
 

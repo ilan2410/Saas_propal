@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { CatalogueView } from '@/components/catalogue/CatalogueView';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 import { createServiceClient } from '@/lib/supabase/server';
 import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
@@ -25,8 +25,8 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
   const orgSecteur = organization?.secteur as Secteur;
   if (!orgSecteur) redirect('/dashboard');
   const requested = (await searchParams).secteur;
-  const secteur = requested ?? defaultSecteur(orgSecteur);
-  if (!isAllowedSecteur(orgSecteur, secteur)) redirect('/catalogue');
+  const secteur = requested ?? ctx?.secteur ?? defaultSecteur(orgSecteur);
+  if (!isAllowedSecteur(orgSecteur, secteur) || (ctx && !canAccessSecteur(ctx, secteur))) redirect('/catalogue');
 
   const { data: produits } = await supabase
     .from('catalogues_produits')

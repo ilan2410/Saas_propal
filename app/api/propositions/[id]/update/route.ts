@@ -1,8 +1,8 @@
 import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
-import { scopePropositionsQuery } from '@/lib/propositions/visibility';
+import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
 import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
 
@@ -25,6 +25,10 @@ export async function PATCH(
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await propositionSecteurBlocked(ctx, id)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     const body = await request.json();

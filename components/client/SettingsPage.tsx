@@ -2972,6 +2972,7 @@ export default function SettingsPage({
         {/* SECTION 10: ÉQUIPE (propriétaire uniquement) */}
         {activeTab === 'equipe' && role === 'owner' && (
           <EquipeTab
+            isMixte={organization.secteur === 'mixte'}
             initialDefaultPermissions={{
               view_all_propositions: organization.commercial_default_permissions?.view_all_propositions ?? false,
               manage_catalogue: organization.commercial_default_permissions?.manage_catalogue ?? false,

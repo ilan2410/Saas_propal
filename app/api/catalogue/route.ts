@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { defaultSecteur, isAllowedSecteur, isCatalogueSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const { data: organization } = await service.from('organizations').select('secteur').eq('id', ctx.organizationId).single();
     const orgSecteur = organization?.secteur as Secteur;
     if (!orgSecteur) return NextResponse.json({ error: 'Organisation introuvable' }, { status: 404 });
-    let secteur: unknown = requestedSecteur ?? defaultSecteur(orgSecteur);
+    let secteur: unknown = requestedSecteur ?? ctx.secteur ?? defaultSecteur(orgSecteur);
     if (templateId) {
       const { data: template } = await supabase.from('proposition_templates')
         .select('secteur').eq('id', templateId).eq('organization_id', ctx.organizationId).single();
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       secteur = template.secteur;
     }
     if (!isAllowedSecteur(orgSecteur, secteur)) return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    if (!canAccessSecteur(ctx, secteur)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
     let query = supabase
       .from('catalogues_produits')
@@ -89,9 +90,12 @@ export async function POST(request: NextRequest) {
     const { data: organization } = isGlobalProduct ? { data: null } : await service.from('organizations')
       .select('secteur').eq('id', ctx!.organizationId).single();
     const orgSecteur = organization?.secteur as Secteur;
-    const secteur = body?.secteur_catalogue ?? (orgSecteur && defaultSecteur(orgSecteur));
+    const secteur = body?.secteur_catalogue ?? ctx?.secteur ?? (orgSecteur && defaultSecteur(orgSecteur));
     if (isGlobalProduct ? !isCatalogueSecteur(secteur) : !orgSecteur || (orgSecteur === 'mixte' && body?.secteur_catalogue === undefined) || !isAllowedSecteur(orgSecteur, secteur)) {
       return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
+    }
+    if (!isGlobalProduct && ctx && !canAccessSecteur(ctx, secteur)) {
+      return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
     }
 
     // Vérifier si l'utilisateur est admin

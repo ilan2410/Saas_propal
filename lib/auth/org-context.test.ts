@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
-import { canUseTemplate, resolveOrgContext, type OrgContext } from './org-context';
+import { allowedSecteurs, canAccessSecteur, canUseTemplate, resolveOrgContext, type OrgContext } from './org-context';
 
 // Mock minimal d'un client Supabase : chaque `.from(table)` renvoie un builder
 // chaînable dont `.maybeSingle()` / `.single()` résout la valeur configurée.
@@ -118,5 +118,18 @@ describe('canUseTemplate', () => {
   it('liste vide = aucun template', () => {
     const ctx = { allowedTemplateIds: [] } as unknown as OrgContext;
     expect(canUseTemplate(ctx, 'a')).toBe(false);
+  });
+});
+
+describe('secteur du commercial', () => {
+  it('sans secteur : tous les secteurs sont accessibles', () => {
+    expect(canAccessSecteur({ secteur: null }, 'telephonie')).toBe(true);
+    expect(canAccessSecteur({ secteur: null }, 'bureautique')).toBe(true);
+    expect(allowedSecteurs({ secteur: null })).toEqual(['telephonie', 'bureautique']);
+  });
+  it('avec secteur : uniquement celui-ci', () => {
+    expect(canAccessSecteur({ secteur: 'bureautique' }, 'bureautique')).toBe(true);
+    expect(canAccessSecteur({ secteur: 'bureautique' }, 'telephonie')).toBe(false);
+    expect(allowedSecteurs({ secteur: 'bureautique' })).toEqual(['bureautique']);
   });
 });

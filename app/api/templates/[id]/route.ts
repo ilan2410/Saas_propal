@@ -4,7 +4,7 @@ import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
 interface RouteParams {
@@ -30,6 +30,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .select(CLIENT_TEMPLATE_COLUMNS)
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
+      .in('secteur', allowedSecteurs(ctx))
       .single();
 
     if (error) {
@@ -72,13 +73,18 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       .select('file_url')
       .eq('id', id)
       .eq('organization_id', ctx.organizationId)
+      .in('secteur', allowedSecteurs(ctx))
       .single();
+    if (!template) {
+      return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
+    }
 
     const { error } = await supabase
       .from('proposition_templates')
       .delete()
       .eq('id', id)
-      .eq('organization_id', ctx.organizationId);
+      .eq('organization_id', ctx.organizationId)
+      .in('secteur', allowedSecteurs(ctx));
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -181,7 +187,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.file_url && (typeof body.file_url !== 'string' || !organizationStoragePath(body.file_url, 'templates', ctx.organizationId))) {
       return NextResponse.json({ error: 'Fichier template invalide' }, { status: 400 });
     }
-    const { data: current } = await createServiceClient().from('proposition_templates').select('*').eq('id', id).eq('organization_id', ctx.organizationId).single();
+    const { data: current } = await createServiceClient().from('proposition_templates').select('*').eq('id', id).eq('organization_id', ctx.organizationId).in('secteur', allowedSecteurs(ctx)).single();
     if (!current) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
     if (body.champs_actifs !== undefined) {
       if (!Array.isArray(body.champs_actifs) || body.champs_actifs.some((field) => typeof field !== 'string')) return NextResponse.json({ error: 'Champs invalides' }, { status: 400 });
