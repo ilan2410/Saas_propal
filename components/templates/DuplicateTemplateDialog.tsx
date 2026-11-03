@@ -38,6 +38,7 @@ const SP_OPTIONS_LIST: OptionDef[] = [
   { key: 'produits', label: 'Produits & tableaux', hint: 'Préférences produits, tableaux fusionnés, ordre' },
   { key: 'mode_client', label: 'Mode client' },
   { key: 'reference', label: 'Référence proposition', hint: 'Format de la référence générée' },
+  { key: 'libelles', label: 'Libellés du panier', hint: 'Libellés renommés et lignes masquées' },
 ];
 
 const ALL_KEYS = [...CONTENT_OPTIONS, ...SP_OPTIONS_LIST].map((o) => o.key);

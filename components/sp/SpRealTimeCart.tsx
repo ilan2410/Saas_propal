@@ -7,12 +7,15 @@ import type {
   SpConfigLoyer,
   SpConfigModeClient,
   SpConfigMoisOfferts,
+  SpLibelleKey,
+  SpLibellesConfig,
   SpQuestion,
   SpQuestionReponse,
   SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary, buildLoopLabelsByGroup, type CartLine } from '@/lib/sp/calculateCart';
-import { formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerMontantAnneeLissee, calculerMontantFinance, formatEuro } from '@/lib/sp/calculLoyer';
+import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 
 const TELECOM_CATEGORIES = new Set(['fixe', 'mobile']);
@@ -50,6 +53,8 @@ interface SpRealTimeCartProps {
   spPreferencesProduits?: SpPreferencesProduits;
   modeClientActif?: boolean;
   spConfigModeClient?: SpConfigModeClient;
+  /** Libellés et visibilité des lignes du panier (personnalisation par template). */
+  spLibelles?: SpLibellesConfig;
   onUpdateReponses?: (reponses: SpQuestionReponse[]) => void;
 }
 
@@ -345,9 +350,12 @@ interface CategoryAccordionProps {
   ) => void;
   onUpdateNumero?: (line: CartLine, numero: string) => void;
   onDeleteLine?: (line: CartLine) => void;
+  /** Ligne masquée via la personnalisation des libellés (affichage uniquement). */
+  hidden?: boolean;
 }
 
 function CategoryAccordion({
+  hidden,
   label,
   total,
   suffix,
@@ -365,6 +373,7 @@ function CategoryAccordion({
   onUpdateNumero,
   onDeleteLine,
 }: CategoryAccordionProps) {
+  if (hidden) return null;
   const hasDetails = lines.length > 0;
   if (!hasDetails) {
     return <Line label={label} value={total} suffix={suffix} bold={bold} muted={muted} />;
@@ -427,8 +436,11 @@ export function SpRealTimeCart({
   spPreferencesProduits,
   modeClientActif,
   spConfigModeClient,
+  spLibelles,
   onUpdateReponses,
 }: SpRealTimeCartProps) {
+  const lbl = (key: SpLibelleKey) => resolveLibelle(spLibelles, key);
+  const hide = (key: SpLibelleKey) => !isLibelleVisible(spLibelles, key);
   const [collapsed, setCollapsed] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -690,6 +702,16 @@ export function SpRealTimeCart({
       .slice(0, 20);
   }, [search, catalogue]);
 
+  const montantFinance = useMemo(
+    () => calculerMontantFinance(summary.loyer, spConfigLoyer?.formule),
+    [summary.loyer, spConfigLoyer?.formule],
+  );
+
+  const montantAnneeLissee = calculerMontantAnneeLissee(
+    summary.abonnements.totalMensuel,
+    spConfigLoyer?.multiplicateur_annee_lissee,
+  );
+
   const hasAnyLine = summary.lines.length > 0;
   const grandTotalMensuel = summary.totalMensuelFinal;
 
@@ -736,7 +758,8 @@ export function SpRealTimeCart({
                   Abonnements
                 </p>
                 <CategoryAccordion
-                  label="Fixe"
+                  hidden={hide('fixe')}
+                  label={lbl('fixe')}
                   total={summary.abonnements.fixe}
                   suffix="/mois"
                   lines={grouped.fixe}
@@ -750,7 +773,8 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                 />
                 <CategoryAccordion
-                  label="Mobile"
+                  hidden={hide('mobile')}
+                  label={lbl('mobile')}
                   total={summary.abonnements.mobile}
                   suffix="/mois"
                   lines={grouped.mobile}
@@ -764,7 +788,8 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                 />
                 <CategoryAccordion
-                  label="Internet"
+                  hidden={hide('internet')}
+                  label={lbl('internet')}
                   total={summary.abonnements.internet}
                   suffix="/mois"
                   lines={grouped.internet}
@@ -779,7 +804,8 @@ export function SpRealTimeCart({
                 />
                 {grouped.autresMensuels.length > 0 && (
                   <CategoryAccordion
-                    label="Autres"
+                    hidden={hide('autres_mensuels')}
+                    label={lbl('autres_mensuels')}
                     total={summary.autresMensuels}
                     suffix="/mois"
                     muted
@@ -806,9 +832,11 @@ export function SpRealTimeCart({
                     </span>
                   </div>
                 )}
-                <div className="pt-1 border-t border-gray-100">
-                  <Line label="Total mensuel" value={summary.abonnements.totalMensuel} suffix="/mois" bold />
-                </div>
+                {!hide('total_mensuel') && (
+                  <div className="pt-1 border-t border-gray-100">
+                    <Line label={lbl('total_mensuel')} value={summary.abonnements.totalMensuel} suffix="/mois" bold />
+                  </div>
+                )}
               </section>
 
               {/* Ponctuels */}
@@ -823,7 +851,8 @@ export function SpRealTimeCart({
                   </p>
                   {grouped.equipement.length > 0 && (
                     <CategoryAccordion
-                      label="Matériel"
+                      hidden={hide('materiel')}
+                      label={lbl('materiel')}
                       total={summary.materiel}
                       lines={grouped.equipement}
                       expanded={expandedCats.has('equipement')}
@@ -838,7 +867,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.cadeau.length > 0 && (
                     <CategoryAccordion
-                      label="Cadeaux"
+                      hidden={hide('cadeaux')}
+                      label={lbl('cadeaux')}
                       total={summary.cadeaux}
                       lines={grouped.cadeau}
                       expanded={expandedCats.has('cadeau')}
@@ -853,7 +883,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.installation.length > 0 && (
                     <CategoryAccordion
-                      label="Installations"
+                      hidden={hide('installations')}
+                      label={lbl('installations')}
                       total={summary.installations}
                       lines={grouped.installation}
                       expanded={expandedCats.has('installation')}
@@ -868,7 +899,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.fas.length > 0 && (
                     <CategoryAccordion
-                      label="FAS"
+                      hidden={hide('fas')}
+                      label={lbl('fas')}
                       total={summary.fas}
                       lines={grouped.fas}
                       detailMode="fas"
@@ -884,7 +916,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.autresPonctuels.length > 0 && (
                     <CategoryAccordion
-                      label="Autres"
+                      hidden={hide('autres_ponctuels')}
+                      label={lbl('autres_ponctuels')}
                       total={summary.autresPonctuels}
                       muted
                       lines={grouped.autresPonctuels}
@@ -898,9 +931,11 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  <div className="pt-1 border-t border-gray-100">
-                    <Line label="Total ponctuel" value={summary.totalPonctuel} bold />
-                  </div>
+                  {!hide('total_ponctuel') && (
+                    <div className="pt-1 border-t border-gray-100">
+                      <Line label={lbl('total_ponctuel')} value={summary.totalPonctuel} bold />
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -921,14 +956,19 @@ export function SpRealTimeCart({
                   </button>
                   {expandedCats.has('loyer_detail') && (
                     <div className="space-y-0.5 pt-1 border-t border-blue-100">
-                      <Line label="Total ponctuel" value={summary.totalPonctuel} muted />
-                      {summary.remiseMoisOffert > 0 && (
-                        <Line label="Remise mois offert" value={summary.remiseMoisOffert} muted />
+                      {!hide('loyer_total_ponctuel') && (
+                        <Line label={lbl('loyer_total_ponctuel')} value={summary.totalPonctuel} muted />
                       )}
-                      {summary.indemnites > 0 && (
-                        <Line label="Indemnités" value={summary.indemnites} muted />
+                      {!hide('remise_mois_offert') &&
+                        spConfigLoyer?.mois_offerts_actifs !== false &&
+                        spConfigLoyer?.composantes_base?.mois_offerts !== false &&
+                        summary.remiseMoisOffert > 0 && (
+                        <Line label={lbl('remise_mois_offert')} value={summary.remiseMoisOffert} muted />
                       )}
-                      {summary.marge !== 0 &&
+                      {!hide('indemnites') && summary.indemnites > 0 && (
+                        <Line label={lbl('indemnites')} value={summary.indemnites} muted />
+                      )}
+                      {!hide('marge') && summary.marge !== 0 &&
                         (summary.codePromo && summary.codePromo.cible !== 'abonnements' ? (
                           <div>
                             <button
@@ -940,7 +980,7 @@ export function SpRealTimeCart({
                                 <ChevronDown
                                   className={`h-3 w-3 text-gray-400 transition-transform ${expandedCats.has('marge_promo') ? '' : '-rotate-90'}`}
                                 />
-                                Marge
+                                {lbl('marge')}
                               </span>
                               <span className="tabular-nums">{formatEuro(summary.marge)}</span>
                             </button>
@@ -965,13 +1005,27 @@ export function SpRealTimeCart({
                             )}
                           </div>
                         ) : (
-                          <Line label="Marge" value={summary.marge} muted />
+                          <Line label={lbl('marge')} value={summary.marge} muted />
                         ))}
-                      <Line label="Base loyer" value={summary.baseLoyer} bold />
+                      {!hide('montant_annee_lissee') && (
+                        <Line label={lbl('montant_annee_lissee')} value={montantAnneeLissee} muted />
+                      )}
+                      {!hide('base_loyer') && (
+                        <Line label={lbl('base_loyer')} value={summary.baseLoyer} bold />
+                      )}
                     </div>
                   )}
-                  <Line label="Mensuel" value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
-                  <Line label="Trimestriel" value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />
+                  {!hide('loyer_mensuel') && (
+                    <Line label={lbl('loyer_mensuel')} value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
+                  )}
+                  {!hide('loyer_trimestriel') && (
+                    <Line label={lbl('loyer_trimestriel')} value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />
+                  )}
+                  {!hide('montant_finance') && montantFinance != null && (
+                    <div className="pt-1 border-t border-blue-100 space-y-0.5">
+                      <Line label={lbl('montant_finance')} value={montantFinance} />
+                    </div>
+                  )}
                 </section>
               )}
             </>

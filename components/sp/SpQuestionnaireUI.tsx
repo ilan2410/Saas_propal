@@ -10,13 +10,13 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpLibellesConfig, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { clientToSpAddress, findAddressQuestion, isDeliveryIdentical, spAddressToClient, syncLinkedAddresses } from '@/lib/sp/questionVariables';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { buildSpReference } from '@/lib/sp/buildReference';
@@ -57,6 +57,7 @@ export interface SpQuestionnaireUIProps {
   templateId?: string;
   spConfigResumeRef?: SpConfigResumeRef;
   spConfigModeClient?: SpConfigModeClient;
+  spLibelles?: SpLibellesConfig;
   spPreferencesProduits?: SpPreferencesProduits;
   /** Apparence du questionnaire : 'wizard' (assistant guidé, défaut) ou 'chat' (conversation). */
   design?: 'wizard' | 'chat';
@@ -975,6 +976,7 @@ export function SpQuestionnaireUI({
   templateId,
   spConfigResumeRef,
   spConfigModeClient,
+  spLibelles,
   spPreferencesProduits,
   design = 'wizard',
 }: SpQuestionnaireUIProps) {
@@ -3090,9 +3092,11 @@ export function SpQuestionnaireUI({
               mois_offerts: remisePourCalculLoyer,
               indemnites: baseSummary.indemnites,
               marge: margeNum,
+              annee_lissee: calculerMontantAnneeLissee(baseSummary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
             }, configLoyer);
             const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
-            const remiseMoisOffert = configLoyer.mois_offerts_actifs === false ? 0 : remisePourCalculLoyer;
+            const remiseMoisOffert = configLoyer.mois_offerts_actifs === false ||
+              configLoyer.composantes_base?.mois_offerts === false ? 0 : remisePourCalculLoyer;
             const baseLoyer = baseCalculLoyer;
 
             return (
@@ -3289,6 +3293,7 @@ export function SpQuestionnaireUI({
                   mois_offerts: remisePourCalculLoyer,
                   indemnites: baseSummary.indemnites,
                   marge: margeNum,
+                  annee_lissee: calculerMontantAnneeLissee(baseSummary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
                 }, configLoyer);
                 loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
                 abonnementsApresPromo = baseSummary.abonnements.totalMensuel;
@@ -3808,6 +3813,7 @@ export function SpQuestionnaireUI({
               spPreferencesProduits={spPreferencesProduits}
               modeClientActif={modeClientActif}
               spConfigModeClient={spConfigModeClient}
+              spLibelles={spLibelles}
               onUpdateReponses={(nextReponses) => setReponses(nextReponses)}
             />
           </div>

@@ -21,6 +21,7 @@ import {
   DEFAULT_COMPOSANTES_BASE_LOYER,
   DEFAULT_CONFIG_LOYER,
   DEFAULT_FORMULE_LOYER,
+  DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE,
 } from '@/lib/sp/calculLoyer';
 import { supportsSp } from '@/lib/templates/supportsSp';
 
@@ -328,6 +329,32 @@ export function SpLoyerManager({ templates }: Props) {
 
       <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
         <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Montant année lissée</h4>
+          <p className="text-xs text-gray-500 mt-1">
+            Montant année lissée = total mensuel des abonnements × multiplicateur. La ligne s&apos;affiche
+            dans le panier une fois activée dans Questions SP → Libellés.
+          </p>
+        </div>
+        <label className="space-y-1 text-xs text-gray-600 block max-w-[10rem]">
+          <span className="block">Multiplicateur</span>
+          <input
+            type="number"
+            min={0.0001}
+            step="any"
+            value={loyerConfig.multiplicateur_annee_lissee ?? DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE}
+            onChange={(e) => setLoyerConfig((prev) => ({
+              ...prev,
+              multiplicateur_annee_lissee: Number(e.target.value) > 0
+                ? Number(e.target.value)
+                : DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE,
+            }))}
+            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+          />
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
+        <div>
           <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total mensuel affiché</h4>
           <p className="text-xs text-gray-500 mt-1">Montant mensuel mis en avant pour le client (badge du panier, page proposition, variable {'{{sp_total_mensuel_final}}'}).</p>
         </div>
@@ -370,11 +397,12 @@ export function SpLoyerManager({ templates }: Props) {
             ['autres_ponctuels', 'Autres éléments ponctuels'],
             ['indemnites', 'Indemnités de résiliation'],
             ['marge', 'Marge'],
+            ['annee_lissee', 'Montant année lissée'],
           ] as const).map(([key, label]) => (
             <label key={key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input
                 type="checkbox"
-                checked={loyerConfig.composantes_base?.[key] ?? true}
+                checked={loyerConfig.composantes_base?.[key] ?? DEFAULT_COMPOSANTES_BASE_LOYER[key] ?? true}
                 onChange={() => toggleComposante(key)}
               />
               <span>{label}</span>

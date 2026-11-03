@@ -247,6 +247,7 @@ export interface WordConfig {
   inclure_charges_variables_sa?: boolean;
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
+  sp_libelles?: SpLibellesConfig;
   sp_preferences_produits?: SpPreferencesProduits;
   sp_config_remises?: SpConfigRemises;
   sp_config_codes_promo?: SpConfigCodesPromo;
@@ -560,6 +561,11 @@ export interface SpConfigRemises {
   actif: boolean;
   produits: Record<string, SpRemiseProduitTemplate>;
   regles: SpRegleRemise[];
+  remise_globale?: {
+    actif: boolean;
+    remise_type: 'fixe' | 'pourcentage';
+    remise_valeur: number;
+  };
 }
 
 export interface SpRegleProduitAuto {
@@ -1052,6 +1058,8 @@ export interface SpComposantesBaseLoyer {
   mois_offerts: boolean;
   indemnites: boolean;
   marge: boolean;
+  /** Montant année lissée (total mensuel des abonnements × multiplicateur). Défaut : non inclus. */
+  annee_lissee?: boolean;
 }
 
 export interface SpConfigLoyer {
@@ -1067,7 +1075,41 @@ export interface SpConfigLoyer {
   composantes_base?: SpComposantesBaseLoyer;
   /** Défaut : 'tout_compris'. Contrôle comment le total mensuel affiché au client combine abonnements et loyer. */
   mode_total_mensuel?: SpModeTotalMensuel;
+  /** Multiplicateur du « Montant année lissée » (total mensuel des abonnements × N). Défaut : 12. */
+  multiplicateur_annee_lissee?: number;
 }
+
+/** Lignes du panier SP dont le libellé et la visibilité sont personnalisables par template. */
+export type SpLibelleKey =
+  | 'fixe'
+  | 'mobile'
+  | 'internet'
+  | 'autres_mensuels'
+  | 'total_mensuel'
+  | 'montant_annee_lissee'
+  | 'materiel'
+  | 'cadeaux'
+  | 'installations'
+  | 'fas'
+  | 'autres_ponctuels'
+  | 'total_ponctuel'
+  | 'loyer_total_ponctuel'
+  | 'remise_mois_offert'
+  | 'indemnites'
+  | 'marge'
+  | 'base_loyer'
+  | 'loyer_mensuel'
+  | 'loyer_trimestriel'
+  | 'montant_finance';
+
+export interface SpLibelleOverride {
+  /** Libellé affiché dans le panier. Vide/absent = libellé par défaut. */
+  label?: string;
+  /** Absent = valeur par défaut de la ligne (visible, sauf « Montant financé »). */
+  visible?: boolean;
+}
+
+export type SpLibellesConfig = Partial<Record<SpLibelleKey, SpLibelleOverride>>;
 
 export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';
 

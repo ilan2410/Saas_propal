@@ -4,7 +4,7 @@ import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, Sp
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
@@ -667,6 +667,7 @@ function buildSpCompletes(
     mois_offerts: remisePourCalculLoyer,
     indemnites: indemnitesNum,
     marge,
+    annee_lissee: calculerMontantAnneeLissee(totalRecurrent, spConfigLoyer?.multiplicateur_annee_lissee),
   }, spConfigLoyer);
   const loyer = dureeMois > 0
     ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule)

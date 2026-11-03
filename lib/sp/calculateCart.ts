@@ -11,6 +11,7 @@ import type {
 } from '@/types';
 import {
   calculerBaseLoyer,
+  calculerMontantAnneeLissee,
   calculerLoyer,
   calculerRemiseMoisOffert,
   resolveTotalMensuelFinal,
@@ -689,6 +690,7 @@ export function calculateCartSummary(
     mois_offerts: remisePourCalculLoyer,
     indemnites,
     marge,
+    annee_lissee: calculerMontantAnneeLissee(abos.totalMensuel, config.multiplicateur_annee_lissee),
   }, config);
   const loyer = bareme
     ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule)

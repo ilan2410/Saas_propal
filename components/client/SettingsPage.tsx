@@ -33,6 +33,7 @@ import {
   EyeOff,
   Package,
   ListOrdered,
+  Type,
   Users,
   CalendarDays
 } from 'lucide-react';
@@ -48,6 +49,7 @@ import { SpObjectifsManager } from '@/components/settings/SpObjectifsManager';
 import { SpCategoriesOrderManager } from '@/components/settings/SpCategoriesOrderManager';
 import { SpReferenceManager } from '@/components/settings/SpReferenceManager';
 import { SpModeClientManager } from '@/components/settings/SpModeClientManager';
+import { SpLibellesManager } from '@/components/settings/SpLibellesManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -100,7 +102,7 @@ function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
 }
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories';
+type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories' | 'libelles';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -2486,6 +2488,18 @@ export default function SettingsPage({
                 <ListOrdered className="w-3.5 h-3.5" />
                 Ordre d&apos;affichage
               </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('libelles')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'libelles'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Type className="w-3.5 h-3.5" />
+                Libellés
+              </button>
             </div>
 
             {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
@@ -2494,6 +2508,7 @@ export default function SettingsPage({
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
             {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
             {questionsSpSubTab === 'ordre_categories' && <SpCategoriesOrderManager templates={templates} />}
+            {questionsSpSubTab === 'libelles' && <SpLibellesManager templates={templates} />}
             {questionsSpSubTab === 'apparence' && (
               <div className="space-y-6">
                 <div className="border border-gray-100 rounded-xl p-5 space-y-4">

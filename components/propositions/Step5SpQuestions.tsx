@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { PropositionData } from './PropositionWizard';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigCodesPromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, WordConfig } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, SuggestionsSpCompletes, CatalogueProduit, OrganizationPreferences, SpConfigCodesPromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpConfigMoisOfferts, SpConfigResumeRef, SpConfigModeClient, SpLibellesConfig, SpPreferencesProduits, WordConfig } from '@/types';
 import { SpQuestionnaireUI } from '@/components/sp/SpQuestionnaireUI';
 import { FloatingSaInspector } from '@/components/propositions/FloatingSaInspector';
 import { FloatingClientCoordonnees } from '@/components/propositions/FloatingClientCoordonnees';
@@ -78,6 +78,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
   const [spConfigMoisOfferts, setSpConfigMoisOfferts] = useState<SpConfigMoisOfferts | undefined>(undefined);
   const [spConfigResumeRef, setSpConfigResumeRef] = useState<SpConfigResumeRef | undefined>(undefined);
   const [spConfigModeClient, setSpConfigModeClient] = useState<SpConfigModeClient | undefined>(undefined);
+  const [spLibelles, setSpLibelles] = useState<SpLibellesConfig | undefined>(undefined);
   const [spPreferencesProduits, setSpPreferencesProduits] = useState<SpPreferencesProduits | undefined>(undefined);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generateError, setGenerateError] = useState('');
@@ -119,6 +120,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
       setSpConfigMoisOfferts(pData.preferences?.sp_config_mois_offerts);
       setSpConfigResumeRef(fileCfg?.sp_config_resume_ref);
       setSpConfigModeClient(fileCfg?.sp_config_mode_client);
+      setSpLibelles(fileCfg?.sp_libelles);
       setSpPreferencesProduits(fileCfg?.sp_preferences_produits);
       setLoadingQuestions(false);
     }).catch(() => setLoadingQuestions(false));
@@ -547,6 +549,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   spConfigMoisOfferts={spConfigMoisOfferts}
                   spConfigResumeRef={spConfigResumeRef}
                   spConfigModeClient={spConfigModeClient}
+                  spLibelles={spLibelles}
                   spPreferencesProduits={spPreferencesProduits}
                   spCodesPromo={spConfigCodesPromo?.codes ?? preferences.sp_codes_promo ?? []}
                   spCodesPromoMode={spConfigCodesPromo?.mode ?? preferences.sp_codes_promo_mode ?? 'addition'}

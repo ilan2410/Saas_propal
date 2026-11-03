@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 
 interface SpMargeWidgetProps {
   reponses: SpQuestionReponse[];
@@ -107,6 +107,7 @@ export function SpMargeWidget({
         mois_offerts: remisePourCalculLoyer,
         indemnites: summary.indemnites,
         marge: margeNum,
+        annee_lissee: calculerMontantAnneeLissee(summary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
       }, configLoyer);
       const loyer = bareme
         ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule)

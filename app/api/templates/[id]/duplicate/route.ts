@@ -17,7 +17,7 @@ interface RouteParams {
 const ALL_OPTIONS = [
   'fichier', 'description', 'champs', 'mapping', 'prompt', 'merge',
   'questions', 'objectifs', 'variables', 'clauses', 'loyer',
-  'remises', 'codes_promo', 'produits', 'mode_client', 'reference',
+  'remises', 'codes_promo', 'produits', 'mode_client', 'reference', 'libelles',
 ] as const;
 
 type DuplicateOption = (typeof ALL_OPTIONS)[number];
@@ -39,12 +39,13 @@ const FILE_CONFIG_KEYS: Partial<Record<DuplicateOption, string[]>> = {
   produits: ['sp_preferences_produits', 'spTableauxFusionnes', 'sp_table_product_orders'],
   mode_client: ['sp_config_mode_client'],
   reference: ['sp_config_resume_ref'],
+  libelles: ['sp_libelles'],
 };
 
 // Options qui activent le workflow SP sur la copie.
 const SP_OPTIONS: DuplicateOption[] = [
   'questions', 'objectifs', 'variables', 'clauses', 'loyer',
-  'remises', 'codes_promo', 'produits', 'mode_client', 'reference',
+  'remises', 'codes_promo', 'produits', 'mode_client', 'reference', 'libelles',
 ];
 
 // Remplace récursivement toute string égale à un ancien ID de question
