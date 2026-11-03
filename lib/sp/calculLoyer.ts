@@ -84,6 +84,30 @@ export interface ResultatLoyer {
   duree_mois: number;
   taux_utilise: number;
   marge_appliquee: number;
+  /** Loyer mensuel issu du barème, présent uniquement quand le loyer a été saisi manuellement. */
+  loyer_calcule?: number;
+}
+
+/** Réponse portant le loyer mensuel saisi à la main (marge automatique uniquement). */
+export const LOYER_MANUEL_QUESTION_ID = 'sp_loyer_manuel';
+
+export function lireLoyerManuel(reponses: Array<{ question_id: string; valeur: unknown }>): number | null {
+  const rep = reponses.find((r) => r.question_id === LOYER_MANUEL_QUESTION_ID);
+  if (!rep || rep.valeur === '' || rep.valeur == null) return null;
+  const valeur = Number(rep.valeur);
+  return Number.isFinite(valeur) && valeur >= 0 ? Math.round(valeur * 100) / 100 : null;
+}
+
+/** Remplace le loyer mensuel calculé par le montant saisi ; le reste du résultat est dérivé de ce montant. */
+export function appliquerLoyerManuel(loyer: ResultatLoyer | null, manuel: number | null): ResultatLoyer | null {
+  if (!loyer || manuel == null) return loyer;
+  return {
+    ...loyer,
+    loyer_mensuel: manuel,
+    loyer_trimestriel: manuel * 3,
+    total_loyer: manuel * loyer.trimestres * 3,
+    loyer_calcule: loyer.loyer_mensuel,
+  };
 }
 
 // ── Calculateur principal ────────────────────────────────────────────

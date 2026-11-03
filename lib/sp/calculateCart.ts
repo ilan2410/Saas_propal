@@ -14,6 +14,8 @@ import {
   calculerMontantAnneeLissee,
   calculerLoyer,
   calculerRemiseMoisOffert,
+  appliquerLoyerManuel,
+  lireLoyerManuel,
   resolveTotalMensuelFinal,
   DEFAULT_CONFIG_LOYER,
   type ResultatLoyer,
@@ -700,9 +702,12 @@ export function calculateCartSummary(
     marge,
     annee_lissee: calculerMontantAnneeLissee(abos.totalMensuel, config.multiplicateur_annee_lissee),
   };
+  // Loyer saisi à la main : uniquement en marge automatique. Il reste fixe quand la base change,
+  // la marge absorbe l'écart (montant financé − base loyer).
+  const loyerManuel = config.widget_marge?.mode === 'automatique' ? lireLoyerManuel(reponses) : null;
   let baseCalculLoyer = calculerBaseLoyer(composantes, config);
   let loyer = bareme
-    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule)
+    ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule), loyerManuel)
     : null;
   let margeErreur: string | null = null;
   if (config.widget_marge?.mode === 'automatique') {
@@ -719,7 +724,9 @@ export function calculateCartSummary(
       marge = resultat.valeur;
       if (config.composantes_base?.marge !== false) {
         baseCalculLoyer = calculerBaseLoyer({ ...composantes, marge }, config);
-        loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule) : null;
+        loyer = bareme
+          ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule), loyerManuel)
+          : null;
       }
     }
   }

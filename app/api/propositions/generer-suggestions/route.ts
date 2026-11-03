@@ -4,7 +4,7 @@ import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, Sp
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
-import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
+import { appliquerLoyerManuel, calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, lireLoyerManuel, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
@@ -677,8 +677,9 @@ function buildSpCompletes(
     annee_lissee: calculerMontantAnneeLissee(totalRecurrent, spConfigLoyer?.multiplicateur_annee_lissee),
   };
   let baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge: spConfigLoyer?.widget_marge?.mode === 'automatique' ? 0 : marge }, spConfigLoyer);
+  const loyerManuel = spConfigLoyer?.widget_marge?.mode === 'automatique' ? lireLoyerManuel(reponses) : null;
   let loyer = dureeMois > 0
-    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule)
+    ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule), loyerManuel)
     : null;
   if (spConfigLoyer?.widget_marge?.mode === 'automatique') {
     const auto = calculerMargeAuto({
@@ -694,7 +695,7 @@ function buildSpCompletes(
     if (spConfigLoyer.composantes_base?.marge !== false) {
       baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge }, spConfigLoyer);
       loyer = dureeMois > 0
-        ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer.formule)
+        ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer.formule), loyerManuel)
         : null;
     }
   }

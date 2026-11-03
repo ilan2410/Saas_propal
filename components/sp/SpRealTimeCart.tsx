@@ -14,7 +14,7 @@ import type {
   SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary, buildLoopLabelsByGroup, type CartLine } from '@/lib/sp/calculateCart';
-import { calculerMontantAnneeLissee, calculerMontantFinance, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerMontantAnneeLissee, calculerMontantFinance, formatEuro, LOYER_MANUEL_QUESTION_ID } from '@/lib/sp/calculLoyer';
 import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 
@@ -133,6 +133,84 @@ function Line({
         {formatEuro(value)}
         {suffix && <span className="ml-0.5 text-[10px] text-gray-400">{suffix}</span>}
       </span>
+    </div>
+  );
+}
+
+/** Ligne du loyer mensuel, saisissable à la main (marge automatique) avec retour au montant calculé. */
+function LoyerMensuelLine({
+  label,
+  value,
+  calcule,
+  editable,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  value: number;
+  calcule?: number;
+  editable: boolean;
+  onChange: (v: number) => void;
+  onReset: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const modifie = calcule != null;
+
+  const commit = () => {
+    const v = parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(v) && v >= 0 && v !== value) onChange(v);
+    setEditing(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-semibold text-gray-900">
+        <span>{label}</span>
+        <span className="flex items-center gap-1 tabular-nums">
+          {editing ? (
+            <input
+              autoFocus
+              type="number"
+              min={0}
+              step={0.01}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') setEditing(false);
+              }}
+              className="w-20 rounded border border-blue-300 bg-blue-50 px-1 py-0.5 text-[11px] text-blue-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          ) : (
+            <span>
+              {formatEuro(value)}
+              <span className="ml-0.5 text-[10px] font-normal text-gray-400">/mois</span>
+            </span>
+          )}
+          {editable && !editing && (
+            <button
+              type="button"
+              onClick={() => { setDraft(String(value)); setEditing(true); }}
+              title="Modifier le loyer"
+              className={`rounded p-0.5 transition-colors hover:bg-blue-100 ${modifie ? 'text-blue-500' : 'text-gray-300 hover:text-gray-500'}`}
+            >
+              <Pencil className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </span>
+      </div>
+      {modifie && (
+        <div className="flex items-center justify-between text-[10px] text-blue-600">
+          <span>Modifié manuellement (calculé : {formatEuro(calcule)})</span>
+          {editable && (
+            <button type="button" onClick={onReset} className="underline hover:text-blue-800">
+              Rétablir
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1021,7 +1099,19 @@ export function SpRealTimeCart({
                     </div>
                   )}
                   {!hide('loyer_mensuel') && (
-                    <Line label={lbl('loyer_mensuel')} value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
+                    <LoyerMensuelLine
+                      label={lbl('loyer_mensuel')}
+                      value={summary.loyer.loyer_mensuel}
+                      calcule={summary.loyer.loyer_calcule}
+                      editable={editMode && !!onUpdateReponses && spConfigLoyer?.widget_marge?.mode === 'automatique'}
+                      onChange={(v) => onUpdateReponses?.([
+                        ...reponses.filter((r) => r.question_id !== LOYER_MANUEL_QUESTION_ID),
+                        { question_id: LOYER_MANUEL_QUESTION_ID, valeur: String(v) },
+                      ])}
+                      onReset={() => onUpdateReponses?.(
+                        reponses.filter((r) => r.question_id !== LOYER_MANUEL_QUESTION_ID),
+                      )}
+                    />
                   )}
                   {!hide('loyer_trimestriel') && (
                     <Line label={lbl('loyer_trimestriel')} value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />

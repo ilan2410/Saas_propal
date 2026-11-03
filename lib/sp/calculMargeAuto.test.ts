@@ -74,6 +74,59 @@ describe('marge automatique du panier SP', () => {
     expect(summary.marge).toBe(0);
   });
 
+  describe('loyer saisi manuellement (marge automatique)', () => {
+    const config65 = () => {
+      const config = auto(['montant_finance', 'base_loyer'], ['-']);
+      config.baremes = [{
+        ...DEFAULT_CONFIG_LOYER.baremes[0],
+        taux_durees: [{ duree_mois: 63, taux_loyer: 0.065, mois_offerts: 0, trimestres: 21 }],
+      }];
+      return config;
+    };
+    const indemnites = { question_id: 'sp_total_indemnites', valeur: '3386.8' };
+
+    it('recalcule trimestriel, montant financé et marge sans toucher à la base loyer', () => {
+      const summary = calculateCartSummary(
+        [indemnites, { question_id: 'sp_loyer_manuel', valeur: '80' }], [], [], {}, config65(),
+      );
+      expect(summary.loyer?.loyer_mensuel).toBe(80);
+      expect(summary.loyer?.loyer_trimestriel).toBe(240);
+      expect(summary.loyer?.loyer_calcule).toBe(74);
+      expect(summary.baseLoyer).toBe(3386.8);
+      expect(summary.marge).toBe(305.51);
+      expect(summary.totalMensuelFinal).toBe(80);
+    });
+
+    it('autorise une marge négative quand le loyer saisi est plus bas', () => {
+      const summary = calculateCartSummary(
+        [indemnites, { question_id: 'sp_loyer_manuel', valeur: '70' }], [], [], {}, config65(),
+      );
+      expect(summary.marge).toBe(-156.03);
+    });
+
+    it('garde le loyer saisi quand la base change', () => {
+      const summary = calculateCartSummary(
+        [{ question_id: 'sp_total_indemnites', valeur: '5000' }, { question_id: 'sp_loyer_manuel', valeur: '80' }],
+        [], [], {}, config65(),
+      );
+      expect(summary.loyer?.loyer_mensuel).toBe(80);
+      expect(summary.marge).toBe(-1307.69);
+    });
+
+    it('ignore la saisie en marge manuelle ou si elle est invalide', () => {
+      const manuel = calculateCartSummary(
+        [indemnites, { question_id: 'sp_loyer_manuel', valeur: '80' }], [], [], {},
+        { ...config65(), widget_marge: { mode: 'manuel' } },
+      );
+      expect(manuel.loyer?.loyer_calcule).toBeUndefined();
+      const invalide = calculateCartSummary(
+        [indemnites, { question_id: 'sp_loyer_manuel', valeur: 'abc' }], [], [], {}, config65(),
+      );
+      expect(invalide.loyer?.loyer_mensuel).toBe(74);
+      expect(invalide.loyer?.loyer_calcule).toBeUndefined();
+    });
+  });
+
   it('synchronise les réponses dérivées, sans réécrire celles qui sont déjà à jour', () => {
     const config = auto(['indemnites', 'loyer_total_ponctuel'], ['-']);
     const previous = [
