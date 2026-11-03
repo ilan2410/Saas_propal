@@ -113,12 +113,14 @@ function Line({
   suffix,
   bold,
   muted,
+  valueClassName,
 }: {
   label: string;
   value: number;
   suffix?: string;
   bold?: boolean;
   muted?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <div
@@ -127,7 +129,7 @@ function Line({
       }`}
     >
       <span>{label}</span>
-      <span className="tabular-nums">
+      <span className={`tabular-nums ${valueClassName ?? ''}`}>
         {formatEuro(value)}
         {suffix && <span className="ml-0.5 text-[10px] text-gray-400">{suffix}</span>}
       </span>
@@ -746,6 +748,7 @@ export function SpRealTimeCart({
 
       {!collapsed && (
         <div className="px-3 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+          {summary.margeErreur && <p role="alert" className="text-xs text-amber-700">{summary.margeErreur}</p>}
           {!hasAnyLine && (
             <p className="text-xs text-gray-400 italic">Aucun produit sélectionné pour l&apos;instant.</p>
           )}
@@ -968,7 +971,7 @@ export function SpRealTimeCart({
                       {!hide('indemnites') && summary.indemnites > 0 && (
                         <Line label={lbl('indemnites')} value={summary.indemnites} muted />
                       )}
-                      {!hide('marge') && summary.marge !== 0 &&
+                      {!hide('marge') && (summary.marge !== 0 || spConfigLoyer?.widget_marge?.mode === 'automatique') &&
                         (summary.codePromo && summary.codePromo.cible !== 'abonnements' ? (
                           <div>
                             <button
@@ -1005,7 +1008,9 @@ export function SpRealTimeCart({
                             )}
                           </div>
                         ) : (
-                          <Line label={lbl('marge')} value={summary.marge} muted />
+                          <Line label={lbl('marge')} value={summary.marge} muted valueClassName={spConfigLoyer?.widget_marge?.mode === 'automatique'
+                            ? summary.marge > 0 ? 'font-semibold text-green-600' : summary.marge < 0 ? 'font-semibold text-red-600' : 'text-gray-600'
+                            : undefined} />
                         ))}
                       {!hide('montant_annee_lissee') && (
                         <Line label={lbl('montant_annee_lissee')} value={montantAnneeLissee} muted />

@@ -9,6 +9,7 @@ import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
+import { calculerMargeAuto } from '@/lib/sp/calculMargeAuto';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { propositionSecteurBlocked, scopePropositionsQuery } from '@/lib/propositions/visibility';
@@ -641,10 +642,16 @@ function buildSpCompletes(
     dureeMois = spConfigLoyer.duree_mois_par_defaut;
   }
   const bareme = spConfigLoyer?.baremes
-    ? findApplicableBareme(spConfigLoyer.baremes, reponses, {}, catalogueProduits)
+    ? findApplicableBareme(spConfigLoyer.baremes,
+        spConfigLoyer.widget_marge?.mode === 'automatique'
+          ? reponses.filter((r) => r.question_id !== 'sp_marge_calculee' &&
+              !templateQuestions.some((q) => q.affichage === 'marge' &&
+                (r.question_id === q.id || r.question_id.startsWith(`${q.id}__iter_`))))
+          : reponses,
+        {}, catalogueProduits)
     : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
-  const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
+  let marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
   const remisePourCalculLoyer = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
   // Indemnités : prioriser réponse SP, sinon raw.sp_total_indemnites
   let indemnitesNum = 0;
@@ -658,7 +665,7 @@ function buildSpCompletes(
     const m = String(raw.sp_total_indemnites).match(/-?\d+(?:[.,]\d+)?/);
     indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
   }
-  const baseCalculLoyer = calculerBaseLoyer({
+  const composantesLoyer = {
     materiel: totalMaterielPonctuel,
     cadeaux: totalCadeauxPonctuel,
     installations: totalInstallationsPonctuel,
@@ -668,10 +675,29 @@ function buildSpCompletes(
     indemnites: indemnitesNum,
     marge,
     annee_lissee: calculerMontantAnneeLissee(totalRecurrent, spConfigLoyer?.multiplicateur_annee_lissee),
-  }, spConfigLoyer);
-  const loyer = dureeMois > 0
+  };
+  let baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge: spConfigLoyer?.widget_marge?.mode === 'automatique' ? 0 : marge }, spConfigLoyer);
+  let loyer = dureeMois > 0
     ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule)
     : null;
+  if (spConfigLoyer?.widget_marge?.mode === 'automatique') {
+    const auto = calculerMargeAuto({
+      totalPonctuel,
+      remiseMoisOffert: remisePourCalculLoyer,
+      indemnites: indemnitesNum,
+      baseLoyer: baseCalculLoyer,
+      loyer,
+      abonnements: { fixe: 0, mobile: 0, internet: 0, totalMensuel: totalRecurrent },
+    }, spConfigLoyer);
+    if (auto.erreur) throw new Error(auto.erreur);
+    marge = auto.valeur!;
+    if (spConfigLoyer.composantes_base?.marge !== false) {
+      baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge }, spConfigLoyer);
+      loyer = dureeMois > 0
+        ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer.formule)
+        : null;
+    }
+  }
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
 

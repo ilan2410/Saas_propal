@@ -1062,6 +1062,25 @@ export interface SpComposantesBaseLoyer {
   annee_lissee?: boolean;
 }
 
+export type SpMargeOperande =
+  | 'loyer_total_ponctuel'
+  | 'remise_mois_offert'
+  | 'indemnites'
+  | 'montant_annee_lissee'
+  | 'base_loyer'
+  | 'loyer_mensuel'
+  | 'loyer_trimestriel'
+  | 'montant_finance';
+
+export type SpMargeOperateur = '+' | '-' | '*' | '/';
+
+export interface SpConfigWidgetMarge {
+  mode: 'manuel' | 'automatique';
+  visible_auto?: boolean;
+  operandes?: SpMargeOperande[];
+  operateurs?: SpMargeOperateur[];
+}
+
 export interface SpConfigLoyer {
   baremes: SpBareme[];
   /** Durée du contrat en mois utilisée par défaut pour le calcul du loyer (fallback). */
@@ -1077,6 +1096,7 @@ export interface SpConfigLoyer {
   mode_total_mensuel?: SpModeTotalMensuel;
   /** Multiplicateur du « Montant année lissée » (total mensuel des abonnements × N). Défaut : 12. */
   multiplicateur_annee_lissee?: number;
+  widget_marge?: SpConfigWidgetMarge;
 }
 
 /** Lignes du panier SP dont le libellé et la visibilité sont personnalisables par template. */

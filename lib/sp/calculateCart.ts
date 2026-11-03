@@ -20,6 +20,7 @@ import {
 } from './calculLoyer';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from './evaluateBareme';
+import { calculerMargeAuto } from './calculMargeAuto';
 import { collectQuestionVariableValues } from './questionVariables';
 import { evaluateGroupes } from './evaluateConditions';
 
@@ -58,6 +59,7 @@ export interface SpCartSummary {
   remiseMoisOffert: number;
   indemnites: number;
   marge: number;
+  margeErreur?: string | null;
   baseLoyer: number;
   dureeMois: number;
   loyer: ResultatLoyer | null;
@@ -650,7 +652,13 @@ export function calculateCartSummary(
   // 4. Loyer
   const config = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
   const baremes = config.baremes ?? [];
-  const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue)
+  const questionMargeIds = questions.filter((q) => q.affichage === 'marge').map((q) => q.id);
+  const bareme = findApplicableBareme(baremes,
+    config.widget_marge?.mode === 'automatique'
+      ? reponses.filter((r) => r.question_id !== 'sp_marge_calculee' &&
+          !questionMargeIds.some((id) => r.question_id === id || r.question_id.startsWith(`${id}__iter_`)))
+      : reponses,
+    donneesExtraites, catalogue)
     ?? baremes[0]
     ?? null;
 
@@ -679,9 +687,9 @@ export function calculateCartSummary(
   const indemnites = resolveIndemnites(reponses, questions, donneesExtraites);
 
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
-  const marge = margeRep ? Number(margeRep.valeur) || 0 : 0;
+  let marge = config.widget_marge?.mode === 'automatique' ? 0 : margeRep ? Number(margeRep.valeur) || 0 : 0;
 
-  const baseCalculLoyer = calculerBaseLoyer({
+  const composantes = {
     materiel,
     cadeaux,
     installations,
@@ -691,10 +699,30 @@ export function calculateCartSummary(
     indemnites,
     marge,
     annee_lissee: calculerMontantAnneeLissee(abos.totalMensuel, config.multiplicateur_annee_lissee),
-  }, config);
-  const loyer = bareme
+  };
+  let baseCalculLoyer = calculerBaseLoyer(composantes, config);
+  let loyer = bareme
     ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule)
     : null;
+  let margeErreur: string | null = null;
+  if (config.widget_marge?.mode === 'automatique') {
+    const resultat = calculerMargeAuto({
+      totalPonctuel,
+      remiseMoisOffert: remisePourCalculLoyer,
+      indemnites,
+      baseLoyer: baseCalculLoyer,
+      loyer,
+      abonnements: abos,
+    }, config);
+    margeErreur = resultat.erreur;
+    if (resultat.valeur !== null) {
+      marge = resultat.valeur;
+      if (config.composantes_base?.marge !== false) {
+        baseCalculLoyer = calculerBaseLoyer({ ...composantes, marge }, config);
+        loyer = bareme ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule) : null;
+      }
+    }
+  }
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
   const baseLoyer = baseCalculLoyer;
@@ -707,7 +735,9 @@ export function calculateCartSummary(
   // Détail du code promo appliqué (si renseigné lors du questionnaire)
   const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');
   let codePromo: SpCodePromoInfo | null = null;
-  if (codePromoNomRep && String(codePromoNomRep.valeur).trim()) {
+  if (codePromoNomRep && String(codePromoNomRep.valeur).trim() &&
+    (config.widget_marge?.mode !== 'automatique' ||
+      reponses.find((r) => r.question_id === 'sp_code_promo_cible')?.valeur === 'abonnements')) {
     const valeurRep = reponses.find((r) => r.question_id === 'sp_code_promo_valeur');
     const modeRep = reponses.find((r) => r.question_id === 'sp_code_promo_mode');
     const cibleRep = reponses.find((r) => r.question_id === 'sp_code_promo_cible');
@@ -736,6 +766,7 @@ export function calculateCartSummary(
     remiseMoisOffert,
     indemnites,
     marge,
+    margeErreur,
     baseLoyer,
     dureeMois,
     loyer,
