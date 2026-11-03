@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogueCategorie, CatalogueProduit, SpQuestion, SuggestionsSpCompletes } from '@/types';
+import type { CatalogueCategorie, CatalogueProduit, SpConfigRemises, SpQuestion, SuggestionsSpCompletes } from '@/types';
 import { calculateCartSummary } from './calculateCart';
 import { buildSolutionProposeeLines } from './buildExportSaSpData';
 import { orderProductsByPreference } from './productTableOrder';
@@ -368,6 +368,71 @@ describe('remises produits par template', () => {
   const produit = product('mobile', 'Forfait mobile', 'mobile', 'mensuel', 30);
   produit.remise_type = 'pourcentage';
   produit.remise_valeur = 10;
+
+  it('applique la remise globale aux produits mensuels existants et futurs, pas aux ponctuels', () => {
+    const nouveau = product('fibre', 'Fibre', 'internet', 'mensuel', 50);
+    const ponctuel = product('routeur', 'Routeur', 'equipement', 'unique', 100);
+    const config = {
+      actif: true,
+      regles: [],
+      produits: {},
+      remise_globale: { actif: true, remise_type: 'pourcentage' as const, remise_valeur: 20 },
+    };
+
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(24);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, config))).toBe(40);
+    expect(resolveRemiseProduit(ponctuel, config).remise_valeur).toBeUndefined();
+    expect(getEligibleDiscountProducts({
+      rules: [],
+      products: [produit, nouveau, ponctuel],
+      reponses: [{ question_id: 'produits', valeur: [produit.nom, nouveau.nom, ponctuel.nom] }],
+      donneesExtraites: {},
+      spConfigRemises: config,
+    }).map((p) => p.id)).toEqual(['mobile', 'fibre']);
+  });
+
+  it('priorise les exceptions par produit sur la remise globale', () => {
+    const config: SpConfigRemises = {
+      actif: true,
+      regles: [],
+      remise_globale: { actif: true, remise_type: 'fixe' as const, remise_valeur: 5 },
+      produits: {
+        [produit.id]: { mode: 'catalogue' as const },
+      },
+    };
+
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(27);
+    config.produits[produit.id] = { mode: 'aucune' as const };
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBeNull();
+    const autre = product('autre', 'Autre forfait', 'fixe', 'mensuel', 30);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(autre, config))).toBe(25);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(autre, {
+      ...config,
+      produits: { [autre.id]: { mode: 'personnalisee', remise_type: 'pourcentage', remise_valeur: 50 } },
+    }))).toBe(15);
+  });
+
+  it('n’applique pas la remise globale lorsqu’elle est désactivée ou hors limites', () => {
+    const nouveau = product('fibre', 'Fibre', 'internet', 'mensuel', 50);
+    const config = {
+      actif: true,
+      regles: [],
+      produits: {},
+      remise_globale: { actif: false, remise_type: 'pourcentage' as const, remise_valeur: 20 },
+    };
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, config))).toBeNull();
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(27);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, {
+      ...config, remise_globale: { ...config.remise_globale, actif: true, remise_valeur: 120 },
+    }))).toBeNull();
+    expect(getEligibleDiscountProducts({
+      rules: [],
+      products: [nouveau],
+      reponses: [{ question_id: 'produit', valeur: nouveau.nom }],
+      donneesExtraites: {},
+      spConfigRemises: { ...config, actif: false, remise_globale: { ...config.remise_globale, actif: true } },
+    })).toHaveLength(0);
+  });
 
   it('utilise la remise catalogue sans surcharge', () => {
     expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit))).toBe(27);

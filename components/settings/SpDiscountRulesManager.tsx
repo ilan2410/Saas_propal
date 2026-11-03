@@ -46,7 +46,7 @@ function getConfig(template: PropositionTemplate | undefined, fallbackRules: SpR
   const fileConfig = template?.file_config as WordConfig | undefined;
   const saved = fileConfig?.sp_config_remises;
   return saved
-    ? { actif: saved.actif ?? true, produits: { ...saved.produits }, regles: saved.regles ?? fallbackRules }
+    ? { actif: saved.actif ?? true, produits: { ...saved.produits }, regles: saved.regles ?? fallbackRules, remise_globale: saved.remise_globale }
     : { actif: true, produits: {}, regles: fallbackRules };
 }
 
@@ -74,7 +74,7 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
     [products],
   );
   const configuredProducts = monthlyProducts.filter(
-    (product) => product.remise_valeur != null || config.produits[product.id] != null,
+    (product) => config.remise_globale?.actif || product.remise_valeur != null || config.produits[product.id] != null,
   );
   const availableProducts = monthlyProducts.filter(
     (product) => product.remise_valeur == null && config.produits[product.id] == null,
@@ -103,13 +103,21 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
       const current = prev.produits[product.id] ?? { mode: 'catalogue' as const };
       const next = { ...current, ...patch };
       const produits = { ...prev.produits };
-      if (next.mode === 'catalogue') delete produits[product.id];
+      if (next.mode === 'catalogue' && !prev.remise_globale?.actif) delete produits[product.id];
       else produits[product.id] = next;
       return { ...prev, produits };
     });
   };
 
-  const changeProductMode = (product: CatalogueProduit, mode: SpRemiseProduitTemplate['mode']) => {
+  const changeProductMode = (product: CatalogueProduit, mode: SpRemiseProduitTemplate['mode'] | 'globale') => {
+    if (mode === 'globale') {
+      setConfig((prev) => {
+        const produits = { ...prev.produits };
+        delete produits[product.id];
+        return { ...prev, produits };
+      });
+      return;
+    }
     if (mode === 'personnalisee') {
       updateProduct(product, {
         mode,
@@ -221,10 +229,87 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
       </label>
 
       <div className={`space-y-4 ${config.actif ? '' : 'opacity-50 pointer-events-none'}`} aria-disabled={!config.actif}>
+        <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 space-y-3">
+          <label className="flex items-start gap-3 text-sm text-gray-900 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={!config.actif}
+              checked={config.remise_globale?.actif ?? false}
+              onChange={(event) => setConfig((prev) => ({
+                ...prev,
+                remise_globale: {
+                  actif: event.target.checked,
+                  remise_type: prev.remise_globale?.remise_type ?? 'pourcentage',
+                  remise_valeur: prev.remise_globale?.remise_valeur ?? 0,
+                },
+              }))}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-medium">Appliquer une remise à tous les produits mensuels</span>
+              <span className="block text-xs text-gray-600 mt-0.5">
+                S’applique aussi aux futurs produits du catalogue. Les exceptions par produit restent prioritaires.
+              </span>
+            </span>
+          </label>
+          {config.remise_globale?.actif && (
+            <div className="flex flex-wrap items-end gap-3 pl-6">
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span className="block">Type de remise</span>
+                <select
+                  disabled={!config.actif}
+                  value={config.remise_globale.remise_type}
+                  onChange={(event) => setConfig((prev) => ({
+                    ...prev,
+                    remise_globale: {
+                      ...prev.remise_globale!,
+                      remise_type: event.target.value as 'fixe' | 'pourcentage',
+                      remise_valeur: event.target.value === 'pourcentage'
+                        ? Math.min(100, prev.remise_globale?.remise_valeur ?? 0)
+                        : prev.remise_globale?.remise_valeur ?? 0,
+                    },
+                  }))}
+                  className="block px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                >
+                  <option value="pourcentage">Pourcentage (%)</option>
+                  <option value="fixe">Montant fixe (€ / mois)</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-medium text-gray-700">
+                <span className="block">Valeur</span>
+                <input
+                  type="number"
+                  disabled={!config.actif}
+                  min={0}
+                  max={config.remise_globale.remise_type === 'pourcentage' ? 100 : undefined}
+                  step="0.01"
+                  value={config.remise_globale.remise_valeur}
+                  onChange={(event) => setConfig((prev) => ({
+                    ...prev,
+                    remise_globale: {
+                      ...prev.remise_globale!,
+                      remise_valeur: Math.min(
+                        prev.remise_globale?.remise_type === 'pourcentage' ? 100 : Infinity,
+                        Math.max(0, Number(event.target.value) || 0),
+                      ),
+                    },
+                  }))}
+                  className="block w-28 px-3 py-2 border border-gray-300 rounded-md text-sm tabular-nums bg-white"
+                />
+              </label>
+              <span className="text-xs text-gray-600 pb-2">{monthlyProducts.length} produit(s) mensuel(s) actif(s) concernés.</span>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Tarifs par produit</h3>
-            <p className="text-xs text-gray-500 mt-1">Les produits ayant déjà une remise sont affichés automatiquement.</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {config.remise_globale?.actif
+                ? 'Tous les produits mensuels sont affichés. Choisissez une exception si besoin.'
+                : 'Les produits ayant déjà une remise sont affichés automatiquement.'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-gray-600">
@@ -237,13 +322,15 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
                 className="w-56 max-w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
               />
             </label>
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsAddingProduct((current) => !current)}>
-              <Plus className="w-4 h-4 mr-1" />Ajouter un produit
-            </Button>
+            {!config.remise_globale?.actif && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsAddingProduct((current) => !current)}>
+                <Plus className="w-4 h-4 mr-1" />Ajouter un produit
+              </Button>
+            )}
           </div>
         </div>
 
-        {isAddingProduct && (
+        {isAddingProduct && !config.remise_globale?.actif && (
           <div className="flex flex-wrap items-end gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
             <label className="flex-1 min-w-64 space-y-1 text-xs font-medium text-blue-900">
               <span className="block">Produit à ajouter</span>
@@ -280,7 +367,8 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
             <tbody className="divide-y divide-gray-100">
               {visibleProducts.map((product) => {
                 const override = config.produits[product.id];
-                const mode = override?.mode ?? 'catalogue';
+                const mode: SpRemiseProduitTemplate['mode'] | 'globale' =
+                  override?.mode ?? (config.remise_globale?.actif ? 'globale' : 'catalogue');
                 const effectiveProduct = resolveRemiseProduit(product, config);
                 const finalPrice = calculerPrixRemiseProduit(effectiveProduct);
                 return (
@@ -293,9 +381,10 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
                     <td className="px-3 py-2">
                       <select
                         value={mode}
-                        onChange={(event) => changeProductMode(product, event.target.value as SpRemiseProduitTemplate['mode'])}
+                        onChange={(event) => changeProductMode(product, event.target.value as SpRemiseProduitTemplate['mode'] | 'globale')}
                         className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm bg-white"
                       >
+                        {config.remise_globale?.actif && <option value="globale">Remise globale</option>}
                         {product.remise_valeur != null && <option value="catalogue">Remise catalogue</option>}
                         <option value="personnalisee">Personnalisée</option>
                         <option value="aucune">Aucune remise</option>
@@ -326,13 +415,15 @@ export function SpDiscountRulesManager({ templates, fallbackRules, products, que
                           />
                           <span className="text-xs text-gray-500">{override?.remise_type === 'fixe' ? '€' : '%'}</span>
                         </div>
+                      ) : !override && config.remise_globale?.actif ? (
+                        <span className="tabular-nums text-gray-600">{config.remise_globale?.remise_valeur}{config.remise_globale?.remise_type === 'fixe' ? ' €' : ' %'}</span>
                       ) : mode === 'catalogue' && product.remise_valeur != null ? (
                         <span className="tabular-nums text-gray-600">{product.remise_valeur}{product.remise_type === 'fixe' ? ' €' : ' %'}</span>
                       ) : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-3 py-2 font-medium tabular-nums text-gray-800">{formatPrice(finalPrice ?? product.prix_mensuel)}</td>
                     <td className="px-3 py-2 text-right">
-                      {product.remise_valeur == null && config.produits[product.id] != null && (
+                      {!config.remise_globale?.actif && product.remise_valeur == null && config.produits[product.id] != null && (
                         <button
                           type="button"
                           onClick={() => removeAddedProduct(product)}
