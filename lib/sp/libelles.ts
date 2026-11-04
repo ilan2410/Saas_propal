@@ -1,4 +1,13 @@
-import type { SpLibelleKey, SpLibellesConfig } from '@/types';
+import type { SpLibelleKey, SpLibellesConfig, SpWidgetLibelleKey } from '@/types';
+
+export const SP_WIDGET_LIBELLES_DEFAUT: Record<SpWidgetLibelleKey, string> = {
+  marge: 'Marge & Loyer',
+  indemnite: 'Indemnité rés.',
+};
+
+export function resolveWidgetLibelle(config: SpLibellesConfig | undefined, key: SpWidgetLibelleKey): string {
+  return config?.widgets?.[key]?.trim() || SP_WIDGET_LIBELLES_DEFAUT[key];
+}
 
 export const SP_LIBELLES_DEFAUT: Record<SpLibelleKey, string> = {
   fixe: 'Fixe',
@@ -55,4 +64,27 @@ export function resolveLibelle(config: SpLibellesConfig | undefined, key: SpLibe
 
 export function isLibelleVisible(config: SpLibellesConfig | undefined, key: SpLibelleKey): boolean {
   return config?.[key]?.visible ?? !MASQUE_PAR_DEFAUT.has(key);
+}
+
+/** Ne conserve que les libellés et visibilités qui diffèrent des valeurs par défaut. */
+export function compacterLibelles(config: SpLibellesConfig): SpLibellesConfig {
+  const out: SpLibellesConfig = {};
+  for (const key of Object.keys(SP_LIBELLES_DEFAUT) as SpLibelleKey[]) {
+    const label = config[key]?.label?.trim();
+    const customLabel = label && label !== SP_LIBELLES_DEFAUT[key] ? label : undefined;
+    const visible = isLibelleVisible(config, key);
+    const defaultVisible = isLibelleVisible(undefined, key);
+    if (!customLabel && visible === defaultVisible) continue;
+    out[key] = {
+      ...(customLabel ? { label: customLabel } : {}),
+      ...(visible !== defaultVisible ? { visible } : {}),
+    };
+  }
+  for (const key of Object.keys(SP_WIDGET_LIBELLES_DEFAUT) as SpWidgetLibelleKey[]) {
+    const label = config.widgets?.[key]?.trim();
+    if (label && label !== SP_WIDGET_LIBELLES_DEFAUT[key]) {
+      out.widgets = { ...out.widgets, [key]: label };
+    }
+  }
+  return out;
 }

@@ -107,6 +107,7 @@ export function buildSpWordData(
 
     sp_duree_trimestres: sp.sp_duree_trimestres ?? '',
     sp_total_forfaits_mensuel_ht: sp.sp_total_forfaits_mensuel_ht ?? '',
+    sp_total_forfaits_mensuel_ht_avant_remise_operateur: sp.sp_total_forfaits_mensuel_ht_avant_remise_operateur ?? '',
     sp_total_materiel_ht: sp.sp_total_materiel_ht ?? '',
     sp_total_bdc_operateur_ht: sp.sp_total_bdc_operateur_ht ?? '',
     sp_total_bdc_internet_ht: sp.sp_total_bdc_internet_ht ?? '',

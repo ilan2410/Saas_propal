@@ -3778,6 +3778,7 @@ export function SpQuestionnaireUI({
                 !margeRemplie && seuilIdx >= 0 && currentIdx >= seuilIdx;
               return (
                 <SpMargeWidget
+                  spLibelles={spLibelles}
                   reponses={reponses}
                   questions={questions}
                   catalogue={catalogue}
@@ -3814,6 +3815,7 @@ export function SpQuestionnaireUI({
                 !indemRemplie && seuilIndemIdx >= 0 && currentIdx >= seuilIndemIdx;
               return (
                 <SpIndemniteWidget
+                  spLibelles={spLibelles}
                   reponses={reponses}
                   questions={questions}
                   donneesExtraites={donneesExtraites}

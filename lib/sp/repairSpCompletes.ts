@@ -295,6 +295,7 @@ export function repairSpCompletesFromQuestionnaire(
   });
 
   const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
+  const totalForfaitsAvantRemise = toutes.reduce((sum, line) => sum + prixTotalAvantRemise(line), 0);
   const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
 
   // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
@@ -431,6 +432,7 @@ export function repairSpCompletesFromQuestionnaire(
     sp_bdc_materiel_table,
     sp_cadeaux_table,
     sp_total_forfaits_mensuel_ht: formatEuro(totalForfaits),
+    sp_total_forfaits_mensuel_ht_avant_remise_operateur: formatEuro(totalForfaitsAvantRemise),
     sp_total_materiel_ht: formatEuro(totalMateriel),
     sp_total_complet: formatEuro(totalForfaits + totalMateriel),
     sp_total_bdc_operateur_ht: formatEuro(totalBdcOp),

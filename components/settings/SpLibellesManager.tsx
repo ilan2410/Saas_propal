@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import type { PropositionTemplate, SpLibelleKey, SpLibellesConfig, WordConfig } from '@/types';
+import type { PropositionTemplate, SpLibelleKey, SpLibellesConfig, SpWidgetLibelleKey, WordConfig } from '@/types';
 import { supportsSp } from '@/lib/templates/supportsSp';
 import {
   SP_LIBELLES_DEFAUT,
   SP_LIBELLES_GROUPES,
+  SP_WIDGET_LIBELLES_DEFAUT,
+  compacterLibelles,
   isLibelleVisible,
   resolveLibelle,
 } from '@/lib/sp/libelles';
@@ -22,47 +24,65 @@ function getLibelles(template: PropositionTemplate | undefined): SpLibellesConfi
   return { ...(cfg?.sp_libelles ?? {}) };
 }
 
-/** Ne conserve que ce qui diffère des valeurs par défaut. */
-function compacter(config: SpLibellesConfig): SpLibellesConfig {
-  const out: SpLibellesConfig = {};
-  for (const key of Object.keys(SP_LIBELLES_DEFAUT) as SpLibelleKey[]) {
-    const label = config[key]?.label?.trim();
-    const customLabel = label && label !== SP_LIBELLES_DEFAUT[key] ? label : undefined;
-    const visible = isLibelleVisible(config, key);
-    const defaultVisible = isLibelleVisible(undefined, key);
-    if (!customLabel && visible === defaultVisible) continue;
-    out[key] = {
-      ...(customLabel ? { label: customLabel } : {}),
-      ...(visible !== defaultVisible ? { visible } : {}),
-    };
-  }
-  return out;
-}
-
 export function SpLibellesManager({ templates }: Props) {
   const wordTemplates = templates.filter((t) => supportsSp(t.file_type));
   const [templateId, setTemplateId] = useState<string>(wordTemplates[0]?.id ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [savedConfigs, setSavedConfigs] = useState<Record<string, SpLibellesConfig>>({});
+  const editVersion = useRef(0);
   const selectedTemplate = wordTemplates.find((t) => t.id === templateId);
   const [config, setConfig] = useState<SpLibellesConfig>(() => getLibelles(selectedTemplate));
 
+  useEffect(() => {
+    if (!templateId) return;
+    let cancelled = false;
+    const version = editVersion.current;
+    fetch(`/api/templates/${templateId}`)
+      .then((r) => {
+        if (!r.ok) throw new Error('Erreur serveur');
+        return r.json();
+      })
+      .then((data) => {
+        if (!cancelled && editVersion.current === version) {
+          const cfg = data.template?.file_config as WordConfig | undefined;
+          setConfig({ ...(cfg?.sp_libelles ?? {}) });
+        }
+      })
+      .catch(() => { /* Les données initiales du template restent disponibles. */ });
+    return () => { cancelled = true; };
+  }, [templateId]);
+
   const handleTemplateChange = (id: string) => {
+    editVersion.current++;
     setTemplateId(id);
-    setConfig(getLibelles(wordTemplates.find((t) => t.id === id)));
+    setConfig(savedConfigs[id] ?? getLibelles(wordTemplates.find((t) => t.id === id)));
   };
 
-  const setLabel = (key: SpLibelleKey, label: string) =>
+  const setLabel = (key: SpLibelleKey, label: string) => {
+    editVersion.current++;
     setConfig((prev) => ({ ...prev, [key]: { ...prev[key], label } }));
+  };
 
-  const setVisible = (key: SpLibelleKey, visible: boolean) =>
+  const setVisible = (key: SpLibelleKey, visible: boolean) => {
+    editVersion.current++;
     setConfig((prev) => ({ ...prev, [key]: { ...prev[key], visible } }));
+  };
+
+  const setWidgetLabel = (key: SpWidgetLibelleKey, label: string) => {
+    editVersion.current++;
+    setConfig((prev) => ({ ...prev, widgets: { ...prev.widgets, [key]: label } }));
+  };
 
   const handleSave = async () => {
     if (!templateId) return;
     setIsSaving(true);
     try {
-      const currentCfg = (selectedTemplate?.file_config ?? {}) as WordConfig;
-      const compact = compacter(config);
+      const latest = await fetch(`/api/templates/${templateId}`).then((r) => {
+        if (!r.ok) throw new Error('Erreur serveur');
+        return r.json();
+      });
+      const currentCfg = (latest.template?.file_config ?? {}) as WordConfig;
+      const compact = compacterLibelles(config);
       const newFileConfig: WordConfig = { ...currentCfg, sp_libelles: compact };
       const res = await fetch(`/api/templates/${templateId}`, {
         method: 'PATCH',
@@ -70,7 +90,9 @@ export function SpLibellesManager({ templates }: Props) {
         body: JSON.stringify({ file_config: newFileConfig }),
       });
       if (!res.ok) throw new Error('Erreur serveur');
+      editVersion.current++;
       setConfig(compact);
+      setSavedConfigs((prev) => ({ ...prev, [templateId]: compact }));
       toast.success('Libellés enregistrés');
     } catch {
       toast.error('Erreur lors de la sauvegarde');
@@ -83,7 +105,7 @@ export function SpLibellesManager({ templates }: Props) {
     return (
       <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
         <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-sm text-amber-800">Aucun template SP trouvé. Les libellés s&apos;appliquent au panier de la Situation Proposée.</p>
+        <p className="text-sm text-amber-800">Aucun template SP trouvé. Les libellés s&apos;appliquent au panier et aux widgets de la Situation Proposée.</p>
       </div>
     );
   }
@@ -93,10 +115,10 @@ export function SpLibellesManager({ templates }: Props) {
       <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
         <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800 space-y-1">
-          <p className="font-medium">Libellés du panier Situation Proposée</p>
+          <p className="font-medium">Libellés de la Situation Proposée</p>
           <p className="text-blue-700">
-            Renommez chaque ligne du widget panier et choisissez si elle s&apos;affiche. Laisser le champ vide
-            conserve le libellé par défaut. Masquer une ligne ne change aucun calcul. Seul l&apos;affichage dans le panier est concerné.
+            Renommez les lignes du panier et les titres des widgets. Un champ vide conserve le libellé par défaut.
+            Masquer une ligne du panier ne change aucun calcul.
           </p>
         </div>
       </div>
@@ -107,6 +129,7 @@ export function SpLibellesManager({ templates }: Props) {
           <select
             value={templateId}
             onChange={(e) => handleTemplateChange(e.target.value)}
+            disabled={isSaving}
             className="h-9 text-sm border border-gray-300 rounded-md px-3 bg-white w-full max-w-xs"
           >
             {wordTemplates.map((t) => (
@@ -160,6 +183,28 @@ export function SpLibellesManager({ templates }: Props) {
           </div>
         </div>
       ))}
+
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Titres des widgets</h3>
+        <p className="text-xs text-gray-600 mb-4">Nommez les widgets flottants du questionnaire, sans modifier les libellés du panier.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {([
+            ['marge', 'Widget Marge & Loyer'],
+            ['indemnite', 'Widget Indemnité de résiliation'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex flex-col gap-1.5 text-sm font-medium text-gray-700">
+              {label}
+              <input
+                type="text"
+                value={config.widgets?.[key] ?? ''}
+                onChange={(e) => setWidgetLabel(key, e.target.value)}
+                placeholder={SP_WIDGET_LIBELLES_DEFAUT[key]}
+                className="h-9 w-full rounded border border-gray-300 px-2 text-sm font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
 
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={isSaving}>

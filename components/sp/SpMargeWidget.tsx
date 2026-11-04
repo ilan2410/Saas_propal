@@ -9,12 +9,15 @@ import type {
   SpQuestion,
   SpQuestionReponse,
   SpPreferencesProduits,
+  SpLibellesConfig,
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { resolveWidgetLibelle } from '@/lib/sp/libelles';
 
 interface SpMargeWidgetProps {
+  spLibelles?: SpLibellesConfig;
   reponses: SpQuestionReponse[];
   questions: SpQuestion[];
   catalogue: CatalogueProduit[];
@@ -28,6 +31,7 @@ interface SpMargeWidgetProps {
 }
 
 export function SpMargeWidget({
+  spLibelles,
   reponses,
   questions,
   catalogue,
@@ -192,7 +196,7 @@ export function SpMargeWidget({
       >
         <span className="flex items-center gap-2 text-sm font-semibold">
           <TrendingUp className="h-4 w-4" />
-          Marge &amp; Loyer
+          {resolveWidgetLibelle(spLibelles, 'marge')}
         </span>
         {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
       </button>

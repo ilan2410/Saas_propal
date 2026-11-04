@@ -153,6 +153,7 @@ describe('calculateCartSummary — quantités des options', () => {
       sp_sp_prix_avant_remise_operateur: formatEuro(40),
       sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
     });
+    expect(sansRemise?.sp_total_forfaits_mensuel_ht_avant_remise_operateur).toBe(formatEuro(90));
 
     const repaired = repairSpCompletesFromQuestionnaire(
       {} as SuggestionsSpCompletes,
@@ -170,6 +171,9 @@ describe('calculateCartSummary — quantités des options', () => {
       { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60) },
       { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10) },
     ]);
+    expect(repaired?.sp_total_forfaits_mensuel_ht_avant_remise_operateur).toBe(formatEuro(90));
+    expect(repaired?.sp_total_forfaits_mensuel_ht).toBe(formatEuro(70));
+    expect(buildSpWordData(repaired).sp_total_forfaits_mensuel_ht_avant_remise_operateur).toBe(formatEuro(90));
     expect(buildSpWordData(repaired).sp_situation_proposee_forfaits).toMatchObject([
       { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60), prix_total: formatEuro(60) },
       { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10), prix_total: formatEuro(10) },
@@ -197,6 +201,8 @@ describe('calculateCartSummary — quantités des options', () => {
       sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
       sp_sp_prix_propose: formatEuro(55),
     });
+    expect(repaired?.sp_total_forfaits_mensuel_ht_avant_remise_operateur).toBe(formatEuro(80));
+    expect(repaired?.sp_total_forfaits_mensuel_ht).toBe(formatEuro(55));
   });
 
   it('privilégie la quantité modifiée dans le panier et applique les tranches de prix des options', () => {
