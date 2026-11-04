@@ -158,6 +158,7 @@ const SP_SIMPLE_VARS = [
   { key: 'sp_date_limite_souscription', label: 'Date limite de souscription (= date de création ; suffixe -N pour +N jours, ex. {{sp_date_limite_souscription-15}})' },
   { key: 'sp_duree_trimestres', label: 'Durée en trimestres' },
   { key: 'sp_total_forfaits_mensuel_ht', label: 'Total forfaits mensuel HT' },
+  { key: 'sp_total_forfaits_mensuel_ht_avant_remise_operateur', label: 'Total forfaits mensuel HT avant remise opérateur (fixe + mobile + internet)' },
   { key: 'sp_total_materiel_ht', label: 'Total matériel HT' },
   { key: 'sp_total_bdc_operateur_ht', label: 'Total BDC opérateur HT' },
   { key: 'sp_total_bdc_internet_ht', label: 'Total BDC internet HT' },

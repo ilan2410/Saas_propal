@@ -36,7 +36,7 @@ const SP_STANDARD_VARIABLES = [
   'sp_cadeaux_table',
   // Variables simples (Lot 4)
   'sp_date_limite_souscription', 'sp_duree_trimestres',
-  'sp_total_forfaits_mensuel_ht', 'sp_total_materiel_ht',
+  'sp_total_forfaits_mensuel_ht', 'sp_total_forfaits_mensuel_ht_avant_remise_operateur', 'sp_total_materiel_ht',
   'sp_total_bdc_operateur_ht', 'sp_total_bdc_internet_ht',
   'sp_total_bdc_materiel_ht', 'sp_total_cadeaux_ht', 'sp_total_complet',
 ];

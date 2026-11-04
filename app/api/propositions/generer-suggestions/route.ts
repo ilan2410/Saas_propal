@@ -16,6 +16,8 @@ import { propositionSecteurBlocked, scopePropositionsQuery } from '@/lib/proposi
 
 type UnknownRecord = Record<string, unknown>;
 
+class MargeAutoError extends Error {}
+
 function isPlainObject(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -642,6 +644,8 @@ function buildSpCompletes(
   if (!dureeMois && spConfigLoyer?.duree_mois_par_defaut && spConfigLoyer.duree_mois_par_defaut > 0) {
     dureeMois = spConfigLoyer.duree_mois_par_defaut;
   }
+  // Même durée de secours que le panier affiché dans le questionnaire.
+  if (!dureeMois) dureeMois = 63;
   const bareme = spConfigLoyer?.baremes
     ? findApplicableBareme(spConfigLoyer.baremes,
         spConfigLoyer.widget_marge?.mode === 'automatique'
@@ -649,7 +653,7 @@ function buildSpCompletes(
               !templateQuestions.some((q) => q.affichage === 'marge' &&
                 (r.question_id === q.id || r.question_id.startsWith(`${q.id}__iter_`))))
           : reponses,
-        {}, catalogueProduits)
+        donneesCart, catalogueProduits) ?? spConfigLoyer.baremes[0] ?? null
     : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
   let marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
@@ -693,7 +697,7 @@ function buildSpCompletes(
       loyer,
       abonnements: { fixe: 0, mobile: 0, internet: 0, totalMensuel: totalRecurrent },
     }, spConfigLoyer);
-    if (auto.erreur) throw new Error(auto.erreur);
+    if (auto.erreur) throw new MargeAutoError(auto.erreur);
     marge = auto.valeur!;
     if (spConfigLoyer.composantes_base?.marge !== false) {
       baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge }, spConfigLoyer);
@@ -999,6 +1003,7 @@ function buildSpCompletes(
 
   // Totaux des tables filtrées
   const totalForfaits = toutes.reduce((s, l) => s + l._prix_propose_raw, 0);
+  const totalForfaitsAvantRemise = toutes.reduce((s, l) => s + prixTotalAvantRemise(l), 0);
   const totalMaterielHt = sp_materiel.reduce((s, m) => s + m._prix_mensuel_raw, 0);
   const totalBdcOp = sp_bdc_operateur_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
   const totalBdcInt = sp_bdc_internet_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
@@ -1006,6 +1011,7 @@ function buildSpCompletes(
   const totalCadeaux = sp_cadeaux_table.reduce((s, l) => s + l._valeur_raw, 0);
 
   result.sp_total_forfaits_mensuel_ht = formatEuro(totalForfaits);
+  result.sp_total_forfaits_mensuel_ht_avant_remise_operateur = formatEuro(totalForfaitsAvantRemise);
   result.sp_total_materiel_ht = formatEuro(totalMaterielHt);
   result.sp_total_bdc_operateur_ht = formatEuro(totalBdcOp);
   result.sp_total_bdc_internet_ht = formatEuro(totalBdcInt);
@@ -1259,7 +1265,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(suggestionsSpCompletes);
-  } catch {
+  } catch (error) {
+    if (error instanceof MargeAutoError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
+    console.error('Erreur génération suggestions:', error);
     return NextResponse.json({ error: 'Erreur génération suggestions' }, { status: 500 });
   }
 }

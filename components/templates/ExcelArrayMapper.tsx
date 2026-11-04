@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, Table2, X, Check, ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ArrayFieldDefinition } from '@/components/admin/organizationFormConfig';
 import { composedFields, retainExcelCompositionPartStyles, validateExcelMappings, type ExcelSheetMapping, type ExcelComposedMapping } from '@/lib/excel/template-config';
@@ -165,12 +165,15 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     ? sheets.find(s => s.name === editingMapping.sheetName) 
     : null;
 
-  // Dimensions de la grille
-  const maxRows = selectedSheet ? 500 : 30;
+  // Dimensions de la grille : bornées à la taille réelle de la feuille pour ne pas rendre des milliers de cellules inutiles
+  const gridStartRow = editingMapping?.startRow || 2;
+  // Fenêtre de lignes autour de la ligne de départ : seule la colonne compte pour le mapping
+  const lastRow = selectedSheet ? Math.min(Math.max(selectedSheet.rows || 0, gridStartRow, 30), gridStartRow + 40) : 30;
+  const firstRow = Math.max(1, Math.min(gridStartRow - 20, lastRow - 30));
   const maxCols = selectedSheet ? Math.min(selectedSheet.cols || 10, 100) : 10;
 
   // Cellules fusionnées : cellule "maître" (haut-gauche) -> son span, et cellules couvertes à ne pas rendre
-  const mergeInfo = (() => {
+  const mergeInfo = useMemo(() => {
     const spans = new Map<string, { rowSpan: number; colSpan: number }>();
     const covered = new Set<string>();
 
@@ -190,7 +193,70 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     });
 
     return { spans, covered };
-  })();
+  }, [selectedSheet]);
+
+  // Colonne -> champ mappé / colonne composée, calculés une fois (et non par cellule)
+  const columnToField = useMemo(() => {
+    const map = new Map<string, string>();
+    Object.entries(editingMapping?.columnMapping || {}).forEach(([fieldId, col]) => map.set(col, fieldId));
+    return map;
+  }, [editingMapping?.columnMapping]);
+  const composedColumnSet = useMemo(
+    () => new Set((editingMapping?.composedColumns ?? []).map(entry => entry.column)),
+    [editingMapping?.composedColumns],
+  );
+  const hasSelectedField = selectedField !== null;
+
+  // Corps de la grille mémoïsé : choisir un champ ne redessine pas des milliers de cellules
+  const gridRows = useMemo(() => {
+    if (!selectedSheet) return null;
+    return Array.from({ length: lastRow - firstRow + 1 }, (_, rowIdx) => {
+      const rowNum = firstRow + rowIdx;
+      const isStartRow = rowNum === gridStartRow;
+
+      return (
+        <tr key={rowIdx} className={isStartRow ? 'bg-purple-50' : ''}>
+          <td className={`border border-gray-300 px-2 py-1 text-center font-semibold ${
+            isStartRow ? 'bg-purple-200 text-purple-800' : 'bg-gray-100'
+          }`}>
+            {rowNum}
+            {isStartRow && <span className="block text-xs">▶</span>}
+          </td>
+          {Array.from({ length: maxCols }, (_, colIdx) => {
+            const colName = getColumnName(colIdx);
+            const ref = `${colName}${rowNum}`;
+
+            // Cellule couverte par une fusion (déjà affichée par la cellule maîtresse) : ne pas rendre
+            if (mergeInfo.covered.has(ref)) return null;
+
+            const value = selectedSheet.cells[ref] || '';
+            const span = mergeInfo.spans.get(ref);
+            const mappedToField = columnToField.get(colName);
+            const composed = composedColumnSet.has(colName);
+
+            return (
+              <td
+                key={colIdx}
+                data-ref={ref}
+                rowSpan={span?.rowSpan}
+                colSpan={span?.colSpan}
+                className={`border border-gray-300 px-2 py-1 truncate max-w-24 transition-colors text-xs ${
+                  mappedToField
+                    ? 'bg-green-100 text-green-800'
+                    : composed
+                    ? 'bg-purple-100 text-purple-900'
+                    : 'bg-white group-data-[selecting=true]:hover:bg-purple-100 group-data-[selecting=true]:cursor-pointer'
+                }`}
+                title={`${ref}: ${value || '(vide)'}`}
+              >
+                {value || <span className="text-gray-300">-</span>}
+              </td>
+            );
+          })}
+        </tr>
+      );
+    });
+  }, [selectedSheet, firstRow, lastRow, maxCols, gridStartRow, mergeInfo, columnToField, composedColumnSet]);
 
   // Mapper un champ à une colonne (via clic sur une cellule)
   const handleCellClick = (cellRef: string) => {
@@ -468,7 +534,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
             )}
 
             {selectedSheet && (
-              <div className="overflow-auto max-h-80 border border-gray-200 rounded">
+              <div data-selecting={hasSelectedField} className="group overflow-auto max-h-80 border border-gray-200 rounded">
                 <table className="text-xs border-collapse">
                   <thead className="sticky top-0 bg-gray-100">
                     <tr>
@@ -501,67 +567,20 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                       })}
                     </tr>
                   </thead>
-                  <tbody>
-                    {Array.from({ length: maxRows }, (_, rowIdx) => {
-                      const rowNum = rowIdx + 1;
-                      const isStartRow = rowNum === (editingMapping.startRow || 2);
-
-                      return (
-                        <tr key={rowIdx} className={isStartRow ? 'bg-purple-50' : ''}>
-                          <td className={`border border-gray-300 px-2 py-1 text-center font-semibold ${
-                            isStartRow ? 'bg-purple-200 text-purple-800' : 'bg-gray-100'
-                          }`}>
-                            {rowNum}
-                            {isStartRow && <span className="block text-xs">▶</span>}
-                          </td>
-                          {Array.from({ length: maxCols }, (_, colIdx) => {
-                            const colName = getColumnName(colIdx);
-                            const ref = `${colName}${rowNum}`;
-
-                            // Cellule couverte par une fusion (déjà affichée par la cellule maîtresse) : ne pas rendre
-                            if (mergeInfo.covered.has(ref)) return null;
-
-                            const value = selectedSheet.cells[ref] || '';
-                            const span = mergeInfo.spans.get(ref);
-
-                            // Vérifier si cette colonne est mappée
-                            const mappedToFieldEntry = Object.entries(editingMapping.columnMapping || {}).find(
-                              ([, col]) => col === colName
-                            );
-                            const mappedToField = mappedToFieldEntry?.[0];
-                            const composed = editingMapping.composedColumns?.some(entry => entry.column === colName);
-
-                            return (
-                              <td
-                                key={colIdx}
-                                rowSpan={span?.rowSpan}
-                                colSpan={span?.colSpan}
-                                onClick={() => selectedField && handleCellClick(ref)}
-                                className={`border border-gray-300 px-2 py-1 truncate max-w-24 transition-colors text-xs ${
-                                  mappedToField
-                                    ? 'bg-green-100 text-green-800'
-                                    : composed
-                                    ? 'bg-purple-100 text-purple-900'
-                                    : selectedField
-                                    ? 'hover:bg-purple-100 cursor-pointer'
-                                    : 'bg-white'
-                                }`}
-                                title={`${ref}: ${value || '(vide)'}`}
-                              >
-                                {value || <span className="text-gray-300">-</span>}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
+                  <tbody onClick={(e) => {
+                    if (!selectedField) return;
+                    const cell = (e.target as HTMLElement).closest('td[data-ref]');
+                    const ref = cell?.getAttribute('data-ref');
+                    if (ref) handleCellClick(ref);
+                  }}>
+                    {gridRows}
                   </tbody>
                 </table>
               </div>
             )}
 
             <p className="text-xs text-gray-500 mt-3">
-              Ligne de départ : {editingMapping.startRow || 2} (surlignée en violet)
+              Ligne de départ : {editingMapping.startRow || 2} (surlignée en violet) · lignes {firstRow} à {lastRow} affichées
             </p>
           </div>
         </div>

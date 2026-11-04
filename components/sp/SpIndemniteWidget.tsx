@@ -6,11 +6,16 @@ import type {
   SpConfigResiliation,
   SpQuestion,
   SpQuestionReponse,
+  SpLibellesConfig,
 } from '@/types';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { calculerIndemnite } from '@/lib/sp/indemnite-calculette';
+import { resolveWidgetLibelle } from '@/lib/sp/libelles';
 import { DraggablePanel } from '@/components/ui/DraggablePanel';
 
 interface SpIndemniteWidgetProps {
+  spLibelles?: SpLibellesConfig;
   reponses: SpQuestionReponse[];
   questions: SpQuestion[];
   donneesExtraites?: Record<string, unknown>;
@@ -57,6 +62,34 @@ function parseNum(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function toDateInputValue(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const text = raw.trim();
+  const fr = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (fr) return `${fr[3]}-${fr[2].padStart(2, '0')}-${fr[1].padStart(2, '0')}`;
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : null;
+}
+
+/** Date de fin d'engagement la plus tardive trouvée dans la SA (format input date). */
+function findLatestEngagementEnd(donneesExtraites?: Record<string, unknown>): string | null {
+  const root = donneesExtraites?.situation_actuelle ?? donneesExtraites;
+  const engagements = (root as { engagements?: unknown } | undefined)?.engagements;
+  if (!Array.isArray(engagements)) return null;
+  let latest: string | null = null;
+  for (const e of engagements) {
+    if (!e || typeof e !== 'object') continue;
+    const rec = e as Record<string, unknown>;
+    const d = toDateInputValue(rec.date_fin_engagement_source ?? rec.date_fin_engagement ?? rec.fin_engagement);
+    if (d && (!latest || d > latest)) latest = d;
+  }
+  return latest;
+}
+
+function formatInputNumber(value: number | null | undefined): string {
+  return value != null && value > 0 ? String(value) : '';
+}
+
 function getResiliationFiabiliteClasses(fiabilite: string): string {
   switch (fiabilite) {
     case 'forte':
@@ -71,6 +104,7 @@ function getResiliationFiabiliteClasses(fiabilite: string): string {
 }
 
 export function SpIndemniteWidget({
+  spLibelles,
   reponses,
   questions,
   donneesExtraites,
@@ -85,6 +119,7 @@ export function SpIndemniteWidget({
   const [showCalculator, setShowCalculator] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const prevVisible = useRef(false);
+  const calcPrefilled = useRef(false);
 
   const [calcDateFin, setCalcDateFin] = useState('');
   const [calcPreavis, setCalcPreavis] = useState('3');
@@ -142,15 +177,41 @@ export function SpIndemniteWidget({
 
   const showGardeFou = gardeFouActif && gardeFouVisible && !dismissed;
 
-  const calcMoisRestants = calcDateFin !== ''
-    ? Math.max(0, (monthsBetweenNowAnd(calcDateFin) ?? 0) - parseNum(calcPreavis))
+  const calcMoisAvantPreavis = calcDateFin !== '' ? monthsBetweenNowAnd(calcDateFin) : null;
+  const calcMoisRestants = calcMoisAvantPreavis !== null
+    ? Math.max(0, calcMoisAvantPreavis - parseNum(calcPreavis))
     : null;
-  const calcMensualites = calcMoisRestants !== null ? calcMoisRestants * parseNum(calcMontantMensuel) : 0;
-  const calcTotal =
-    calcMensualites + parseNum(calcFraisFixes) + parseNum(calcPenalites) + parseNum(calcFraisMateriel) + parseNum(calcServicesAnnexes);
+  const { lignes: calcLignes, total: calcTotal } = calculerIndemnite(calcMoisRestants, {
+    mensuel: parseNum(calcMontantMensuel),
+    fraisFixes: parseNum(calcFraisFixes),
+    penalites: parseNum(calcPenalites),
+    fraisMateriel: parseNum(calcFraisMateriel),
+    servicesAnnexes: parseNum(calcServicesAnnexes),
+  });
+
+  // Pré-remplit la calculette depuis la SA à la première ouverture ; les champs
+  // restent ensuite librement modifiables.
+  const openCalculator = () => {
+    if (!calcPrefilled.current) {
+      calcPrefilled.current = true;
+      const totalSa = calculateSaCartSummary(
+        donneesExtraites?.situation_actuelle ? donneesExtraites : { situation_actuelle: donneesExtraites },
+      ).totalMensuel;
+      setCalcMontantMensuel(formatInputNumber(totalSa));
+      setCalcDateFin(findLatestEngagementEnd(donneesExtraites) ?? '');
+      if (estimation) {
+        setCalcPreavis(String(estimation.preavis_mois));
+        setCalcFraisFixes(formatInputNumber(estimation.frais_resiliation_fixes));
+        setCalcPenalites(formatInputNumber(estimation.penalites));
+        setCalcFraisMateriel(formatInputNumber(estimation.frais_materiel));
+        setCalcServicesAnnexes(formatInputNumber(estimation.services_annexes));
+      }
+    }
+    setShowCalculator(true);
+  };
 
   const handleReporterMontant = () => {
-    handleChange(String(Math.round(calcTotal)));
+    handleChange(calcTotal.toFixed(2));
     setShowCalculator(false);
   };
 
@@ -188,7 +249,7 @@ export function SpIndemniteWidget({
         >
           <span className="flex items-center gap-2 text-sm font-semibold">
             <Shield className="h-4 w-4" />
-            Indemnité rés.
+            {resolveWidgetLibelle(spLibelles, 'indemnite')}
           </span>
           {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
@@ -249,7 +310,7 @@ export function SpIndemniteWidget({
               <input
                 type="number"
                 min="0"
-                step="1"
+                step="0.01"
                 value={inputValue}
                 onChange={(e) => handleChange(e.target.value)}
                 placeholder={estimation?.montant_retenu != null ? String(Math.round(estimation.montant_retenu)) : '0'}
@@ -271,7 +332,7 @@ export function SpIndemniteWidget({
               ) : <span />}
               <button
                 type="button"
-                onClick={() => setShowCalculator(true)}
+                onClick={openCalculator}
                 title="Calculette indemnité de résiliation"
                 aria-label="Calculette indemnité de résiliation"
                 className="shrink-0 flex items-center justify-center h-6 w-6 rounded border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
@@ -516,10 +577,39 @@ export function SpIndemniteWidget({
           </div>
 
           {calcMoisRestants !== null && (
-            <p className="text-[11px] text-gray-500">
-              Mois restants après préavis : <span className="font-medium text-gray-700">{calcMoisRestants}</span>
-            </p>
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-orange-950">Mois restants après préavis</span>
+                <span className="shrink-0 text-base font-bold tabular-nums text-orange-900">
+                  {calcMoisRestants} mois
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-orange-800">
+                {calcMoisAvantPreavis} mois jusqu&apos;à la fin − {parseNum(calcPreavis)} mois de préavis
+              </p>
+            </div>
           )}
+
+          <div className="space-y-2" aria-label="Détail du calcul">
+            <p className="text-xs font-semibold text-gray-800">Détail du calcul</p>
+            {calcLignes.length > 0 ? (
+              <div className="space-y-2 text-xs text-gray-700">
+                {calcLignes.map((ligne, index) => (
+                  <div key={ligne.libelle} className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block">{index > 0 ? '+ ' : ''}{ligne.libelle}</span>
+                      {ligne.calcul && <span className="block text-gray-500">{ligne.calcul} =</span>}
+                    </span>
+                    <span className="shrink-0 font-medium tabular-nums text-gray-900">
+                      {ligne.montant.toFixed(2)} €
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">Renseignez la date de fin et les montants pour voir le calcul.</p>
+            )}
+          </div>
 
           <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 flex items-center justify-between gap-2">
             <div>

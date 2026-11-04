@@ -1011,6 +1011,7 @@ export interface SuggestionsSpCompletes extends SuggestionsGenerees {
   // ({{sp_date_limite_souscription}} / {{sp_date_limite_souscription-N}}), non stockée ici.
   sp_duree_trimestres?: string;
   sp_total_forfaits_mensuel_ht?: string;
+  sp_total_forfaits_mensuel_ht_avant_remise_operateur?: string;
   sp_total_materiel_ht?: string;
   sp_total_bdc_operateur_ht?: string;
   sp_total_bdc_internet_ht?: string;
@@ -1135,7 +1136,12 @@ export interface SpLibelleOverride {
   visible?: boolean;
 }
 
-export type SpLibellesConfig = Partial<Record<SpLibelleKey, SpLibelleOverride>>;
+export type SpWidgetLibelleKey = 'marge' | 'indemnite';
+
+export type SpLibellesConfig = Partial<Record<SpLibelleKey, SpLibelleOverride>> & {
+  /** Titres des widgets flottants, indépendants des lignes du panier. */
+  widgets?: Partial<Record<SpWidgetLibelleKey, string>>;
+};
 
 export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';
 
