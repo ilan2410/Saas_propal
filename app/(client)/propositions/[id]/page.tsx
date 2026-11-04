@@ -2,6 +2,7 @@ import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
+import { Fragment } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -32,6 +33,7 @@ import type {
   CatalogueProduit,
   OrganizationPreferences,
   SpConfigLoyer,
+  SpLibellesConfig,
   SpObjectifConfig,
   SpPreferencesProduits,
   SpQuestion,
@@ -39,6 +41,9 @@ import type {
   SuggestionsSpCompletes,
 } from '@/types';
 import { calculateCartSummary, resolveIndemnites, type SpCartSummary } from '@/lib/sp/calculateCart';
+import { buildSpResumeBreakdown } from '@/lib/sp/spResumeBreakdown';
+import { calculerMontantAnneeLissee, calculerMontantFinance } from '@/lib/sp/calculLoyer';
+import { resolveLibelle, isLibelleVisible } from '@/lib/sp/libelles';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
@@ -125,11 +130,6 @@ function rowPrice(row: Record<string, unknown>): number {
   return parseEuroValue(row._prix_raw ?? row._prix_propose_raw ?? row._prix_mensuel_raw ?? row.sp_prix_propose ?? row.sp_matd_prix_ht ?? row.sp_materiel_prix_mensuel);
 }
 
-function hasPositiveValue(val: string | undefined | null): boolean {
-  if (!val) return false;
-  return parseEuroValue(val) > 0;
-}
-
 function isTechnicalSpResponse(reponse: SpQuestionReponse, questionsById: Map<string, SpQuestion>): boolean {
   const id = reponse.question_id.toLowerCase();
   if (!questionsById.has(reponse.question_id)) return true;
@@ -145,6 +145,8 @@ function SpResumePanel({
   indemnitesResolues,
   cart,
   saTotalMensuel,
+  spConfigLoyer,
+  spLibelles,
 }: {
   sp: SuggestionsSpCompletes | null;
   reponses: SpQuestionReponse[];
@@ -152,8 +154,12 @@ function SpResumePanel({
   indemnitesResolues: string | null;
   cart: SpCartSummary | null;
   saTotalMensuel: number;
+  spConfigLoyer?: SpConfigLoyer;
+  spLibelles?: SpLibellesConfig;
 }) {
   const questionsById = new Map(questions.map((question) => [question.id, question]));
+  const lbl = (key: Parameters<typeof resolveLibelle>[1]) => resolveLibelle(spLibelles, key);
+  const visible = (key: Parameters<typeof isLibelleVisible>[1]) => isLibelleVisible(spLibelles, key);
   const mobiles = compactRows(sp?.sp_lignes_mobiles);
   const fixes = compactRows(sp?.sp_lignes_fixes);
   const internet = compactRows(sp?.sp_internet);
@@ -167,7 +173,10 @@ function SpResumePanel({
   const internetRows = internet.map((row) => row as unknown as Record<string, unknown>);
   const recurrentTotal = [...mobileRows, ...fixeRows, ...internetRows].reduce((sum, row) => sum + rowPrice(row), 0);
   const materielTotal = materiel.reduce((sum, row) => sum + rowPrice(row), 0);
-  const hasLines = mobiles.length > 0 || fixes.length > 0 || internet.length > 0 || materiel.length > 0;
+  const hasLines = (mobiles.length > 0 && visible('mobile'))
+    || (fixes.length > 0 && visible('fixe'))
+    || (internet.length > 0 && visible('internet'))
+    || (materiel.length > 0 && visible('materiel'));
 
   // FAS : le champ réellement stocké est sp_fas_total (pas sp_total_fas)
   const fasValue = (sp as unknown as Record<string, unknown>)?.sp_fas_total as string | undefined ?? sp?.sp_total_fas ?? sp?.sp_total_installation;
@@ -187,6 +196,9 @@ function SpResumePanel({
   const abosMobile = cart ? cart.abonnements.mobile : mobileRows.reduce((sum, row) => sum + rowPrice(row), 0);
   const abosInternet = cart ? cart.abonnements.internet : internetRows.reduce((sum, row) => sum + rowPrice(row), 0);
   const abosTotal = cart ? cart.abonnements.totalMensuel : recurrentTotal;
+  const loyerMensuel = cart
+    ? cart.loyer?.loyer_mensuel ?? null
+    : sp?.sp_loyer_mensuel ? parseEuroValue(sp.sp_loyer_mensuel) : null;
 
   const materielTotalFinal = cart ? cart.materiel : materielTotal;
   const installationsTotal = cart ? cart.installations : 0;
@@ -194,16 +206,46 @@ function SpResumePanel({
   const cadeauxTotalFinal = cart ? cart.cadeaux : cadeaux.reduce((sum, c) => sum + (c._valeur_raw || 0), 0);
   const indemnitesTotalFinal = cart ? cart.indemnites : (indemnitesValue ? parseEuroValue(indemnitesValue) : 0);
   const remiseMoisOffertFinal = cart ? cart.remiseMoisOffert : parseEuroValue(sp?.sp_remise_mois_offert);
+  const totalPonctuelFinal = cart ? cart.totalPonctuel : parseEuroValue(sp?.sp_total_ponctuel);
 
   const totalMensuelFinal = cart
     ? cart.totalMensuelFinal
-    : (parseEuroValue(sp?.sp_loyer_mensuel) > 0 ? parseEuroValue(sp?.sp_loyer_mensuel) : abosTotal);
+    : spConfigLoyer?.mode_total_mensuel === 'separe'
+      ? abosTotal + (loyerMensuel ?? 0)
+      : (loyerMensuel != null && loyerMensuel > 0 ? loyerMensuel : abosTotal);
 
   const showFas = fasTotalFinal > 0;
-  const showInstallations = installationsTotal > 0;
-  const showCadeaux = cadeauxTotalFinal > 0 || cadeaux.length > 0;
   const showIndemnites = indemnitesTotalFinal > 0;
   const showRemiseMoisOffert = remiseMoisOffertFinal > 0;
+  const breakdown = buildSpResumeBreakdown({
+    total_mensuel: abosTotal,
+    fixe: abosFixe,
+    mobile: abosMobile,
+    internet: abosInternet,
+    autres_mensuels: cart?.autresMensuels,
+    materiel: materielTotalFinal,
+    installations: installationsTotal,
+    fas: fasTotalFinal,
+    cadeaux: cadeauxTotalFinal,
+    autres_ponctuels: cart?.autresPonctuels,
+    total_ponctuel: totalPonctuelFinal > 0 ? totalPonctuelFinal : undefined,
+    loyer_total_ponctuel: loyerMensuel != null ? totalPonctuelFinal : undefined,
+    remise_mois_offert: spConfigLoyer?.mois_offerts_actifs !== false &&
+      spConfigLoyer?.composantes_base?.mois_offerts !== false ? remiseMoisOffertFinal : undefined,
+    indemnites: indemnitesTotalFinal,
+    marge: cart
+      ? (cart.marge !== 0 || spConfigLoyer?.widget_marge?.mode === 'automatique' ? cart.marge : undefined)
+      : sp?.sp_marge ? parseEuroValue(sp.sp_marge) : undefined,
+    montant_annee_lissee: loyerMensuel != null
+      ? calculerMontantAnneeLissee(abosTotal, spConfigLoyer?.multiplicateur_annee_lissee)
+      : undefined,
+    base_loyer: cart?.loyer ? cart.baseLoyer : undefined,
+    loyer_trimestriel: cart
+      ? cart.loyer?.loyer_trimestriel
+      : sp?.sp_loyer_trimestriel ? parseEuroValue(sp.sp_loyer_trimestriel) : undefined,
+    montant_finance: calculerMontantFinance(cart?.loyer, spConfigLoyer?.formule) ?? undefined,
+  }, loyerMensuel, spConfigLoyer?.mode_total_mensuel, spLibelles);
+  const firstLoyerRow = breakdown.find((row) => row.section === 'loyer')?.key;
 
   // Économie = SA total mensuel - SP total mensuel (loyer), même calcul que le
   // badge "Économie loyer SP vs SA" du panier temps réel.
@@ -255,95 +297,39 @@ function SpResumePanel({
 
             {/* Droite — synthèse détaillée */}
             <div className="flex flex-col gap-2.5 justify-center">
-              <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                <span className="text-slate-600 font-medium">Abonnements</span>
-                <span className="font-semibold text-slate-900">{formatEuroValue(abosTotal)}</span>
-              </div>
-              {abosFixe > 0 && (
-                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
-                  <span className="text-slate-500">Fixe</span>
-                  <span className="text-slate-600">{formatEuroValue(abosFixe)}</span>
-                </div>
-              )}
-              {abosMobile > 0 && (
-                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5">
-                  <span className="text-slate-500">Mobile</span>
-                  <span className="text-slate-600">{formatEuroValue(abosMobile)}</span>
-                </div>
-              )}
-              {abosInternet > 0 && (
-                <div className="flex items-center justify-between text-xs pl-3 -mt-1.5 pb-0.5">
-                  <span className="text-slate-500">Internet</span>
-                  <span className="text-slate-600">{formatEuroValue(abosInternet)}</span>
-                </div>
-              )}
-
-              {materielTotalFinal > 0 && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Matériel</span>
-                  <span className="font-semibold text-slate-900">{formatEuroValue(materielTotalFinal)}</span>
-                </div>
-              )}
-
-              {showInstallations && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-600 flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5" />
-                    Installation
-                  </span>
-                  <span className="font-semibold text-slate-900">{formatEuroValue(installationsTotal)}</span>
-                </div>
-              )}
-
-              {showFas && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-600 flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5" />
-                    {showInstallations ? 'FAS' : 'FAS / Installation'}
-                  </span>
-                  <span className="font-semibold text-slate-900">{formatEuroValue(fasTotalFinal)}</span>
-                </div>
-              )}
-
-              {showCadeaux && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-600 flex items-center gap-1.5">
-                    <Gift className="w-3.5 h-3.5" />
-                    Cadeaux / avantages
-                  </span>
-                  <span className="font-semibold text-emerald-700">
-                    {cadeauxTotalFinal > 0 ? formatEuroValue(cadeauxTotalFinal) : (sp?.sp_total_cadeaux_ht || `${cadeaux.length} cadeau${cadeaux.length > 1 ? 'x' : ''}`)}
-                  </span>
-                </div>
-              )}
-
-              {showRemiseMoisOffert && (
-                <div className="flex items-center justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Remise mois offerts</span>
-                  <span className="font-semibold text-emerald-700">{formatEuroValue(remiseMoisOffertFinal)}</span>
-                </div>
-              )}
-
-              {showIndemnites && (
-                <div className="flex items-center justify-between text-sm py-2">
-                  <span className="text-slate-600">Indemnités résiliation</span>
-                  <span className="font-semibold text-red-600">{formatEuroValue(indemnitesTotalFinal)}</span>
-                </div>
-              )}
+              {breakdown.map((row) => (
+                <Fragment key={row.key}>
+                  {row.key === firstLoyerRow && (
+                    <p className="pt-2 border-t border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Loyer et ajustements
+                    </p>
+                  )}
+                  <div className={`flex items-center justify-between gap-3 ${row.detail ? 'text-xs pl-3 -mt-1.5' : 'text-sm py-2 border-b border-slate-100'}`}>
+                    <span className={`min-w-0 ${row.detail ? 'text-slate-500' : 'text-slate-600 font-medium'} flex items-center gap-1.5`}>
+                      {(row.key === 'fas' || row.key === 'installations') && <Wrench className="w-3.5 h-3.5 shrink-0" />}
+                      {row.key === 'cadeaux' && <Gift className="w-3.5 h-3.5 shrink-0" />}
+                      {row.label}
+                    </span>
+                    <span className={`shrink-0 ${row.key === 'marge' && row.value > 0 ? 'text-emerald-700' : row.key === 'marge' && row.value < 0 ? 'text-red-600' : 'text-slate-900'} ${row.detail ? '' : 'font-semibold'}`}>
+                      {formatEuroValue(row.value)}
+                    </span>
+                  </div>
+                </Fragment>
+              ))}
             </div>
           </div>
         </div>
       )}
 
       {/* ── Grille produits + FAS + Cadeaux ── */}
-      {(hasLines || showFas || cadeaux.length > 0) && (
+      {(hasLines || (showFas && !!sp && visible('fas')) || (cadeaux.length > 0 && visible('cadeaux'))) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Mobiles */}
-          {mobileRows.length > 0 && (
+          {mobileRows.length > 0 && visible('mobile') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">Mobiles ({mobileRows.length})</h3>
+                <h3 className="font-semibold text-slate-900">{lbl('mobile')} ({mobileRows.length})</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {mobileRows.map((row, index) => (
@@ -365,10 +351,10 @@ function SpResumePanel({
           )}
 
           {/* Fixes */}
-          {fixeRows.length > 0 && (
+          {fixeRows.length > 0 && visible('fixe') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">Fixes ({fixeRows.length})</h3>
+                <h3 className="font-semibold text-slate-900">{lbl('fixe')} ({fixeRows.length})</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {fixeRows.map((row, index) => (
@@ -390,10 +376,10 @@ function SpResumePanel({
           )}
 
           {/* Internet */}
-          {internetRows.length > 0 && (
+          {internetRows.length > 0 && visible('internet') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">Internet ({internetRows.length})</h3>
+                <h3 className="font-semibold text-slate-900">{lbl('internet')} ({internetRows.length})</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {internetRows.map((row, index) => (
@@ -415,10 +401,10 @@ function SpResumePanel({
           )}
 
           {/* Matériel */}
-          {materiel.length > 0 && (
+          {materiel.length > 0 && visible('materiel') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">Matériel ({materiel.length})</h3>
+                <h3 className="font-semibold text-slate-900">{lbl('materiel')} ({materiel.length})</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {materiel.map((row, index) => {
@@ -465,11 +451,11 @@ function SpResumePanel({
           )}
 
           {/* FAS / Installation */}
-          {showFas && sp && (
+          {showFas && sp && visible('fas') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-slate-500" />
-                <h3 className="font-semibold text-slate-900">FAS</h3>
+                <h3 className="font-semibold text-slate-900">{lbl('fas')}</h3>
               </div>
               {cart ? (
                 cart.lines.filter((line) => line.fasTotal > 0).map((line) => (
@@ -497,15 +483,15 @@ function SpResumePanel({
           )}
 
           {/* Cadeaux / avantages */}
-          {cadeaux.length > 0 && (
+          {cadeaux.length > 0 && visible('cadeaux') && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                   <Gift className="w-4 h-4 text-slate-500" />
-                  Cadeaux / avantages ({cadeaux.length})
+                  {lbl('cadeaux')} ({cadeaux.length})
                 </h3>
                 {sp?.sp_total_cadeaux_ht && (
-                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{sp.sp_total_cadeaux_ht}</span>
+                  <span className="text-xs font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">{sp.sp_total_cadeaux_ht}</span>
                 )}
               </div>
               <div className="divide-y divide-slate-100">
@@ -523,22 +509,22 @@ function SpResumePanel({
       )}
 
       {/* ── Indemnités & remises ── */}
-      {showIndemnites && sp && (
+      {sp && ((showIndemnites && visible('indemnites')) || (showRemiseMoisOffert && visible('remise_mois_offert'))) && (
         <div className="rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
             <h3 className="font-semibold text-slate-900 text-sm">Indemnités &amp; remises</h3>
           </div>
           <div className="divide-y divide-slate-100">
-            {indemnitesValue && (
+            {showIndemnites && visible('indemnites') && (
               <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-slate-600">Indemnités de résiliation</span>
-                <span className="font-semibold text-red-600">{indemnitesValue}</span>
+                <span className="text-slate-600">{lbl('indemnites')}</span>
+                <span className="font-semibold text-slate-900">{formatEuroValue(indemnitesTotalFinal)}</span>
               </div>
             )}
-            {hasPositiveValue(sp.sp_remise_mois_offert) && (
+            {showRemiseMoisOffert && visible('remise_mois_offert') && (
               <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-slate-600">Remise mois offerts{sp.sp_mois_offerts ? ` (${sp.sp_mois_offerts} mois)` : ''}</span>
-                <span className="font-semibold text-emerald-700">-{sp.sp_remise_mois_offert}</span>
+                <span className="text-slate-600">{lbl('remise_mois_offert')}{sp.sp_mois_offerts ? ` (${sp.sp_mois_offerts} mois)` : ''}</span>
+                <span className="font-semibold text-slate-900">-{formatEuroValue(remiseMoisOffertFinal)}</span>
               </div>
             )}
           </div>
@@ -811,6 +797,17 @@ export default async function PropositionDetailPage({
   const indemnitesResoluesStr = indemnitesResolues > 0 ? formatEuroValue(indemnitesResolues) : null;
   const saTotalMensuel = calculateSaCartSummary(donneesExtraitesForCalc).totalMensuel;
 
+  const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
+  const templateFileCfg = isRecord(template?.file_config) ? (template.file_config as Record<string, unknown>) : {};
+  const spConfigLoyer: SpConfigLoyer | undefined = isRecord(templateFileCfg.sp_config_loyer)
+    ? (templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer)
+    : isRecord(prefs.sp_config_loyer)
+      ? prefs.sp_config_loyer
+      : undefined;
+  const spLibelles: SpLibellesConfig | undefined = isRecord(templateFileCfg.sp_libelles)
+    ? (templateFileCfg.sp_libelles as SpLibellesConfig)
+    : undefined;
+
   // Panier SP recalculé en temps réel (même logique que le widget "Situation Proposée"
   // et l'export comparatif) : seule source qui distingue vraiment matériel / installation / FAS.
   let spCart: SpCartSummary | null = null;
@@ -822,13 +819,6 @@ export default async function PropositionDetailPage({
       .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
     const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template?.secteur ?? 'telephonie')) : [];
 
-    const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
-    const templateFileCfg = isRecord(template?.file_config) ? (template.file_config as Record<string, unknown>) : {};
-    const spConfigLoyer: SpConfigLoyer | undefined = isRecord(templateFileCfg.sp_config_loyer)
-      ? (templateFileCfg.sp_config_loyer as unknown as SpConfigLoyer)
-      : isRecord(prefs.sp_config_loyer)
-        ? prefs.sp_config_loyer
-        : undefined;
     const spPreferencesProduits: SpPreferencesProduits | undefined = isRecord(templateFileCfg.sp_preferences_produits)
       ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits)
       : undefined;
@@ -1024,7 +1014,7 @@ export default async function PropositionDetailPage({
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
             <div className="border-t border-slate-100 p-5">
-              <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} cart={spCart} saTotalMensuel={saTotalMensuel} />
+              <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} cart={spCart} saTotalMensuel={saTotalMensuel} spConfigLoyer={spConfigLoyer} spLibelles={spLibelles} />
               <ObjectifsSection
                 objectifsConfig={spObjectifsConfig}
                 templateId={templateId ?? ''}

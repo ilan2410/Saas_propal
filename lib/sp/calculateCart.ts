@@ -125,8 +125,9 @@ function getPrixOverride(
   instanceId: string,
   produitNom: string,
   produitId?: string,
+  prefix = 'prix_',
 ): number | undefined {
-  const rep = reponses.find((r) => r.question_id === `prix_${instanceId}`);
+  const rep = reponses.find((r) => r.question_id === `${prefix}${instanceId}`);
   if (!rep) return undefined;
   const asMap = parseJsonRecord(rep.valeur);
   if (asMap) {
@@ -594,6 +595,17 @@ export function calculateCartSummary(
     }
   }
 
+  // Cart price edits take precedence over the operator discount, which applies
+  // to the base price above. Keep the undiscounted total for the crossed-out price.
+  for (const line of lines) {
+    const finalPrice = getPrixOverride(reponses, line.instanceId, line.produitNom, line.produitId, 'prix_panier_');
+    if (finalPrice == null) continue;
+    const original = line.prixOriginalTotal ?? line.prixTotal;
+    line.prixTotal = finalPrice;
+    if (finalPrice < original - 0.005) line.prixOriginalTotal = original;
+    else delete line.prixOriginalTotal;
+  }
+
   // 2c. Résoudre le numéro de chaque ligne : override panier > label de boucle.
   const loopLabels = buildLoopLabelsByGroup(questions, reponses, donneesExtraites);
   for (const line of lines) {
@@ -704,7 +716,9 @@ export function calculateCartSummary(
   };
   // Loyer saisi à la main : uniquement en marge automatique. Il reste fixe quand la base change,
   // la marge absorbe l'écart (montant financé − base loyer).
-  const loyerManuel = config.widget_marge?.mode === 'automatique' ? lireLoyerManuel(reponses) : null;
+  const loyerManuel = config.widget_marge?.mode === 'automatique' && config.widget_marge.loyer_modifiable
+    ? lireLoyerManuel(reponses)
+    : null;
   let baseCalculLoyer = calculerBaseLoyer(composantes, config);
   let loyer = bareme
     ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule), loyerManuel)

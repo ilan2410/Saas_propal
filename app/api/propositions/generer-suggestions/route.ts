@@ -677,7 +677,9 @@ function buildSpCompletes(
     annee_lissee: calculerMontantAnneeLissee(totalRecurrent, spConfigLoyer?.multiplicateur_annee_lissee),
   };
   let baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge: spConfigLoyer?.widget_marge?.mode === 'automatique' ? 0 : marge }, spConfigLoyer);
-  const loyerManuel = spConfigLoyer?.widget_marge?.mode === 'automatique' ? lireLoyerManuel(reponses) : null;
+  const loyerManuel = spConfigLoyer?.widget_marge?.mode === 'automatique' && spConfigLoyer.widget_marge.loyer_modifiable
+    ? lireLoyerManuel(reponses)
+    : null;
   let loyer = dureeMois > 0
     ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule), loyerManuel)
     : null;

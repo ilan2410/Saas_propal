@@ -1077,6 +1077,8 @@ export type SpMargeOperateur = '+' | '-' | '*' | '/';
 export interface SpConfigWidgetMarge {
   mode: 'manuel' | 'automatique';
   visible_auto?: boolean;
+  /** Marge automatique uniquement : le commercial peut saisir le loyer mensuel dans le panier. Défaut : désactivé. */
+  loyer_modifiable?: boolean;
   operandes?: SpMargeOperande[];
   operateurs?: SpMargeOperateur[];
 }

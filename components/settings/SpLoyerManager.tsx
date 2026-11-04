@@ -54,6 +54,7 @@ function getLoyerConfig(template: PropositionTemplate | undefined): SpConfigLoye
     widget_marge: {
       mode: saved.widget_marge?.mode ?? 'manuel',
       visible_auto: saved.widget_marge?.visible_auto ?? true,
+      loyer_modifiable: saved.widget_marge?.loyer_modifiable ?? false,
       operandes: [...(saved.widget_marge?.operandes ?? MARGE_FORMULE_DEFAUT.operandes)],
       operateurs: [...(saved.widget_marge?.operateurs ?? MARGE_FORMULE_DEFAUT.operateurs)],
     },
@@ -468,6 +469,13 @@ export function SpLoyerManager({ templates }: Props) {
               Afficher le widget Marge &amp; Loyer
             </label>
             <p className="text-xs text-gray-500">La marge est calculée même lorsque ce widget est masqué. Les champs utilisent les valeurs du panier SP, même si leurs libellés ont été renommés.</p>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={widgetMarge.loyer_modifiable === true} onChange={(e) => updateWidgetMarge({ loyer_modifiable: e.target.checked })} />
+              Autoriser la modification manuelle du loyer mensuel dans le panier
+            </label>
+            {widgetMarge.loyer_modifiable === true && (
+              <p className="text-xs text-gray-500">Le loyer saisi reste fixe quand le panier change : la marge absorbe l&apos;écart et s&apos;affiche en rouge si elle est négative.</p>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               {operandes.map((key, index) => (
                 <div key={index} className="flex items-center gap-2">

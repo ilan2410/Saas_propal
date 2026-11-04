@@ -77,6 +77,7 @@ describe('marge automatique du panier SP', () => {
   describe('loyer saisi manuellement (marge automatique)', () => {
     const config65 = () => {
       const config = auto(['montant_finance', 'base_loyer'], ['-']);
+      config.widget_marge = { ...config.widget_marge!, loyer_modifiable: true };
       config.baremes = [{
         ...DEFAULT_CONFIG_LOYER.baremes[0],
         taux_durees: [{ duree_mois: 63, taux_loyer: 0.065, mois_offerts: 0, trimestres: 21 }],
@@ -111,6 +112,16 @@ describe('marge automatique du panier SP', () => {
       );
       expect(summary.loyer?.loyer_mensuel).toBe(80);
       expect(summary.marge).toBe(-1307.69);
+    });
+
+    it('ignore la saisie quand l’option est désactivée', () => {
+      const config = config65();
+      config.widget_marge = { ...config.widget_marge!, loyer_modifiable: false };
+      const summary = calculateCartSummary(
+        [indemnites, { question_id: 'sp_loyer_manuel', valeur: '80' }], [], [], {}, config,
+      );
+      expect(summary.loyer?.loyer_mensuel).toBe(74);
+      expect(summary.loyer?.loyer_calcule).toBeUndefined();
     });
 
     it('ignore la saisie en marge manuelle ou si elle est invalide', () => {

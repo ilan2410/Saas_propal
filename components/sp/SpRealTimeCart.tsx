@@ -14,6 +14,7 @@ import type {
   SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary, buildLoopLabelsByGroup, type CartLine } from '@/lib/sp/calculateCart';
+import { setCartReponseMapValue, updateCartLinePriceOrQuantity } from '@/lib/sp/cartLineEdits';
 import { calculerMontantAnneeLissee, calculerMontantFinance, formatEuro, LOYER_MANUEL_QUESTION_ID } from '@/lib/sp/calculLoyer';
 import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
@@ -73,22 +74,6 @@ function parseJsonMap(value: SpQuestionReponse['valeur']): Record<string, string
     /* not JSON */
   }
   return null;
-}
-
-function setReponseMapValue(
-  reponses: SpQuestionReponse[],
-  questionId: string,
-  key: string,
-  value: number,
-): SpQuestionReponse[] {
-  const existing = reponses.find((r) => r.question_id === questionId);
-  const currentMap: Record<string, string> = existing ? (parseJsonMap(existing.valeur) ?? {}) : {};
-  currentMap[key] = String(value);
-  const newValeur = JSON.stringify(currentMap);
-  if (existing) {
-    return reponses.map((r) => (r.question_id === questionId ? { ...r, valeur: newValeur } : r));
-  }
-  return [...reponses, { question_id: questionId, valeur: newValeur }];
 }
 
 function setReponseMapStringValue(
@@ -620,27 +605,15 @@ export function SpRealTimeCart({
     field: 'prix' | 'quantite' | 'fas',
     value: number,
   ) => {
-    const questionId = `${field}_${instanceId}`;
-    const key = field === 'prix' ? (produitId ?? produitNom) : produitNom;
-    let updated = setReponseMapValue(reponses, questionId, key, value);
-
-    if (field === 'quantite') {
-      const currentLine = summary.lines.find((l) =>
-        l.instanceId === instanceId &&
-        (l.produitId === produitId || l.produitNom === produitNom)
-      );
-      if (currentLine) {
-        const currentQty = currentLine.quantite > 0 ? currentLine.quantite : 1;
-        const unitPrice = currentLine.prixTotal / currentQty;
-        updated = setReponseMapValue(
-          updated,
-          `prix_${instanceId}`,
-          produitId ?? produitNom,
-          unitPrice * value,
-        );
-      }
-    }
-
+    const currentLine = summary.lines.find((l) =>
+      l.instanceId === instanceId &&
+      (l.produitId === produitId || l.produitNom === produitNom)
+    );
+    const updated = field === 'fas'
+      ? setCartReponseMapValue(reponses, `fas_${instanceId}`, produitNom, value)
+      : currentLine
+        ? updateCartLinePriceOrQuantity(reponses, currentLine, field, value)
+        : reponses;
     onUpdateReponses?.(updated);
   };
 
@@ -687,6 +660,7 @@ export function SpRealTimeCart({
     const auxIds = new Set([
       `quantite_${iid}`,
       `prix_${iid}`,
+      `prix_panier_${iid}`,
       `fas_${iid}`,
       `numero_${iid}`,
       `libre_${iid}`,
@@ -718,7 +692,7 @@ export function SpRealTimeCart({
           next = next.map((r) => (r.question_id === iid ? { ...r, valeur: JSON.stringify(filtered) } : r));
         }
         next = next.flatMap((r) => {
-          if (![`quantite_${iid}`, `prix_${iid}`, `fas_${iid}`, `numero_${iid}`].includes(r.question_id)) return [r];
+          if (![`quantite_${iid}`, `prix_${iid}`, `prix_panier_${iid}`, `fas_${iid}`, `numero_${iid}`].includes(r.question_id)) return [r];
           const values = parseJsonMap(r.valeur);
           if (!values) return filtered.length ? [r] : [];
           delete values[line.produitId ?? ''];
@@ -1103,7 +1077,7 @@ export function SpRealTimeCart({
                       label={lbl('loyer_mensuel')}
                       value={summary.loyer.loyer_mensuel}
                       calcule={summary.loyer.loyer_calcule}
-                      editable={editMode && !!onUpdateReponses && spConfigLoyer?.widget_marge?.mode === 'automatique'}
+                      editable={editMode && !!onUpdateReponses && spConfigLoyer?.widget_marge?.mode === 'automatique' && !!spConfigLoyer.widget_marge.loyer_modifiable}
                       onChange={(v) => onUpdateReponses?.([
                         ...reponses.filter((r) => r.question_id !== LOYER_MANUEL_QUESTION_ID),
                         { question_id: LOYER_MANUEL_QUESTION_ID, valeur: String(v) },

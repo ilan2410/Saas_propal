@@ -1665,7 +1665,7 @@ export function SpQuestionnaireUI({
 
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
-    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `prix_panier_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
     const eq = expandedQuestions[currentIdx];
     // Build updated reponses synchronously
     let nextReps = [
