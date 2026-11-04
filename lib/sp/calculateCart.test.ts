@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogueCategorie, CatalogueProduit, SpConfigRemises, SpQuestion, SuggestionsSpCompletes } from '@/types';
 import { calculateCartSummary } from './calculateCart';
+import { updateCartLinePriceOrQuantity } from './cartLineEdits';
 import { buildSolutionProposeeLines } from './buildExportSaSpData';
 import { orderProductsByPreference } from './productTableOrder';
 import { repairSpCompletesFromQuestionnaire } from './repairSpCompletes';
@@ -132,6 +133,70 @@ describe('calculateCartSummary — quantités des options', () => {
     expect(repaired?.sp_situation_proposee_forfaits_sans_remise?.[0].sp_sp_description).toBe(forfait.description);
     expect((buildSpWordData(repaired).sp_situation_proposee_forfaits as Array<{ sp_sp_description: string }>)[0].sp_sp_description)
       .toBe('Fibre Avec Débit Garanti');
+  });
+
+  it('expose le prix mensuel unitaire saisi avant remise opérateur dans Word', () => {
+    const remiseQuestion: SpQuestion = { ...question('remise'), affichage: 'remise_produits' };
+    const formatEuro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+    const questionsAvecRemise = [question('offre'), remiseQuestion];
+    const selection = [
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'quantite_offre', valeur: '2' },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id]) },
+    ];
+    const lignePanier = calculateCartSummary(selection, questionsAvecRemise, [parent, option]).lines[0];
+    const tarifSaisi = updateCartLinePriceOrQuantity(selection, lignePanier, 'prix', 80);
+    const sansRemise = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes, tarifSaisi, questionsAvecRemise, [parent, option], {},
+    );
+    expect(sansRemise?.sp_situation_proposee_forfaits?.[0]).toMatchObject({
+      sp_sp_prix_avant_remise_operateur: formatEuro(40),
+      sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
+    });
+
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes,
+      [
+        ...tarifSaisi,
+        { question_id: 'remise', valeur: true },
+        { question_id: 'prix_remise', valeur: JSON.stringify({ [parent.id]: '30' }) },
+      ],
+      questionsAvecRemise,
+      [parent, option],
+      {},
+    );
+
+    expect(repaired?.sp_situation_proposee_forfaits).toMatchObject([
+      { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60) },
+      { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10) },
+    ]);
+    expect(buildSpWordData(repaired).sp_situation_proposee_forfaits).toMatchObject([
+      { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60), prix_total: formatEuro(60) },
+      { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10), prix_total: formatEuro(10) },
+    ]);
+  });
+
+  it('garde le prix de base lorsque le prix final du panier est modifié après la remise', () => {
+    const forfait = product('fixe', 'Fixe', 'fixe', 'mensuel', 50);
+    const reponses = [
+      { question_id: 'offre', valeur: forfait.nom },
+      { question_id: 'quantite_offre', valeur: '2' },
+      { question_id: 'prix_offre', valeur: JSON.stringify({ [forfait.id]: '80' }) },
+      { question_id: 'remise', valeur: true },
+      { question_id: 'prix_remise', valeur: JSON.stringify({ [forfait.id]: '30' }) },
+      { question_id: 'prix_panier_offre', valeur: JSON.stringify({ [forfait.id]: '55' }) },
+    ];
+    const questions = [question('offre'), { ...question('remise'), affichage: 'remise_produits' as const }];
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes, reponses, questions, [forfait], {},
+    );
+    const formatEuro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+
+    expect(repaired?.sp_situation_proposee_forfaits?.[0]).toMatchObject({
+      sp_sp_prix_avant_remise_operateur: formatEuro(40),
+      sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
+      sp_sp_prix_propose: formatEuro(55),
+    });
   });
 
   it('privilégie la quantité modifiée dans le panier et applique les tranches de prix des options', () => {

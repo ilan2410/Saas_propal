@@ -781,6 +781,7 @@ export interface SpLigneMobile {
   sp_type_ligne: 'Mobile';
   _prix_actuel_raw: number;
   _prix_propose_raw: number;
+  _prix_avant_remise_operateur_raw?: number;
   _economie_raw: number;
 }
 
@@ -819,6 +820,9 @@ export interface SpSituationProposeeLigne {
   sp_sp_fournisseur?: string;
   sp_sp_prix_actuel?: string;
   sp_sp_prix_propose: string;
+  sp_sp_prix_avant_remise_operateur?: string;
+  sp_sp_prix_total_avant_remise_operateur?: string;
+  prix_total?: string;
   sp_sp_economie?: string;
   sp_sp_analyse?: string;
   _prix_raw: number;

@@ -42,6 +42,8 @@ export interface CartLine {
   numero?: string;
   /** Total avant remise produit, présent uniquement si une remise_produits a été appliquée sur cette ligne. */
   prixOriginalTotal?: number;
+  /** Prix de base total (saisi ou calculé), avant remise opérateur et modification du prix final. */
+  prixAvantRemiseTotal?: number;
 }
 
 export interface SpCartSummary {
@@ -559,6 +561,10 @@ export function calculateCartSummary(
         });
       }
     }
+  }
+
+  for (const line of lines) {
+    if (line.type_frequence === 'mensuel') line.prixAvantRemiseTotal = line.prixTotal;
   }
 
   // 2b. Apply remise_produits overrides (per-unit monthly price stored by nom or id)

@@ -154,6 +154,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
       sp_type_ligne: lineType,
       _prix_actuel_raw: prixActuel,
       _prix_propose_raw: prixPropose,
+      _prix_avant_remise_operateur_raw: cartLine.prixAvantRemiseTotal,
       _economie_raw: economie,
     } as T;
   });
@@ -247,6 +248,20 @@ export function repairSpCompletesFromQuestionnaire(
     };
   });
 
+  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
+  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
+    const quantite = parsePositiveQuantity(l.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
+    return originalUnitPrice * quantite;
+  };
+
+  const prixTotalAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    l._prix_avant_remise_operateur_raw ?? prixMensuelSansRemise(l);
+
+  const prixUnitaireAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    prixTotalAvantRemise(l) / parsePositiveQuantity(l.sp_quantite);
+
   const toSituationLigne = (line: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
     sp_sp_type: line.sp_type_ligne,
     sp_sp_nom: line.sp_nom_ligne,
@@ -257,6 +272,9 @@ export function repairSpCompletesFromQuestionnaire(
     sp_sp_fournisseur: line.sp_produit_fournisseur,
     sp_sp_prix_actuel: line.sp_prix_actuel,
     sp_sp_prix_propose: line.sp_prix_propose,
+    sp_sp_prix_avant_remise_operateur: formatEuro(prixUnitaireAvantRemise(line)),
+    sp_sp_prix_total_avant_remise_operateur: formatEuro(prixTotalAvantRemise(line)),
+    prix_total: formatEuro(line._prix_propose_raw),
     sp_sp_economie: line.sp_economie,
     sp_sp_analyse: line.sp_analyse,
     _prix_raw: line._prix_propose_raw,
@@ -278,14 +296,6 @@ export function repairSpCompletesFromQuestionnaire(
 
   const totalForfaits = toutes.reduce((sum, line) => sum + line._prix_propose_raw, 0);
   const totalMateriel = sp_materiel.reduce((sum, m) => sum + m._prix_mensuel_raw, 0);
-
-  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
-  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
-    const quantite = parsePositiveQuantity(l.sp_quantite);
-    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
-    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
-    return originalUnitPrice * quantite;
-  };
 
   // ── Reconstruire les tableaux BDC + cadeaux (même logique que generer-suggestions) ──
   const filteredBdcOperateurLines = orderProductBuckets(

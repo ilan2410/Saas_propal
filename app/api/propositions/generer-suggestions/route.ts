@@ -433,6 +433,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
       sp_type_ligne: lineType,
       _prix_actuel_raw: prixActuel,
       _prix_propose_raw: prixPropose,
+      _prix_avant_remise_operateur_raw: cartLine.prixAvantRemiseTotal,
       _economie_raw: economie,
     } as T;
   });
@@ -775,6 +776,20 @@ function buildSpCompletes(
 
   // ── Lot 4: Tables filtrées ─────────────────────────────────────────────
 
+  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
+  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
+    const quantite = parsePositiveQuantity(l.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
+    return originalUnitPrice * quantite;
+  };
+
+  const prixTotalAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    l._prix_avant_remise_operateur_raw ?? prixMensuelSansRemise(l);
+
+  const prixUnitaireAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    prixTotalAvantRemise(l) / parsePositiveQuantity(l.sp_quantite);
+
   // Helper: convert a ligne (mobile/fixe/internet) to SpSituationProposeeLigne
   const toSituationLigne = (l: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
     sp_sp_type: l.sp_type_ligne,
@@ -786,6 +801,9 @@ function buildSpCompletes(
     sp_sp_fournisseur: l.sp_produit_fournisseur,
     sp_sp_prix_actuel: l.sp_prix_actuel,
     sp_sp_prix_propose: l.sp_prix_propose,
+    sp_sp_prix_avant_remise_operateur: formatEuro(prixUnitaireAvantRemise(l)),
+    sp_sp_prix_total_avant_remise_operateur: formatEuro(prixTotalAvantRemise(l)),
+    prix_total: formatEuro(l._prix_propose_raw),
     sp_sp_economie: l.sp_economie,
     sp_sp_analyse: l.sp_analyse,
     _prix_raw: l._prix_propose_raw,
@@ -854,14 +872,6 @@ function buildSpCompletes(
       _prix_raw: m._prix_mensuel_raw,
     };
   });
-
-  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
-  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
-    const quantite = parsePositiveQuantity(l.sp_quantite);
-    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
-    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
-    return originalUnitPrice * quantite;
-  };
 
   // sp_bdc_operateur_table: forfaits (mobile/fixe) filtrés par destinations.bdc_operateur
   const filteredBdcOperateurLines = orderProductBuckets(
