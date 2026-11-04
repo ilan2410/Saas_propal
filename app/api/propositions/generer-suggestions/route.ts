@@ -4,11 +4,12 @@ import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, Sp
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
+import { appliquerLoyerManuel, calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, lireLoyerManuel, resolveTotalMensuelFinal } from '@/lib/sp/calculLoyer';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
 import { collectQuestionVariableValues } from '@/lib/sp/questionVariables';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateCartSummary, MANUAL_PRODUCT_PREFIX, type CartLine } from '@/lib/sp/calculateCart';
+import { calculerMargeAuto } from '@/lib/sp/calculMargeAuto';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { propositionSecteurBlocked, scopePropositionsQuery } from '@/lib/propositions/visibility';
@@ -432,6 +433,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
       sp_type_ligne: lineType,
       _prix_actuel_raw: prixActuel,
       _prix_propose_raw: prixPropose,
+      _prix_avant_remise_operateur_raw: cartLine.prixAvantRemiseTotal,
       _economie_raw: economie,
     } as T;
   });
@@ -641,10 +643,16 @@ function buildSpCompletes(
     dureeMois = spConfigLoyer.duree_mois_par_defaut;
   }
   const bareme = spConfigLoyer?.baremes
-    ? findApplicableBareme(spConfigLoyer.baremes, reponses, {}, catalogueProduits)
+    ? findApplicableBareme(spConfigLoyer.baremes,
+        spConfigLoyer.widget_marge?.mode === 'automatique'
+          ? reponses.filter((r) => r.question_id !== 'sp_marge_calculee' &&
+              !templateQuestions.some((q) => q.affichage === 'marge' &&
+                (r.question_id === q.id || r.question_id.startsWith(`${q.id}__iter_`))))
+          : reponses,
+        {}, catalogueProduits)
     : null;
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
-  const marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
+  let marge = margeRep ? (Number(margeRep.valeur) || 0) : 0;
   const remisePourCalculLoyer = dureeMois > 0 ? calculerRemiseMoisOffert(bareme, totalRecurrent, dureeMois) : 0;
   // Indemnités : prioriser réponse SP, sinon raw.sp_total_indemnites
   let indemnitesNum = 0;
@@ -658,7 +666,7 @@ function buildSpCompletes(
     const m = String(raw.sp_total_indemnites).match(/-?\d+(?:[.,]\d+)?/);
     indemnitesNum = m ? Number(m[0].replace(',', '.')) || 0 : 0;
   }
-  const baseCalculLoyer = calculerBaseLoyer({
+  const composantesLoyer = {
     materiel: totalMaterielPonctuel,
     cadeaux: totalCadeauxPonctuel,
     installations: totalInstallationsPonctuel,
@@ -667,10 +675,33 @@ function buildSpCompletes(
     mois_offerts: remisePourCalculLoyer,
     indemnites: indemnitesNum,
     marge,
-  }, spConfigLoyer);
-  const loyer = dureeMois > 0
-    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule)
+    annee_lissee: calculerMontantAnneeLissee(totalRecurrent, spConfigLoyer?.multiplicateur_annee_lissee),
+  };
+  let baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge: spConfigLoyer?.widget_marge?.mode === 'automatique' ? 0 : marge }, spConfigLoyer);
+  const loyerManuel = spConfigLoyer?.widget_marge?.mode === 'automatique' && spConfigLoyer.widget_marge.loyer_modifiable
+    ? lireLoyerManuel(reponses)
     : null;
+  let loyer = dureeMois > 0
+    ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer?.formule), loyerManuel)
+    : null;
+  if (spConfigLoyer?.widget_marge?.mode === 'automatique') {
+    const auto = calculerMargeAuto({
+      totalPonctuel,
+      remiseMoisOffert: remisePourCalculLoyer,
+      indemnites: indemnitesNum,
+      baseLoyer: baseCalculLoyer,
+      loyer,
+      abonnements: { fixe: 0, mobile: 0, internet: 0, totalMensuel: totalRecurrent },
+    }, spConfigLoyer);
+    if (auto.erreur) throw new Error(auto.erreur);
+    marge = auto.valeur!;
+    if (spConfigLoyer.composantes_base?.marge !== false) {
+      baseCalculLoyer = calculerBaseLoyer({ ...composantesLoyer, marge }, spConfigLoyer);
+      loyer = dureeMois > 0
+        ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, spConfigLoyer.formule), loyerManuel)
+        : null;
+    }
+  }
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
 
@@ -745,6 +776,20 @@ function buildSpCompletes(
 
   // ── Lot 4: Tables filtrées ─────────────────────────────────────────────
 
+  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
+  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
+    const quantite = parsePositiveQuantity(l.sp_quantite);
+    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
+    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
+    return originalUnitPrice * quantite;
+  };
+
+  const prixTotalAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    l._prix_avant_remise_operateur_raw ?? prixMensuelSansRemise(l);
+
+  const prixUnitaireAvantRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number =>
+    prixTotalAvantRemise(l) / parsePositiveQuantity(l.sp_quantite);
+
   // Helper: convert a ligne (mobile/fixe/internet) to SpSituationProposeeLigne
   const toSituationLigne = (l: SpLigneMobile | SpLigneFixe | SpInternet): SpSituationProposeeLigne => ({
     sp_sp_type: l.sp_type_ligne,
@@ -756,6 +801,9 @@ function buildSpCompletes(
     sp_sp_fournisseur: l.sp_produit_fournisseur,
     sp_sp_prix_actuel: l.sp_prix_actuel,
     sp_sp_prix_propose: l.sp_prix_propose,
+    sp_sp_prix_avant_remise_operateur: formatEuro(prixUnitaireAvantRemise(l)),
+    sp_sp_prix_total_avant_remise_operateur: formatEuro(prixTotalAvantRemise(l)),
+    prix_total: formatEuro(l._prix_propose_raw),
     sp_sp_economie: l.sp_economie,
     sp_sp_analyse: l.sp_analyse,
     _prix_raw: l._prix_propose_raw,
@@ -824,14 +872,6 @@ function buildSpCompletes(
       _prix_raw: m._prix_mensuel_raw,
     };
   });
-
-  // Prix mensuel HT sans remise : prix catalogue × quantité (avant application des remises)
-  const prixMensuelSansRemise = (l: SpLigneMobile | SpLigneFixe | SpInternet): number => {
-    const quantite = parsePositiveQuantity(l.sp_quantite);
-    const catalogueItem = findCatalogueMensuelProduit(catalogueMap, l.sp_produit_id, l.sp_produit);
-    const originalUnitPrice = catalogueItem?.prix_mensuel ?? (l._prix_propose_raw / quantite);
-    return originalUnitPrice * quantite;
-  };
 
   // sp_bdc_operateur_table: forfaits (mobile/fixe) filtrés par destinations.bdc_operateur
   const filteredBdcOperateurLines = orderProductBuckets(

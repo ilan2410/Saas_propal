@@ -187,8 +187,8 @@ const SP_TABLE_BLOCKS = [
   {
     arrayId: 'sp_situation_proposee_forfaits',
     label: 'Tableau solution proposée forfaits',
-    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_description}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
-    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet. sp_sp_description reprend la description de la fiche produit. Pour un tableau 100% SP, utilisez plutôt sp_sp_produit et sp_sp_prix_propose.',
+    fullBlock: `{{#sp_situation_proposee_forfaits}}\n{{sp_sp_type}}  {{sp_sp_produit}}  {{sp_sp_description}}  {{sp_sp_numero}}  {{sp_sp_quantite}}  {{sp_sp_fournisseur}}  {{sp_sp_prix_avant_remise_operateur}}  {{sp_sp_prix_total_avant_remise_operateur}}  {{sp_sp_prix_propose}}  {{sp_sp_analyse}}\n{{/sp_situation_proposee_forfaits}}`,
+    hint: 'Contient tous les forfaits mensuels proposés : fixe + mobile + internet. sp_sp_description reprend la description de la fiche produit. sp_sp_prix_avant_remise_operateur indique le tarif mensuel unitaire HT avant remise (tarif saisi dans le panier, sinon catalogue) ; sp_sp_prix_total_avant_remise_operateur indique ce tarif × quantité. prix_total indique le total mensuel HT après remise.',
   },
   {
     arrayId: 'sp_situation_proposee_forfaits_sans_remise',

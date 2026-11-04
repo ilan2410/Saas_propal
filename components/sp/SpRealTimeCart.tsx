@@ -7,12 +7,16 @@ import type {
   SpConfigLoyer,
   SpConfigModeClient,
   SpConfigMoisOfferts,
+  SpLibelleKey,
+  SpLibellesConfig,
   SpQuestion,
   SpQuestionReponse,
   SpPreferencesProduits,
 } from '@/types';
 import { calculateCartSummary, buildLoopLabelsByGroup, type CartLine } from '@/lib/sp/calculateCart';
-import { formatEuro } from '@/lib/sp/calculLoyer';
+import { setCartReponseMapValue, updateCartLinePriceOrQuantity } from '@/lib/sp/cartLineEdits';
+import { calculerMontantAnneeLissee, calculerMontantFinance, formatEuro, LOYER_MANUEL_QUESTION_ID } from '@/lib/sp/calculLoyer';
+import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
 
 const TELECOM_CATEGORIES = new Set(['fixe', 'mobile']);
@@ -50,6 +54,8 @@ interface SpRealTimeCartProps {
   spPreferencesProduits?: SpPreferencesProduits;
   modeClientActif?: boolean;
   spConfigModeClient?: SpConfigModeClient;
+  /** Libellés et visibilité des lignes du panier (personnalisation par template). */
+  spLibelles?: SpLibellesConfig;
   onUpdateReponses?: (reponses: SpQuestionReponse[]) => void;
 }
 
@@ -68,22 +74,6 @@ function parseJsonMap(value: SpQuestionReponse['valeur']): Record<string, string
     /* not JSON */
   }
   return null;
-}
-
-function setReponseMapValue(
-  reponses: SpQuestionReponse[],
-  questionId: string,
-  key: string,
-  value: number,
-): SpQuestionReponse[] {
-  const existing = reponses.find((r) => r.question_id === questionId);
-  const currentMap: Record<string, string> = existing ? (parseJsonMap(existing.valeur) ?? {}) : {};
-  currentMap[key] = String(value);
-  const newValeur = JSON.stringify(currentMap);
-  if (existing) {
-    return reponses.map((r) => (r.question_id === questionId ? { ...r, valeur: newValeur } : r));
-  }
-  return [...reponses, { question_id: questionId, valeur: newValeur }];
 }
 
 function setReponseMapStringValue(
@@ -108,12 +98,14 @@ function Line({
   suffix,
   bold,
   muted,
+  valueClassName,
 }: {
   label: string;
   value: number;
   suffix?: string;
   bold?: boolean;
   muted?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <div
@@ -122,10 +114,88 @@ function Line({
       }`}
     >
       <span>{label}</span>
-      <span className="tabular-nums">
+      <span className={`tabular-nums ${valueClassName ?? ''}`}>
         {formatEuro(value)}
         {suffix && <span className="ml-0.5 text-[10px] text-gray-400">{suffix}</span>}
       </span>
+    </div>
+  );
+}
+
+/** Ligne du loyer mensuel, saisissable à la main (marge automatique) avec retour au montant calculé. */
+function LoyerMensuelLine({
+  label,
+  value,
+  calcule,
+  editable,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  value: number;
+  calcule?: number;
+  editable: boolean;
+  onChange: (v: number) => void;
+  onReset: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const modifie = calcule != null;
+
+  const commit = () => {
+    const v = parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(v) && v >= 0 && v !== value) onChange(v);
+    setEditing(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-semibold text-gray-900">
+        <span>{label}</span>
+        <span className="flex items-center gap-1 tabular-nums">
+          {editing ? (
+            <input
+              autoFocus
+              type="number"
+              min={0}
+              step={0.01}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') setEditing(false);
+              }}
+              className="w-20 rounded border border-blue-300 bg-blue-50 px-1 py-0.5 text-[11px] text-blue-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          ) : (
+            <span>
+              {formatEuro(value)}
+              <span className="ml-0.5 text-[10px] font-normal text-gray-400">/mois</span>
+            </span>
+          )}
+          {editable && !editing && (
+            <button
+              type="button"
+              onClick={() => { setDraft(String(value)); setEditing(true); }}
+              title="Modifier le loyer"
+              className={`rounded p-0.5 transition-colors hover:bg-blue-100 ${modifie ? 'text-blue-500' : 'text-gray-300 hover:text-gray-500'}`}
+            >
+              <Pencil className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </span>
+      </div>
+      {modifie && (
+        <div className="flex items-center justify-between text-[10px] text-blue-600">
+          <span>Modifié manuellement (calculé : {formatEuro(calcule)})</span>
+          {editable && (
+            <button type="button" onClick={onReset} className="underline hover:text-blue-800">
+              Rétablir
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -345,9 +415,12 @@ interface CategoryAccordionProps {
   ) => void;
   onUpdateNumero?: (line: CartLine, numero: string) => void;
   onDeleteLine?: (line: CartLine) => void;
+  /** Ligne masquée via la personnalisation des libellés (affichage uniquement). */
+  hidden?: boolean;
 }
 
 function CategoryAccordion({
+  hidden,
   label,
   total,
   suffix,
@@ -365,6 +438,7 @@ function CategoryAccordion({
   onUpdateNumero,
   onDeleteLine,
 }: CategoryAccordionProps) {
+  if (hidden) return null;
   const hasDetails = lines.length > 0;
   if (!hasDetails) {
     return <Line label={label} value={total} suffix={suffix} bold={bold} muted={muted} />;
@@ -427,8 +501,11 @@ export function SpRealTimeCart({
   spPreferencesProduits,
   modeClientActif,
   spConfigModeClient,
+  spLibelles,
   onUpdateReponses,
 }: SpRealTimeCartProps) {
+  const lbl = (key: SpLibelleKey) => resolveLibelle(spLibelles, key);
+  const hide = (key: SpLibelleKey) => !isLibelleVisible(spLibelles, key);
   const [collapsed, setCollapsed] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -528,27 +605,15 @@ export function SpRealTimeCart({
     field: 'prix' | 'quantite' | 'fas',
     value: number,
   ) => {
-    const questionId = `${field}_${instanceId}`;
-    const key = field === 'prix' ? (produitId ?? produitNom) : produitNom;
-    let updated = setReponseMapValue(reponses, questionId, key, value);
-
-    if (field === 'quantite') {
-      const currentLine = summary.lines.find((l) =>
-        l.instanceId === instanceId &&
-        (l.produitId === produitId || l.produitNom === produitNom)
-      );
-      if (currentLine) {
-        const currentQty = currentLine.quantite > 0 ? currentLine.quantite : 1;
-        const unitPrice = currentLine.prixTotal / currentQty;
-        updated = setReponseMapValue(
-          updated,
-          `prix_${instanceId}`,
-          produitId ?? produitNom,
-          unitPrice * value,
-        );
-      }
-    }
-
+    const currentLine = summary.lines.find((l) =>
+      l.instanceId === instanceId &&
+      (l.produitId === produitId || l.produitNom === produitNom)
+    );
+    const updated = field === 'fas'
+      ? setCartReponseMapValue(reponses, `fas_${instanceId}`, produitNom, value)
+      : currentLine
+        ? updateCartLinePriceOrQuantity(reponses, currentLine, field, value)
+        : reponses;
     onUpdateReponses?.(updated);
   };
 
@@ -595,6 +660,7 @@ export function SpRealTimeCart({
     const auxIds = new Set([
       `quantite_${iid}`,
       `prix_${iid}`,
+      `prix_panier_${iid}`,
       `fas_${iid}`,
       `numero_${iid}`,
       `libre_${iid}`,
@@ -626,7 +692,7 @@ export function SpRealTimeCart({
           next = next.map((r) => (r.question_id === iid ? { ...r, valeur: JSON.stringify(filtered) } : r));
         }
         next = next.flatMap((r) => {
-          if (![`quantite_${iid}`, `prix_${iid}`, `fas_${iid}`, `numero_${iid}`].includes(r.question_id)) return [r];
+          if (![`quantite_${iid}`, `prix_${iid}`, `prix_panier_${iid}`, `fas_${iid}`, `numero_${iid}`].includes(r.question_id)) return [r];
           const values = parseJsonMap(r.valeur);
           if (!values) return filtered.length ? [r] : [];
           delete values[line.produitId ?? ''];
@@ -690,6 +756,16 @@ export function SpRealTimeCart({
       .slice(0, 20);
   }, [search, catalogue]);
 
+  const montantFinance = useMemo(
+    () => calculerMontantFinance(summary.loyer, spConfigLoyer?.formule),
+    [summary.loyer, spConfigLoyer?.formule],
+  );
+
+  const montantAnneeLissee = calculerMontantAnneeLissee(
+    summary.abonnements.totalMensuel,
+    spConfigLoyer?.multiplicateur_annee_lissee,
+  );
+
   const hasAnyLine = summary.lines.length > 0;
   const grandTotalMensuel = summary.totalMensuelFinal;
 
@@ -724,6 +800,7 @@ export function SpRealTimeCart({
 
       {!collapsed && (
         <div className="px-3 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+          {summary.margeErreur && <p role="alert" className="text-xs text-amber-700">{summary.margeErreur}</p>}
           {!hasAnyLine && (
             <p className="text-xs text-gray-400 italic">Aucun produit sélectionné pour l&apos;instant.</p>
           )}
@@ -736,7 +813,8 @@ export function SpRealTimeCart({
                   Abonnements
                 </p>
                 <CategoryAccordion
-                  label="Fixe"
+                  hidden={hide('fixe')}
+                  label={lbl('fixe')}
                   total={summary.abonnements.fixe}
                   suffix="/mois"
                   lines={grouped.fixe}
@@ -750,7 +828,8 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                 />
                 <CategoryAccordion
-                  label="Mobile"
+                  hidden={hide('mobile')}
+                  label={lbl('mobile')}
                   total={summary.abonnements.mobile}
                   suffix="/mois"
                   lines={grouped.mobile}
@@ -764,7 +843,8 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                 />
                 <CategoryAccordion
-                  label="Internet"
+                  hidden={hide('internet')}
+                  label={lbl('internet')}
                   total={summary.abonnements.internet}
                   suffix="/mois"
                   lines={grouped.internet}
@@ -779,7 +859,8 @@ export function SpRealTimeCart({
                 />
                 {grouped.autresMensuels.length > 0 && (
                   <CategoryAccordion
-                    label="Autres"
+                    hidden={hide('autres_mensuels')}
+                    label={lbl('autres_mensuels')}
                     total={summary.autresMensuels}
                     suffix="/mois"
                     muted
@@ -806,9 +887,11 @@ export function SpRealTimeCart({
                     </span>
                   </div>
                 )}
-                <div className="pt-1 border-t border-gray-100">
-                  <Line label="Total mensuel" value={summary.abonnements.totalMensuel} suffix="/mois" bold />
-                </div>
+                {!hide('total_mensuel') && (
+                  <div className="pt-1 border-t border-gray-100">
+                    <Line label={lbl('total_mensuel')} value={summary.abonnements.totalMensuel} suffix="/mois" bold />
+                  </div>
+                )}
               </section>
 
               {/* Ponctuels */}
@@ -823,7 +906,8 @@ export function SpRealTimeCart({
                   </p>
                   {grouped.equipement.length > 0 && (
                     <CategoryAccordion
-                      label="Matériel"
+                      hidden={hide('materiel')}
+                      label={lbl('materiel')}
                       total={summary.materiel}
                       lines={grouped.equipement}
                       expanded={expandedCats.has('equipement')}
@@ -838,7 +922,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.cadeau.length > 0 && (
                     <CategoryAccordion
-                      label="Cadeaux"
+                      hidden={hide('cadeaux')}
+                      label={lbl('cadeaux')}
                       total={summary.cadeaux}
                       lines={grouped.cadeau}
                       expanded={expandedCats.has('cadeau')}
@@ -853,7 +938,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.installation.length > 0 && (
                     <CategoryAccordion
-                      label="Installations"
+                      hidden={hide('installations')}
+                      label={lbl('installations')}
                       total={summary.installations}
                       lines={grouped.installation}
                       expanded={expandedCats.has('installation')}
@@ -868,7 +954,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.fas.length > 0 && (
                     <CategoryAccordion
-                      label="FAS"
+                      hidden={hide('fas')}
+                      label={lbl('fas')}
                       total={summary.fas}
                       lines={grouped.fas}
                       detailMode="fas"
@@ -884,7 +971,8 @@ export function SpRealTimeCart({
                   )}
                   {grouped.autresPonctuels.length > 0 && (
                     <CategoryAccordion
-                      label="Autres"
+                      hidden={hide('autres_ponctuels')}
+                      label={lbl('autres_ponctuels')}
                       total={summary.autresPonctuels}
                       muted
                       lines={grouped.autresPonctuels}
@@ -898,9 +986,11 @@ export function SpRealTimeCart({
                   onDeleteLine={handleDeleteLine}
                     />
                   )}
-                  <div className="pt-1 border-t border-gray-100">
-                    <Line label="Total ponctuel" value={summary.totalPonctuel} bold />
-                  </div>
+                  {!hide('total_ponctuel') && (
+                    <div className="pt-1 border-t border-gray-100">
+                      <Line label={lbl('total_ponctuel')} value={summary.totalPonctuel} bold />
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -921,14 +1011,19 @@ export function SpRealTimeCart({
                   </button>
                   {expandedCats.has('loyer_detail') && (
                     <div className="space-y-0.5 pt-1 border-t border-blue-100">
-                      <Line label="Total ponctuel" value={summary.totalPonctuel} muted />
-                      {summary.remiseMoisOffert > 0 && (
-                        <Line label="Remise mois offert" value={summary.remiseMoisOffert} muted />
+                      {!hide('loyer_total_ponctuel') && (
+                        <Line label={lbl('loyer_total_ponctuel')} value={summary.totalPonctuel} muted />
                       )}
-                      {summary.indemnites > 0 && (
-                        <Line label="Indemnités" value={summary.indemnites} muted />
+                      {!hide('remise_mois_offert') &&
+                        spConfigLoyer?.mois_offerts_actifs !== false &&
+                        spConfigLoyer?.composantes_base?.mois_offerts !== false &&
+                        summary.remiseMoisOffert > 0 && (
+                        <Line label={lbl('remise_mois_offert')} value={summary.remiseMoisOffert} muted />
                       )}
-                      {summary.marge !== 0 &&
+                      {!hide('indemnites') && summary.indemnites > 0 && (
+                        <Line label={lbl('indemnites')} value={summary.indemnites} muted />
+                      )}
+                      {!hide('marge') && (summary.marge !== 0 || spConfigLoyer?.widget_marge?.mode === 'automatique') &&
                         (summary.codePromo && summary.codePromo.cible !== 'abonnements' ? (
                           <div>
                             <button
@@ -940,7 +1035,7 @@ export function SpRealTimeCart({
                                 <ChevronDown
                                   className={`h-3 w-3 text-gray-400 transition-transform ${expandedCats.has('marge_promo') ? '' : '-rotate-90'}`}
                                 />
-                                Marge
+                                {lbl('marge')}
                               </span>
                               <span className="tabular-nums">{formatEuro(summary.marge)}</span>
                             </button>
@@ -965,13 +1060,41 @@ export function SpRealTimeCart({
                             )}
                           </div>
                         ) : (
-                          <Line label="Marge" value={summary.marge} muted />
+                          <Line label={lbl('marge')} value={summary.marge} muted valueClassName={spConfigLoyer?.widget_marge?.mode === 'automatique'
+                            ? summary.marge > 0 ? 'font-semibold text-green-600' : summary.marge < 0 ? 'font-semibold text-red-600' : 'text-gray-600'
+                            : undefined} />
                         ))}
-                      <Line label="Base loyer" value={summary.baseLoyer} bold />
+                      {!hide('montant_annee_lissee') && (
+                        <Line label={lbl('montant_annee_lissee')} value={montantAnneeLissee} muted />
+                      )}
+                      {!hide('base_loyer') && (
+                        <Line label={lbl('base_loyer')} value={summary.baseLoyer} bold />
+                      )}
                     </div>
                   )}
-                  <Line label="Mensuel" value={summary.loyer.loyer_mensuel} suffix="/mois" bold />
-                  <Line label="Trimestriel" value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />
+                  {!hide('loyer_mensuel') && (
+                    <LoyerMensuelLine
+                      label={lbl('loyer_mensuel')}
+                      value={summary.loyer.loyer_mensuel}
+                      calcule={summary.loyer.loyer_calcule}
+                      editable={editMode && !!onUpdateReponses && spConfigLoyer?.widget_marge?.mode === 'automatique' && !!spConfigLoyer.widget_marge.loyer_modifiable}
+                      onChange={(v) => onUpdateReponses?.([
+                        ...reponses.filter((r) => r.question_id !== LOYER_MANUEL_QUESTION_ID),
+                        { question_id: LOYER_MANUEL_QUESTION_ID, valeur: String(v) },
+                      ])}
+                      onReset={() => onUpdateReponses?.(
+                        reponses.filter((r) => r.question_id !== LOYER_MANUEL_QUESTION_ID),
+                      )}
+                    />
+                  )}
+                  {!hide('loyer_trimestriel') && (
+                    <Line label={lbl('loyer_trimestriel')} value={summary.loyer.loyer_trimestriel} suffix="/trim" muted />
+                  )}
+                  {!hide('montant_finance') && montantFinance != null && (
+                    <div className="pt-1 border-t border-blue-100 space-y-0.5">
+                      <Line label={lbl('montant_finance')} value={montantFinance} />
+                    </div>
+                  )}
                 </section>
               )}
             </>

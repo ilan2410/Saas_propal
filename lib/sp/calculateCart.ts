@@ -11,14 +11,18 @@ import type {
 } from '@/types';
 import {
   calculerBaseLoyer,
+  calculerMontantAnneeLissee,
   calculerLoyer,
   calculerRemiseMoisOffert,
+  appliquerLoyerManuel,
+  lireLoyerManuel,
   resolveTotalMensuelFinal,
   DEFAULT_CONFIG_LOYER,
   type ResultatLoyer,
 } from './calculLoyer';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from './evaluateBareme';
+import { calculerMargeAuto } from './calculMargeAuto';
 import { collectQuestionVariableValues } from './questionVariables';
 import { evaluateGroupes } from './evaluateConditions';
 
@@ -38,6 +42,8 @@ export interface CartLine {
   numero?: string;
   /** Total avant remise produit, présent uniquement si une remise_produits a été appliquée sur cette ligne. */
   prixOriginalTotal?: number;
+  /** Prix de base total (saisi ou calculé), avant remise opérateur et modification du prix final. */
+  prixAvantRemiseTotal?: number;
 }
 
 export interface SpCartSummary {
@@ -57,6 +63,7 @@ export interface SpCartSummary {
   remiseMoisOffert: number;
   indemnites: number;
   marge: number;
+  margeErreur?: string | null;
   baseLoyer: number;
   dureeMois: number;
   loyer: ResultatLoyer | null;
@@ -120,8 +127,9 @@ function getPrixOverride(
   instanceId: string,
   produitNom: string,
   produitId?: string,
+  prefix = 'prix_',
 ): number | undefined {
-  const rep = reponses.find((r) => r.question_id === `prix_${instanceId}`);
+  const rep = reponses.find((r) => r.question_id === `${prefix}${instanceId}`);
   if (!rep) return undefined;
   const asMap = parseJsonRecord(rep.valeur);
   if (asMap) {
@@ -555,6 +563,10 @@ export function calculateCartSummary(
     }
   }
 
+  for (const line of lines) {
+    if (line.type_frequence === 'mensuel') line.prixAvantRemiseTotal = line.prixTotal;
+  }
+
   // 2b. Apply remise_produits overrides (per-unit monthly price stored by nom or id)
   for (const rep of reponses) {
     if (rep.question_id.startsWith('fas_')) continue;
@@ -587,6 +599,17 @@ export function calculateCartSummary(
         }
       }
     }
+  }
+
+  // Cart price edits take precedence over the operator discount, which applies
+  // to the base price above. Keep the undiscounted total for the crossed-out price.
+  for (const line of lines) {
+    const finalPrice = getPrixOverride(reponses, line.instanceId, line.produitNom, line.produitId, 'prix_panier_');
+    if (finalPrice == null) continue;
+    const original = line.prixOriginalTotal ?? line.prixTotal;
+    line.prixTotal = finalPrice;
+    if (finalPrice < original - 0.005) line.prixOriginalTotal = original;
+    else delete line.prixOriginalTotal;
   }
 
   // 2c. Résoudre le numéro de chaque ligne : override panier > label de boucle.
@@ -649,7 +672,13 @@ export function calculateCartSummary(
   // 4. Loyer
   const config = spConfigLoyer ?? DEFAULT_CONFIG_LOYER;
   const baremes = config.baremes ?? [];
-  const bareme = findApplicableBareme(baremes, reponses, donneesExtraites, catalogue)
+  const questionMargeIds = questions.filter((q) => q.affichage === 'marge').map((q) => q.id);
+  const bareme = findApplicableBareme(baremes,
+    config.widget_marge?.mode === 'automatique'
+      ? reponses.filter((r) => r.question_id !== 'sp_marge_calculee' &&
+          !questionMargeIds.some((id) => r.question_id === id || r.question_id.startsWith(`${id}__iter_`)))
+      : reponses,
+    donneesExtraites, catalogue)
     ?? baremes[0]
     ?? null;
 
@@ -678,9 +707,9 @@ export function calculateCartSummary(
   const indemnites = resolveIndemnites(reponses, questions, donneesExtraites);
 
   const margeRep = reponses.find((r) => r.question_id === 'sp_marge_calculee');
-  const marge = margeRep ? Number(margeRep.valeur) || 0 : 0;
+  let marge = config.widget_marge?.mode === 'automatique' ? 0 : margeRep ? Number(margeRep.valeur) || 0 : 0;
 
-  const baseCalculLoyer = calculerBaseLoyer({
+  const composantes = {
     materiel,
     cadeaux,
     installations,
@@ -689,10 +718,38 @@ export function calculateCartSummary(
     mois_offerts: remisePourCalculLoyer,
     indemnites,
     marge,
-  }, config);
-  const loyer = bareme
-    ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule)
+    annee_lissee: calculerMontantAnneeLissee(abos.totalMensuel, config.multiplicateur_annee_lissee),
+  };
+  // Loyer saisi à la main : uniquement en marge automatique. Il reste fixe quand la base change,
+  // la marge absorbe l'écart (montant financé − base loyer).
+  const loyerManuel = config.widget_marge?.mode === 'automatique' && config.widget_marge.loyer_modifiable
+    ? lireLoyerManuel(reponses)
     : null;
+  let baseCalculLoyer = calculerBaseLoyer(composantes, config);
+  let loyer = bareme
+    ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule), loyerManuel)
+    : null;
+  let margeErreur: string | null = null;
+  if (config.widget_marge?.mode === 'automatique') {
+    const resultat = calculerMargeAuto({
+      totalPonctuel,
+      remiseMoisOffert: remisePourCalculLoyer,
+      indemnites,
+      baseLoyer: baseCalculLoyer,
+      loyer,
+      abonnements: abos,
+    }, config);
+    margeErreur = resultat.erreur;
+    if (resultat.valeur !== null) {
+      marge = resultat.valeur;
+      if (config.composantes_base?.marge !== false) {
+        baseCalculLoyer = calculerBaseLoyer({ ...composantes, marge }, config);
+        loyer = bareme
+          ? appliquerLoyerManuel(calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, config.formule), loyerManuel)
+          : null;
+      }
+    }
+  }
   // La remise "mois offerts" porte sur le total des abonnements mensuels, pas sur le loyer calculé.
   const remiseMoisOffert = remisePourCalculLoyer;
   const baseLoyer = baseCalculLoyer;
@@ -705,7 +762,9 @@ export function calculateCartSummary(
   // Détail du code promo appliqué (si renseigné lors du questionnaire)
   const codePromoNomRep = reponses.find((r) => r.question_id === 'sp_code_promo_nom');
   let codePromo: SpCodePromoInfo | null = null;
-  if (codePromoNomRep && String(codePromoNomRep.valeur).trim()) {
+  if (codePromoNomRep && String(codePromoNomRep.valeur).trim() &&
+    (config.widget_marge?.mode !== 'automatique' ||
+      reponses.find((r) => r.question_id === 'sp_code_promo_cible')?.valeur === 'abonnements')) {
     const valeurRep = reponses.find((r) => r.question_id === 'sp_code_promo_valeur');
     const modeRep = reponses.find((r) => r.question_id === 'sp_code_promo_mode');
     const cibleRep = reponses.find((r) => r.question_id === 'sp_code_promo_cible');
@@ -734,6 +793,7 @@ export function calculateCartSummary(
     remiseMoisOffert,
     indemnites,
     marge,
+    margeErreur,
     baseLoyer,
     dureeMois,
     loyer,

@@ -12,6 +12,9 @@ import type {
   SpConditionLogique,
   SpTauxDuree,
   SpQuestion,
+  SpMargeOperande,
+  SpMargeOperateur,
+  SpLibellesConfig,
   CatalogueProduit,
   WordConfig,
 } from '@/types';
@@ -21,8 +24,11 @@ import {
   DEFAULT_COMPOSANTES_BASE_LOYER,
   DEFAULT_CONFIG_LOYER,
   DEFAULT_FORMULE_LOYER,
+  DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE,
 } from '@/lib/sp/calculLoyer';
 import { supportsSp } from '@/lib/templates/supportsSp';
+import { MARGE_FORMULE_DEFAUT, MARGE_OPERANDES, validerFormuleMarge } from '@/lib/sp/calculMargeAuto';
+import { resolveLibelle, SP_LIBELLES_DEFAUT } from '@/lib/sp/libelles';
 
 interface Props {
   templates: PropositionTemplate[];
@@ -45,6 +51,13 @@ function getLoyerConfig(template: PropositionTemplate | undefined): SpConfigLoye
     formule: { ...DEFAULT_FORMULE_LOYER, ...saved.formule },
     composantes_base: { ...DEFAULT_COMPOSANTES_BASE_LOYER, ...saved.composantes_base },
     mode_total_mensuel: saved.mode_total_mensuel ?? 'tout_compris',
+    widget_marge: {
+      mode: saved.widget_marge?.mode ?? 'manuel',
+      visible_auto: saved.widget_marge?.visible_auto ?? true,
+      loyer_modifiable: saved.widget_marge?.loyer_modifiable ?? false,
+      operandes: [...(saved.widget_marge?.operandes ?? MARGE_FORMULE_DEFAUT.operandes)],
+      operateurs: [...(saved.widget_marge?.operateurs ?? MARGE_FORMULE_DEFAUT.operateurs)],
+    },
   };
 }
 
@@ -57,6 +70,9 @@ export function SpLoyerManager({ templates }: Props) {
   const [catalogueProduits, setCatalogueProduits] = useState<CatalogueProduit[]>([]);
 
   const selectedTemplate = wordTemplates.find((t) => t.id === templateId);
+  const [spLibelles, setSpLibelles] = useState<SpLibellesConfig | undefined>(
+    (selectedTemplate?.file_config as WordConfig | undefined)?.sp_libelles,
+  );
   const [loyerConfig, setLoyerConfig] = useState<SpConfigLoyer>(() =>
     getLoyerConfig(selectedTemplate),
   );
@@ -67,12 +83,14 @@ export function SpLoyerManager({ templates }: Props) {
     Promise.all([
       fetch(`/api/templates/${templateId}/sp-questions`).then((r) => r.json()),
       fetch(`/api/catalogue?template_id=${encodeURIComponent(templateId)}`).then((r) => r.json()),
-    ]).then(([qData, cData]) => {
+      fetch(`/api/templates/${templateId}`).then((r) => r.json()),
+    ]).then(([qData, cData, templateData]) => {
       const qs: SpQuestion[] = ((qData.questions ?? []) as SpQuestion[])
         .filter((q) => q.actif)
         .sort((a, b) => a.ordre - b.ordre);
       setSpQuestions(qs);
       setCatalogueProduits(cData.produits ?? []);
+      setSpLibelles((templateData.template?.file_config as WordConfig | undefined)?.sp_libelles);
     }).catch(() => { /* silencieux */ });
   }, [templateId]);
 
@@ -80,6 +98,7 @@ export function SpLoyerManager({ templates }: Props) {
     setTemplateId(id);
     const tmpl = wordTemplates.find((t) => t.id === id);
     setLoyerConfig(getLoyerConfig(tmpl));
+    setSpLibelles((tmpl?.file_config as WordConfig | undefined)?.sp_libelles);
     setExpandedBaremes(new Set());
   };
 
@@ -100,17 +119,18 @@ export function SpLoyerManager({ templates }: Props) {
       ordre: maxOrdre + 1,
       taux_durees: [...DEFAULT_BAREME.taux_durees],
     };
-    setLoyerConfig((prev) => ({ baremes: [...prev.baremes, newBareme] }));
+    setLoyerConfig((prev) => ({ ...prev, baremes: [...prev.baremes, newBareme] }));
     setExpandedBaremes((prev) => new Set([...prev, newBareme.id]));
   };
 
   const removeBareme = (id: string) => {
-    setLoyerConfig((prev) => ({ baremes: prev.baremes.filter((b) => b.id !== id) }));
+    setLoyerConfig((prev) => ({ ...prev, baremes: prev.baremes.filter((b) => b.id !== id) }));
     setExpandedBaremes((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const updateBareme = (id: string, patch: Partial<SpBareme>) => {
     setLoyerConfig((prev) => ({
+      ...prev,
       baremes: prev.baremes.map((b) => (b.id === id ? { ...b, ...patch } : b)),
     }));
   };
@@ -159,9 +179,15 @@ export function SpLoyerManager({ templates }: Props) {
 
   const handleSave = async () => {
     if (!templateId || isSaving) return;
+    const erreur = validerFormuleMarge(loyerConfig);
+    if (erreur) { toast.error(erreur); return; }
     setIsSaving(true);
     try {
-      const currentCfg = (selectedTemplate?.file_config ?? {}) as WordConfig;
+      const latest = await fetch(`/api/templates/${templateId}`).then((r) => {
+        if (!r.ok) throw new Error('Erreur serveur');
+        return r.json();
+      });
+      const currentCfg = (latest.template?.file_config ?? {}) as WordConfig;
       const newFileConfig: WordConfig = { ...currentCfg, sp_config_loyer: loyerConfig };
 
       const res = await fetch(`/api/templates/${templateId}`, {
@@ -185,6 +211,17 @@ export function SpLoyerManager({ templates }: Props) {
       </p>
     );
   }
+
+  const widgetMarge = loyerConfig.widget_marge;
+  const formuleErreur = validerFormuleMarge(loyerConfig);
+  const updateWidgetMarge = (patch: Partial<NonNullable<SpConfigLoyer['widget_marge']>>) =>
+    setLoyerConfig((prev) => ({ ...prev, widget_marge: { ...prev.widget_marge, mode: prev.widget_marge?.mode ?? 'manuel', ...patch } }));
+  const operandes = widgetMarge?.operandes ?? MARGE_FORMULE_DEFAUT.operandes;
+  const operateurs = widgetMarge?.operateurs ?? MARGE_FORMULE_DEFAUT.operateurs;
+  const updateOperande = (index: number, value: SpMargeOperande) =>
+    updateWidgetMarge({ operandes: operandes.map((key, i) => i === index ? value : key) });
+  const updateOperateur = (index: number, value: SpMargeOperateur) =>
+    updateWidgetMarge({ operateurs: operateurs.map((key, i) => i === index ? value : key) });
 
   return (
     <div className="space-y-6">
@@ -328,6 +365,32 @@ export function SpLoyerManager({ templates }: Props) {
 
       <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
         <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Montant année lissée</h4>
+          <p className="text-xs text-gray-500 mt-1">
+            Montant année lissée = total mensuel des abonnements × multiplicateur. La ligne s&apos;affiche
+            dans le panier une fois activée dans Questions SP → Libellés.
+          </p>
+        </div>
+        <label className="space-y-1 text-xs text-gray-600 block max-w-[10rem]">
+          <span className="block">Multiplicateur</span>
+          <input
+            type="number"
+            min={0.0001}
+            step="any"
+            value={loyerConfig.multiplicateur_annee_lissee ?? DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE}
+            onChange={(e) => setLoyerConfig((prev) => ({
+              ...prev,
+              multiplicateur_annee_lissee: Number(e.target.value) > 0
+                ? Number(e.target.value)
+                : DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE,
+            }))}
+            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+          />
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50/50">
+        <div>
           <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total mensuel affiché</h4>
           <p className="text-xs text-gray-500 mt-1">Montant mensuel mis en avant pour le client (badge du panier, page proposition, variable {'{{sp_total_mensuel_final}}'}).</p>
         </div>
@@ -370,17 +433,76 @@ export function SpLoyerManager({ templates }: Props) {
             ['autres_ponctuels', 'Autres éléments ponctuels'],
             ['indemnites', 'Indemnités de résiliation'],
             ['marge', 'Marge'],
+            ['annee_lissee', 'Montant année lissée'],
           ] as const).map(([key, label]) => (
             <label key={key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input
                 type="checkbox"
-                checked={loyerConfig.composantes_base?.[key] ?? true}
+                checked={loyerConfig.composantes_base?.[key] ?? DEFAULT_COMPOSANTES_BASE_LOYER[key] ?? true}
                 onChange={() => toggleComposante(key)}
               />
               <span>{label}</span>
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-4 space-y-4 bg-gray-50/50">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Widget Marge &amp; Loyer</h4>
+          <p className="text-xs text-gray-500 mt-1">Réglage du widget et de la marge pour ce template SP.</p>
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm text-gray-800">
+          <label className="flex items-center gap-2">
+            <input type="radio" name="mode-widget-marge" checked={widgetMarge?.mode !== 'automatique'} onChange={() => updateWidgetMarge({ mode: 'manuel' })} />
+            Saisie manuelle
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="mode-widget-marge" checked={widgetMarge?.mode === 'automatique'} onChange={() => updateWidgetMarge({ mode: 'automatique' })} />
+            Calcul automatique
+          </label>
+        </div>
+        {widgetMarge?.mode === 'automatique' && (
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={widgetMarge.visible_auto !== false} onChange={(e) => updateWidgetMarge({ visible_auto: e.target.checked })} />
+              Afficher le widget Marge &amp; Loyer
+            </label>
+            <p className="text-xs text-gray-500">La marge est calculée même lorsque ce widget est masqué. Les champs utilisent les valeurs du panier SP, même si leurs libellés ont été renommés.</p>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={widgetMarge.loyer_modifiable === true} onChange={(e) => updateWidgetMarge({ loyer_modifiable: e.target.checked })} />
+              Autoriser la modification manuelle du loyer mensuel dans le panier
+            </label>
+            {widgetMarge.loyer_modifiable === true && (
+              <p className="text-xs text-gray-500">Le loyer saisi reste fixe quand le panier change : la marge absorbe l&apos;écart et s&apos;affiche en rouge si elle est négative.</p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {operandes.map((key, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  {index > 0 && (
+                    <select value={operateurs[index - 1]} onChange={(e) => updateOperateur(index - 1, e.target.value as SpMargeOperateur)} aria-label={`Opérateur ${index}`} className="h-9 rounded border border-gray-300 bg-white px-2 text-sm">
+                      <option value="+">+</option><option value="-">−</option>
+                      <option value="*">×</option><option value="/">÷</option>
+                    </select>
+                  )}
+                  <select value={key} onChange={(e) => updateOperande(index, e.target.value as SpMargeOperande)} aria-label={`Champ ${index + 1}`} className="h-9 max-w-60 rounded border border-gray-300 bg-white px-2 text-sm">
+                    {MARGE_OPERANDES.map((field) => (
+                      <option key={field} value={field}>
+                        {resolveLibelle(spLibelles, field)}
+                        {' — '}{SP_LIBELLES_DEFAUT[field]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={() => updateWidgetMarge({ operandes: [...operandes, 'loyer_total_ponctuel'], operateurs: [...operateurs, '+'] })}>Ajouter un champ</Button>
+              {operandes.length > 1 && (
+                <Button type="button" variant="outline" size="sm" onClick={() => updateWidgetMarge({ operandes: operandes.slice(0, -1), operateurs: operateurs.slice(0, -1) })}>Retirer le dernier</Button>
+              )}
+            </div>
+            {formuleErreur && <p role="alert" className="text-sm text-red-600">{formuleErreur}</p>}
+          </div>
+        )}
       </div>
 
       {/* Liste des barèmes */}

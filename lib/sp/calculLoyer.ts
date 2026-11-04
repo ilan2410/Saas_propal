@@ -37,6 +37,7 @@ export const DEFAULT_COMPOSANTES_BASE_LOYER: SpComposantesBaseLoyer = {
   mois_offerts: true,
   indemnites: true,
   marge: true,
+  annee_lissee: false,
 };
 
 export const DEFAULT_MODE_TOTAL_MENSUEL: SpModeTotalMensuel = 'tout_compris';
@@ -59,6 +60,7 @@ export interface ComposantesBaseLoyer {
   mois_offerts: number;
   indemnites: number;
   marge: number;
+  annee_lissee?: number;
 }
 
 export function calculerBaseLoyer(
@@ -68,7 +70,7 @@ export function calculerBaseLoyer(
   const inclusions = { ...DEFAULT_COMPOSANTES_BASE_LOYER, ...config?.composantes_base };
   if (config?.mois_offerts_actifs === false) inclusions.mois_offerts = false;
   return (Object.keys(inclusions) as Array<keyof SpComposantesBaseLoyer>)
-    .reduce((total, key) => total + (inclusions[key] ? composantes[key] : 0), 0);
+    .reduce((total, key) => total + (inclusions[key] ? (composantes[key] ?? 0) : 0), 0);
 }
 
 // ── Types résultat ───────────────────────────────────────────────────
@@ -82,6 +84,30 @@ export interface ResultatLoyer {
   duree_mois: number;
   taux_utilise: number;
   marge_appliquee: number;
+  /** Loyer mensuel issu du barème, présent uniquement quand le loyer a été saisi manuellement. */
+  loyer_calcule?: number;
+}
+
+/** Réponse portant le loyer mensuel saisi à la main (marge automatique uniquement). */
+export const LOYER_MANUEL_QUESTION_ID = 'sp_loyer_manuel';
+
+export function lireLoyerManuel(reponses: Array<{ question_id: string; valeur: unknown }>): number | null {
+  const rep = reponses.find((r) => r.question_id === LOYER_MANUEL_QUESTION_ID);
+  if (!rep || rep.valeur === '' || rep.valeur == null) return null;
+  const valeur = Number(rep.valeur);
+  return Number.isFinite(valeur) && valeur >= 0 ? Math.round(valeur * 100) / 100 : null;
+}
+
+/** Remplace le loyer mensuel calculé par le montant saisi ; le reste du résultat est dérivé de ce montant. */
+export function appliquerLoyerManuel(loyer: ResultatLoyer | null, manuel: number | null): ResultatLoyer | null {
+  if (!loyer || manuel == null) return loyer;
+  return {
+    ...loyer,
+    loyer_mensuel: manuel,
+    loyer_trimestriel: manuel * 3,
+    total_loyer: manuel * loyer.trimestres * 3,
+    loyer_calcule: loyer.loyer_mensuel,
+  };
 }
 
 // ── Calculateur principal ────────────────────────────────────────────
@@ -128,6 +154,34 @@ export function calculerLoyer(
     taux_utilise: entry.taux_loyer,
     marge_appliquee: margeEffective,
   };
+}
+
+/**
+ * Montant financé : capital que le loyer facturé permet de rembourser.
+ * Inverse de `calculerLoyer` : loyer_mensuel × diviseur / taux (le taux est lu dans le barème).
+ * Part du loyer arrondi, donc peut différer de la base loyer.
+ */
+export function calculerMontantFinance(
+  loyer: Pick<ResultatLoyer, 'loyer_mensuel' | 'taux_utilise'> | null | undefined,
+  formuleConfig?: SpFormuleLoyer,
+): number | null {
+  if (!loyer || !(loyer.taux_utilise > 0)) return null;
+  const { diviseur } = { ...DEFAULT_FORMULE_LOYER, ...formuleConfig };
+  const d = Number.isFinite(diviseur) && diviseur > 0 ? diviseur : 3;
+  return Math.round(((loyer.loyer_mensuel * d) / loyer.taux_utilise) * 100) / 100;
+}
+
+export const DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE = 12;
+
+/** Montant année lissée : total mensuel des abonnements × multiplicateur (12 par défaut). */
+export function calculerMontantAnneeLissee(
+  totalMensuelAbonnements: number,
+  multiplicateur?: number,
+): number {
+  const m = multiplicateur != null && Number.isFinite(multiplicateur) && multiplicateur > 0
+    ? multiplicateur
+    : DEFAULT_MULTIPLICATEUR_ANNEE_LISSEE;
+  return Math.round(totalMensuelAbonnements * m * 100) / 100;
 }
 
 // ── Calcul remise mois offert (package) ──────────────────────────────

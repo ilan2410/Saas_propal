@@ -247,6 +247,7 @@ export interface WordConfig {
   inclure_charges_variables_sa?: boolean;
   sp_config_resume_ref?: SpConfigResumeRef;
   sp_config_mode_client?: SpConfigModeClient;
+  sp_libelles?: SpLibellesConfig;
   sp_preferences_produits?: SpPreferencesProduits;
   sp_config_remises?: SpConfigRemises;
   sp_config_codes_promo?: SpConfigCodesPromo;
@@ -560,6 +561,11 @@ export interface SpConfigRemises {
   actif: boolean;
   produits: Record<string, SpRemiseProduitTemplate>;
   regles: SpRegleRemise[];
+  remise_globale?: {
+    actif: boolean;
+    remise_type: 'fixe' | 'pourcentage';
+    remise_valeur: number;
+  };
 }
 
 export interface SpRegleProduitAuto {
@@ -775,6 +781,7 @@ export interface SpLigneMobile {
   sp_type_ligne: 'Mobile';
   _prix_actuel_raw: number;
   _prix_propose_raw: number;
+  _prix_avant_remise_operateur_raw?: number;
   _economie_raw: number;
 }
 
@@ -813,6 +820,9 @@ export interface SpSituationProposeeLigne {
   sp_sp_fournisseur?: string;
   sp_sp_prix_actuel?: string;
   sp_sp_prix_propose: string;
+  sp_sp_prix_avant_remise_operateur?: string;
+  sp_sp_prix_total_avant_remise_operateur?: string;
+  prix_total?: string;
   sp_sp_economie?: string;
   sp_sp_analyse?: string;
   _prix_raw: number;
@@ -1052,6 +1062,29 @@ export interface SpComposantesBaseLoyer {
   mois_offerts: boolean;
   indemnites: boolean;
   marge: boolean;
+  /** Montant année lissée (total mensuel des abonnements × multiplicateur). Défaut : non inclus. */
+  annee_lissee?: boolean;
+}
+
+export type SpMargeOperande =
+  | 'loyer_total_ponctuel'
+  | 'remise_mois_offert'
+  | 'indemnites'
+  | 'montant_annee_lissee'
+  | 'base_loyer'
+  | 'loyer_mensuel'
+  | 'loyer_trimestriel'
+  | 'montant_finance';
+
+export type SpMargeOperateur = '+' | '-' | '*' | '/';
+
+export interface SpConfigWidgetMarge {
+  mode: 'manuel' | 'automatique';
+  visible_auto?: boolean;
+  /** Marge automatique uniquement : le commercial peut saisir le loyer mensuel dans le panier. Défaut : désactivé. */
+  loyer_modifiable?: boolean;
+  operandes?: SpMargeOperande[];
+  operateurs?: SpMargeOperateur[];
 }
 
 export interface SpConfigLoyer {
@@ -1067,7 +1100,42 @@ export interface SpConfigLoyer {
   composantes_base?: SpComposantesBaseLoyer;
   /** Défaut : 'tout_compris'. Contrôle comment le total mensuel affiché au client combine abonnements et loyer. */
   mode_total_mensuel?: SpModeTotalMensuel;
+  /** Multiplicateur du « Montant année lissée » (total mensuel des abonnements × N). Défaut : 12. */
+  multiplicateur_annee_lissee?: number;
+  widget_marge?: SpConfigWidgetMarge;
 }
+
+/** Lignes du panier SP dont le libellé et la visibilité sont personnalisables par template. */
+export type SpLibelleKey =
+  | 'fixe'
+  | 'mobile'
+  | 'internet'
+  | 'autres_mensuels'
+  | 'total_mensuel'
+  | 'montant_annee_lissee'
+  | 'materiel'
+  | 'cadeaux'
+  | 'installations'
+  | 'fas'
+  | 'autres_ponctuels'
+  | 'total_ponctuel'
+  | 'loyer_total_ponctuel'
+  | 'remise_mois_offert'
+  | 'indemnites'
+  | 'marge'
+  | 'base_loyer'
+  | 'loyer_mensuel'
+  | 'loyer_trimestriel'
+  | 'montant_finance';
+
+export interface SpLibelleOverride {
+  /** Libellé affiché dans le panier. Vide/absent = libellé par défaut. */
+  label?: string;
+  /** Absent = valeur par défaut de la ligne (visible, sauf « Montant financé »). */
+  visible?: boolean;
+}
+
+export type SpLibellesConfig = Partial<Record<SpLibelleKey, SpLibelleOverride>>;
 
 export type SpMoisOffertsCategorieIncluse = 'fixe' | 'mobile' | 'internet' | 'autres_mensuels';
 

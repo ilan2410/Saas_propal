@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
 
 interface SpMargeWidgetProps {
   reponses: SpQuestionReponse[];
@@ -107,6 +107,7 @@ export function SpMargeWidget({
         mois_offerts: remisePourCalculLoyer,
         indemnites: summary.indemnites,
         marge: margeNum,
+        annee_lissee: calculerMontantAnneeLissee(summary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
       }, configLoyer);
       const loyer = bareme
         ? calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule)
@@ -122,6 +123,11 @@ export function SpMargeWidget({
   );
 
   const loyerResult = useMemo(() => computeLoyer(margeInput), [margeInput, computeLoyer]);
+  const autoMode = spConfigLoyer?.widget_marge?.mode === 'automatique';
+  const autoSummary = useMemo(() => autoMode
+    ? calculateCartSummary(reponses, questions, catalogue, donneesExtraites ?? {}, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits)
+    : null,
+  [autoMode, reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits]);
 
   const handleMargeChange = (value: string) => {
     const { loyer } = computeLoyer(value);
@@ -150,7 +156,7 @@ export function SpMargeWidget({
     onUpdateReponses([...filtered, ...extras]);
   };
 
-  const showGardeFou = gardeFouActif && gardeFouVisible && !dismissed;
+  const showGardeFou = !autoMode && gardeFouActif && gardeFouVisible && !dismissed;
 
   return (
     <>
@@ -227,40 +233,50 @@ export function SpMargeWidget({
       {!collapsed && (
         <div className="px-3 py-3 space-y-3">
           {/* Champ Marge */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 shrink-0">Marge :</label>
-            <input
-              type="number"
-              step="1"
-              value={margeInput}
-              onChange={(e) => handleMargeChange(e.target.value)}
-              placeholder="0"
-              className={`h-8 w-24 text-sm border rounded px-2 ${
-                loyerResult.margeNum < 0
-                  ? 'border-red-300 text-red-600 font-semibold'
-                  : 'border-gray-300'
-              }`}
-            />
-            <span className="text-xs text-gray-500">€</span>
-          </div>
+          {autoMode ? (
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-gray-600">Marge calculée :</span>
+              <span className={`font-semibold tabular-nums ${autoSummary?.margeErreur ? 'text-amber-600' : (autoSummary?.marge ?? 0) > 0 ? 'text-green-600' : (autoSummary?.marge ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                {autoSummary?.margeErreur ? 'Indisponible' : `${(autoSummary?.marge ?? 0).toFixed(2)} €`}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 shrink-0">Marge :</label>
+              <input
+                type="number"
+                step="1"
+                value={margeInput}
+                onChange={(e) => handleMargeChange(e.target.value)}
+                placeholder="0"
+                className={`h-8 w-24 text-sm border rounded px-2 ${
+                  loyerResult.margeNum < 0
+                    ? 'border-red-300 text-red-600 font-semibold'
+                    : 'border-gray-300'
+                }`}
+              />
+              <span className="text-xs text-gray-500">€</span>
+            </div>
+          )}
+          {autoSummary?.margeErreur && <p role="alert" className="text-xs text-amber-600">{autoSummary.margeErreur}</p>}
 
           {/* Loyer mensuel HT */}
-          {loyerResult.loyer ? (
+          {(autoMode ? autoSummary?.loyer : loyerResult.loyer) ? (
             <div className="rounded-lg bg-blue-50 border border-blue-100 p-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Loyer mensuel HT</span>
                 <span className="font-semibold text-blue-800">
-                  {loyerResult.totalMensuelFinal.toFixed(2)} €
+                  {(autoMode ? autoSummary?.totalMensuelFinal ?? 0 : loyerResult.totalMensuelFinal).toFixed(2)} €
                 </span>
               </div>
               <div className="flex gap-3 text-xs text-gray-500 pt-1 border-t border-blue-100">
-                <span>Durée : {loyerResult.dureeMois} mois</span>
-                <span>Trim. : {loyerResult.loyer.trimestres}</span>
+                <span>Durée : {autoMode ? autoSummary?.dureeMois : loyerResult.dureeMois} mois</span>
+                <span>Trim. : {autoMode ? autoSummary?.loyer?.trimestres : loyerResult.loyer?.trimestres}</span>
               </div>
             </div>
           ) : (
             <p className="text-xs text-amber-600">
-              Aucun barème pour {loyerResult.dureeMois} mois.
+              Aucun barème pour {autoMode ? autoSummary?.dureeMois : loyerResult.dureeMois} mois.
             </p>
           )}
         </div>

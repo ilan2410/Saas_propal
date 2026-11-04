@@ -16,6 +16,13 @@ export function resolveRemiseProduit(
       remise_valeur: Number.isFinite(remise.remise_valeur) ? remise.remise_valeur : undefined,
     };
   }
+  if (remise?.mode === 'catalogue') return product;
+  const globale = config?.remise_globale;
+  if (product.type_frequence === 'mensuel' && globale?.actif &&
+    Number.isFinite(globale.remise_valeur) && globale.remise_valeur >= 0 &&
+    (globale.remise_type === 'fixe' || (globale.remise_type === 'pourcentage' && globale.remise_valeur <= 100))) {
+    return { ...product, remise_type: globale.remise_type, remise_valeur: globale.remise_valeur };
+  }
   return product;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogueCategorie, CatalogueProduit, SpQuestion, SuggestionsSpCompletes } from '@/types';
+import type { CatalogueCategorie, CatalogueProduit, SpConfigRemises, SpQuestion, SuggestionsSpCompletes } from '@/types';
 import { calculateCartSummary } from './calculateCart';
+import { updateCartLinePriceOrQuantity } from './cartLineEdits';
 import { buildSolutionProposeeLines } from './buildExportSaSpData';
 import { orderProductsByPreference } from './productTableOrder';
 import { repairSpCompletesFromQuestionnaire } from './repairSpCompletes';
@@ -132,6 +133,70 @@ describe('calculateCartSummary — quantités des options', () => {
     expect(repaired?.sp_situation_proposee_forfaits_sans_remise?.[0].sp_sp_description).toBe(forfait.description);
     expect((buildSpWordData(repaired).sp_situation_proposee_forfaits as Array<{ sp_sp_description: string }>)[0].sp_sp_description)
       .toBe('Fibre Avec Débit Garanti');
+  });
+
+  it('expose le prix mensuel unitaire saisi avant remise opérateur dans Word', () => {
+    const remiseQuestion: SpQuestion = { ...question('remise'), affichage: 'remise_produits' };
+    const formatEuro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+    const questionsAvecRemise = [question('offre'), remiseQuestion];
+    const selection = [
+      { question_id: 'offre', valeur: parent.nom },
+      { question_id: 'quantite_offre', valeur: '2' },
+      { question_id: 'options_offre', valeur: JSON.stringify([option.id]) },
+    ];
+    const lignePanier = calculateCartSummary(selection, questionsAvecRemise, [parent, option]).lines[0];
+    const tarifSaisi = updateCartLinePriceOrQuantity(selection, lignePanier, 'prix', 80);
+    const sansRemise = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes, tarifSaisi, questionsAvecRemise, [parent, option], {},
+    );
+    expect(sansRemise?.sp_situation_proposee_forfaits?.[0]).toMatchObject({
+      sp_sp_prix_avant_remise_operateur: formatEuro(40),
+      sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
+    });
+
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes,
+      [
+        ...tarifSaisi,
+        { question_id: 'remise', valeur: true },
+        { question_id: 'prix_remise', valeur: JSON.stringify({ [parent.id]: '30' }) },
+      ],
+      questionsAvecRemise,
+      [parent, option],
+      {},
+    );
+
+    expect(repaired?.sp_situation_proposee_forfaits).toMatchObject([
+      { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60) },
+      { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10) },
+    ]);
+    expect(buildSpWordData(repaired).sp_situation_proposee_forfaits).toMatchObject([
+      { sp_sp_prix_avant_remise_operateur: formatEuro(40), sp_sp_prix_total_avant_remise_operateur: formatEuro(80), sp_sp_prix_propose: formatEuro(60), prix_total: formatEuro(60) },
+      { sp_sp_prix_avant_remise_operateur: formatEuro(10), sp_sp_prix_total_avant_remise_operateur: formatEuro(10), sp_sp_prix_propose: formatEuro(10), prix_total: formatEuro(10) },
+    ]);
+  });
+
+  it('garde le prix de base lorsque le prix final du panier est modifié après la remise', () => {
+    const forfait = product('fixe', 'Fixe', 'fixe', 'mensuel', 50);
+    const reponses = [
+      { question_id: 'offre', valeur: forfait.nom },
+      { question_id: 'quantite_offre', valeur: '2' },
+      { question_id: 'prix_offre', valeur: JSON.stringify({ [forfait.id]: '80' }) },
+      { question_id: 'remise', valeur: true },
+      { question_id: 'prix_remise', valeur: JSON.stringify({ [forfait.id]: '30' }) },
+      { question_id: 'prix_panier_offre', valeur: JSON.stringify({ [forfait.id]: '55' }) },
+    ];
+    const questions = [question('offre'), { ...question('remise'), affichage: 'remise_produits' as const }];
+    const repaired = repairSpCompletesFromQuestionnaire(
+      {} as SuggestionsSpCompletes, reponses, questions, [forfait], {},
+    );
+    const formatEuro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+
+    expect(repaired?.sp_situation_proposee_forfaits?.[0]).toMatchObject({
+      sp_sp_prix_avant_remise_operateur: formatEuro(40),
+      sp_sp_prix_total_avant_remise_operateur: formatEuro(80),
+      sp_sp_prix_propose: formatEuro(55),
+    });
   });
 
   it('privilégie la quantité modifiée dans le panier et applique les tranches de prix des options', () => {
@@ -368,6 +433,71 @@ describe('remises produits par template', () => {
   const produit = product('mobile', 'Forfait mobile', 'mobile', 'mensuel', 30);
   produit.remise_type = 'pourcentage';
   produit.remise_valeur = 10;
+
+  it('applique la remise globale aux produits mensuels existants et futurs, pas aux ponctuels', () => {
+    const nouveau = product('fibre', 'Fibre', 'internet', 'mensuel', 50);
+    const ponctuel = product('routeur', 'Routeur', 'equipement', 'unique', 100);
+    const config = {
+      actif: true,
+      regles: [],
+      produits: {},
+      remise_globale: { actif: true, remise_type: 'pourcentage' as const, remise_valeur: 20 },
+    };
+
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(24);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, config))).toBe(40);
+    expect(resolveRemiseProduit(ponctuel, config).remise_valeur).toBeUndefined();
+    expect(getEligibleDiscountProducts({
+      rules: [],
+      products: [produit, nouveau, ponctuel],
+      reponses: [{ question_id: 'produits', valeur: [produit.nom, nouveau.nom, ponctuel.nom] }],
+      donneesExtraites: {},
+      spConfigRemises: config,
+    }).map((p) => p.id)).toEqual(['mobile', 'fibre']);
+  });
+
+  it('priorise les exceptions par produit sur la remise globale', () => {
+    const config: SpConfigRemises = {
+      actif: true,
+      regles: [],
+      remise_globale: { actif: true, remise_type: 'fixe' as const, remise_valeur: 5 },
+      produits: {
+        [produit.id]: { mode: 'catalogue' as const },
+      },
+    };
+
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(27);
+    config.produits[produit.id] = { mode: 'aucune' as const };
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBeNull();
+    const autre = product('autre', 'Autre forfait', 'fixe', 'mensuel', 30);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(autre, config))).toBe(25);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(autre, {
+      ...config,
+      produits: { [autre.id]: { mode: 'personnalisee', remise_type: 'pourcentage', remise_valeur: 50 } },
+    }))).toBe(15);
+  });
+
+  it('n’applique pas la remise globale lorsqu’elle est désactivée ou hors limites', () => {
+    const nouveau = product('fibre', 'Fibre', 'internet', 'mensuel', 50);
+    const config = {
+      actif: true,
+      regles: [],
+      produits: {},
+      remise_globale: { actif: false, remise_type: 'pourcentage' as const, remise_valeur: 20 },
+    };
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, config))).toBeNull();
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit, config))).toBe(27);
+    expect(calculerPrixRemiseProduit(resolveRemiseProduit(nouveau, {
+      ...config, remise_globale: { ...config.remise_globale, actif: true, remise_valeur: 120 },
+    }))).toBeNull();
+    expect(getEligibleDiscountProducts({
+      rules: [],
+      products: [nouveau],
+      reponses: [{ question_id: 'produit', valeur: nouveau.nom }],
+      donneesExtraites: {},
+      spConfigRemises: { ...config, actif: false, remise_globale: { ...config.remise_globale, actif: true } },
+    })).toHaveLength(0);
+  });
 
   it('utilise la remise catalogue sans surcharge', () => {
     expect(calculerPrixRemiseProduit(resolveRemiseProduit(produit))).toBe(27);

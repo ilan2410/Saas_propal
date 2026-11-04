@@ -10,14 +10,15 @@ import { SpRealTimeCart } from '@/components/sp/SpRealTimeCart';
 import { SaRealTimeCart } from '@/components/sp/SaRealTimeCart';
 import { SpMargeWidget } from '@/components/sp/SpMargeWidget';
 import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
-import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
+import type { SpQuestion, SpQuestionReponse, SpAdresse, CatalogueProduit, CatalogueCategorie, SpFiltresCatalogue, SpConsequence, SpRegleRemise, SpCibleCodePromo, SpCodePromo, SpConfigLoyer, SpConfigRemises, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpObjectifConfig, SpConfigResumeRef, SpConfigModeClient, SpLibellesConfig, SpPreferencesProduits, SuggestionsSpCompletes } from '@/types';
 import { evaluateQuestionVisibility, filterCatalogueByFiltre } from '@/lib/sp/evaluateConditions';
 import { clientToSpAddress, findAddressQuestion, isDeliveryIdentical, spAddressToClient, syncLinkedAddresses } from '@/lib/sp/questionVariables';
 import { getEligibleDiscountProducts } from '@/lib/sp/evaluateDiscountRules';
 import { resolvePrixPourQuantite } from '@/lib/catalogue/resolvePrix';
 import { findApplicableBareme } from '@/lib/sp/evaluateBareme';
-import { calculerBaseLoyer, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
+import { calculerBaseLoyer, calculerMontantAnneeLissee, calculerLoyer, calculerRemiseMoisOffert, resolveTotalMensuelFinal, DEFAULT_CONFIG_LOYER, formatEuro } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
+import { synchroniserMargeAuto } from '@/lib/sp/calculMargeAuto';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { normalizePhoneNumber, maskPhoneInput } from '@/lib/utils/formatting';
@@ -57,6 +58,7 @@ export interface SpQuestionnaireUIProps {
   templateId?: string;
   spConfigResumeRef?: SpConfigResumeRef;
   spConfigModeClient?: SpConfigModeClient;
+  spLibelles?: SpLibellesConfig;
   spPreferencesProduits?: SpPreferencesProduits;
   /** Apparence du questionnaire : 'wizard' (assistant guidé, défaut) ou 'chat' (conversation). */
   design?: 'wizard' | 'chat';
@@ -975,6 +977,7 @@ export function SpQuestionnaireUI({
   templateId,
   spConfigResumeRef,
   spConfigModeClient,
+  spLibelles,
   spPreferencesProduits,
   design = 'wizard',
 }: SpQuestionnaireUIProps) {
@@ -985,6 +988,12 @@ export function SpQuestionnaireUI({
   const [donneesExtraites, setDonneesExtraites] = useState<Record<string, unknown>>(
     donneesExtraitesProp ?? {},
   );
+  const autoModeMarge = spConfigLoyer?.widget_marge?.mode === 'automatique';
+  const questionMargeIds = useMemo(() => questions.filter((q) => q.affichage === 'marge').map((q) => q.id), [questions]);
+  const autoSummaryMarge = useMemo(() => autoModeMarge
+    ? calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits)
+    : null,
+  [autoModeMarge, reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits]);
   // Snapshot de `situation_actuelle` à l'ouverture, pour réinitialiser le panier SA.
   const saBaselineRef = useRef<unknown>(
     JSON.parse(JSON.stringify((donneesExtraitesProp ?? {}).situation_actuelle ?? {})),
@@ -1152,6 +1161,12 @@ export function SpQuestionnaireUI({
     hasReportedCompletion.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions]);
+
+  useEffect(() => {
+    if (!autoSummaryMarge || autoSummaryMarge.margeErreur) return;
+    const next = synchroniserMargeAuto(reponses, autoSummaryMarge, questionMargeIds);
+    if (next !== reponses) setReponses(next);
+  }, [autoSummaryMarge, reponses, questionMargeIds]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -1410,15 +1425,19 @@ export function SpQuestionnaireUI({
   }, [reponses, currentIdx, hiddenByConsequence, shownByConsequence, expandedQuestions]);
 
   useEffect(() => {
-    if (!modeClientActif || isTyping) return;
+    if ((!modeClientActif && !autoModeMarge) || isTyping) return;
     const eq = currentIdx < expandedQuestions.length ? expandedQuestions[currentIdx] : null;
     if (!eq) return;
     const aff = eq.question.affichage;
-    if (spConfigModeClient?.passer_question_marge && aff === 'marge') {
-      autoSkipQuestion(eq, '0', [{ question_id: 'sp_marge_calculee', valeur: '0' }]);
-    } else if (spConfigModeClient?.passer_question_code_promo && aff === 'code_promo') {
+    if (autoModeMarge && aff === 'marge') {
+      autoSkipQuestion(eq, String(autoSummaryMarge?.marge ?? 0));
+    } else if (autoModeMarge && aff === 'code_promo' && spCodesPromoCible !== 'abonnements') {
       autoSkipQuestion(eq, '');
-    } else if (spConfigModeClient?.passer_question_remises && aff === 'remise_produits') {
+    } else if (modeClientActif && spConfigModeClient?.passer_question_marge && aff === 'marge') {
+      autoSkipQuestion(eq, '0', [{ question_id: 'sp_marge_calculee', valeur: '0' }]);
+    } else if (modeClientActif && spConfigModeClient?.passer_question_code_promo && aff === 'code_promo') {
+      autoSkipQuestion(eq, '');
+    } else if (modeClientActif && spConfigModeClient?.passer_question_remises && aff === 'remise_produits') {
       const eligibles = getEligibleDiscountProducts({
         rules: discountRules,
         products: catalogue,
@@ -1464,7 +1483,7 @@ export function SpQuestionnaireUI({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, modeClientActif]);
+  }, [currentIdx, modeClientActif, autoModeMarge]);
 
   // Affiche la question demandée.
   // - Mode wizard : affichage immédiat dans la carte active.
@@ -1646,7 +1665,7 @@ export function SpQuestionnaireUI({
 
     const rep: SpQuestionReponse = { question_id: instanceId, valeur };
     const extra = extraReponses ?? [];
-    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
+    const auxiliaryQuestionIds = [`fas_${instanceId}`, `prix_${instanceId}`, `prix_panier_${instanceId}`, `quantite_${instanceId}`, `options_${instanceId}`, `quantite_options_${instanceId}`];
     const eq = expandedQuestions[currentIdx];
     // Build updated reponses synchronously
     let nextReps = [
@@ -1868,10 +1887,10 @@ export function SpQuestionnaireUI({
   const notices = messages.filter((m) => m.from === 'bot');
 
   useEffect(() => {
-    if (!isSimulation || !isDone || hasReportedCompletion.current) return;
+    if (!isSimulation || !isDone || hasReportedCompletion.current || autoSummaryMarge?.margeErreur) return;
     hasReportedCompletion.current = true;
-    onComplete(reponses);
-  }, [isSimulation, isDone, onComplete, reponses]);
+    onComplete(autoSummaryMarge ? synchroniserMargeAuto(reponses, autoSummaryMarge, questionMargeIds) : reponses);
+  }, [isSimulation, isDone, onComplete, reponses, autoSummaryMarge, questionMargeIds]);
 
   // Popups déclenchés par une question (resume_ref / affichage_loyer) : on affiche
   // d'abord un loader ~2 s « le système réfléchit » avant d'ouvrir le popup.
@@ -3030,7 +3049,7 @@ export function SpQuestionnaireUI({
             </div>
           )}
 
-          {currentQuestion.affichage === 'marge' && (() => {
+          {currentQuestion.affichage === 'marge' && !autoModeMarge && (() => {
             // 1. Priorité : config template "duree_depends_question" → lit la réponse à la question SP choisie.
             // 2. Fallback compat : ancienne détection via conséquence renseigner_variable=sp_duree_mois.
             // 3. Sinon : override local (initialisé sur duree_mois_par_defaut du template).
@@ -3090,9 +3109,11 @@ export function SpQuestionnaireUI({
               mois_offerts: remisePourCalculLoyer,
               indemnites: baseSummary.indemnites,
               marge: margeNum,
+              annee_lissee: calculerMontantAnneeLissee(baseSummary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
             }, configLoyer);
             const loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
-            const remiseMoisOffert = configLoyer.mois_offerts_actifs === false ? 0 : remisePourCalculLoyer;
+            const remiseMoisOffert = configLoyer.mois_offerts_actifs === false ||
+              configLoyer.composantes_base?.mois_offerts === false ? 0 : remisePourCalculLoyer;
             const baseLoyer = baseCalculLoyer;
 
             return (
@@ -3241,6 +3262,10 @@ export function SpQuestionnaireUI({
 
             const applyPromo = (code: string) => {
               if (promoPopupLoading) return;
+              if (autoModeMarge && spCodesPromoCible !== 'abonnements') {
+                setPromoError('Ce code promo modifie la marge, calculée automatiquement pour ce template.');
+                return;
+              }
               const found = spCodesPromo.find((c) => c.nom.toLowerCase() === code.trim().toLowerCase());
               if (!found) { setPromoError('Code promo invalide'); return; }
               setPromoError('');
@@ -3270,6 +3295,14 @@ export function SpQuestionnaireUI({
                 abonnementsApresPromo = baseSummary.abonnements.totalMensuel + newRemise;
                 extras.push({ question_id: 'sp_remise_abonnements_promo', valeur: margeVal });
                 extras.push({ question_id: 'sp_abonnements_avant_promo', valeur: String(baseSummary.abonnements.totalMensuel) });
+                if (autoModeMarge) {
+                  const avecPromo = calculateCartSummary(
+                    [...reponsesSansRemise, { question_id: 'sp_remise_abonnements_promo', valeur: margeVal }],
+                    questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits,
+                  );
+                  loyer = avecPromo.loyer;
+                  abonnementsApresPromo = avecPromo.abonnements.totalMensuel;
+                }
               } else {
                 // Cible "totalité" / "loyer" (même mécanisme) : la valeur passe par la marge,
                 // puis par la formule du loyer.
@@ -3289,6 +3322,7 @@ export function SpQuestionnaireUI({
                   mois_offerts: remisePourCalculLoyer,
                   indemnites: baseSummary.indemnites,
                   marge: margeNum,
+                  annee_lissee: calculerMontantAnneeLissee(baseSummary.abonnements.totalMensuel, configLoyer.multiplicateur_annee_lissee),
                 }, configLoyer);
                 loyer = calculerLoyer(bareme, baseCalculLoyer, dureeMois, undefined, configLoyer.formule);
                 abonnementsApresPromo = baseSummary.abonnements.totalMensuel;
@@ -3631,6 +3665,7 @@ export function SpQuestionnaireUI({
       {/* Completion zone */}
       {isDone && (
         <div className="border border-green-200 rounded-lg bg-green-50 p-4 space-y-3">
+          {autoSummaryMarge?.margeErreur && <p role="alert" className="text-sm text-red-600">{autoSummaryMarge.margeErreur}</p>}
           <p className="font-medium text-green-900">
             ✓ Toutes les questions obligatoires ont été répondues.
           </p>
@@ -3707,7 +3742,7 @@ export function SpQuestionnaireUI({
               )}
             </div>
           ) : (
-            <Button onClick={() => onComplete(reponses)} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={() => onComplete(autoSummaryMarge ? synchroniserMargeAuto(reponses, autoSummaryMarge, questionMargeIds) : reponses)} disabled={!!autoSummaryMarge?.margeErreur} className="bg-green-600 hover:bg-green-700">
               <ChevronRight className="w-4 h-4 mr-2" />
               Générer la Situation Proposée
             </Button>
@@ -3731,7 +3766,7 @@ export function SpQuestionnaireUI({
         const spReference = spSummary.totalMensuelFinal;
         const widgetGroupContent = (
           <div className="flex flex-col gap-3 items-end max-h-[calc(100vh-2rem)] overflow-y-auto">
-            {(() => {
+            {(spConfigLoyer?.widget_marge?.mode !== 'automatique' || spConfigLoyer.widget_marge.visible_auto !== false) && (() => {
               const margeRemplie = reponses.some(
                 (r) => r.question_id === 'sp_marge_calculee' && Number.isFinite(Number(r.valeur)),
               );
@@ -3753,7 +3788,7 @@ export function SpQuestionnaireUI({
                   onUpdateReponses={(nextReponses) => {
                     setReponses(nextReponses);
                   }}
-                  gardeFouActif={spConfigModeClient?.garde_fou_marge_actif ?? false}
+                  gardeFouActif={!autoModeMarge && (spConfigModeClient?.garde_fou_marge_actif ?? false)}
                   gardeFouVisible={gardeFouVisible}
                 />
               );
@@ -3808,6 +3843,7 @@ export function SpQuestionnaireUI({
               spPreferencesProduits={spPreferencesProduits}
               modeClientActif={modeClientActif}
               spConfigModeClient={spConfigModeClient}
+              spLibelles={spLibelles}
               onUpdateReponses={(nextReponses) => setReponses(nextReponses)}
             />
           </div>
