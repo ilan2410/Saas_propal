@@ -68,14 +68,6 @@ interface SheetMapping {
   mapping: Record<string, string | string[]>;
 }
 
-interface ArrayMapping {
-  arrayId: string;
-  sheetName: string;
-  startRow: number;
-  stopCondition: 'empty_first_col' | 'max_rows';
-  maxRows?: number;
-  columnMapping: Record<string, string>;
-}
 
 export function AdminTemplateForm({ 
   organizationId, 
@@ -115,16 +107,9 @@ export function AdminTemplateForm({
   const [excelState, setExcelState] = useState<ExcelState>({
     file: null,
     fileName: template?.file_name || null,
-    sheets: [], // On ne charge pas les sheets existantes pour l'instant
+    sheets: [],
     mappings: (template?.file_config?.sheetMappings as unknown as SheetMapping[]) || [],
-    arrayMappings: ((template?.file_config?.arrayMappings as unknown as Partial<ArrayMapping>[]) || []).map(m => ({
-      arrayId: m.arrayId || '',
-      sheetName: m.sheetName || '',
-      startRow: m.startRow || 2,
-      stopCondition: m.stopCondition || 'empty_first_col',
-      maxRows: m.maxRows,
-      columnMapping: m.columnMapping || {}
-    })),
+    arrayMappings: (template?.file_config?.arrayMappings as ExcelState['arrayMappings']) || [],
   });
 
   const DEFAULT_PROMPT = `Tu es un expert en analyse de documents commerciaux (factures téléphonie, contrats, etc.).
@@ -199,12 +184,11 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
             body: JSON.stringify({ fileUrl: template.file_url }),
           });
 
-          if (response.ok) {
-            const data = await response.json();
-            setExcelState(prev => ({ ...prev, sheets: data.sheets || [] }));
-          }
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Impossible de charger le fichier Excel');
+          setExcelState(prev => ({ ...prev, sheets: data.sheets || [] }));
         } catch (err) {
-          console.error('Erreur chargement feuilles:', err);
+          setError(err instanceof Error ? err.message : 'Impossible de charger le fichier Excel');
         } finally {
           setIsFileLoading(false);
         }
@@ -282,25 +266,25 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     }
   }, [activeMerges, allFieldsForPrompt, formData.prompt_template]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveTemplate = async (update: Partial<TemplateData> = {}) => {
+    const dataToSave = { ...formData, ...update };
     setIsLoading(true);
     setError('');
 
     try {
-      const allFields = withRequiredTemplateFields(formData.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
+      const allFields = withRequiredTemplateFields(dataToSave.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
       
       if (allFields.length === 0) {
         setError('Veuillez sélectionner au moins un champ à extraire');
         setIsLoading(false);
         return;
       }
-      if (!formData.secteur) {
+      if (!dataToSave.secteur) {
         setError('Choisissez une activité');
         setIsLoading(false);
         return;
       }
-      if (isDeepSeekSaModel(formData.claude_model) && !isSaExtractionEligible(formData.secteur, allFields)) {
+      if (isDeepSeekSaModel(dataToSave.claude_model) && !isSaExtractionEligible(dataToSave.secteur, allFields)) {
         setError('DeepSeek V4.1 Flash nécessite un template SA téléphonie.');
         setIsLoading(false);
         return;
@@ -314,23 +298,23 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
       // Générer le prompt final avec les fusions si actives
       const finalPrompt = activeMerges.length > 1 
-        ? generateMergedPrompt(formData.prompt_template, activeMerges)
-        : formData.prompt_template;
+        ? generateMergedPrompt(dataToSave.prompt_template, activeMerges)
+        : dataToSave.prompt_template;
 
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organization_id: organizationId,
-          secteur: formData.secteur,
-          nom: formData.nom,
-          description: formData.description,
-          file_type: formData.file_type,
-          file_url: formData.file_url,
-          file_name: formData.file_name,
-          file_size_mb: formData.file_size_mb,
-          file_config: formData.file_config,
-          claude_model: formData.claude_model,
+          secteur: dataToSave.secteur,
+          nom: dataToSave.nom,
+          description: dataToSave.description,
+          file_type: dataToSave.file_type,
+          file_url: dataToSave.file_url,
+          file_name: dataToSave.file_name,
+          file_size_mb: dataToSave.file_size_mb,
+          file_config: dataToSave.file_config,
+          claude_model: dataToSave.claude_model,
           prompt_template: finalPrompt,
           champs_actifs: allFields,
           merge_config: activeMerges,
@@ -446,12 +430,14 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
   const currentAllFields = withRequiredTemplateFields(formData.secteur, getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList));
   const templateDataWithFields = {
     ...formData,
+    id: template?.id,
+    merge_config: activeMerges,
     champs_actifs: currentAllFields
   };
 
   if (showUpload) {
     return (
-      <div className="max-w-5xl mx-auto py-8">
+      <div className="max-w-6xl mx-auto py-8">
         <button
           onClick={() => setShowUpload(false)}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
@@ -460,8 +446,10 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
           Retour au formulaire
         </button>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-8 shadow-sm">
+        {error && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{error}</p>}
+        {isFileLoading ? <div role="status" className="flex items-center gap-2 py-8"><Loader2 className="h-5 w-5 animate-spin" />Chargement du fichier Excel…</div> : <div className="bg-white rounded-lg border border-gray-200 p-8 shadow-sm">
           <Step2UploadTemplate
+            organizationId={organizationId}
             templateData={templateDataWithFields as Partial<TemplateData>}
             updateTemplateData={(data) => setFormData(prev => ({ ...prev, ...data }))}
             excelState={excelState}
@@ -469,15 +457,17 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
             secteur={formData.secteur}
             onNext={() => setShowUpload(false)}
             onPrev={() => setShowUpload(false)}
-            isLoading={isFileLoading}
+            isLoading={isLoading}
+            onSave={() => void saveTemplate()}
+            onExcelSave={(update) => void saveTemplate(update)}
           />
-        </div>
+        </div>}
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <form onSubmit={(event) => { event.preventDefault(); void saveTemplate(); }} className="space-y-8">
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-sm text-red-800">{error}</p>
@@ -560,7 +550,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
                     onClick={() => setShowUpload(true)}
                     className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                   >
-                    Modifier
+                    {formData.file_type === 'excel' ? 'Modifier le mapping Excel' : 'Modifier le fichier'}
                   </button>
                 </div>
               ) : (

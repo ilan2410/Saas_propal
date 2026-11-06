@@ -46,8 +46,6 @@ next-env.d.ts
 PHASE*.md
 plan.md
 prompt.md
-prompt.md
-/migrations
 
 
 # fichier md
@@ -58,3 +56,18 @@ prompt.md
 /.mcp.json
 # Subagent-driven-development scratch workspace
 .superpowers/
+
+# Local deliverables, client catalogues and temporary work
+/outputs/
+/output/
+/tmp/
+/demo-template-work/
+/.dbg/
+/.claude/settings.local.json
+__pycache__/
+*.py[cod]
+/lint.json
+/lint_report*.txt
+/proposition-commerciale-demo-novalis.docx
+/file_000000001ba881f5b293b5430903f82c.png
+/C*scratchpadverification_checklist.txt

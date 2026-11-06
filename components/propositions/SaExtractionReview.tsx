@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Eye, ListChecks, Loader2, Pen
 import {
   TOTAL_BLOCKING_ISSUE_CODES,
   calculateCanonicalSaAnalysis,
+  isContractDocument,
   type ExtractionQualityIssue,
   type InvoiceAnalysisLine,
   type InvoiceAnalysisReport,
@@ -97,6 +98,8 @@ function describeIssue(issue: ExtractionQualityIssue, report: InvoiceAnalysisRep
       return `${where} — « ${line?.label ?? 'une ligne'} » : durée de facturation incohérente. Vérifiez le nombre de mois.`;
     case 'invoice_total_mismatch':
       return `${where} : le détail des lignes (${euro(issue.actual as number)}) ne correspond pas au total HT imprimé sur la facture (${euro(issue.expected as number)}). Modifiez, ajoutez ou supprimez une ligne.`;
+    case 'contract_amount_to_confirm':
+      return `${where} — « ${line?.label ?? 'une ligne'} » provient d'un contrat, pas d'une facture : répondez « Comptabiliser ce montant ? » pour l'inclure ou non dans le total.`;
     case 'monthly_total_mismatch':
       return `Le détail des factures totalise ${euro(issue.expected as number)}, mais l'extraction avait annoncé ${euro(issue.actual as number)}. Vérifiez les lignes des factures ci-dessous.`;
     default:
@@ -116,11 +119,43 @@ function scrollToId(id: string) {
 
 // ── Ligne de facture ─────────────────────────────────────────────────────
 
+/** Question simple pour une ligne issue d'un contrat : compter ou non ce montant. */
+function CountingQuestion({
+  value,
+  onAnswer,
+}: {
+  value: InvoiceAnalysisLine['counting_confirmation'];
+  onAnswer: (answer: 'yes' | 'no') => void;
+}) {
+  const option = (answer: 'yes' | 'no', label: string) => (
+    <button
+      type="button"
+      onClick={() => onAnswer(answer)}
+      aria-pressed={value === answer}
+      className={`rounded-lg border px-3 py-1 text-xs font-semibold ${
+        value === answer
+          ? 'border-amber-700 bg-amber-700 text-white'
+          : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
+      <span className="font-medium">Ce montant vient d&apos;un contrat. Comptabiliser ce montant ?</span>
+      {option('yes', 'Oui')}
+      {option('no', 'Non')}
+    </div>
+  );
+}
+
 function InvoiceLineRow({
   id,
   line,
   flagMessages,
   editing,
+  askCounting,
   onToggleEdit,
   onUpdate,
   onDelete,
@@ -129,25 +164,27 @@ function InvoiceLineRow({
   line: InvoiceAnalysisLine;
   flagMessages: string[];
   editing: boolean;
+  /** Ligne issue d'un contrat : affiche la question « Comptabiliser ce montant ? ». */
+  askCounting: boolean;
   onToggleEdit: () => void;
   onUpdate: (key: string, value: unknown) => void;
   onDelete: () => void;
 }) {
-  const flagged = flagMessages.length > 0;
+  const flagged = flagMessages.length > 0 || (askCounting && line.counting_confirmation === undefined);
+  const excluded = askCounting && line.counting_confirmation === 'no';
 
   if (!editing) {
     return (
       <div
         id={id}
-        className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm ${
-          flagged ? 'border border-amber-300 bg-amber-50' : ''
-        }`}
+        className={`rounded-lg px-2 py-1.5 text-sm ${flagged ? 'border border-amber-300 bg-amber-50' : ''}`}
       >
-        <span className="min-w-0 truncate text-gray-700" title={line.label}>
+      <div className="flex items-center justify-between gap-3">
+        <span className={`min-w-0 truncate ${excluded ? 'text-gray-400 line-through' : 'text-gray-700'}`} title={line.label}>
           {line.label}
         </span>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="tabular-nums text-gray-900">{euro(line.amount_ht_signed ?? line.amount_ttc_signed)}</span>
+          <span className={`tabular-nums ${excluded ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{euro(line.amount_ht_signed ?? line.amount_ttc_signed)}</span>
           <button
             type="button"
             onClick={onToggleEdit}
@@ -165,6 +202,12 @@ function InvoiceLineRow({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
+      {askCounting && (
+        <div className="mt-1.5">
+          <CountingQuestion value={line.counting_confirmation} onAnswer={(answer) => onUpdate('counting_confirmation', answer)} />
+        </div>
+      )}
       </div>
     );
   }
@@ -233,7 +276,12 @@ function InvoiceLineRow({
           Récurrent
         </label>
       </div>
-      {flagged && (
+      {askCounting && (
+        <div className="mt-2 border-t border-amber-200 pt-2">
+          <CountingQuestion value={line.counting_confirmation} onAnswer={(answer) => onUpdate('counting_confirmation', answer)} />
+        </div>
+      )}
+      {flagMessages.length > 0 && (
         <ul className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-xs text-amber-900">
           {flagMessages.map((message, i) => (
             <li key={i} className="flex gap-1.5">
@@ -622,6 +670,7 @@ export function SaExtractionReview({
                           line={line}
                           flagMessages={lineIssuesByKey.get(key) ?? []}
                           editing={editingLines.has(key)}
+                          askCounting={isContractDocument(invoice)}
                           onToggleEdit={() => toggleLineEdit(key)}
                           onUpdate={(field, value) => updateLine(invoiceIndex, lineIndex, field, value)}
                           onDelete={() => deleteLine(invoiceIndex, lineIndex)}

@@ -29,6 +29,18 @@ const tableMapping = {
 };
 
 describe('fillExcelWorkbook', () => {
+  it('remplit un tableau dont une colonne contient des formules partagées sans erreur ExcelJS', async () => {
+    const template = await sourceWorkbook((_book, sheet) => {
+      sheet.getCell('A3').value = 1;
+      sheet.getCell('B4').value = { formula: 'A4*2', shareType: 'shared', ref: 'B4:B6' } as ExcelJS.CellFormulaValue;
+      sheet.getCell('B5').value = { sharedFormula: 'B4' } as unknown as ExcelJS.CellValue;
+      sheet.getCell('B6').value = { sharedFormula: 'B4' } as unknown as ExcelJS.CellValue;
+    });
+    const config = { preserverFormules: false, arrayMappings: [{ ...tableMapping, overflowMode: 'error' as const }] };
+    const bytes = await fillExcelWorkbook(template.slice(0) as ArrayBuffer, { articles: [{ designation: 'a', prix: 1 }, { designation: 'b', prix: 2 }] }, {}, config);
+    expect(bytes.byteLength).toBeGreaterThan(0);
+  });
+
   it('applique les styles par champ Excel sans modifier les autres cellules ni le modèle', async () => {
     const source = await sourceWorkbook((_book, sheet) => {
       sheet.getCell('A4').font = { name: 'Calibri', color: { argb: 'FF123456' }, size: 9 };

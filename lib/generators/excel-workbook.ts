@@ -123,6 +123,16 @@ function readConfig(raw: UnknownRecord): ExcelConfig {
   return { ...raw, sheetMappings: sheets, arrayMappings: arrays, composedMappings: composed, fieldTypes } as ExcelConfig;
 }
 
+/** Turn shared formulas into plain ones: overwriting a shared master would make ExcelJS fail on write. */
+function unshareFormulas(workbook: ExcelJS.Workbook) {
+  workbook.eachSheet(sheet => sheet.eachRow(row => row.eachCell(cell => {
+    if (cell.type !== ExcelJS.ValueType.Formula) return;
+    const { result } = cell.value as ExcelJS.CellFormulaValue;
+    const formula = cell.formula;
+    if (formula) cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+  })));
+}
+
 function normalizeRef(ref: string): string {
   const clean = ref.replace(/\$/g, '').toUpperCase();
   const match = /^([A-Z]{1,3})([1-9]\d{0,6})$/.exec(clean);
@@ -221,6 +231,7 @@ export async function fillExcelWorkbook(
   const workbook = new ExcelJS.Workbook();
   try { await workbook.xlsx.load(templateBuffer); }
   catch { throw new Error('Le fichier template Excel est corrompu ou invalide. Utilisez un fichier .xlsx.'); }
+  unshareFormulas(workbook);
   const config = readConfig(rawConfig);
   const errors = validateExcelMappings(config, workbook.worksheets);
   if (errors.length) throw new Error(errors.join('\n'));

@@ -1,3 +1,4 @@
+import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
@@ -7,7 +8,7 @@ import { fillExcelWorkbook } from '@/lib/generators/excel-proposition';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
-import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
+import { buildPropositionAuthorProfile } from '@/lib/auth/org-context';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import type { EntrepriseOrgFields } from '@/lib/generators/word-data-utils';
 import type {
@@ -36,7 +37,7 @@ function isPlainObject(value: unknown): value is UnknownRecord {
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    let supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -45,16 +46,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const formData = await request.formData();
+    const context = await resolveTemplateEditorContext(supabase, user, formData.get('organizationId'));
+    if (!context) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { ctx } = context;
+    supabase = context.client;
 
     if (!ctx.permissions.download_proposition) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const formData = await request.formData();
     const templateId = formData.get('templateId');
     const uploadedFile = formData.get('file');
 

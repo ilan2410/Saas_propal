@@ -1,3 +1,4 @@
+import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -21,7 +22,7 @@ import { renderClauses } from '@/lib/sp/renderClauses';
 import { buildSpReference } from '@/lib/sp/buildReference';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
-import { resolveOrgContext, buildPropositionAuthorProfile } from '@/lib/auth/org-context';
+import { buildPropositionAuthorProfile } from '@/lib/auth/org-context';
 import type { WordConfig, SpPreferencesProduits, SpClauseConditionnelle, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpQuestion, SpQuestionReponse, CatalogueProduit, SuggestionsSpCompletes } from '@/types';
 
 /**
@@ -31,7 +32,7 @@ import type { WordConfig, SpPreferencesProduits, SpClauseConditionnelle, SpConfi
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    let supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -40,16 +41,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const formData = await request.formData();
+    const context = await resolveTemplateEditorContext(supabase, user, formData.get('organizationId'));
+    if (!context) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { ctx } = context;
+    supabase = context.client;
 
     if (!ctx.permissions.download_proposition) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const formData = await request.formData();
     const templateId = formData.get('templateId');
     const uploadedFile = formData.get('file');
 

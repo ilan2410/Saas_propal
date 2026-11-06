@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
 
 // Types réellement supportés en aval par les générateurs (lib/generators) :
 // Excel (ExcelJS) et Word (Docxtemplater). Le PDF est accepté côté template
@@ -15,7 +15,7 @@ const ALLOWED_TEMPLATE_MIME_TYPES = [
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    let supabase = await createClient();
 
     const {
       data: { user },
@@ -25,16 +25,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const ctx = await resolveOrgContext(supabase, user);
-    if (!ctx) {
+    const formData = await request.formData();
+    const context = await resolveTemplateEditorContext(supabase, user, formData.get('organizationId'));
+    if (!context) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { ctx } = context;
+    supabase = context.client;
 
     if (ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const formData = await request.formData();
     const file = formData.get('file') as File;
 
     if (!file) {

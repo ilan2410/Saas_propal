@@ -22,6 +22,7 @@ interface SheetMapping {
 }
 
 interface Props {
+  organizationId?: string;
   templateData: Partial<TemplateData>;
   updateTemplateData: (data: Partial<TemplateData>) => void;
   excelState: ExcelState;
@@ -391,6 +392,7 @@ function getVariableHelp(field: string): { label: string; description: string; e
 }
 
 export function Step2UploadTemplate({
+  organizationId,
   templateData,
   updateTemplateData,
   excelState,
@@ -706,6 +708,7 @@ export function Step2UploadTemplate({
     try {
       const formData = new FormData();
       formData.append('templateId', templateData.id);
+      if (organizationId) formData.append('organizationId', organizationId);
       if (file) formData.append('file', file);
 
       const response = await fetch('/api/templates/preview-word', {
@@ -769,6 +772,7 @@ export function Step2UploadTemplate({
       setExcelNoProposition(false);
       const fd = new FormData();
       fd.append('templateId', templateData.id);
+      if (organizationId) fd.append('organizationId', organizationId);
       if (file) fd.append('file', file);
       fd.append('fileConfig', JSON.stringify(mergeExcelTemplateConfig(
         (templateData.file_config ?? {}) as Record<string, unknown>,
@@ -955,6 +959,7 @@ export function Step2UploadTemplate({
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('file_type', uploadType);
+      if (organizationId) formData.append('organizationId', organizationId);
 
       const response = await fetch('/api/templates/upload', {
         method: 'POST',
@@ -1007,6 +1012,7 @@ export function Step2UploadTemplate({
     try {
       const form = new FormData();
       form.append('fileConfig', JSON.stringify(config));
+      if (organizationId) form.append('organizationId', organizationId);
       if (file) form.append('file', file);
       if (templateData.id) form.append('templateId', templateData.id);
       const response = await fetch('/api/templates/validate-excel', { method: 'POST', body: form });

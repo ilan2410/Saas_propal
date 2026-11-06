@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateCanonicalSaAnalysis, type InvoiceAnalysisReport } from './invoice-analysis';
+import { calculateCanonicalSaAnalysis, hasTotalBlockingIssue, type InvoiceAnalysisReport } from './invoice-analysis';
 
 const evidence = [{ document_index: 0, page: 1, text: 'Montant source' }];
 
@@ -191,6 +191,69 @@ describe('calculateCanonicalSaAnalysis', () => {
       const result = calculateCanonicalSaAnalysis(schedule(true), []);
       expect(result.invoices[0].lines[0].monthly_amount_ht).toBe(110);
       expect(result.total_ht_mensuel_client).toBe(110);
+    });
+  });
+
+  describe('ligne issue d\'un contrat (« Comptabiliser ce montant ? »)', () => {
+    function contractReport(confirmation?: 'yes' | 'no'): InvoiceAnalysisReport {
+      const rent = { ...line('loc', 'Location linéaire 63 mois', 220), category: 'location' as const, ...(confirmation ? { counting_confirmation: confirmation } : {}) };
+      const base = report();
+      return {
+        ...base,
+        declared_monthly_total_ht: 301.46 + 220,
+        invoices: [
+          ...base.invoices,
+          {
+            document_index: 2,
+            document_kind: 'contract',
+            invoice_number: null,
+            supplier: 'Paritel',
+            account_number: null,
+            site: null,
+            period_start: null,
+            period_end: null,
+            billing_months: 1,
+            printed_total_ht: null,
+            printed_total_ttc: null,
+            lines: [rent],
+          },
+        ],
+      };
+    }
+    const fields = ['client.siret', 'situation_actuelle.abonnements[].libelle'];
+
+    it('compte le montant provisoirement et demande confirmation tant que le client n\'a pas répondu', () => {
+      const result = calculateCanonicalSaAnalysis(contractReport(), fields);
+
+      expect(result.total_ht_mensuel_client).toBe(521.46);
+      expect(result.issues).toContainEqual(expect.objectContaining({
+        code: 'contract_amount_to_confirm',
+        path: 'invoices.2.lines.0',
+        actual: 220,
+      }));
+      expect(hasTotalBlockingIssue(result.issues)).toBe(true);
+    });
+
+    it('garde le montant et lève l\'anomalie quand le client répond Oui', () => {
+      const result = calculateCanonicalSaAnalysis(contractReport('yes'), fields);
+
+      expect(result.total_ht_mensuel_client).toBe(521.46);
+      expect(result.issues).toEqual([]);
+    });
+
+    it('retire le montant du total quand le client répond Non', () => {
+      const result = calculateCanonicalSaAnalysis({ ...contractReport('no'), declared_monthly_total_ht: 301.46 }, fields);
+
+      expect(result.total_ht_mensuel_client).toBe(301.46);
+      expect(result.issues).toEqual([]);
+    });
+
+    it('ne pose pas la question pour une facture ou un échéancier', () => {
+      const value = contractReport();
+      value.invoices[2].document_kind = 'schedule';
+      const result = calculateCanonicalSaAnalysis(value, fields);
+
+      expect(result.issues).not.toContainEqual(expect.objectContaining({ code: 'contract_amount_to_confirm' }));
     });
   });
 

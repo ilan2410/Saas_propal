@@ -38,10 +38,21 @@ export const InvoiceLineSchema = z.object({
    * rattrapage ci-dessous. Jamais produit par l'IA.
    */
   user_edited: z.boolean().optional(),
+  /**
+   * Réponse du client à « Comptabiliser ce montant ? » pour une ligne issue d'un
+   * contrat (et non d'une facture). Absent tant qu'il n'a pas répondu : le
+   * montant est alors compté provisoirement et l'écran de vérification s'ouvre.
+   * Jamais produit par l'IA.
+   */
+  counting_confirmation: z.enum(['yes', 'no']).optional(),
 });
+
+export const DocumentKindSchema = z.enum(['invoice', 'schedule', 'contract', 'other']);
 
 export const InvoiceAnalysisSchema = z.object({
   document_index: z.number(),
+  /** Nature du document source ; absent sur les rapports antérieurs (traités comme des factures). */
+  document_kind: DocumentKindSchema.optional(),
   invoice_number: z.string().nullable(),
   supplier: z.string().nullable(),
   account_number: z.string().nullable(),
@@ -97,6 +108,7 @@ const AiInvoiceLineSchema = z.object({
 
 const AiInvoiceSchema = z.object({
   document_index: z.number(),
+  document_kind: DocumentKindSchema,
   invoice_number: z.string(),
   supplier: z.string(),
   account_number: z.string(),
@@ -161,7 +173,7 @@ export interface NormalizedInvoiceLine extends InvoiceAnalysisLine {
 }
 
 export interface ExtractionQualityIssue {
-  code: 'missing_field_coverage' | 'missing_structured_field' | 'ambiguous_field' | 'invalid_period' | 'missing_amount' | 'invoice_total_mismatch' | 'monthly_total_mismatch';
+  code: 'missing_field_coverage' | 'missing_structured_field' | 'ambiguous_field' | 'invalid_period' | 'missing_amount' | 'invoice_total_mismatch' | 'monthly_total_mismatch' | 'contract_amount_to_confirm';
   path: string;
   message: string;
   expected?: number | string;
@@ -180,6 +192,7 @@ export const TOTAL_BLOCKING_ISSUE_CODES: ReadonlySet<ExtractionQualityIssue['cod
   'invoice_total_mismatch',
   'missing_amount',
   'invalid_period',
+  'contract_amount_to_confirm',
 ]);
 
 export function hasTotalBlockingIssue(issues: readonly ExtractionQualityIssue[]): boolean {
@@ -228,6 +241,14 @@ function normalizeInvoiceLineCategory(line: InvoiceAnalysisLine): InvoiceAnalysi
   return /\b(?:appels? vers |vers )?(?:les )?(?:services?|numeros?) speciaux\b|\bsva\b|\bhors[- ]forfait\b/.test(text)
     ? 'variable'
     : line.category;
+}
+
+/**
+ * Les lignes d'un contrat (et non d'une facture ou d'un échéancier) viennent
+ * d'une phrase libre : le client doit confirmer qu'elles sont bien payées.
+ */
+export function isContractDocument(invoice: Pick<InvoiceAnalysisReport['invoices'][number], 'document_kind'>): boolean {
+  return invoice.document_kind === 'contract';
 }
 
 function parseFrenchDate(value: string | null): Date | null {
@@ -295,6 +316,17 @@ export function calculateCanonicalSaAnalysis(
         return;
       }
       const monthlyAmount = lineTotal / months;
+      if (isContractDocument(invoice)) {
+        if (line.counting_confirmation === 'no') return;
+        if (line.counting_confirmation === undefined) {
+          issues.push({
+            code: 'contract_amount_to_confirm',
+            path: `invoices.${invoiceIndex}.lines.${lineIndex}`,
+            message: `Montant issu d'un contrat : « ${line.label} » (${round2(monthlyAmount)} € HT/mois). Comptabiliser ce montant ?`,
+            actual: round2(monthlyAmount),
+          });
+        }
+      }
       hasComparableLines = true;
       printedComparableTotal += lineTotal;
       normalizedLines.push({ ...line, category, billing_months: months, amount_ht: round2(signedAmount), monthly_amount_ht: round2(monthlyAmount) });

@@ -1,7 +1,7 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { resolveOrgContext } from '@/lib/auth/org-context';
+import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { validateUploadedFile } from '@/lib/security/validate-upload';
 import { fillExcelWorkbook } from '@/lib/generators/excel-workbook';
@@ -9,13 +9,15 @@ import { isPlainObject } from '@/lib/generators/data-utils';
 
 /** Validate the actual workbook before saving an Excel mapping (no storage writes). */
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
+  let supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const ctx = await resolveOrgContext(supabase, user);
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const form = await request.formData();
+    const context = await resolveTemplateEditorContext(supabase, user, form.get('organizationId'));
+    if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { ctx } = context;
+    supabase = context.client;
     const rawConfig = form.get('fileConfig');
     const config: unknown = typeof rawConfig === 'string' ? JSON.parse(rawConfig) : null;
     if (!isPlainObject(config)) return NextResponse.json({ error: 'Configuration Excel invalide.' }, { status: 400 });
