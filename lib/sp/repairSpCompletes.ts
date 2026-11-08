@@ -1,9 +1,12 @@
 import { calculateCartSummary, type CartLine } from '@/lib/sp/calculateCart';
+import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
 import { getTableProductOrder, orderProductsByPreference } from '@/lib/sp/productTableOrder';
 import { formatBdcOperatorNameWithNumber } from '@/lib/sp/bdcOperator';
+import { clientToSpAddress, resolveSpAddressPreferences } from '@/lib/sp/questionVariables';
 import type {
   CatalogueProduit,
+  SpAdresse,
   SpBdcInternetLigne,
   SpBdcMaterielLigne,
   SpBdcOperateurLigne,
@@ -25,6 +28,48 @@ import type {
 } from '@/types';
 
 type UnknownRecord = Record<string, unknown>;
+
+export interface RepairSpCompletesOptions {
+  /** Force la reconstruction même si le panier est vide (permet de supprimer jusqu'au dernier produit). */
+  allowEmptyCart?: boolean;
+  /** Surcharges directes sur les champs Client & adresses (édités depuis le Résumé SP). */
+  clientOverrides?: {
+    sp_fournisseur_propose?: string;
+    sp_adresse_facturation?: SpAdresse;
+    sp_adresse_livraison?: SpAdresse | null;
+    sp_livraison_identique?: boolean;
+  };
+}
+
+function isPlainObject(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function createEmptySpCompletes(donneesExtraites: UnknownRecord): SuggestionsSpCompletes {
+  const client = isPlainObject(donneesExtraites.client) ? donneesExtraites.client : undefined;
+  const defaultBilling = client ? clientToSpAddress(client) : undefined;
+  return {
+    suggestions: [],
+    synthese: {
+      cout_total_actuel: 0,
+      cout_total_propose: 0,
+      economie_mensuelle: 0,
+      economie_annuelle: 0,
+    },
+    ...(defaultBilling ? { sp_adresse_facturation: defaultBilling, sp_livraison_identique: true } : {}),
+    sp_lignes_mobiles: [],
+    sp_lignes_fixes: [],
+    sp_internet: [],
+    sp_materiel: [],
+    sp_economie_mensuelle: '',
+    sp_economie_annuelle: '',
+    sp_total_actuel: formatEuro(0),
+    sp_total_propose: formatEuro(0),
+    sp_ameliorations: '',
+    sp_nb_lignes: '0',
+    sp_est_economie: 'Non',
+  };
+}
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
@@ -130,7 +175,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
   lineType: T['sp_type_ligne'],
   catalogueMap: Map<string, CatalogueProduit>,
 ): T[] {
-  if (cartLines.length === 0) return existingLines;
+  if (cartLines.length === 0) return [];
 
   return cartLines.map((cartLine, index) => {
     const existing = existingLines[index];
@@ -141,7 +186,7 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
 
     return {
       sp_nom_ligne: existing?.sp_nom_ligne ?? cartLine.produitNom,
-      sp_numero: existing?.sp_numero,
+      sp_numero: cartLine.numero || existing?.sp_numero,
       sp_quantite: String(cartLine.quantite),
       sp_produit: cartLine.produitNom,
       sp_produit_id: cartLine.produitId ?? existing?.sp_produit_id,
@@ -163,7 +208,9 @@ function rebuildTelecomLinesFromQuestionnaire<T extends SpLigneMobile | SpLigneF
 /**
  * Reconstruit l'intégralité d'une SP (forfaits, matériel, cadeaux, loyer, remises,
  * indemnités) à partir des dernières réponses au questionnaire + du panier calculé.
- * Fonction pure, partagée entre l'aperçu Word et la génération du document final
+ * Fonctionne aussi sans questionnaire SP (`questions = []`) ou sans `sp` initial (`sp = null`)
+ * lorsque `options.allowEmptyCart` est activé ou que des réponses / produits auto sont présents.
+ * Fonction pure, partagée entre l'aperçu Word, l'édition du Résumé SP et la génération du document final
  * pour garantir un rendu identique partout.
  */
 export function repairSpCompletesFromQuestionnaire(
@@ -177,8 +224,14 @@ export function repairSpCompletesFromQuestionnaire(
   spPreferencesProduits?: SpPreferencesProduits,
   spCategoriesOrder?: SpCategorie[],
   spTableProductOrders?: SpTableProductOrders,
+  options?: RepairSpCompletesOptions,
 ): SuggestionsSpCompletes | null {
-  if (!sp || reponses.length === 0 || questions.length === 0 || catalogue.length === 0) return sp;
+  const allowEmptyCart = options?.allowEmptyCart === true;
+  if (!sp && !allowEmptyCart && reponses.length === 0) return null;
+  if (!allowEmptyCart && reponses.length === 0) return sp;
+  if (!allowEmptyCart && catalogue.length === 0) return sp;
+
+  const baseSp: SuggestionsSpCompletes = sp ?? createEmptySpCompletes(donneesExtraites);
 
   const cart = calculateCartSummary(reponses, questions, catalogue, donneesExtraites, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
   const catalogueMap = new Map<string, CatalogueProduit>();
@@ -186,17 +239,23 @@ export function repairSpCompletesFromQuestionnaire(
   const mobileCartLines = cart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'mobile');
   const fixeCartLines = cart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'fixe');
   const internetCartLines = cart.lines.filter((line) => line.type_frequence === 'mensuel' && line.categorie === 'internet');
-  const hasTelecomSelections = mobileCartLines.length > 0 || fixeCartLines.length > 0 || internetCartLines.length > 0;
+  const hasAnyCartOrEdit = allowEmptyCart
+    || cart.lines.length > 0
+    || reponses.some((r) => r.question_id === 'auto_exclu' || r.question_id.startsWith('manual_'));
+  const hasTelecomSelections = hasAnyCartOrEdit
+    || mobileCartLines.length > 0
+    || fixeCartLines.length > 0
+    || internetCartLines.length > 0;
 
   const mobiles = hasTelecomSelections
-    ? (mobileCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp.sp_lignes_mobiles ?? [], mobileCartLines, 'Mobile', catalogueMap) : [])
-    : (sp.sp_lignes_mobiles ?? []);
+    ? rebuildTelecomLinesFromQuestionnaire(baseSp.sp_lignes_mobiles ?? [], mobileCartLines, 'Mobile', catalogueMap)
+    : (baseSp.sp_lignes_mobiles ?? []);
   const fixes = hasTelecomSelections
-    ? (fixeCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp.sp_lignes_fixes ?? [], fixeCartLines, 'Fixe', catalogueMap) : [])
-    : (sp.sp_lignes_fixes ?? []);
+    ? rebuildTelecomLinesFromQuestionnaire(baseSp.sp_lignes_fixes ?? [], fixeCartLines, 'Fixe', catalogueMap)
+    : (baseSp.sp_lignes_fixes ?? []);
   const internet = hasTelecomSelections
-    ? (internetCartLines.length > 0 ? rebuildTelecomLinesFromQuestionnaire(sp.sp_internet ?? [], internetCartLines, 'Internet', catalogueMap) : [])
-    : (sp.sp_internet ?? []);
+    ? rebuildTelecomLinesFromQuestionnaire(baseSp.sp_internet ?? [], internetCartLines, 'Internet', catalogueMap)
+    : (baseSp.sp_internet ?? []);
   const toutes = orderProductBuckets(
     { internet, fixe: fixes, mobile: mobiles },
     spCategoriesOrder,
@@ -381,7 +440,7 @@ export function repairSpCompletesFromQuestionnaire(
     });
 
   const cadeauCartLines = cart.lines.filter((line) => line.categorie === 'cadeau');
-  const sp_cadeaux_table: SpCadeauLigne[] = cadeauCartLines.length > 0
+  const sp_cadeaux_table: SpCadeauLigne[] = (cadeauCartLines.length > 0 || hasAnyCartOrEdit)
     ? cadeauCartLines.map((line): SpCadeauLigne => ({
         sp_cadeau_nom: line.produitNom,
         sp_cadeau_ref: undefined,
@@ -390,7 +449,7 @@ export function repairSpCompletesFromQuestionnaire(
         _valeur_raw: line.prixTotal,
         _libre: !line.produitId,
       }))
-    : (sp.sp_cadeaux_table ?? []);
+    : (baseSp.sp_cadeaux_table ?? []);
 
   const totalBdcOp = sp_bdc_operateur_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
   const totalBdcInt = sp_bdc_internet_table.reduce((s, l) => s + l._prix_mensuel_raw, 0);
@@ -408,8 +467,49 @@ export function repairSpCompletesFromQuestionnaire(
     (line) => 'sp_materiel_nom' in line ? line.sp_materiel_produit_id : line.sp_produit_id,
   );
 
+  // Économies et totaux globaux
+  const totalActuelFromLines = toutes.reduce((s, l) => s + l._prix_actuel_raw, 0);
+  const saTotalMensuel = calculateSaCartSummary(donneesExtraites).totalMensuel;
+  const totalActuelEffectif = totalActuelFromLines > 0
+    ? totalActuelFromLines
+    : saTotalMensuel > 0
+      ? saTotalMensuel
+      : undefined;
+  const economieTotaleFromLines = toutes.reduce((s, l) => s + l._economie_raw, 0);
+  const economieTotaleEffectif = totalActuelFromLines > 0
+    ? economieTotaleFromLines
+    : totalActuelEffectif != null
+      ? totalActuelEffectif - cart.totalMensuelFinal
+      : undefined;
+
+  // Adresses et fournisseur : priorité aux overrides explicites > réponses questions > baseSp
+  const addressFromQuestions = questions.length > 0
+    ? resolveSpAddressPreferences(questions, reponses)
+    : undefined;
+  const overrides = options?.clientOverrides;
+  const resolvedLivraisonIdentique = overrides?.sp_livraison_identique !== undefined
+    ? overrides.sp_livraison_identique
+    : baseSp.sp_livraison_identique !== undefined
+      ? baseSp.sp_livraison_identique
+      : addressFromQuestions?.livraison_identique ?? true;
+  const resolvedAdresseFacturation = overrides?.sp_adresse_facturation !== undefined
+    ? overrides.sp_adresse_facturation
+    : baseSp.sp_adresse_facturation ?? addressFromQuestions?.adresse_facturation;
+  const resolvedAdresseLivraison = resolvedLivraisonIdentique
+    ? undefined
+    : overrides?.sp_adresse_livraison !== undefined
+      ? overrides.sp_adresse_livraison
+      : baseSp.sp_adresse_livraison ?? addressFromQuestions?.adresse_livraison;
+  const resolvedFournisseur = overrides?.sp_fournisseur_propose !== undefined
+    ? overrides.sp_fournisseur_propose
+    : baseSp.sp_fournisseur_propose;
+
   const repaired: SuggestionsSpCompletes = {
-    ...sp,
+    ...baseSp,
+    ...(resolvedFournisseur !== undefined ? { sp_fournisseur_propose: resolvedFournisseur } : {}),
+    ...(resolvedAdresseFacturation !== undefined ? { sp_adresse_facturation: resolvedAdresseFacturation } : {}),
+    sp_adresse_livraison: resolvedAdresseLivraison,
+    sp_livraison_identique: resolvedLivraisonIdentique,
     sp_lignes_mobiles: mobiles,
     sp_lignes_fixes: fixes,
     sp_internet: internet,
@@ -419,6 +519,8 @@ export function repairSpCompletesFromQuestionnaire(
     ),
     sp_fixes_mobiles_internet: toutes,
     sp_toutes_lignes: toutes,
+    sp_tout: [...toutes, ...sp_materiel],
+    sp_nb_lignes: String(toutes.length),
     sp_materiel,
     sp_materiel_detail,
     sp_situation_proposee_forfaits: situationForfaitsLines.map(toSituationLigne),
@@ -431,6 +533,16 @@ export function repairSpCompletesFromQuestionnaire(
     sp_bdc_internet_table,
     sp_bdc_materiel_table,
     sp_cadeaux_table,
+    sp_total_propose: formatEuro(totalForfaits),
+    ...(totalActuelEffectif != null ? { sp_total_actuel: formatEuro(totalActuelEffectif) } : {}),
+    ...(economieTotaleEffectif != null ? {
+      sp_economie_mensuelle: economieTotaleEffectif > 0 ? formatEuro(economieTotaleEffectif) : '',
+      sp_economie_annuelle: economieTotaleEffectif > 0 ? formatEuro(economieTotaleEffectif * 12) : '',
+      sp_est_economie: economieTotaleEffectif > 0 ? 'Oui' : 'Non',
+      ...(totalActuelEffectif && totalActuelEffectif > 0 ? {
+        sp_taux_economie_pct: Math.round((economieTotaleEffectif / totalActuelEffectif) * 100 * 10) / 10,
+      } : {}),
+    } : {}),
     sp_total_forfaits_mensuel_ht: formatEuro(totalForfaits),
     sp_total_forfaits_mensuel_ht_avant_remise_operateur: formatEuro(totalForfaitsAvantRemise),
     sp_total_materiel_ht: formatEuro(totalMateriel),
@@ -442,19 +554,23 @@ export function repairSpCompletesFromQuestionnaire(
     sp_total_recurrent: formatEuro(cart.abonnements.totalMensuel),
     sp_total_ponctuel: formatEuro(cart.totalPonctuel),
     sp_total_mensuel_final: formatEuro(cart.totalMensuelFinal),
-    sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : sp.sp_total_indemnites,
-    sp_remise_mois_offert: cart.remiseMoisOffert > 0 ? formatEuro(cart.remiseMoisOffert) : sp.sp_remise_mois_offert,
-    sp_total_remise: remiseBreakdown.total > 0.005 ? formatEuro(-remiseBreakdown.total) : sp.sp_total_remise,
-    sp_remise_fixe: remiseBreakdown.fixe > 0.005 ? formatEuro(-remiseBreakdown.fixe) : sp.sp_remise_fixe,
-    sp_remise_mobile: remiseBreakdown.mobile > 0.005 ? formatEuro(-remiseBreakdown.mobile) : sp.sp_remise_mobile,
-    sp_remise_abonnement: (remiseBreakdown.fixe + remiseBreakdown.mobile) > 0.005 ? formatEuro(-(remiseBreakdown.fixe + remiseBreakdown.mobile)) : sp.sp_remise_abonnement,
-    sp_remise_internet: remiseBreakdown.internet > 0.005 ? formatEuro(-remiseBreakdown.internet) : sp.sp_remise_internet,
-    sp_marge: cart.marge > 0 ? formatEuro(cart.marge) : sp.sp_marge,
+    sp_fas_total: cart.fas > 0 ? formatEuro(cart.fas) : undefined,
+    sp_total_fas: cart.fas > 0 ? formatEuro(cart.fas) : undefined,
+    sp_total_installation: cart.installations > 0 ? formatEuro(cart.installations) : baseSp.sp_total_installation,
+    sp_total_indemnites: cart.indemnites > 0 ? formatEuro(cart.indemnites) : (allowEmptyCart ? undefined : baseSp.sp_total_indemnites),
+    sp_remise_mois_offert: cart.remiseMoisOffert > 0 ? formatEuro(cart.remiseMoisOffert) : (allowEmptyCart ? undefined : baseSp.sp_remise_mois_offert),
+    sp_total_remise: remiseBreakdown.total > 0.005 ? formatEuro(-remiseBreakdown.total) : (allowEmptyCart ? undefined : baseSp.sp_total_remise),
+    sp_remise_fixe: remiseBreakdown.fixe > 0.005 ? formatEuro(-remiseBreakdown.fixe) : (allowEmptyCart ? undefined : baseSp.sp_remise_fixe),
+    sp_remise_mobile: remiseBreakdown.mobile > 0.005 ? formatEuro(-remiseBreakdown.mobile) : (allowEmptyCart ? undefined : baseSp.sp_remise_mobile),
+    sp_remise_abonnement: (remiseBreakdown.fixe + remiseBreakdown.mobile) > 0.005 ? formatEuro(-(remiseBreakdown.fixe + remiseBreakdown.mobile)) : (allowEmptyCart ? undefined : baseSp.sp_remise_abonnement),
+    sp_remise_internet: remiseBreakdown.internet > 0.005 ? formatEuro(-remiseBreakdown.internet) : (allowEmptyCart ? undefined : baseSp.sp_remise_internet),
+    sp_marge: cart.marge !== 0 ? formatEuro(cart.marge) : (allowEmptyCart ? formatEuro(0) : baseSp.sp_marge),
     ...(cart.loyer ? {
       sp_loyer_mensuel: formatEuro(cart.loyer.loyer_mensuel),
       sp_loyer_trimestriel: formatEuro(cart.loyer.loyer_trimestriel),
       sp_duree_mois: cart.loyer.duree_mois,
       sp_trimestres: cart.loyer.trimestres,
+      sp_duree_trimestres: String(cart.loyer.trimestres),
       sp_mois_offerts: cart.loyer.mois_offerts,
     } : {}),
   };

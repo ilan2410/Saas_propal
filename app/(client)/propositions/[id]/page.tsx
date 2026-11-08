@@ -2,7 +2,6 @@ import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Fragment } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -13,10 +12,6 @@ import {
   ChevronDown,
   Sparkles,
   ClipboardList,
-  Gift,
-  TrendingDown,
-  MapPin,
-  Wrench,
   UserRound,
   Headphones,
   Paperclip,
@@ -29,24 +24,20 @@ import { PropositionStatusBadge } from '@/components/propositions/PropositionSta
 import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
 import { ExportSaSpButtons } from '@/components/propositions/ExportSaSpButtons';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
+import { EditableSpResumePanel } from '@/components/propositions/EditableSpResumePanel';
 import type {
   CatalogueProduit,
   OrganizationPreferences,
+  SpCategorie,
   SpConfigLoyer,
   SpLibellesConfig,
-  SpObjectifConfig,
   SpPreferencesProduits,
   SpQuestion,
   SpQuestionReponse,
+  SpTableProductOrders,
   SuggestionsSpCompletes,
 } from '@/types';
-import { calculateCartSummary, resolveIndemnites, type SpCartSummary } from '@/lib/sp/calculateCart';
-import { buildSpResumeBreakdown } from '@/lib/sp/spResumeBreakdown';
-import { calculerMontantAnneeLissee, calculerMontantFinance } from '@/lib/sp/calculLoyer';
-import { resolveLibelle, isLibelleVisible } from '@/lib/sp/libelles';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
-import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
-import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
 import { canAccessSecteur, resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
@@ -77,530 +68,6 @@ function hasSuggestionsSpCompletes(value: unknown): value is SuggestionsSpComple
     || Array.isArray(value.sp_materiel_detail);
 }
 
-function formatSpValue(value: SpQuestionReponse['valeur']): string {
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
-  if (isRecord(value)) {
-    return Object.entries(value)
-      .filter(([, v]) => v !== null && v !== undefined && v !== '')
-      .map(([key, v]) => `${formatFieldName(key)} : ${String(v)}`)
-      .join(' · ');
-  }
-  if (!value) return '-';
-  const text = String(value);
-  const trimmed = text.trim();
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (Array.isArray(parsed)) return parsed.map((item) => String(item)).join(', ');
-      if (isRecord(parsed)) {
-        return Object.entries(parsed)
-          .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== '0' && v !== 0)
-          .map(([key, v]) => `${key} : ${String(v)}`)
-          .join(' · ') || '-';
-      }
-    } catch {
-      return text;
-    }
-  }
-  return text;
-}
-
-function compactRows<T>(rows: T[] | undefined | null): T[] {
-  return Array.isArray(rows) ? rows : [];
-}
-
-function parseEuroValue(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value !== 'string') return 0;
-  const normalized = value
-    .replace(/\s/g, '')
-    .replace(/€/g, '')
-    .replace(/,/g, '.')
-    .replace(/[^\d.-]/g, '');
-  const num = Number(normalized);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function formatEuroValue(value: number): string {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
-}
-
-function rowPrice(row: Record<string, unknown>): number {
-  return parseEuroValue(row._prix_raw ?? row._prix_propose_raw ?? row._prix_mensuel_raw ?? row.sp_prix_propose ?? row.sp_matd_prix_ht ?? row.sp_materiel_prix_mensuel);
-}
-
-function isTechnicalSpResponse(reponse: SpQuestionReponse, questionsById: Map<string, SpQuestion>): boolean {
-  const id = reponse.question_id.toLowerCase();
-  if (!questionsById.has(reponse.question_id)) return true;
-  if (id.startsWith('fas_') || id.startsWith('prix_') || id.startsWith('quantite_') || id.startsWith('libre_')) return true;
-  if (id.startsWith('sp_prix_override_') || id.includes('_prix_override_')) return true;
-  return false;
-}
-
-function SpResumePanel({
-  sp,
-  reponses,
-  questions,
-  indemnitesResolues,
-  cart,
-  saTotalMensuel,
-  spConfigLoyer,
-  spLibelles,
-}: {
-  sp: SuggestionsSpCompletes | null;
-  reponses: SpQuestionReponse[];
-  questions: SpQuestion[];
-  indemnitesResolues: string | null;
-  cart: SpCartSummary | null;
-  saTotalMensuel: number;
-  spConfigLoyer?: SpConfigLoyer;
-  spLibelles?: SpLibellesConfig;
-}) {
-  const questionsById = new Map(questions.map((question) => [question.id, question]));
-  const lbl = (key: Parameters<typeof resolveLibelle>[1]) => resolveLibelle(spLibelles, key);
-  const visible = (key: Parameters<typeof isLibelleVisible>[1]) => isLibelleVisible(spLibelles, key);
-  const mobiles = compactRows(sp?.sp_lignes_mobiles);
-  const fixes = compactRows(sp?.sp_lignes_fixes);
-  const internet = compactRows(sp?.sp_internet);
-  const materielDetail = compactRows(sp?.sp_materiel_detail).map((row) => row as unknown as Record<string, unknown>);
-  const materielBase = compactRows(sp?.sp_materiel).map((row) => row as unknown as Record<string, unknown>);
-  const materiel = materielDetail.length > 0 ? materielDetail : materielBase;
-  const cadeaux = compactRows(sp?.sp_cadeaux_table);
-  const questionResponses = reponses.filter((reponse) => !isTechnicalSpResponse(reponse, questionsById));
-  const mobileRows = mobiles.map((row) => row as unknown as Record<string, unknown>);
-  const fixeRows = fixes.map((row) => row as unknown as Record<string, unknown>);
-  const internetRows = internet.map((row) => row as unknown as Record<string, unknown>);
-  const recurrentTotal = [...mobileRows, ...fixeRows, ...internetRows].reduce((sum, row) => sum + rowPrice(row), 0);
-  const materielTotal = materiel.reduce((sum, row) => sum + rowPrice(row), 0);
-  const hasLines = (mobiles.length > 0 && visible('mobile'))
-    || (fixes.length > 0 && visible('fixe'))
-    || (internet.length > 0 && visible('internet'))
-    || (materiel.length > 0 && visible('materiel'));
-
-  // FAS : le champ réellement stocké est sp_fas_total (pas sp_total_fas)
-  const fasValue = (sp as unknown as Record<string, unknown>)?.sp_fas_total as string | undefined ?? sp?.sp_total_fas ?? sp?.sp_total_installation;
-
-  // Indemnités : valeur résolue côté serveur (même logique que le comparatif SA/SP)
-  const indemnitesValue = indemnitesResolues;
-  const adresseFactu = sp?.sp_adresse_facturation;
-  const adresseLivr = sp?.sp_adresse_livraison;
-  const showAdresses = !!(sp?.sp_fournisseur_propose || adresseFactu);
-
-  // ── Totaux du panier ──────────────────────────────────────────────
-  // Le panier recalculé côté serveur (cart) est la source de vérité : mêmes chiffres
-  // que le widget "Situation Proposée", avec matériel / installation / FAS séparés.
-  // Repli sur les données figées à la génération pour les anciennes propositions
-  // sans sp_reponses enregistrées.
-  const abosFixe = cart ? cart.abonnements.fixe : fixeRows.reduce((sum, row) => sum + rowPrice(row), 0);
-  const abosMobile = cart ? cart.abonnements.mobile : mobileRows.reduce((sum, row) => sum + rowPrice(row), 0);
-  const abosInternet = cart ? cart.abonnements.internet : internetRows.reduce((sum, row) => sum + rowPrice(row), 0);
-  const abosTotal = cart ? cart.abonnements.totalMensuel : recurrentTotal;
-  const loyerMensuel = cart
-    ? cart.loyer?.loyer_mensuel ?? null
-    : sp?.sp_loyer_mensuel ? parseEuroValue(sp.sp_loyer_mensuel) : null;
-
-  const materielTotalFinal = cart ? cart.materiel : materielTotal;
-  const installationsTotal = cart ? cart.installations : 0;
-  const fasTotalFinal = cart ? cart.fas : parseEuroValue(fasValue);
-  const cadeauxTotalFinal = cart ? cart.cadeaux : cadeaux.reduce((sum, c) => sum + (c._valeur_raw || 0), 0);
-  const indemnitesTotalFinal = cart ? cart.indemnites : (indemnitesValue ? parseEuroValue(indemnitesValue) : 0);
-  const remiseMoisOffertFinal = cart ? cart.remiseMoisOffert : parseEuroValue(sp?.sp_remise_mois_offert);
-  const totalPonctuelFinal = cart ? cart.totalPonctuel : parseEuroValue(sp?.sp_total_ponctuel);
-
-  const totalMensuelFinal = cart
-    ? cart.totalMensuelFinal
-    : spConfigLoyer?.mode_total_mensuel === 'separe'
-      ? abosTotal + (loyerMensuel ?? 0)
-      : (loyerMensuel != null && loyerMensuel > 0 ? loyerMensuel : abosTotal);
-
-  const showFas = fasTotalFinal > 0;
-  const showIndemnites = indemnitesTotalFinal > 0;
-  const showRemiseMoisOffert = remiseMoisOffertFinal > 0;
-  const breakdown = buildSpResumeBreakdown({
-    total_mensuel: abosTotal,
-    fixe: abosFixe,
-    mobile: abosMobile,
-    internet: abosInternet,
-    autres_mensuels: cart?.autresMensuels,
-    materiel: materielTotalFinal,
-    installations: installationsTotal,
-    fas: fasTotalFinal,
-    cadeaux: cadeauxTotalFinal,
-    autres_ponctuels: cart?.autresPonctuels,
-    total_ponctuel: totalPonctuelFinal > 0 ? totalPonctuelFinal : undefined,
-    loyer_total_ponctuel: loyerMensuel != null ? totalPonctuelFinal : undefined,
-    remise_mois_offert: spConfigLoyer?.mois_offerts_actifs !== false &&
-      spConfigLoyer?.composantes_base?.mois_offerts !== false ? remiseMoisOffertFinal : undefined,
-    indemnites: indemnitesTotalFinal,
-    marge: cart
-      ? (cart.marge !== 0 || spConfigLoyer?.widget_marge?.mode === 'automatique' ? cart.marge : undefined)
-      : sp?.sp_marge ? parseEuroValue(sp.sp_marge) : undefined,
-    montant_annee_lissee: loyerMensuel != null
-      ? calculerMontantAnneeLissee(abosTotal, spConfigLoyer?.multiplicateur_annee_lissee)
-      : undefined,
-    base_loyer: cart?.loyer ? cart.baseLoyer : undefined,
-    loyer_trimestriel: cart
-      ? cart.loyer?.loyer_trimestriel
-      : sp?.sp_loyer_trimestriel ? parseEuroValue(sp.sp_loyer_trimestriel) : undefined,
-    montant_finance: calculerMontantFinance(cart?.loyer, spConfigLoyer?.formule) ?? undefined,
-  }, loyerMensuel, spConfigLoyer?.mode_total_mensuel, spLibelles);
-  const firstLoyerRow = breakdown.find((row) => row.section === 'loyer')?.key;
-
-  // Économie = SA total mensuel - SP total mensuel (loyer), même calcul que le
-  // badge "Économie loyer SP vs SA" du panier temps réel.
-  const economieMensuelle = saTotalMensuel > 0 ? saTotalMensuel - totalMensuelFinal : null;
-
-  return (
-    <div className="space-y-5">
-
-      {/* ── Hero section ── */}
-      {sp && (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-
-            {/* Gauche — montant principal */}
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">Total mensuel proposé</p>
-              <p className="text-5xl font-extrabold text-slate-900 leading-none">
-                {totalMensuelFinal > 0
-                  ? formatEuroValue(totalMensuelFinal)
-                  : sp.sp_total_recurrent || sp.sp_total_propose || '-'}
-              </p>
-
-              {/* Durée engagement */}
-              {sp.sp_duree_mois && (
-                <p className="text-sm text-slate-500 mt-3">
-                  Engagement <strong className="text-slate-700">{sp.sp_duree_mois} mois</strong>
-                  {sp.sp_mois_offerts ? ` · ${sp.sp_mois_offerts} mois offerts` : ''}
-                  {sp.sp_duree_trimestres ? ` (${sp.sp_duree_trimestres} trimestres)` : ''}
-                </p>
-              )}
-
-              {/* Badge économie */}
-              {economieMensuelle !== null && economieMensuelle !== 0 && (
-                <div
-                  className={`mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${
-                    economieMensuelle > 0
-                      ? 'bg-emerald-50 border-emerald-200'
-                      : 'bg-red-50 border-red-200'
-                  }`}
-                >
-                  <TrendingDown className={`w-4 h-4 ${economieMensuelle > 0 ? 'text-emerald-600' : 'text-red-600 rotate-180'}`} />
-                  <span className={`text-sm font-semibold ${economieMensuelle > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                    {economieMensuelle > 0 ? 'Économie' : 'Surcoût'} {formatEuroValue(Math.abs(economieMensuelle))}/mois
-                    {' · '}{formatEuroValue(Math.abs(economieMensuelle) * 12)}/an
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Droite — synthèse détaillée */}
-            <div className="flex flex-col gap-2.5 justify-center">
-              {breakdown.map((row) => (
-                <Fragment key={row.key}>
-                  {row.key === firstLoyerRow && (
-                    <p className="pt-2 border-t border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Loyer et ajustements
-                    </p>
-                  )}
-                  <div className={`flex items-center justify-between gap-3 ${row.detail ? 'text-xs pl-3 -mt-1.5' : 'text-sm py-2 border-b border-slate-100'}`}>
-                    <span className={`min-w-0 ${row.detail ? 'text-slate-500' : 'text-slate-600 font-medium'} flex items-center gap-1.5`}>
-                      {(row.key === 'fas' || row.key === 'installations') && <Wrench className="w-3.5 h-3.5 shrink-0" />}
-                      {row.key === 'cadeaux' && <Gift className="w-3.5 h-3.5 shrink-0" />}
-                      {row.label}
-                    </span>
-                    <span className={`shrink-0 ${row.key === 'marge' && row.value > 0 ? 'text-emerald-700' : row.key === 'marge' && row.value < 0 ? 'text-red-600' : 'text-slate-900'} ${row.detail ? '' : 'font-semibold'}`}>
-                      {formatEuroValue(row.value)}
-                    </span>
-                  </div>
-                </Fragment>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Grille produits + FAS + Cadeaux ── */}
-      {(hasLines || (showFas && !!sp && visible('fas')) || (cadeaux.length > 0 && visible('cadeaux'))) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-          {/* Mobiles */}
-          {mobileRows.length > 0 && visible('mobile') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">{lbl('mobile')} ({mobileRows.length})</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {mobileRows.map((row, index) => (
-                  <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {!!row.sp_produit_fournisseur && (
-                          <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
-                        )}
-                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Fixes */}
-          {fixeRows.length > 0 && visible('fixe') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">{lbl('fixe')} ({fixeRows.length})</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {fixeRows.map((row, index) => (
-                  <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {!!row.sp_produit_fournisseur && (
-                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
-                        )}
-                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Internet */}
-          {internetRows.length > 0 && visible('internet') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">{lbl('internet')} ({internetRows.length})</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {internetRows.map((row, index) => (
-                  <div key={index} className="px-4 py-3 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{String(row.sp_produit ?? row.sp_nom_ligne ?? '-')}</p>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {!!row.sp_produit_fournisseur && (
-                          <span className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-medium">{String(row.sp_produit_fournisseur)}</span>
-                        )}
-                        <span className="text-xs text-slate-500">Qté : {String(row.sp_quantite ?? '1')}</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{String(row.sp_prix_propose ?? '-')}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matériel */}
-          {materiel.length > 0 && visible('materiel') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">{lbl('materiel')} ({materiel.length})</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {materiel.map((row, index) => {
-                  const nom = String(row.sp_matd_nom ?? row.sp_materiel_nom ?? '-');
-                  const ref = row.sp_matd_ref ? String(row.sp_matd_ref) : null;
-                  const desc = row.sp_matd_description ? String(row.sp_matd_description) : null;
-                  const freq = row.sp_matd_frequence ? String(row.sp_matd_frequence) : null;
-                  const img = row.sp_matd_image_url ?? row.sp_mat_image_url;
-                  const qty = String(row.sp_matd_quantite ?? row.sp_quantite ?? '1');
-                  const prix = String(row.sp_matd_prix_ht ?? row.sp_materiel_prix_mensuel ?? '-');
-                  const fournisseur = row.sp_matd_fournisseur ?? row.sp_materiel_fournisseur;
-                  return (
-                    <div key={index} className="px-4 py-3 flex items-start gap-3">
-                      {!!img && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={String(img)} alt={nom} className="w-10 h-10 rounded-lg object-contain border border-slate-100 shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-medium text-slate-900 truncate">{nom}</p>
-                            {ref && <p className="text-xs text-slate-400 mt-0.5">Réf. {ref}</p>}
-                            {desc && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{desc}</p>}
-                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                              {!!fournisseur && (
-                                <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium">{String(fournisseur)}</span>
-                              )}
-                              {freq && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${freq === 'Achat unique' ? 'bg-slate-100 text-slate-600' : 'bg-purple-50 text-purple-700'}`}>
-                                  {freq}
-                                </span>
-                              )}
-                              <span className="text-xs text-slate-500">Qté : {qty}</span>
-                            </div>
-                          </div>
-                          <p className="text-sm font-semibold text-slate-900 whitespace-nowrap shrink-0">{prix}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* FAS / Installation */}
-          {showFas && sp && visible('fas') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-slate-500" />
-                <h3 className="font-semibold text-slate-900">{lbl('fas')}</h3>
-              </div>
-              {cart ? (
-                cart.lines.filter((line) => line.fasTotal > 0).map((line) => (
-                  <div
-                    key={`fas-${line.instanceId}`}
-                    className="px-4 py-3 flex items-center justify-between text-sm border-b border-slate-100 last:border-b-0"
-                  >
-                    <span className="text-slate-600">{line.produitNom}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
-                      <span className="font-semibold text-slate-900">{formatEuroValue(line.fasTotal)}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-4 py-3 flex items-center justify-between text-sm">
-                  <span className="text-slate-600">Frais d&apos;accès au service</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">ponctuel</span>
-                    <span className="font-semibold text-slate-900">{fasValue}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Cadeaux / avantages */}
-          {cadeaux.length > 0 && visible('cadeaux') && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                  <Gift className="w-4 h-4 text-slate-500" />
-                  {lbl('cadeaux')} ({cadeaux.length})
-                </h3>
-                {sp?.sp_total_cadeaux_ht && (
-                  <span className="text-xs font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">{sp.sp_total_cadeaux_ht}</span>
-                )}
-              </div>
-              <div className="divide-y divide-slate-100">
-                {cadeaux.map((cadeau, index) => (
-                  <div key={index} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
-                    <span className="font-medium text-slate-900">{cadeau.sp_cadeau_nom}</span>
-                    <span className="text-slate-600 whitespace-nowrap">{cadeau.sp_cadeau_valeur_ht}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-        </div>
-      )}
-
-      {/* ── Indemnités & remises ── */}
-      {sp && ((showIndemnites && visible('indemnites')) || (showRemiseMoisOffert && visible('remise_mois_offert'))) && (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-            <h3 className="font-semibold text-slate-900 text-sm">Indemnités &amp; remises</h3>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {showIndemnites && visible('indemnites') && (
-              <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-slate-600">{lbl('indemnites')}</span>
-                <span className="font-semibold text-slate-900">{formatEuroValue(indemnitesTotalFinal)}</span>
-              </div>
-            )}
-            {showRemiseMoisOffert && visible('remise_mois_offert') && (
-              <div className="px-4 py-3 flex items-center justify-between text-sm">
-                <span className="text-slate-600">{lbl('remise_mois_offert')}{sp.sp_mois_offerts ? ` (${sp.sp_mois_offerts} mois)` : ''}</span>
-                <span className="font-semibold text-slate-900">-{formatEuroValue(remiseMoisOffertFinal)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Fournisseur & adresses ── */}
-      {showAdresses && sp && (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-slate-500" />
-            <h3 className="font-semibold text-slate-900 text-sm">Client &amp; adresses</h3>
-          </div>
-          <div className="p-4 space-y-4">
-            {sp.sp_fournisseur_propose && (
-              <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Fournisseur proposé</p>
-                <p className="text-sm font-semibold text-slate-900">{sp.sp_fournisseur_propose}</p>
-              </div>
-            )}
-            {adresseFactu && (
-              <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Adresse de facturation</p>
-                <p className="text-sm text-slate-800">
-                  {[
-                    adresseFactu.societe,
-                    adresseFactu.adresse,
-                    [adresseFactu.code_postal, adresseFactu.ville].filter(Boolean).join(' '),
-                  ].filter(Boolean).join(', ')}
-                </p>
-              </div>
-            )}
-            {adresseLivr && sp.sp_livraison_identique === false && (
-              <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Adresse de livraison</p>
-                <p className="text-sm text-slate-800">
-                  {[
-                    adresseLivr.societe,
-                    adresseLivr.adresse,
-                    [adresseLivr.code_postal, adresseLivr.ville].filter(Boolean).join(' '),
-                  ].filter(Boolean).join(', ')}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Questionnaire SP ── */}
-      {questionResponses.length > 0 && (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-            <h3 className="font-semibold text-slate-900">Réponses au questionnaire SP ({questionResponses.length})</h3>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {questionResponses.map((reponse, index) => {
-              const question = questionsById.get(reponse.question_id);
-              return (
-                <div key={`${reponse.question_id}-${index}`} className="p-4">
-                  <p className="text-sm font-semibold text-slate-900">{question?.libelle || formatFieldName(reponse.question_id)}</p>
-                  <p className="text-sm text-slate-600 mt-1">{formatSpValue(reponse.valeur)}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {!sp && reponses.length === 0 && (
-        <div className="text-center py-10 text-slate-500 text-sm">
-          Aucune donnée SP sauvegardée pour cette proposition.
-        </div>
-      )}
-    </div>
-  );
-}
 // Compte le nombre total de champs (récursivement)
 function countTotalFields(data: unknown): number {
   if (data === null || data === undefined) return 0;
@@ -622,32 +89,6 @@ function countTotalFields(data: unknown): number {
   }
 
   return count;
-}
-
-// Formate un nom de champ
-function formatFieldName(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^\w/, c => c.toUpperCase())
-    .trim();
-}
-
-function ObjectifsSection({
-  objectifsConfig,
-  templateId,
-  reponses,
-  sp,
-}: {
-  objectifsConfig: SpObjectifConfig[];
-  templateId: string;
-  reponses: SpQuestionReponse[];
-  sp: SuggestionsSpCompletes | null;
-}) {
-  if (!objectifsConfig.length || !templateId) return null;
-  const resolved = evaluateObjectifsForRender(objectifsConfig, templateId, reponses, sp);
-  if (resolved.length === 0) return null;
-  return <SpObjectifsAccomplis resolvedObjectifs={resolved} />;
 }
 
 export default async function PropositionDetailPage({
@@ -788,13 +229,14 @@ export default async function PropositionDetailPage({
     ? (organization!.preferences as Record<string, unknown>).sp_objectifs_config as import('@/types').SpObjectifConfig[]
     : [];
 
-  // Résolution des indemnités identique au tableau comparatif SA/SP
-  const donneesExtraitesForCalc: Record<string, unknown> =
-    isRecord((proposition as Record<string, unknown>).filled_data)
-      ? (proposition as Record<string, unknown>).filled_data as Record<string, unknown>
-      : extractedDataRecord;
-  const indemnitesResolues = resolveIndemnites(spReponses, spQuestions, donneesExtraitesForCalc);
-  const indemnitesResoluesStr = indemnitesResolues > 0 ? formatEuroValue(indemnitesResolues) : null;
+  // Données complètes pour le calcul et l'édition (fusion extracted_data + filled_data)
+  const filledDataRecord: Record<string, unknown> = isRecord((proposition as Record<string, unknown>).filled_data)
+    ? ((proposition as Record<string, unknown>).filled_data as Record<string, unknown>)
+    : {};
+  const donneesExtraitesForCalc: Record<string, unknown> = {
+    ...extractedDataRecord,
+    ...filledDataRecord,
+  };
   const saTotalMensuel = calculateSaCartSummary(donneesExtraitesForCalc).totalMensuel;
 
   const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;
@@ -807,24 +249,25 @@ export default async function PropositionDetailPage({
   const spLibelles: SpLibellesConfig | undefined = isRecord(templateFileCfg.sp_libelles)
     ? (templateFileCfg.sp_libelles as SpLibellesConfig)
     : undefined;
+  const spPreferencesProduits: SpPreferencesProduits | undefined = isRecord(templateFileCfg.sp_preferences_produits)
+    ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits)
+    : undefined;
+  const spConfigMoisOfferts = isRecord(prefs.sp_config_mois_offerts) ? prefs.sp_config_mois_offerts : undefined;
+  const spCategoriesOrder = Array.isArray(prefs.sp_categories_order) ? (prefs.sp_categories_order as SpCategorie[]) : undefined;
+  const spTableProductOrders = isRecord(templateFileCfg.sp_table_product_orders)
+    ? (templateFileCfg.sp_table_product_orders as SpTableProductOrders)
+    : undefined;
 
-  // Panier SP recalculé en temps réel (même logique que le widget "Situation Proposée"
-  // et l'export comparatif) : seule source qui distingue vraiment matériel / installation / FAS.
-  let spCart: SpCartSummary | null = null;
-  if (spReponses.length > 0) {
+  let catalogue: CatalogueProduit[] = [];
+  if (suggestionsSpCompletes || spReponses.length > 0) {
     const { data: catalogueRows } = await supabase
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
       .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
-    const catalogue: CatalogueProduit[] = Array.isArray(catalogueRows) ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template?.secteur ?? 'telephonie')) : [];
-
-    const spPreferencesProduits: SpPreferencesProduits | undefined = isRecord(templateFileCfg.sp_preferences_produits)
-      ? (templateFileCfg.sp_preferences_produits as unknown as SpPreferencesProduits)
-      : undefined;
-    const spConfigMoisOfferts = isRecord(prefs.sp_config_mois_offerts) ? prefs.sp_config_mois_offerts : undefined;
-
-    spCart = calculateCartSummary(spReponses, spQuestions, catalogue, donneesExtraitesForCalc, spConfigLoyer, spConfigMoisOfferts, spPreferencesProduits);
+    catalogue = Array.isArray(catalogueRows)
+      ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template?.secteur ?? 'telephonie'))
+      : [];
   }
 
   return (
@@ -1014,12 +457,22 @@ export default async function PropositionDetailPage({
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
             <div className="border-t border-slate-100 p-5">
-              <SpResumePanel sp={suggestionsSpCompletes} reponses={spReponses} questions={spQuestions} indemnitesResolues={indemnitesResoluesStr} cart={spCart} saTotalMensuel={saTotalMensuel} spConfigLoyer={spConfigLoyer} spLibelles={spLibelles} />
-              <ObjectifsSection
-                objectifsConfig={spObjectifsConfig}
+              <EditableSpResumePanel
+                propositionId={proposition.id}
+                initialSp={suggestionsSpCompletes}
+                initialReponses={spReponses}
+                questions={spQuestions}
+                catalogue={catalogue}
+                initialDonneesExtraites={donneesExtraitesForCalc}
+                saTotalMensuel={saTotalMensuel}
+                spConfigLoyer={spConfigLoyer}
+                spConfigMoisOfferts={spConfigMoisOfferts}
+                spPreferencesProduits={spPreferencesProduits}
+                spLibelles={spLibelles}
+                spCategoriesOrder={spCategoriesOrder}
+                spTableProductOrders={spTableProductOrders}
+                spObjectifsConfig={spObjectifsConfig}
                 templateId={templateId ?? ''}
-                reponses={spReponses}
-                sp={suggestionsSpCompletes}
               />
             </div>
           </details>
