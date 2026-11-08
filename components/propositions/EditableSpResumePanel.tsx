@@ -18,21 +18,26 @@ import type {
   CatalogueCategorie,
   CatalogueProduit,
   SpAdresse,
+  SpBandeauFlottantChamp,
   SpCategorie,
   SpConfigLoyer,
+  SpConfigModeDirect,
   SpConfigMoisOfferts,
+  SpConfigRemises,
   SpLibelleKey,
   SpLibellesConfig,
   SpObjectifConfig,
   SpPreferencesProduits,
   SpQuestion,
   SpQuestionReponse,
+  SpRegleRemise,
   SpTableProductOrders,
   SuggestionsSpCompletes,
 } from '@/types';
 import {
   buildLoopLabelsByGroup,
   calculateCartSummary,
+  DIRECT_REMISE_PRODUITS_QUESTION_ID,
   MANUAL_PRODUCT_PREFIX,
   type CartLine,
 } from '@/lib/sp/calculateCart';
@@ -44,6 +49,11 @@ import {
   LOYER_MANUEL_QUESTION_ID,
 } from '@/lib/sp/calculLoyer';
 import { synchroniserMargeAuto } from '@/lib/sp/calculMargeAuto';
+import {
+  calculerPrixRemiseProduit,
+  getEligibleDiscountProducts,
+} from '@/lib/sp/evaluateDiscountRules';
+import { DEFAULT_CHAMPS_BANDEAU_FLOTTANT } from '@/components/settings/SpModeDirectManager';
 import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
@@ -395,7 +405,8 @@ function ProductLineRow({
             <img
               src={img}
               alt={line.produitNom}
-              className="w-10 h-10 rounded-lg object-contain border border-slate-100 shrink-0"
+              loading="lazy"
+              className="w-10 h-10 rounded-lg object-contain bg-white border border-slate-100 shrink-0"
             />
           )}
           <div className="min-w-0 flex-1">
@@ -680,6 +691,9 @@ export interface EditableSpResumePanelProps {
   spConfigLoyer?: SpConfigLoyer;
   spConfigMoisOfferts?: SpConfigMoisOfferts;
   spPreferencesProduits?: SpPreferencesProduits;
+  spConfigRemises?: SpConfigRemises;
+  discountRules?: SpRegleRemise[];
+  spConfigModeDirect?: SpConfigModeDirect;
   spLibelles?: SpLibellesConfig;
   spCategoriesOrder?: SpCategorie[];
   spTableProductOrders?: SpTableProductOrders;
@@ -698,6 +712,9 @@ export function EditableSpResumePanel({
   spConfigLoyer,
   spConfigMoisOfferts,
   spPreferencesProduits,
+  spConfigRemises,
+  discountRules = [],
+  spConfigModeDirect,
   spLibelles,
   spCategoriesOrder,
   spTableProductOrders,
@@ -723,6 +740,14 @@ export function EditableSpResumePanel({
   const [editingClientSection, setEditingClientSection] = useState(false);
   const [editingLoyer, setEditingLoyer] = useState(false);
   const [loyerDraft, setLoyerDraft] = useState('');
+  const [editingMargeHero, setEditingMargeHero] = useState(false);
+  const [margeDraft, setMargeDraft] = useState('');
+  const [editingDiscountProductId, setEditingDiscountProductId] = useState<string | null>(null);
+  const [discountOverrides, setDiscountOverrides] = useState<Record<string, string>>({});
+  const [isHeroStickyVisible, setIsHeroStickyVisible] = useState(false);
+  const [floatingPosition, setFloatingPosition] = useState({ top: 0, left: 0, width: 0 });
+  const heroCardRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const lbl = useCallback(
@@ -739,6 +764,9 @@ export function EditableSpResumePanel({
     for (const p of catalogue) map.set(p.id, p);
     return map;
   }, [catalogue]);
+  const resolveCatalogueProduct = (line: CartLine): CatalogueProduit | undefined =>
+    (line.produitId ? catalogueMap.get(line.produitId) : undefined) ??
+    catalogue.find((product) => product.nom === line.produitNom && product.categorie === line.categorie);
 
   const questionsById = useMemo(
     () => new Map(questions.map((question) => [question.id, question])),
@@ -749,6 +777,53 @@ export function EditableSpResumePanel({
     () => questions.filter((q) => q.affichage === 'marge').map((q) => q.id),
     [questions],
   );
+
+  const remiseQuestion = useMemo(
+    () => questions.find((q) => q.affichage === 'remise_produits'),
+    [questions],
+  );
+
+  const effectiveDiscountRules = useMemo(
+    () => spConfigRemises?.regles ?? discountRules,
+    [spConfigRemises, discountRules],
+  );
+
+  const eligibleDiscountProducts = useMemo(
+    () =>
+      getEligibleDiscountProducts({
+        rules: effectiveDiscountRules,
+        products: catalogue,
+        reponses,
+        donneesExtraites,
+        spPreferencesProduits,
+        spConfigRemises,
+      }),
+    [effectiveDiscountRules, catalogue, reponses, donneesExtraites, spPreferencesProduits, spConfigRemises],
+  );
+
+  const modeRemisesOperateur = spConfigModeDirect?.mode_remises_operateur ?? 'manuel';
+
+  // Détecte les remises actuellement appliquées dans `sp_reponses`
+  const appliedDiscountsMap = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const rep of reponses) {
+      const isDirect = rep.question_id === DIRECT_REMISE_PRODUITS_QUESTION_ID;
+      const isQuestionRemise =
+        remiseQuestion &&
+        (rep.question_id === `prix_${remiseQuestion.id}` ||
+          rep.question_id.startsWith(`prix_${remiseQuestion.id}__iter_`));
+      if (!isDirect && !isQuestionRemise) continue;
+      const map = parseJsonMap(rep.valeur);
+      if (!map) continue;
+      for (const [k, v] of Object.entries(map)) {
+        const num = Number(v);
+        if (Number.isFinite(num)) out[k] = num;
+      }
+    }
+    return out;
+  }, [reponses, remiseQuestion]);
+
+  const hasAppliedDiscounts = Object.keys(appliedDiscountsMap).length > 0;
 
   // Recalcul dynamique temps réel du panier SP
   const cart = useMemo(
@@ -903,9 +978,44 @@ export function EditableSpResumePanel({
   const applyReponsesUpdate = useCallback(
     (rawReponses: SpQuestionReponse[]) => {
       let nextReponses = rawReponses;
+
+      if (modeRemisesOperateur === 'automatique') {
+        const eligibles = getEligibleDiscountProducts({
+          rules: effectiveDiscountRules,
+          products: catalogue,
+          reponses: nextReponses,
+          donneesExtraites,
+          spPreferencesProduits,
+          spConfigRemises,
+        });
+        const priceMap: Record<string, string> = {};
+        for (const p of eligibles) {
+          const computed = calculerPrixRemiseProduit(p);
+          if (computed != null && Number.isFinite(computed)) {
+            priceMap[p.id] = String(computed);
+            priceMap[p.nom] = String(computed);
+          }
+        }
+        nextReponses = nextReponses.filter(
+          (r) =>
+            r.question_id !== DIRECT_REMISE_PRODUITS_QUESTION_ID &&
+            (!remiseQuestion ||
+              (r.question_id !== remiseQuestion.id &&
+                r.question_id !== `prix_${remiseQuestion.id}`)),
+        );
+        if (Object.keys(priceMap).length > 0) {
+          const mapStr = JSON.stringify(priceMap);
+          nextReponses.push({ question_id: DIRECT_REMISE_PRODUITS_QUESTION_ID, valeur: mapStr });
+          if (remiseQuestion) {
+            nextReponses.push({ question_id: remiseQuestion.id, valeur: true });
+            nextReponses.push({ question_id: `prix_${remiseQuestion.id}`, valeur: mapStr });
+          }
+        }
+      }
+
       if (spConfigLoyer?.widget_marge?.mode === 'automatique') {
         const nextCart = calculateCartSummary(
-          rawReponses,
+          nextReponses,
           questions,
           catalogue,
           donneesExtraites,
@@ -913,7 +1023,7 @@ export function EditableSpResumePanel({
           spConfigMoisOfferts,
           spPreferencesProduits,
         );
-        nextReponses = synchroniserMargeAuto(rawReponses, nextCart, questionMargeIds);
+        nextReponses = synchroniserMargeAuto(nextReponses, nextCart, questionMargeIds);
       }
       setReponses(nextReponses);
       scheduleAutoSave(
@@ -938,8 +1048,111 @@ export function EditableSpResumePanel({
       spConfigMoisOfferts,
       spPreferencesProduits,
       questionMargeIds,
+      modeRemisesOperateur,
+      effectiveDiscountRules,
+      spConfigRemises,
+      remiseQuestion,
     ],
   );
+
+  // En mode remises automatique, synchronise aussi à l'initialisation si des produits éligibles n'ont pas encore leur remise
+  useEffect(() => {
+    if (modeRemisesOperateur !== 'automatique') return;
+    if (eligibleDiscountProducts.length === 0) return;
+    const expectedMap: Record<string, string> = {};
+    for (const p of eligibleDiscountProducts) {
+      const computed = calculerPrixRemiseProduit(p);
+      if (computed != null && Number.isFinite(computed)) {
+        expectedMap[p.id] = String(computed);
+        expectedMap[p.nom] = String(computed);
+      }
+    }
+    if (Object.keys(expectedMap).length === 0) return;
+    const existingRep = reponses.find((r) => r.question_id === DIRECT_REMISE_PRODUITS_QUESTION_ID);
+    const mapStr = JSON.stringify(expectedMap);
+    if (existingRep?.valeur === mapStr) return;
+    applyReponsesUpdate(reponses);
+  }, [modeRemisesOperateur, eligibleDiscountProducts, reponses, applyReponsesUpdate]);
+
+  const handleApplyManualDiscounts = () => {
+    const priceMap: Record<string, string> = {};
+    for (const p of eligibleDiscountProducts) {
+      const computed = calculerPrixRemiseProduit(p);
+      const overrideRaw = discountOverrides[p.id];
+      const effectivePrix =
+        overrideRaw !== undefined && overrideRaw.trim() !== ''
+          ? Number(overrideRaw.replace(',', '.'))
+          : (appliedDiscountsMap[p.id] ?? appliedDiscountsMap[p.nom] ?? computed);
+      if (effectivePrix != null && Number.isFinite(effectivePrix) && effectivePrix >= 0) {
+        priceMap[p.id] = String(effectivePrix);
+        priceMap[p.nom] = String(effectivePrix);
+      }
+    }
+    const filtered = reponses.filter(
+      (r) =>
+        r.question_id !== DIRECT_REMISE_PRODUITS_QUESTION_ID &&
+        (!remiseQuestion ||
+          (r.question_id !== remiseQuestion.id &&
+            r.question_id !== `prix_${remiseQuestion.id}`)),
+    );
+    if (Object.keys(priceMap).length === 0) {
+      applyReponsesUpdate(filtered);
+      return;
+    }
+    const mapStr = JSON.stringify(priceMap);
+    const next: SpQuestionReponse[] = [
+      ...filtered,
+      { question_id: DIRECT_REMISE_PRODUITS_QUESTION_ID, valeur: mapStr },
+    ];
+    if (remiseQuestion) {
+      next.push({ question_id: remiseQuestion.id, valeur: true });
+      next.push({ question_id: `prix_${remiseQuestion.id}`, valeur: mapStr });
+    }
+    applyReponsesUpdate(next);
+  };
+
+  const handleRemoveDiscounts = () => {
+    const filtered = reponses.filter(
+      (r) =>
+        r.question_id !== DIRECT_REMISE_PRODUITS_QUESTION_ID &&
+        (!remiseQuestion ||
+          (r.question_id !== remiseQuestion.id &&
+            r.question_id !== `prix_${remiseQuestion.id}`)),
+    );
+    applyReponsesUpdate(filtered);
+  };
+
+  // Le bandeau est fixe : son apparition ne doit pas déplacer le hero ni le seuil de déclenchement.
+  useEffect(() => {
+    const el = heroCardRef.current;
+    if (!el || typeof window === 'undefined') return;
+
+    const updateVisibility = () => {
+      const rect = el.getBoundingClientRect();
+      const header = document.querySelector('[data-proposition-detail-header]');
+      const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
+      const panelBottom = panelRef.current?.getBoundingClientRect().bottom ?? 0;
+      setIsHeroStickyVisible(rect.top < headerBottom + 12 && panelBottom > headerBottom + 80);
+    };
+    const updatePosition = () => {
+      const rect = el.getBoundingClientRect();
+      const header = document.querySelector('[data-proposition-detail-header]');
+      setFloatingPosition({
+        top: (header?.getBoundingClientRect().bottom ?? 0) + 8,
+        left: rect.left,
+        width: rect.width,
+      });
+      updateVisibility();
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updateVisibility, { passive: true });
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updateVisibility);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, []);
 
   // Numéros SA disponibles pour l'autocomplétion
   const saNumeros = useMemo(() => {
@@ -1369,9 +1582,21 @@ export function EditableSpResumePanel({
   const firstLoyerRow = breakdown.find((row) => row.section === 'loyer')?.key;
   const economieMensuelle = saTotalMensuel > 0 ? saTotalMensuel - totalMensuelFinal : null;
 
+  const floatingRows = useMemo(() => {
+    const allowedChamps = new Set<SpBandeauFlottantChamp>(
+      spConfigModeDirect?.champs_bandeau_flottant ?? DEFAULT_CHAMPS_BANDEAU_FLOTTANT,
+    );
+    return breakdown.filter(
+      (row) => !row.detail && allowedChamps.has(row.key as SpBandeauFlottantChamp),
+    );
+  }, [breakdown, spConfigModeDirect]);
+
   const questionResponses = useMemo(
-    () => reponses.filter((reponse) => !isTechnicalSpResponse(reponse, questionsById)),
-    [reponses, questionsById],
+    () =>
+      spConfigModeDirect?.actif
+        ? []
+        : reponses.filter((reponse) => !isTechnicalSpResponse(reponse, questionsById)),
+    [reponses, questionsById, spConfigModeDirect?.actif],
   );
 
   const resolvedObjectifs = useMemo(() => {
@@ -1380,7 +1605,70 @@ export function EditableSpResumePanel({
   }, [spObjectifsConfig, templateId, reponses, currentSp, catalogue]);
 
   return (
-    <div className="space-y-5">
+    <div ref={panelRef} className="space-y-5">
+      {/* ── Bandeau flottant compacté au scroll (Sticky Header) ── */}
+      {isHeroStickyVisible && (
+        <div
+          className="fixed z-20 rounded-xl border border-slate-300 bg-white/95 backdrop-blur-md shadow-lg px-4 py-3"
+          style={floatingPosition}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* Gauche : Total mensuel proposé + Économie/Surcoût */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Total mensuel proposé
+                </p>
+                <p className="text-xl font-extrabold text-slate-900 leading-tight tabular-nums">
+                  {formatEuroValue(totalMensuelFinal)}
+                </p>
+              </div>
+              {economieMensuelle !== null && Math.abs(economieMensuelle) >= 0.01 && (
+                <div
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold ${
+                    economieMensuelle > 0
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  <TrendingDown
+                    className={`w-3.5 h-3.5 ${
+                      economieMensuelle > 0 ? 'text-emerald-600' : 'text-red-600 rotate-180'
+                    }`}
+                  />
+                  <span>
+                    {economieMensuelle > 0 ? 'Économie' : 'Surcoût'}{' '}
+                    {formatEuroValue(Math.abs(economieMensuelle))}/mois
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Droite : Champs sélectionnés en mode compacté */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              {floatingRows.map((row) => (
+                <div key={row.key} className="flex flex-col">
+                  <span className="text-[10px] font-medium text-slate-400 truncate max-w-[140px]">
+                    {row.label}
+                  </span>
+                  <span
+                    className={`text-xs font-bold tabular-nums ${
+                      row.key === 'marge' && row.value > 0
+                        ? 'text-emerald-700'
+                        : row.key === 'marge' && row.value < 0
+                          ? 'text-red-600'
+                          : 'text-slate-900'
+                    }`}
+                  >
+                    {formatEuroValue(row.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Indicateur d'auto-sauvegarde */}
       {saveStatus !== 'idle' && (
         <div className="flex items-center justify-end text-xs">
@@ -1405,7 +1693,7 @@ export function EditableSpResumePanel({
       )}
 
       {/* ── Hero section (Photo 2 — Lecture seule, recalcul dynamique) ── */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div ref={heroCardRef} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Gauche — montant principal */}
           <div>
@@ -1462,6 +1750,7 @@ export function EditableSpResumePanel({
             )}
             {breakdown.map((row) => {
               const isEditableLoyerRow = row.key === 'loyer_mensuel' && loyerModifiable && cart.loyer != null;
+              const isEditableMargeRow = row.key === 'marge' && !autoMargeMode;
               const loyerCalcule = cart.loyer?.loyer_calcule;
               const isLoyerModified = isEditableLoyerRow && loyerCalcule != null;
               const commitLoyerDraft = () => {
@@ -1470,6 +1759,13 @@ export function EditableSpResumePanel({
                   handleUpdateLoyerManuel(v);
                 }
                 setEditingLoyer(false);
+              };
+              const commitMargeDraft = () => {
+                const v = parseFloat(margeDraft.replace(',', '.'));
+                if (Number.isFinite(v) && v !== row.value) {
+                  handleUpdateMarge(v);
+                }
+                setEditingMargeHero(false);
               };
 
               return (
@@ -1514,6 +1810,20 @@ export function EditableSpResumePanel({
                             }}
                             className="w-24 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-sm font-semibold text-blue-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
+                        ) : isEditableMargeRow && editingMargeHero ? (
+                          <input
+                            autoFocus
+                            type="number"
+                            step={1}
+                            value={margeDraft}
+                            onChange={(e) => setMargeDraft(e.target.value)}
+                            onBlur={commitMargeDraft}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitMargeDraft();
+                              if (e.key === 'Escape') setEditingMargeHero(false);
+                            }}
+                            className="w-24 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-sm font-semibold text-blue-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
                         ) : (
                           <span
                             className={`${
@@ -1540,6 +1850,19 @@ export function EditableSpResumePanel({
                                 ? 'text-blue-600'
                                 : 'text-slate-400 hover:text-slate-700'
                             }`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {isEditableMargeRow && !editingMargeHero && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMargeDraft(String(Math.round(row.value * 100) / 100));
+                              setEditingMargeHero(true);
+                            }}
+                            title="Modifier la marge"
+                            className="rounded p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-700 transition-colors"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -1711,7 +2034,7 @@ export function EditableSpResumePanel({
                   <ProductLineRow
                     key={`${line.instanceId}-${line.produitId ?? line.produitNom}`}
                     line={line}
-                    catalogueProduct={line.produitId ? catalogueMap.get(line.produitId) : undefined}
+                    catalogueProduct={resolveCatalogueProduct(line)}
                     badgeColorClass="bg-orange-50 text-orange-700"
                     saNumeros={saNumeros}
                     usedNumeroDigits={usedNumeroDigits}
@@ -1845,7 +2168,7 @@ export function EditableSpResumePanel({
                   <ProductLineRow
                     key={`${line.instanceId}-${line.produitId ?? line.produitNom}`}
                     line={line}
-                    catalogueProduct={line.produitId ? catalogueMap.get(line.produitId) : undefined}
+                    catalogueProduct={resolveCatalogueProduct(line)}
                     badgeColorClass="bg-pink-50 text-pink-700"
                     saNumeros={saNumeros}
                     usedNumeroDigits={usedNumeroDigits}
@@ -1866,7 +2189,10 @@ export function EditableSpResumePanel({
       </div>
 
       {/* ── Cadre Indemnités & remises ── */}
-      {(visible('indemnites') || visible('remise_mois_offert') || visible('marge')) && (
+      {(visible('indemnites') ||
+        visible('remise_mois_offert') ||
+        visible('marge') ||
+        eligibleDiscountProducts.length > 0) && (
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
             <h3 className="font-semibold text-slate-900 text-sm">Indemnités &amp; remises</h3>
@@ -1956,6 +2282,152 @@ export function EditableSpResumePanel({
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Remises opérateur (mode manuel avec bloc dédié et bouton Appliquer) */}
+            {modeRemisesOperateur === 'manuel' && eligibleDiscountProducts.length > 0 && (
+              <div className="p-4 space-y-3 bg-emerald-50/30">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                      Remises opérateur éligibles ({eligibleDiscountProducts.length})
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Vérifiez ou ajustez les prix mensuels remisés, puis cliquez sur « Appliquer les remises ».
+                    </p>
+                  </div>
+                  {hasAppliedDiscounts && (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Remises appliquées
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {eligibleDiscountProducts.map((p) => {
+                    const computedPrix = calculerPrixRemiseProduit(p);
+                    const appliedPrix = appliedDiscountsMap[p.id] ?? appliedDiscountsMap[p.nom];
+                    const overrideStr = discountOverrides[p.id];
+                    const effectivePrix =
+                      overrideStr !== undefined && overrideStr.trim() !== ''
+                        ? Number(overrideStr.replace(',', '.'))
+                        : (appliedPrix ?? computedPrix);
+                    const remiseBadge =
+                      p.remise_valeur != null
+                        ? p.remise_type === 'fixe'
+                          ? `-${formatEuroValue(p.remise_valeur)}/mois`
+                          : `-${p.remise_valeur}%`
+                        : '';
+                    const isEditingThis = editingDiscountProductId === p.id;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="rounded-lg border border-emerald-200 bg-white px-3 py-2 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-900 truncate">{p.nom}</p>
+                            <p className="text-xs text-slate-500">
+                              {formatEuroValue(p.prix_mensuel ?? 0)}/mois →{' '}
+                              <strong className="text-emerald-700">
+                                {effectivePrix != null && Number.isFinite(effectivePrix)
+                                  ? `${formatEuroValue(effectivePrix)}/mois`
+                                  : '—'}
+                              </strong>
+                            </p>
+                          </div>
+                          {remiseBadge && (
+                            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                              {remiseBadge}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDiscountProductId((cur) => (cur === p.id ? null : p.id));
+                              if (overrideStr === undefined && effectivePrix != null) {
+                                setDiscountOverrides((prev) => ({
+                                  ...prev,
+                                  [p.id]: String(Math.round(effectivePrix * 100) / 100),
+                                }));
+                              }
+                            }}
+                            title="Modifier le prix remisé"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                          >
+                            {isEditingThis ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Pencil className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        {isEditingThis && (
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                            <label className="text-xs text-slate-600">
+                              Prix unitaire remisé (€/mois) :
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={
+                                overrideStr ??
+                                (effectivePrix != null
+                                  ? String(Math.round(effectivePrix * 100) / 100)
+                                  : '')
+                              }
+                              onChange={(e) =>
+                                setDiscountOverrides((prev) => ({
+                                  ...prev,
+                                  [p.id]: e.target.value,
+                                }))
+                              }
+                              className="h-7 w-24 rounded border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleApplyManualDiscounts}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {hasAppliedDiscounts ? 'Mettre à jour les remises' : 'Appliquer les remises'}
+                  </button>
+                  {hasAppliedDiscounts && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveDiscounts}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      Retirer les remises
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Indication en mode automatique des remises opérateur */}
+            {modeRemisesOperateur === 'automatique' && eligibleDiscountProducts.length > 0 && (
+              <div className="px-4 py-3 flex items-center justify-between gap-4 text-sm bg-emerald-50/40">
+                <span className="text-emerald-800 font-medium">
+                  Remises opérateur ({eligibleDiscountProducts.length} produit
+                  {eligibleDiscountProducts.length > 1 ? 's' : ''} remisé
+                  {eligibleDiscountProducts.length > 1 ? 's' : ''} automatiquement)
+                </span>
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Calcul automatique actif
+                </span>
               </div>
             )}
           </div>

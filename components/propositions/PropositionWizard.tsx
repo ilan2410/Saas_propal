@@ -14,7 +14,7 @@ import { Step5SpQuestions } from './Step5SpQuestions';
 import { Step5EditSp } from './Step5EditSp';
 import { MultisiteChoiceModal } from './MultisiteChoiceModal';
 import { supportsSp } from '@/lib/templates/supportsSp';
-import type { SuggestionsGenerees, SuggestionsSpCompletes, SpQuestionReponse } from '@/types';
+import type { SuggestionsGenerees, SuggestionsSpCompletes, SpQuestionReponse, WordConfig } from '@/types';
 
 const STEPS = [
   { id: 1, name: 'Template', description: 'Sélection' },
@@ -189,6 +189,13 @@ export function PropositionWizard({
     }));
   };
 
+  const isSelectedTemplateModeDirect = (): boolean => {
+    const tpl = templates.find((t) => t.id === propositionData.template_id);
+    if (!tpl || !supportsSp(tpl.file_type)) return false;
+    const cfg = tpl.file_config as WordConfig | undefined;
+    return cfg?.sp_config_mode_direct?.actif === true;
+  };
+
   // Called after Step3 extraction succeeds
   const handleAfterExtraction = async () => {
     const donnees = propositionData.donnees_extraites ?? {};
@@ -205,6 +212,8 @@ export function PropositionWizard({
       } catch {}
       updatePropositionData({ multisite_sites: sites });
       setShowMultisiteModal(true);
+    } else if (isSelectedTemplateModeDirect()) {
+      handleComplete();
     } else {
       nextStep();
     }
@@ -228,13 +237,21 @@ export function PropositionWizard({
   const handleMultisiteToutInclure = () => {
     updatePropositionData({ multisite_mode: 'tout_inclure' });
     setShowMultisiteModal(false);
-    nextStep();
+    if (isSelectedTemplateModeDirect()) {
+      handleComplete();
+    } else {
+      nextStep();
+    }
   };
 
   const handleMultisitePasMultisite = () => {
     updatePropositionData({ multisite_mode: null });
     setShowMultisiteModal(false);
-    nextStep();
+    if (isSelectedTemplateModeDirect()) {
+      handleComplete();
+    } else {
+      nextStep();
+    }
   };
 
   // Complete SP for one site, clone, generate, advance to next or Step6

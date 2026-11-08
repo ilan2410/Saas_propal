@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogueCategorie, CatalogueProduit, SuggestionsSpCompletes } from '@/types';
+import { calculateCartSummary, DIRECT_REMISE_PRODUITS_QUESTION_ID } from './calculateCart';
+import { getEligibleDiscountProducts } from './evaluateDiscountRules';
 import { repairSpCompletesFromQuestionnaire } from './repairSpCompletes';
 
 function product(
@@ -146,5 +148,37 @@ describe('repairSpCompletesFromQuestionnaire — édition directe et mode sans q
     expect(repaired?.sp_lignes_mobiles).toEqual([]);
     expect(repaired?.sp_cadeaux_table).toEqual([]);
     expect(repaired?.sp_nb_lignes).toBe('0');
+  });
+
+  it('détecte et applique les remises opérateur en Mode direct (manual_<uid> + prix_remise_panier_sp)', () => {
+    const mobileAvecRemise: CatalogueProduit = {
+      ...mobile5Go,
+      remise_type: 'fixe',
+      remise_valeur: 4,
+    };
+    const reponses = [
+      { question_id: 'manual_1', valeur: mobileAvecRemise.id },
+      { question_id: 'quantite_manual_1', valeur: JSON.stringify({ [mobileAvecRemise.nom]: '2' }) },
+    ];
+
+    const eligibles = getEligibleDiscountProducts({
+      rules: [],
+      products: [mobileAvecRemise],
+      reponses,
+      donneesExtraites: {},
+    });
+    expect(eligibles).toHaveLength(1);
+    expect(eligibles[0].id).toBe(mobileAvecRemise.id);
+
+    const reponsesAvecRemise = [
+      ...reponses,
+      {
+        question_id: DIRECT_REMISE_PRODUITS_QUESTION_ID,
+        valeur: JSON.stringify({ [mobileAvecRemise.id]: '10' }),
+      },
+    ];
+    const cart = calculateCartSummary(reponsesAvecRemise, [], [mobileAvecRemise]);
+    expect(cart.abonnements.mobile).toBe(20);
+    expect(cart.lines[0].prixOriginalTotal).toBe(28);
   });
 });

@@ -3,13 +3,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, GripVertical, Download, Upload, Package, FileText, PenLine, Layers, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { SpQuestion, SpCondition, SpVariableCustom } from '@/types';
+import type { SpQuestion, SpCondition, SpVariableCustom, WordConfig } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
 import { SpAiGeneratorModal } from './SpAiGeneratorModal';
 import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
 import { supportsSp } from '@/lib/templates/supportsSp';
 
-interface Template { id: string; nom: string; file_type: string; }
+interface Template { id: string; nom: string; file_type: string; file_config?: unknown; }
 type SpAiWorkflowMode = 'create' | 'modify' | 'append';
 const SHOW_SP_AI_APPEND_EDIT = false;
 
@@ -897,6 +897,8 @@ export function SpQuestionsManager({ templates }: Props) {
           );
         };
 
+        const isModeDirect = Boolean((t.file_config as WordConfig | undefined)?.sp_config_mode_direct?.actif);
+
         return (
           <div key={t.id} className="border border-gray-200 rounded-lg overflow-hidden">
             {/* En-tête template */}
@@ -904,9 +906,16 @@ export function SpQuestionsManager({ templates }: Props) {
               className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left"
               onClick={() => setExpanded(isExpanded ? null : t.id)}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                 <span className="font-medium text-gray-900">{t.nom}</span>
+                {isModeDirect && (
+                  <Tooltip text="Le Mode direct est activé pour ce template : le questionnaire SP est désactivé.">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-medium cursor-help">
+                      Mode direct actif (Questions désactivées)
+                    </span>
+                  </Tooltip>
+                )}
                 <Tooltip text={`${questions.length} question${questions.length !== 1 ? 's' : ''} au total, ${activeCount} active${activeCount !== 1 ? 's' : ''}${conditionalCount > 0 ? `, ${conditionalCount} conditionnelle${conditionalCount > 1 ? 's' : ''}` : ''}`}>
                   <span className="text-xs text-gray-500 cursor-help">
                     ({activeCount}/{questions.length} active{activeCount !== 1 ? 's' : ''})

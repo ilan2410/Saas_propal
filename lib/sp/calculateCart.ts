@@ -202,6 +202,9 @@ const FREE_ENTRY_MARKER = '__libre__';
 /** Préfixe des réponses correspondant à un produit ajouté manuellement depuis le panier. */
 export const MANUAL_PRODUCT_PREFIX = 'manual_';
 
+/** Question ID réservé pour les remises opérateur appliquées depuis le Résumé SP / Mode direct. */
+export const DIRECT_REMISE_PRODUITS_QUESTION_ID = 'prix_remise_panier_sp';
+
 // ── Numéros de boucle (labels par itération) ─────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -573,11 +576,14 @@ export function calculateCartSummary(
     if (rep.question_id.startsWith('quantite_')) continue;
     if (!rep.question_id.startsWith('prix_')) continue;
 
-    // Match a remise_produits parent question
-    const parentId = rep.question_id.replace(/^prix_/, '');
-    const parentBaseId = parentId.replace(/__iter_\d+$/, '');
-    const parentQ = questionById.get(parentBaseId);
-    if (!parentQ || parentQ.affichage !== 'remise_produits') continue;
+    // Match a remise_produits parent question OR the direct SP resume discount map
+    const isDirectRemise = rep.question_id === DIRECT_REMISE_PRODUITS_QUESTION_ID;
+    if (!isDirectRemise) {
+      const parentId = rep.question_id.replace(/^prix_/, '');
+      const parentBaseId = parentId.replace(/__iter_\d+$/, '');
+      const parentQ = questionById.get(parentBaseId);
+      if (!parentQ || parentQ.affichage !== 'remise_produits') continue;
+    }
 
     const priceMap = parseJsonRecord(rep.valeur);
     if (!priceMap) continue;

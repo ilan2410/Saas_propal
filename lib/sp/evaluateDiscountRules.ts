@@ -35,21 +35,53 @@ export function calculerPrixRemiseProduit(product: CatalogueProduit): number | n
   return null;
 }
 
-function selectedProductNamesFromResponses(reponses: SpQuestionReponse[]): Set<string> {
-  const names = new Set<string>();
+function selectedProductKeysFromResponses(
+  reponses: SpQuestionReponse[],
+  products: CatalogueProduit[],
+): Set<string> {
+  const keys = new Set<string>();
+  const byId = new Map(products.map((p) => [p.id.trim().toLowerCase(), p]));
+  const byName = new Map(products.map((p) => [p.nom.trim().toLowerCase(), p]));
+
+  const addToken = (raw: unknown) => {
+    if (typeof raw !== 'string') return;
+    const token = raw.trim().toLowerCase();
+    if (!token) return;
+    keys.add(token);
+    const matched = byId.get(token) ?? byName.get(token);
+    if (matched) {
+      keys.add(matched.id.trim().toLowerCase());
+      keys.add(matched.nom.trim().toLowerCase());
+    }
+  };
+
   for (const reponse of reponses) {
     if (reponse.question_id.startsWith('prix_')) continue;
     if (reponse.question_id.startsWith('fas_')) continue;
     if (reponse.question_id.startsWith('quantite_')) continue;
-    const value = reponse.valeur;
-    if (typeof value === 'string' && value.trim()) names.add(value.trim().toLowerCase());
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (typeof item === 'string' && item.trim()) names.add(item.trim().toLowerCase());
+    if (reponse.question_id.startsWith('numero_')) continue;
+    if (reponse.question_id.startsWith('libre_')) continue;
+    if (reponse.question_id === 'auto_exclu') continue;
+
+    if (reponse.question_id.startsWith('options_') && typeof reponse.valeur === 'string') {
+      try {
+        const parsed = JSON.parse(reponse.valeur);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) addToken(item);
+          continue;
+        }
+      } catch {
+        /* fallback below */
       }
     }
+
+    const value = reponse.valeur;
+    if (typeof value === 'string') addToken(value);
+    if (Array.isArray(value)) {
+      for (const item of value) addToken(item);
+    }
   }
-  return names;
+  return keys;
 }
 
 function ruleTargetsProduct(rule: SpRegleRemise, product: CatalogueProduit): boolean {
@@ -68,10 +100,24 @@ function addAutoProductNames(
 ) {
   if (!spPreferencesProduits) return;
 
+  const excludedAuto = new Set<string>();
+  const exclRep = reponses.find((r) => r.question_id === 'auto_exclu');
+  if (exclRep && typeof exclRep.valeur === 'string') {
+    try {
+      const parsed = JSON.parse(exclRep.valeur);
+      if (Array.isArray(parsed)) for (const id of parsed) excludedAuto.add(String(id));
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Produits fixes toujours ajoutés
   for (const produitId of spPreferencesProduits.produits_fixes_ids ?? []) {
     const p = products.find((prod) => prod.id === produitId);
-    if (p && p.actif) selectedNames.add(p.nom.trim().toLowerCase());
+    if (p && p.actif && !excludedAuto.has(`auto_fixed_${p.id}`)) {
+      selectedNames.add(p.nom.trim().toLowerCase());
+      selectedNames.add(p.id.trim().toLowerCase());
+    }
   }
 
   // Règles conditionnelles d'ajout automatique
@@ -88,7 +134,10 @@ function addAutoProductNames(
     if (!condMet) continue;
     for (const produitId of regle.produits_ids ?? []) {
       const p = products.find((prod) => prod.id === produitId);
-      if (p && p.actif) selectedNames.add(p.nom.trim().toLowerCase());
+      if (p && p.actif && !excludedAuto.has(`auto_cond_${regle.id}_${p.id}`)) {
+        selectedNames.add(p.nom.trim().toLowerCase());
+        selectedNames.add(p.id.trim().toLowerCase());
+      }
     }
   }
 }
@@ -103,7 +152,7 @@ export function getEligibleDiscountProducts(params: {
 }): CatalogueProduit[] {
   const { rules, products, reponses, donneesExtraites, spPreferencesProduits, spConfigRemises } = params;
   if (spConfigRemises?.actif === false) return [];
-  const selectedNames = selectedProductNamesFromResponses(reponses);
+  const selectedNames = selectedProductKeysFromResponses(reponses, products);
   addAutoProductNames(selectedNames, spPreferencesProduits, products, reponses, donneesExtraites);
   const activeRules = rules.filter((rule) => rule.actif);
   if (selectedNames.size === 0) return [];
@@ -112,7 +161,12 @@ export function getEligibleDiscountProducts(params: {
     if (!product.actif) return false;
     if (product.type_frequence !== 'mensuel') return false;
     if (product.remise_valeur == null || !Number.isFinite(product.remise_valeur)) return false;
-    if (!selectedNames.has(product.nom.trim().toLowerCase())) return false;
+    if (
+      !selectedNames.has(product.nom.trim().toLowerCase()) &&
+      !selectedNames.has(product.id.trim().toLowerCase())
+    ) {
+      return false;
+    }
 
     if (activeRules.length === 0) return true;
     return activeRules.some((rule) => {

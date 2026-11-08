@@ -35,7 +35,8 @@ import {
   ListOrdered,
   Type,
   Users,
-  CalendarDays
+  CalendarDays,
+  Zap
 } from 'lucide-react';
 import { EquipeTab } from '@/components/client/settings/EquipeTab';
 import { CalendriersTab } from '@/components/client/settings/CalendriersTab';
@@ -50,6 +51,7 @@ import { SpCategoriesOrderManager } from '@/components/settings/SpCategoriesOrde
 import { SpReferenceManager } from '@/components/settings/SpReferenceManager';
 import { SpModeClientManager } from '@/components/settings/SpModeClientManager';
 import { SpLibellesManager } from '@/components/settings/SpLibellesManager';
+import { SpModeDirectManager } from '@/components/settings/SpModeDirectManager';
 
 const DEFAULT_SP_PRIMARY_HEX = '#0D4073';
 
@@ -102,7 +104,7 @@ function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
 }
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'codes_promo';
-type QuestionsSpSubTabId = 'questions' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories' | 'libelles';
+type QuestionsSpSubTabId = 'questions' | 'mode_direct' | 'objectifs' | 'reference' | 'mode_client' | 'apparence' | 'preferences_produits' | 'ordre_categories' | 'libelles';
 type NotificationKey =
   | 'email_proposition_generee'
   | 'email_recharge'
@@ -1134,7 +1136,7 @@ export default function SettingsPage({
           {canViewBilling && <option value="facturation">Facturation</option>}
           {canViewBilling && <option value="donnees">Données</option>}
           <option value="apparence">Apparence</option>
-          {canManageTemplates && <option value="sp-questions">Questions SP</option>}
+          {canManageTemplates && <option value="sp-questions">SP situation proposée</option>}
           {canManageTemplates && <option value="sp-calculs">Calculs SP</option>}
           {canManageTemplates && <option value="sp-remises">Remises SP</option>}
           {role === 'owner' && <option value="equipe">Équipe</option>}
@@ -1150,7 +1152,7 @@ export default function SettingsPage({
         {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
         {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
         <TabButton id="apparence" label="Apparence" icon={Monitor} />
-        {canManageTemplates && <TabButton id="sp-questions" label="Questions SP" icon={Bot} />}
+        {canManageTemplates && <TabButton id="sp-questions" label="SP situation proposée" icon={Bot} />}
         {canManageTemplates && <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />}
         {canManageTemplates && <TabButton id="sp-remises" label="Remises" icon={Percent} />}
         {role === 'owner' && <TabButton id="equipe" label="Équipe" icon={Users} />}
@@ -2396,13 +2398,13 @@ export default function SettingsPage({
           </div>
         )}
 
-        {/* SECTION 8: QUESTIONS SP */}
+        {/* SECTION 8: SP SITUATION PROPOSÉE */}
         {activeTab === 'sp-questions' && (
           <div className="p-6 space-y-6">
             <div className="border-b border-gray-100 pb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Questions SP</h2>
+              <h2 className="text-lg font-semibold text-gray-900">SP situation proposée</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Configurez les questions et les objectifs affichés dans la Situation Proposée.
+                Configurez le mode de construction (Questions SP ou Mode direct), les objectifs et l&apos;affichage de la Situation Proposée.
               </p>
             </div>
 
@@ -2417,6 +2419,18 @@ export default function SettingsPage({
                 }`}
               >
                 Questions
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestionsSpSubTab('mode_direct')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                  questionsSpSubTab === 'mode_direct'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Mode direct
               </button>
               <button
                 type="button"
@@ -2503,6 +2517,7 @@ export default function SettingsPage({
             </div>
 
             {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
+            {questionsSpSubTab === 'mode_direct' && <SpModeDirectManager templates={templates} />}
             {questionsSpSubTab === 'objectifs' && <SpObjectifsManager templates={templates} />}
             {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
             {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}

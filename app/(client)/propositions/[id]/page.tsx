@@ -30,10 +30,13 @@ import type {
   OrganizationPreferences,
   SpCategorie,
   SpConfigLoyer,
+  SpConfigModeDirect,
+  SpConfigRemises,
   SpLibellesConfig,
   SpPreferencesProduits,
   SpQuestion,
   SpQuestionReponse,
+  SpRegleRemise,
   SpTableProductOrders,
   SuggestionsSpCompletes,
 } from '@/types';
@@ -257,14 +260,26 @@ export default async function PropositionDetailPage({
   const spTableProductOrders = isRecord(templateFileCfg.sp_table_product_orders)
     ? (templateFileCfg.sp_table_product_orders as SpTableProductOrders)
     : undefined;
+  const spConfigRemises: SpConfigRemises | undefined = isRecord(templateFileCfg.sp_config_remises)
+    ? (templateFileCfg.sp_config_remises as unknown as SpConfigRemises)
+    : undefined;
+  const discountRules: SpRegleRemise[] = Array.isArray(prefs.sp_regles_remise)
+    ? (prefs.sp_regles_remise as SpRegleRemise[])
+    : [];
+  const spConfigModeDirect: SpConfigModeDirect | undefined = isRecord(templateFileCfg.sp_config_mode_direct)
+    ? (templateFileCfg.sp_config_mode_direct as unknown as SpConfigModeDirect)
+    : undefined;
+  const isModeDirect = spConfigModeDirect?.actif === true;
+  const hasGeneratedFile = Boolean(proposition.duplicated_template_url || proposition.fichier_genere_url);
+  const showSpResumeSection = Boolean(suggestionsSpCompletes || spReponses.length > 0 || isModeDirect);
 
   let catalogue: CatalogueProduit[] = [];
-  if (suggestionsSpCompletes || spReponses.length > 0) {
+  if (showSpResumeSection) {
     const { data: catalogueRows } = await supabase
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
+      .eq('organization_id', ctx.organizationId);
     catalogue = Array.isArray(catalogueRows)
       ? (catalogueRows as CatalogueProduit[]).filter((p) => p.secteur_catalogue === (template?.secteur ?? 'telephonie'))
       : [];
@@ -273,7 +288,7 @@ export default async function PropositionDetailPage({
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white">
+      <div data-proposition-detail-header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <Link
             href="/propositions"
@@ -336,7 +351,7 @@ export default async function PropositionDetailPage({
 
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
-              {['draft', 'ready', 'extracted'].includes(proposition.statut) && (
+              {['draft', 'ready', 'extracted'].includes(proposition.statut) && !isModeDirect && (
                 <Link
                   href={`/propositions/${proposition.id}/resume`}
                   className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
@@ -347,14 +362,12 @@ export default async function PropositionDetailPage({
               )}
 
               {canDownloadProposition &&
-                ['ready', 'extracted'].includes(proposition.statut) &&
-                !proposition.duplicated_template_url &&
-                !proposition.fichier_genere_url && (
+                ['draft', 'ready', 'extracted'].includes(proposition.statut) &&
+                !hasGeneratedFile && (
                   <GenerateButton propositionId={proposition.id} variant="primary" />
                 )}
 
-              {canDownloadProposition &&
-                (proposition.duplicated_template_url || proposition.fichier_genere_url) && (
+              {canDownloadProposition && hasGeneratedFile && (
                 <GenerateButton
                   propositionId={proposition.id}
                   variant="primary"
@@ -363,7 +376,7 @@ export default async function PropositionDetailPage({
                 />
               )}
 
-              {canDownloadComparatifSaSp && proposition.suggestions_sp_completes && (
+              {canDownloadComparatifSaSp && (proposition.suggestions_sp_completes || isModeDirect) && (
                 <ExportSaSpButtons propositionId={proposition.id} variant="outline" />
               )}
 
@@ -442,15 +455,17 @@ export default async function PropositionDetailPage({
         )}
 
         {/* Résumé SP */}
-        {(suggestionsSpCompletes || spReponses.length > 0) && (
-          <details className="group rounded-xl border border-slate-200 bg-white">
+        {showSpResumeSection && (
+          <details open={isModeDirect || !hasGeneratedFile} className="group rounded-xl border border-slate-200 bg-white">
             <summary className="flex cursor-pointer select-none items-center justify-between gap-4 px-5 py-4 list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <ClipboardList className="h-4 w-4 text-slate-400" />
                 <div>
                   <h2 className="text-sm font-semibold text-slate-900">Résumé SP</h2>
                   <p className="text-xs text-slate-500">
-                    Synthèse de la situation proposée, du panier SP et des réponses au questionnaire
+                    {isModeDirect
+                      ? 'Synthèse de la situation proposée et du panier SP'
+                      : 'Synthèse de la situation proposée, du panier SP et des réponses au questionnaire'}
                   </p>
                 </div>
               </div>
@@ -468,6 +483,9 @@ export default async function PropositionDetailPage({
                 spConfigLoyer={spConfigLoyer}
                 spConfigMoisOfferts={spConfigMoisOfferts}
                 spPreferencesProduits={spPreferencesProduits}
+                spConfigRemises={spConfigRemises}
+                discountRules={discountRules}
+                spConfigModeDirect={spConfigModeDirect}
                 spLibelles={spLibelles}
                 spCategoriesOrder={spCategoriesOrder}
                 spTableProductOrders={spTableProductOrders}

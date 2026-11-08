@@ -252,6 +252,7 @@ export interface WordConfig {
   sp_config_remises?: SpConfigRemises;
   sp_config_codes_promo?: SpConfigCodesPromo;
   sp_table_product_orders?: SpTableProductOrders;
+  sp_config_mode_direct?: SpConfigModeDirect;
 }
 
 export interface PDFConfig {
@@ -1200,6 +1201,32 @@ export interface SpConfigModeClient {
   // Réglage widget — Indemnité
   garde_fou_indemnite_actif?: boolean;
   garde_fou_indemnite_seuil_question_id?: string;
+}
+
+export type SpBandeauFlottantChamp =
+  | 'total_mensuel'
+  | 'fas'
+  | 'indemnites'
+  | 'marge'
+  | 'montant_annee_lissee'
+  | 'base_loyer'
+  | 'loyer_mensuel'
+  | 'montant_finance'
+  | 'materiel'
+  | 'installations'
+  | 'cadeaux'
+  | 'total_ponctuel'
+  | 'loyer_total_ponctuel'
+  | 'remise_mois_offert'
+  | 'loyer_trimestriel';
+
+export interface SpConfigModeDirect {
+  /** Si true, active le Mode direct et désactive le questionnaire SP pour ce template (défaut : false). */
+  actif: boolean;
+  /** Champs affichés dans le bandeau flottant compacté au scroll (par défaut : les 8 champs clés). */
+  champs_bandeau_flottant?: SpBandeauFlottantChamp[];
+  /** Mode d'application des remises opérateur dans le Résumé SP : 'manuel' (défaut) ou 'automatique'. */
+  mode_remises_operateur?: 'manuel' | 'automatique';
 }
 
 // ── Extension WordConfig ──────────────────────────────────────────

@@ -95,6 +95,23 @@ export default async function ResumePropositionPage({
     !Array.isArray(extractionControl) &&
     (extractionControl as Record<string, unknown>).status === 'review_required';
 
+  const selectedTemplate = templates.find((t) => t.id === proposition.template_id);
+  const selectedFileCfg =
+    selectedTemplate &&
+    typeof selectedTemplate.file_config === 'object' &&
+    selectedTemplate.file_config !== null
+      ? (selectedTemplate.file_config as Record<string, unknown>)
+      : {};
+  const isModeDirect = Boolean(
+    (selectedFileCfg.sp_config_mode_direct as { actif?: boolean } | undefined)?.actif,
+  );
+
+  // En Mode direct, si l'extraction est déjà disponible et qu'il n'y a pas de revue SA bloquante,
+  // toute l'édition se passe directement dans le Résumé SP de la fiche détail.
+  if (isModeDirect && !requiresExtractionReview && (hasExtractedData || hasFilledData)) {
+    redirect(`/propositions/${id}`);
+  }
+
   let inferredStep = 1;
   if (requiresExtractionReview) {
     inferredStep = 3;

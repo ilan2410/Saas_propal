@@ -90,7 +90,7 @@ export async function POST(
       .from('catalogues_produits')
       .select('*')
       .eq('actif', true)
-      .or(`organization_id.eq.${ctx.organizationId},organization_id.is.null`);
+      .eq('organization_id', ctx.organizationId);
 
     const allQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
     const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
@@ -111,6 +111,10 @@ export async function POST(
       : undefined;
     const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
 
+    const isModeDirect = Boolean(
+      (templateFileCfg.sp_config_mode_direct as { actif?: boolean } | undefined)?.actif,
+    );
+
     const suggestionsSpCompletes = repairSpCompletesFromQuestionnaire(
       (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null,
       spReponses,
@@ -122,6 +126,7 @@ export async function POST(
       spPreferencesProduits,
       orgPreferences.sp_categories_order,
       templateFileCfg.sp_table_product_orders as SpTableProductOrders | undefined,
+      isModeDirect ? { allowEmptyCart: true } : undefined,
     );
 
     // Clauses conditionnelles → variables Word {{sp_clause_<cle>}}
