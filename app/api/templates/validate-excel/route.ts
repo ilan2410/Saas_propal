@@ -1,6 +1,6 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
 import { isAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 import { validateUploadedFile } from '@/lib/security/validate-upload';
@@ -30,8 +30,12 @@ export async function POST(request: NextRequest) {
     } else {
       const templateId = form.get('templateId');
       if (typeof templateId !== 'string') return NextResponse.json({ error: 'Template manquant.' }, { status: 400 });
-      const { data: template } = await supabase.from('proposition_templates').select('file_url, file_type')
+      let { data: template } = await supabase.from('proposition_templates').select('file_url, file_type')
         .eq('id', templateId).eq('organization_id', ctx.organizationId).maybeSingle();
+      if (template && form.get('subTemplateId')) {
+        const { data: child } = await createServiceClient().from('template_sub_templates').select('file_url,file_type').eq('id', String(form.get('subTemplateId'))).eq('template_id', templateId).eq('organization_id', ctx.organizationId).maybeSingle();
+        template = child;
+      }
       if (!template || template.file_type !== 'excel') return NextResponse.json({ error: 'Template Excel introuvable.' }, { status: 404 });
       if (!template.file_url || !isAllowedFetchUrl(template.file_url)) return NextResponse.json({ error: 'URL du template non autorisée.' }, { status: 400 });
       const response = await fetch(await signedOrganizationStorageUrl(supabase, template.file_url, 'templates', ctx.organizationId), { redirect: 'error' });

@@ -6,6 +6,7 @@ import { buildExcelSourceData, buildPropositionBaseData } from './base-data';
 import { buildSpWordData } from './sp-word-data';
 import { fillExcelWorkbook } from './excel-workbook';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
+import { getArrayFieldsForSecteur } from '@/components/admin/organizationFormConfig';
 import { clientToSpAddress, isDeliveryIdentical, resolveSpAddressPreferences, spAddressToClient, syncLinkedAddresses } from '@/lib/sp/questionVariables';
 import type { SpQuestion, SpQuestionReponse } from '@/types';
 import { reconcileClientEdit } from '@/components/propositions/FloatingClientCoordonnees';
@@ -95,6 +96,81 @@ describe('synchronisation des coordonnées SP', () => {
 });
 
 describe('generatePropositionFile Excel', () => {
+  it('propose et remplit la colonne opérateur du tableau fusionné SA', async () => {
+    const merged = getArrayFieldsForSecteur('telephonie', ['lignes_mobiles', 'lignes_fixes', 'lignes_internet'])
+      .find((array) => array.id === 'lignes');
+    expect(merged?.rowFields).toContainEqual({ id: 'operateur', label: 'Opérateur téléphonique', type: 'string' });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Offre');
+    const source = await workbook.xlsx.writeBuffer();
+    const donnees = {
+      situation_actuelle: {
+        operateurs: [{ nom: 'Orange Business', type: 'operateur_telecom' }, { nom: 'SFR Business', type: 'operateur_telecom' }],
+        lignes: [
+          { libelle: 'Forfait mobile', numero_ligne: '0612345678', type: 'mobile', operateur: 'Orange Business', tarif_net_mensuel: 20 },
+          { libelle: 'Fibre', numero_ligne: '0987654321', type: 'internet', operateur: 'SFR Business', tarif_net_mensuel: 40 },
+        ],
+        abonnements: [
+          { libelle: 'Fibre', tarif_net_mensuel: 40, operateur: 'SFR Business' },
+          { libelle: 'Forfait mobile', tarif_net_mensuel: 20, operateur: 'Orange Business' },
+        ],
+      },
+    };
+    const template = { id: 'excel', file_type: 'excel' as const, file_url: '', champs_actifs: [], file_config: {} };
+    const base = buildPropositionBaseData({ template, donnees, organization_id: 'org', proposition_id: 'prop' });
+    const bytes = await fillExcelWorkbook(source, donnees, base, {
+      arrayMappings: [{
+        arrayId: 'lignes', sheetName: 'Offre', startRow: 1, stopCondition: 'max_rows', maxRows: 2,
+        columnMapping: { designation: 'A', operateur: 'B' },
+      }],
+    });
+    const result = new ExcelJS.Workbook();
+    await result.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof result.xlsx.load>[0]);
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('A1').value).toBe('Fibre');
+    expect(sheet.getCell('B1').value).toBe('SFR Business');
+    expect(sheet.getCell('A2').value).toBe('Forfait Mobile');
+    expect(sheet.getCell('B2').value).toBe('Orange Business');
+  });
+
+  it('remplit la variable SA et la colonne opérateur de chaque ligne téléphonique', async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Offre');
+    const source = await workbook.xlsx.writeBuffer();
+    const donnees = {
+      fournisseur: 'Distributeur distinct',
+      situation_actuelle: {
+        operateurs: [
+          { nom: 'Orange', type: 'operateur_telecom' },
+          { nom: 'SFR', type: 'operateur_telecom' },
+        ],
+        lignes: [
+          { type: 'mobile', numero_ligne: '0612345678', operateur: 'Orange' },
+          { type: 'fixe', numero_ligne: '0123456789', operateur: 'SFR' },
+        ],
+      },
+    };
+    const template = { id: 'excel', file_type: 'excel' as const, file_url: '', champs_actifs: [], file_config: {} };
+    const base = buildPropositionBaseData({ template, donnees, organization_id: 'org', proposition_id: 'prop' });
+    const bytes = await fillExcelWorkbook(source, donnees, base, {
+      sheetMappings: [{ sheetName: 'Offre', mapping: { sa_operateur_telephonique: 'A1' } }],
+      arrayMappings: [{
+        arrayId: 'sa_lignes_telephoniques', sheetName: 'Offre', startRow: 3,
+        stopCondition: 'max_rows', maxRows: 2,
+        columnMapping: { sa_numero: 'A', sa_operateur: 'B' },
+      }],
+    });
+    const result = new ExcelJS.Workbook();
+    await result.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof result.xlsx.load>[0]);
+    const sheet = result.getWorksheet('Offre')!;
+    expect(sheet.getCell('A1').value).toBe('Orange, SFR');
+    expect(sheet.getCell('A3').value).toBe('06 12 34 56 78');
+    expect(sheet.getCell('B3').value).toBe('Orange');
+    expect(sheet.getCell('A4').value).toBe('01 23 45 67 89');
+    expect(sheet.getCell('B4').value).toBe('SFR');
+  });
+
   it('génère et stocke le même rendu SA/SP/entreprise que le moteur d’aperçu', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
     const workbook = new ExcelJS.Workbook();
@@ -113,7 +189,7 @@ describe('generatePropositionFile Excel', () => {
     expect(url).toBe('https://example.test/generated.xlsx');
     expect(upload).toHaveBeenCalledOnce();
     const [path, bytes, options] = upload.mock.calls[0];
-    expect(path).toMatch(/^generated\/org-1\/Propal_Proposition_\d+\.xlsx$/);
+    expect(path).toMatch(/^generated\/org-1\/prop-1\/excel\/Propal_Proposition_[0-9a-f-]+\.xlsx$/);
     expect(options.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const result = new ExcelJS.Workbook();
     await result.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));

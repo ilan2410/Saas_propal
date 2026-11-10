@@ -1,3 +1,4 @@
+import { SubTemplatesManager } from '@/components/templates/SubTemplatesManager';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -221,6 +222,7 @@ export default async function TemplateDetailPage({
             </div>
           </div>
         </div>
+        <SubTemplatesManager templateId={templateId} organizationId={id} canManage />
       </div>
     </div>
   );

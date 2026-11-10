@@ -30,6 +30,46 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
 
   const templateBuffer = await response.arrayBuffer();
 
+  const uint8Array = await renderWordProposition(templateBuffer, options);
+  const baseData = isPlainObject(donnees) ? donnees : {};
+
+  const supabase = createServiceClient();
+
+  let clientName = 'Proposition';
+  const raisonSociale =
+    findValueInData(baseData, 'raison_sociale') ||
+    findValueInData(baseData, 'nom_commercial') ||
+    findValueInData(baseData, 'client_nom') ||
+    baseData['nom_client'];
+
+  if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
+    clientName = raisonSociale
+      .replace(/[^a-zA-Z0-9\s-]/g, '')
+      .trim()
+      .substring(0, 50)
+      .replace(/\s+/g, '_');
+  }
+
+  const prefix = (options.document_name || 'Propal').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const fileName = `${prefix}_${clientName}_${crypto.randomUUID()}.docx`;
+  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    upsert: true,
+    cacheControl: '3600',
+  });
+
+  if (uploadError) {
+    throw new Error(`Erreur upload: ${uploadError.message}`);
+  }
+
+  const { data: urlData } = supabase.storage.from('templates').getPublicUrl(filePath);
+  return urlData.publicUrl;
+}
+
+export async function renderWordProposition(templateBuffer: ArrayBuffer, options: GenerateOptions): Promise<Uint8Array> {
+ const { template, donnees } = options;
   const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
   const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
   const mappedData: UnknownRecord = { ...baseData };
@@ -85,36 +125,5 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
     throw new Error('Le fichier Word généré est vide');
   }
 
-  const supabase = createServiceClient();
-
-  let clientName = 'Proposition';
-  const raisonSociale =
-    findValueInData(baseData, 'raison_sociale') ||
-    findValueInData(baseData, 'nom_commercial') ||
-    findValueInData(baseData, 'client_nom') ||
-    baseData['nom_client'];
-
-  if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
-    clientName = raisonSociale
-      .replace(/[^a-zA-Z0-9\s-]/g, '')
-      .trim()
-      .substring(0, 50)
-      .replace(/\s+/g, '_');
-  }
-
-  const fileName = `Propal_${clientName}_${Date.now()}.docx`;
-  const filePath = `generated/${organization_id}/${fileName}`;
-
-  const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
-    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    upsert: true,
-    cacheControl: '3600',
-  });
-
-  if (uploadError) {
-    throw new Error(`Erreur upload: ${uploadError.message}`);
-  }
-
-  const { data: urlData } = supabase.storage.from('templates').getPublicUrl(filePath);
-  return urlData.publicUrl;
+ return uint8Array;
 }

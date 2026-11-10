@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { safeStorageFileName, validateUploadedFile } from '@/lib/security/validate-upload';
 import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
+import { checkDocumentLimits } from '@/lib/ai/document-limits';
+import { inspectDocument } from '@/lib/ai/document-inspect';
 import { SOURCE_DOCUMENTS_BUCKET } from '@/lib/propositions/source-documents';
 
 // Types réellement supportés en aval : envoyés tels quels à Claude
@@ -67,6 +69,21 @@ export async function POST(request: NextRequest) {
     const firstInvalid = validations.find((v) => !v.ok);
     if (firstInvalid && !firstInvalid.ok) {
       return NextResponse.json({ error: firstInvalid.error }, { status: 400 });
+    }
+
+    // Limites Claude (taille, pages, tokens) : refus immédiat plutôt qu'un échec
+    // tardif à l'extraction. Le total avec les documents déjà téléversés est
+    // revérifié à l'extraction.
+    const infos = await Promise.all(
+      validations.map((v, i) =>
+        v.ok
+          ? inspectDocument(files[i]?.name ?? 'Document', v.mime === 'application/pdf' ? 'pdf' : 'image', new Uint8Array(v.buffer))
+          : Promise.resolve(null),
+      ),
+    );
+    const limits = checkDocumentLimits(infos.filter((info): info is NonNullable<typeof info> => info !== null));
+    if (!limits.ok) {
+      return NextResponse.json({ error: limits.errors.join(' '), limit_errors: limits.errors }, { status: 413 });
     }
 
     const urls: string[] = [];

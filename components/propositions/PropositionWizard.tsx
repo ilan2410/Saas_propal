@@ -1,6 +1,7 @@
 'use client';
 
-import { storageFileUrl } from '@/lib/security/storage-file-url';
+import { GenerateButton } from './GenerateButton';
+import { usePropositionGeneration } from './usePropositionGeneration';
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -114,6 +115,7 @@ export function PropositionWizard({
   canDownloadComparatifSaSp = true,
 }: Props) {
   const router = useRouter();
+  const { generate: generateDocuments, selectionDialog } = usePropositionGeneration();
   const [currentStep, setCurrentStep] = useState(Math.max(1, Number(initialStep || 1)));
   const [propositionData, setPropositionData] = useState<Partial<PropositionData>>({
     documents_urls: [],
@@ -280,22 +282,21 @@ export function PropositionWizard({
           return sum;
         }, 0);
 
-      // Clone the parent proposition for this site
-      const cloneRes = await fetch(`/api/propositions/${parentId}/clone-site`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ site_nom: site.site_nom }),
-      });
-
-      if (!cloneRes.ok) {
-        const err = await cloneRes.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Erreur clone site');
+      // Reuse an existing clone when the annex selection was cancelled or generation failed.
+      let cloneData: { proposition_id: string; extracted_data_filtered: Record<string, unknown> };
+      if (site.proposition_id) {
+        const existingRes = await fetch('/api/propositions/' + site.proposition_id);
+        const existing = await existingRes.json();
+        if (!existingRes.ok) throw new Error(existing.error ?? 'Proposition de site introuvable');
+        cloneData = { proposition_id: site.proposition_id, extracted_data_filtered: existing.proposition.extracted_data ?? {} };
+      } else {
+        const cloneRes = await fetch('/api/propositions/' + parentId + '/clone-site', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ site_nom: site.site_nom }),
+        });
+        cloneData = await cloneRes.json();
+        if (!cloneRes.ok) throw new Error((cloneData as unknown as { error: string }).error ?? 'Erreur clone site');
+        setPropositionData(prev => ({ ...prev, multisite_propositions: prev.multisite_propositions?.map((entry, i) => i === siteIndex ? { ...entry, proposition_id: cloneData.proposition_id } : entry) }));
       }
-
-      const cloneData = await cloneRes.json() as {
-        proposition_id: string;
-        extracted_data_filtered: Record<string, unknown>;
-      };
 
       // Load catalogue for SP generation
       const catalogueData = await fetch(`/api/catalogue?template_id=${encodeURIComponent(propositionData.template_id ?? '')}`)
@@ -321,21 +322,14 @@ export function PropositionWizard({
       if (!suggestionsRes.ok) throw new Error('Erreur génération SP');
 
       // Generate the file
-      const generateRes = await fetch(`/api/propositions/${cloneData.proposition_id}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!generateRes.ok) throw new Error('Erreur génération fichier');
-
-      const generateData = await generateRes.json() as { file_url: string };
+      const generateData = await generateDocuments(cloneData.proposition_id);
 
       // Functional update to avoid stale closure
       setPropositionData((prev) => {
         const prevProps = prev.multisite_propositions ?? [];
         const updated = prevProps.map((p, i) =>
           i === siteIndex
-            ? { ...p, proposition_id: cloneData.proposition_id, reponses, generated: true, file_url: generateData.file_url }
+            ? { ...p, proposition_id: cloneData.proposition_id, reponses, generated: true, file_url: generateData.file_url ?? undefined }
             : p
         );
         const nextSiteIndex = siteIndex + 1;
@@ -371,6 +365,7 @@ export function PropositionWizard({
 
   return (
     <div className="space-y-8">
+      {selectionDialog}
       {/* Steps Progress */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 md:p-6 overflow-x-auto">
         <nav aria-label="Progress" className="min-w-[600px] md:min-w-0">
@@ -502,10 +497,7 @@ export function PropositionWizard({
                         La proposition pour <span className="font-semibold">{currentSite.site_nom}</span> a été générée.
                       </p>
                       {canDownloadProposition && currentSite.file_url && (
-                        <a href={storageFileUrl(currentSite.file_url)} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700">
-                          Télécharger
-                        </a>
+                        <GenerateButton propositionId={currentSite.proposition_id!} label="Télécharger" variant="secondary" />
                       )}
                     </div>
                   );

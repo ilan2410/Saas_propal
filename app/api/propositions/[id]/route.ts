@@ -1,3 +1,4 @@
+import { removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
@@ -97,6 +98,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
     }
 
+    const { data: annexResults, error: annexError } = await serviceSupabase.from('proposition_sub_template_results').select('file_url').eq('proposition_id', id).eq('organization_id', ctx.organizationId);
+    if (annexError) throw annexError;
+    const annexUrls = (annexResults ?? []).map(r => r.file_url as string | null);
     const urls: string[] = [];
     const sourceDocsRaw =
       proposition.source_documents ?? proposition.documents_urls ?? proposition.documents_sources_urls;
@@ -175,6 +179,7 @@ export async function DELETE(
 
     if (error) throw error;
 
+    await removeSubTemplateFiles(annexUrls, ctx.organizationId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting proposition:', error);

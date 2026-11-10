@@ -23,6 +23,7 @@ interface SheetMapping {
 
 interface Props {
   organizationId?: string;
+  subTemplateId?: string;
   templateData: Partial<TemplateData>;
   updateTemplateData: (data: Partial<TemplateData>) => void;
   excelState: ExcelState;
@@ -275,6 +276,11 @@ const SP_MERGED_TABLE_ROWFIELDS: ArrayFieldDefinition['rowFields'] = [
 ];
 
 const VARIABLE_HELP: Record<string, { label: string; description: string; example: string }> = {
+  sa_operateur_telephonique: {
+    label: 'Opérateur téléphonique actuel (SA)',
+    description: 'Noms distincts des opérateurs télécom de la situation actuelle, séparés par des virgules.',
+    example: 'Orange Business, SFR Business',
+  },
   fournisseur: {
     label: 'Fournisseur actuel',
     description: 'Nom du fournisseur, opérateur ou distributeur télécom actuellement identifié dans les documents.',
@@ -392,6 +398,7 @@ function getVariableHelp(field: string): { label: string; description: string; e
 }
 
 export function Step2UploadTemplate({
+  subTemplateId,
   organizationId,
   templateData,
   updateTemplateData,
@@ -520,7 +527,7 @@ export function Step2UploadTemplate({
   ];
 
   const excelMapperFields = Array.from(
-    new Set([...((templateData.champs_actifs ?? []) as string[]), ...spSimpleFieldKeys, ...ENTREPRISE_VARS.map(v => v.key)])
+    new Set([...((templateData.champs_actifs ?? []) as string[]), 'sa_operateur_telephonique', ...spSimpleFieldKeys, ...ENTREPRISE_VARS.map(v => v.key)])
   );
   const excelMapperArrayFields: ArrayFieldDefinition[] = [...arrayFields, ...spArrayDefs].map(withTableTotalField);
 
@@ -708,6 +715,8 @@ export function Step2UploadTemplate({
     try {
       const formData = new FormData();
       formData.append('templateId', templateData.id);
+      if (subTemplateId) formData.append('subTemplateId', subTemplateId);
+      formData.append('fileConfig', JSON.stringify(templateData.file_config ?? {}));
       if (organizationId) formData.append('organizationId', organizationId);
       if (file) formData.append('file', file);
 
@@ -772,6 +781,7 @@ export function Step2UploadTemplate({
       setExcelNoProposition(false);
       const fd = new FormData();
       fd.append('templateId', templateData.id);
+      if (subTemplateId) fd.append('subTemplateId', subTemplateId);
       if (organizationId) fd.append('organizationId', organizationId);
       if (file) fd.append('file', file);
       fd.append('fileConfig', JSON.stringify(mergeExcelTemplateConfig(
@@ -842,7 +852,7 @@ export function Step2UploadTemplate({
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Étape 2 : Upload du template master
+            {subTemplateId ? "Document annexe : fichier et mapping" : "Étape 2 : Upload du template master"}
           </h2>
           <p className="text-gray-600">
             Chargement du fichier template...
@@ -911,7 +921,7 @@ export function Step2UploadTemplate({
       type = 'excel';
     } else if (extension === 'docx') {
       type = 'word';
-    } else if (extension === 'pdf') {
+    } else if (extension === 'pdf' && !subTemplateId) {
       type = 'pdf';
     } else {
       alert('Format de fichier non supporté. Utilisez Excel, Word ou PDF.');
@@ -1015,6 +1025,7 @@ export function Step2UploadTemplate({
       if (organizationId) form.append('organizationId', organizationId);
       if (file) form.append('file', file);
       if (templateData.id) form.append('templateId', templateData.id);
+      if (subTemplateId) form.append('subTemplateId', subTemplateId);
       const response = await fetch('/api/templates/validate-excel', { method: 'POST', body: form });
       const body = await response.json();
       if (!response.ok || body.valid !== true) throw new Error(body.error ?? 'Validation Excel impossible.');
@@ -1380,7 +1391,7 @@ export function Step2UploadTemplate({
           Étape 2 : Upload du template master
         </h2>
         <p className="text-gray-600">
-          Uploadez votre fichier template (Excel, Word ou PDF)
+          {subTemplateId ? "Importez votre document annexe Word ou Excel" : "Uploadez votre fichier template (Excel, Word ou PDF)"}
         </p>
       </div>
 
@@ -1610,12 +1621,12 @@ export function Step2UploadTemplate({
                       id="file-upload"
                       type="file"
                       className="hidden"
-                      accept=".xlsx,.xls,.docx,.pdf"
+                      accept={subTemplateId ? ".xlsx,.docx" : ".xlsx,.xls,.docx,.pdf"}
                       onChange={handleFileChange}
                     />
                   </div>
                   <p className="text-sm text-gray-500">
-                    Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)
+                    {subTemplateId ? "Formats acceptés : Excel (.xlsx), Word (.docx)" : "Formats acceptés : Excel (.xlsx, .xls), Word (.docx), PDF (.pdf)"}
                   </p>
                   <p className="text-xs text-gray-400 mt-2">
                     Taille maximale : 50 MB
@@ -1647,7 +1658,7 @@ export function Step2UploadTemplate({
               <li>
                 • Pour Word : Uploadez une première version pour aperçu, puis ajoutez les variables et ré-uploadez la version finale
               </li>
-              <li>• Pour PDF : Utilisez des formulaires remplissables</li>
+              
             </ul>
           </div>
 
@@ -2101,7 +2112,7 @@ export function Step2UploadTemplate({
 
             {/* Liste des champs */}
             <div id="btn-copy-variable" className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {champsSimples.map((field) => {
+              {Array.from(new Set([...champsSimples, 'sa_operateur_telephonique'])).map((field) => {
                 const token = `{{${field}}}`;
                 const copied = copiedKeys[token] !== undefined;
                 const help = getVariableHelp(field);
@@ -2480,7 +2491,7 @@ export function Step2UploadTemplate({
               </div>
 
               {/* Variables SP custom */}
-              {templateData?.id && (
+              {templateData?.id && !subTemplateId && (
                 <SpCustomVariablesEditor
                   templateId={templateData.id}
                   fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
@@ -2489,7 +2500,7 @@ export function Step2UploadTemplate({
               )}
 
               {/* Clauses conditionnelles */}
-              {templateData?.id && (
+              {templateData?.id && !subTemplateId && (
                 <SpClausesManager
                   templateId={templateData.id}
                   fileConfig={(templateData.file_config ?? {}) as Record<string, unknown>}
@@ -2745,7 +2756,7 @@ export function Step2UploadTemplate({
             {/* Configuration SP (Situation Proposée) — parité avec les templates Word.
                 Les variables/tableaux SP sont mappables sur des cellules dans le mapping
                 ci-dessus, comme les champs SA. */}
-            {templateData?.id && (
+            {templateData?.id && !subTemplateId && (
               <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
                 <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
                   <p className="text-sm text-blue-900 font-medium">Variables Situation Proposée (SP)</p>

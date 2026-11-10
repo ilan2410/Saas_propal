@@ -1,3 +1,4 @@
+import { SubTemplatesManager } from '@/components/templates/SubTemplatesManager';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -155,6 +156,7 @@ export default async function TemplateDetailPage({ params }: Props) {
         </div>
 
         {/* Actions rapides */}
+
         <TemplateActions
           templateId={template.id}
           templateName={template.nom}
@@ -444,6 +446,7 @@ export default async function TemplateDetailPage({ params }: Props) {
             </div>
           </div>
         </div>
+        <SubTemplatesManager templateId={id} canManage={ctx.role === 'owner' || ctx.permissions.manage_templates} />
       </div>
     </div>
   );

@@ -11,10 +11,11 @@ import { calculateSaCartSummary, normalizeSaAmountsToHT } from '@/lib/sp/calcula
 import type { SpConfigResiliation, WordConfig } from '@/types';
 import { canAccessSecteur, canUseTemplate, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
-import { DEFAULT_CLAUDE_MODEL, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
+import { isDeepSeekSaModel } from '@/lib/ai/claude-models';
+import { DocumentLimitError } from '@/lib/ai/document-limits';
 import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
-import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
+import { buildExtractionQuote, getUsdToEurRate, resolveExtractionSetup } from '@/lib/propositions/extraction-quote';
 import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -458,7 +459,8 @@ DOCUMENT(S):
 Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     let promptToUse = template.prompt_template || (secteurTemplate === 'bureautique' ? BUREAUTIQUE_DEFAULT_PROMPT : organization.prompt_template || DEFAULT_PROMPT);
-    const modelToUse = template.claude_model || organization.claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL;
+    const extractionSetup = resolveExtractionSetup(template, organization);
+    const modelToUse = extractionSetup.modelToUse;
 
     // Niveau d'effort de raisonnement, réglable par template (file_config.claude_effort).
     // N'a d'effet que sur Sonnet 5 ; sinon ignoré côté lib/ai/claude.
@@ -522,11 +524,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
     console.log('🤖 Modèle utilisé:', modelToUse);
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
-    const selectedFields = Array.isArray(template.champs_actifs)
-      ? template.champs_actifs.filter((field: unknown): field is string => typeof field === 'string')
-      : [];
-    const activeFields = withRequiredTemplateFields(secteurTemplate, selectedFields);
-    const useSaPipeline = isSaExtractionEligible(secteurTemplate, activeFields);
+    const { activeFields, useSaPipeline } = extractionSetup;
     if (isDeepSeekSaModel(modelToUse) && !useSaPipeline) {
       return NextResponse.json({ error: 'DeepSeek V4.1 Flash est réservé aux extractions SA.' }, { status: 400 });
     }
@@ -535,6 +533,35 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       const variable = isDeepSeekSaModel(modelToUse) ? 'DEEPSEEK_API_KEY' : 'ANTHROPIC_API_KEY';
       return NextResponse.json({ error: 'Clé API du modèle non configurée', details: `La variable ${variable} n'est pas définie` }, { status: 500 });
     }
+
+    // Devis AVANT toute écriture : limites Claude, coût IA estimé en euros,
+    // supplément éventuel et solde. Rien n'est créé ni débité si on s'arrête ici.
+    const signedDocuments = await Promise.all(documents_urls.map((url: string) => signedOrganizationStorageUrl(supabase, url, 'documents', ctx.organizationId)));
+    const quote = await buildExtractionQuote({
+      documentUrls: signedDocuments,
+      setup: extractionSetup,
+      tarif,
+      credits,
+      usdToEurRate: await getUsdToEurRate(serviceSupabase),
+    });
+    console.log('🧾 Devis extraction:', { coutEstimeEur: quote.costEur, supplement: quote.surcharge, totalDebit: quote.totalDebit, credits });
+
+    if (!quote.sufficient) {
+      return NextResponse.json({
+        error: 'Crédits insuffisants',
+        details: `Crédits requis: ${quote.totalDebit}€${quote.surcharge > 0 ? ` (dont ${quote.surcharge.toFixed(2)}€ de supplément documents volumineux)` : ''}, Crédits disponibles: ${credits}€`,
+      }, { status: 402 });
+    }
+    if (quote.surcharge > 0 && body?.accept_surcharge !== true) {
+      return NextResponse.json({
+        error: 'Supplément à confirmer',
+        code: 'surcharge_required',
+        details: `Cette proposition débitera ${quote.surcharge.toFixed(2)}€ supplémentaires (documents volumineux).`,
+        surcharge: quote.surcharge,
+        total_debit: quote.totalDebit,
+      }, { status: 409 });
+    }
+    const debitAmount = quote.totalDebit;
 
     // Créer OU réutiliser la proposition (draft) en BDD
     type PropositionRow = { id: string } & Record<string, unknown>;
@@ -619,8 +646,6 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } catch (syncError) {
       console.error('Erreur sync pièces jointes (documents source):', syncError);
     }
-
-    const signedDocuments = await Promise.all(documents_urls.map((url: string) => signedOrganizationStorageUrl(supabase, url, 'documents', ctx.organizationId)));
 
     // Extraire les données avec Claude
     console.log('🤖 Lancement extraction avec modèle:', modelToUse);
@@ -746,18 +771,18 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
 
       const currentCredits = parseFloat(String(currentOrg.credits || 0));
       // Revérification (même si on a vérifié au début, les crédits ont pu changer)
-      if (currentCredits < tarif) {
+      if (currentCredits < debitAmount) {
         await supabase.from('propositions').delete().eq('id', proposition.id);
         return NextResponse.json(
           {
             error: 'Crédits insuffisants',
-            details: `Crédits requis: ${tarif}€, Crédits disponibles: ${currentCredits}€`,
+            details: `Crédits requis: ${debitAmount}€, Crédits disponibles: ${currentCredits}€`,
           },
           { status: 402 }
         );
       }
 
-      const newCredits = Math.round((currentCredits - tarif) * 100) / 100;
+      const newCredits = Math.round((currentCredits - debitAmount) * 100) / 100;
 
       const { data: updatedOrgRow, error: updateCreditsError } = await serviceSupabase
         .from('organizations')
@@ -778,7 +803,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         );
       }
 
-      console.log(`💳 Crédits débités: ${tarif}€ | ${currentCredits}€ -> ${updatedOrgRow.credits}€ | org=${organization.id}`);
+      console.log(`💳 Crédits débités: ${debitAmount}€ | ${currentCredits}€ -> ${updatedOrgRow.credits}€ | org=${organization.id}`);
     } catch (debitError) {
       console.error('Exception lors du débit des crédits:', debitError);
       // Supprimer la proposition si le débit échoue
@@ -847,10 +872,16 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       validation_status: requiresReview ? 'review_required' : 'valid',
       quality_issues: extractionControl && Array.isArray(extractionControl.issues) ? extractionControl.issues : [],
       ...(ctx.permissions.view_credits_billing ? { credits_restants: updatedOrg?.credits || 0 } : {}),
-      montant_debite: tarif,
+      montant_debite: debitAmount,
     });
   } catch (error) {
     console.error('❌ Error extracting data:', error);
+    if (error instanceof DocumentLimitError) {
+      return NextResponse.json(
+        { error: "Documents trop volumineux pour l'extraction", details: error.message, limit_errors: error.errors },
+        { status: 413 },
+      );
+    }
     return NextResponse.json(
       {
         error: 'Échec de l\'extraction',

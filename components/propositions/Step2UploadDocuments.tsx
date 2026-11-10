@@ -4,6 +4,8 @@ import { useMemo, useState, useRef, DragEvent } from 'react';
 import { Upload, X, FileText, Loader2, CheckCircle2, ArrowRight, ArrowLeft, Cloud, File, AlertCircle, Image } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
+import { checkDocumentLimits, CLAUDE_DOCUMENT_LIMITS, formatMB, type DocumentInfo } from '@/lib/ai/document-limits';
+import { inspectDocument } from '@/lib/ai/document-inspect';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -18,7 +20,9 @@ export function Step2UploadDocuments({
   onNext,
   onPrev,
 }: Props) {
-  const [files, setFiles] = useState<File[]>([]);
+  const [entries, setEntries] = useState<{ file: File; info: DocumentInfo }[]>([]);
+  const [rejections, setRejections] = useState<string[]>([]);
+  const files = useMemo(() => entries.map((entry) => entry.file), [entries]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,32 +48,47 @@ export function Step2UploadDocuments({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
-    addFiles(selectedFiles);
+    void addFiles(selectedFiles);
+    e.target.value = '';
   };
 
-  const addFiles = (newFiles: File[]) => {
+  const addFiles = async (newFiles: File[]) => {
     // Types supportés : PDF et Images uniquement
     const supportedTypes = [
       'application/pdf', // PDF
       'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp' // Images
     ];
-    
-    const validFiles = newFiles.filter(file => {
-      const maxSize = 30 * 1024 * 1024; // 30 MB (limite Claude.ai)
-      const isSupported = supportedTypes.includes(file.type);
-      
-      return isSupported && file.size <= maxSize;
-    });
 
-    if (validFiles.length < newFiles.length) {
-      alert('Certains fichiers ont été ignorés.\nFormats acceptés : PDF, JPG, PNG, GIF, WebP (max 30 MB)');
+    const accepted: { file: File; info: DocumentInfo }[] = [];
+    const rejected: string[] = [];
+
+    for (const file of newFiles) {
+      if (!supportedTypes.includes(file.type)) {
+        rejected.push(`« ${file.name} » : format non supporté (PDF, JPG, PNG, GIF ou WebP uniquement).`);
+        continue;
+      }
+      if (file.size > CLAUDE_DOCUMENT_LIMITS.maxFileBytes) {
+        rejected.push(`« ${file.name} » pèse ${formatMB(file.size)} : maximum ${formatMB(CLAUDE_DOCUMENT_LIMITS.maxFileBytes)} par fichier.`);
+        continue;
+      }
+      const kind = file.type === 'application/pdf' ? 'pdf' : 'image';
+      const info = await inspectDocument(file.name, kind, new Uint8Array(await file.arrayBuffer()));
+      // Un fichier invalide à lui seul (image trop lourde, PDF trop long) est refusé tout de suite.
+      const single = checkDocumentLimits([info]);
+      const fileErrors = single.errors.filter((message) => message.includes(`« ${file.name} »`));
+      if (fileErrors.length > 0) {
+        rejected.push(...fileErrors);
+        continue;
+      }
+      accepted.push({ file, info });
     }
 
-    setFiles((prev) => [...prev, ...validFiles]);
+    setRejections(rejected);
+    if (accepted.length > 0) setEntries((prev) => [...prev, ...accepted]);
   };
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setEntries((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeUploadedUrl = (index: number) => {
@@ -93,7 +112,7 @@ export function Step2UploadDocuments({
     setIsDragging(false);
     
     const droppedFiles = Array.from(e.dataTransfer.files);
-    addFiles(droppedFiles);
+    void addFiles(droppedFiles);
   };
 
   const handleUpload = async () => {
@@ -114,6 +133,8 @@ export function Step2UploadDocuments({
       return;
     }
 
+    if (!limitCheck.ok) return;
+
     setIsUploading(true);
 
     try {
@@ -131,7 +152,14 @@ export function Step2UploadDocuments({
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Erreur upload');
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        if (response.status === 413 && body?.error) {
+          setRejections(Array.isArray(body.limit_errors) ? body.limit_errors : [String(body.error)]);
+          return;
+        }
+        throw new Error('Erreur upload');
+      }
 
       const result = await response.json();
 
@@ -232,6 +260,9 @@ export function Step2UploadDocuments({
 
   const totalSize = files.reduce((acc, file) => acc + file.size, 0);
   const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+  // Contrôle cumulé sur les fichiers en attente (les documents déjà uploadés
+  // sont revérifiés côté serveur au moment de l'extraction).
+  const limitCheck = useMemo(() => checkDocumentLimits(entries.map((entry) => entry.info)), [entries]);
 
   const canContinue = files.length > 0 || uploadedUrls.length > 0;
 
@@ -365,7 +396,7 @@ export function Step2UploadDocuments({
               📸 Vous pouvez photographier vos documents avec votre téléphone !
             </p>
             <p className="text-xs text-gray-400 mt-2">
-              Taille maximale : 30 MB par fichier
+              {`Maximum : ${formatMB(CLAUDE_DOCUMENT_LIMITS.maxFileBytes)} par fichier, ${formatMB(CLAUDE_DOCUMENT_LIMITS.maxImageBytes)} par image, ${CLAUDE_DOCUMENT_LIMITS.maxPdfPages} pages de PDF au total`}
             </p>
           </div>
         </div>
@@ -429,6 +460,24 @@ export function Step2UploadDocuments({
         </div>
       )}
 
+      {rejections.length > 0 && (
+        <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900">
+          <p className="font-semibold mb-1">Certains fichiers n&apos;ont pas été ajoutés :</p>
+          <ul className="list-disc pl-5 space-y-1">
+            {rejections.map((message, i) => <li key={i}>{message}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {files.length > 0 && !limitCheck.ok && (
+        <div role="alert" className="bg-red-50 border border-red-300 rounded-xl p-4 text-sm text-red-800">
+          <p className="font-semibold mb-1">Ces documents dépassent les limites d&apos;analyse :</p>
+          <ul className="list-disc pl-5 space-y-1">
+            {limitCheck.errors.map((message, i) => <li key={i}>{message}</li>)}
+          </ul>
+        </div>
+      )}
+
       {files.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -444,6 +493,12 @@ export function Step2UploadDocuments({
               </span>
               <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
                 {totalSizeMB} MB
+              </span>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-semibold ${limitCheck.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                title="Estimation du contenu envoyé à l'IA, avant le prompt et la réponse"
+              >
+                ≈ {limitCheck.estimatedTokens.toLocaleString('fr-FR')} / {limitCheck.tokenBudget.toLocaleString('fr-FR')} tokens
               </span>
             </div>
           </div>
@@ -543,7 +598,7 @@ export function Step2UploadDocuments({
           </span>
           <button
             onClick={handleUpload}
-            disabled={!canContinue || isUploading}
+            disabled={!canContinue || isUploading || !limitCheck.ok}
             className="group px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all font-semibold text-lg shadow-lg shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-3 hover:scale-105 active:scale-95"
           >
             {isUploading ? (

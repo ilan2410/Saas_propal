@@ -737,6 +737,7 @@ const SA_LIGNES_TELEPHONIQUES_ARRAY_FIELD: ArrayFieldDefinition = {
     { id: 'sa_type_ligne', label: 'Type', type: 'string' },
     { id: 'sa_numero', label: 'Numéro de téléphone', type: 'string' },
     { id: 'sa_prix_mensuel_ht', label: 'Prix mensuel HT', type: 'string' },
+    { id: 'sa_operateur', label: 'Opérateur téléphonique', type: 'string' },
   ],
 };
 
@@ -962,6 +963,7 @@ export function getArrayFieldsForSecteur(secteur: string, mergedCategories: stri
       { id: 'prix_mensuel_ht', label: 'Prix mensuel HT', type: 'number' },
       { id: 'numero_ligne', label: 'Numéro', type: 'string' },
       { id: 'type', label: 'Type', type: 'string' },
+      { id: 'operateur', label: 'Opérateur téléphonique', type: 'string' },
       ...(includesMateriel
         ? ([
             { id: 'libelle', label: 'Libellé', type: 'string' },

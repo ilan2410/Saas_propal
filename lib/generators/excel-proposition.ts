@@ -60,8 +60,9 @@ export async function generateExcelFile(options: GenerateOptions): Promise<strin
       .replace(/\s+/g, '_'); // Remplacer les espaces par des underscores
   }
 
-  const fileName = `Propal_${clientName}_${Date.now()}.xlsx`;
-  const filePath = `generated/${organization_id}/${fileName}`;
+  const prefix = (options.document_name || 'Propal').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const fileName = `${prefix}_${clientName}_${crypto.randomUUID()}.xlsx`;
+  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${fileName}`;
 
   console.log('📤 Upload vers:', filePath);
   console.log('📊 Taille du fichier:', uint8Array.byteLength, 'bytes');

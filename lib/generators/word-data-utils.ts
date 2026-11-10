@@ -161,8 +161,37 @@ function normalizeSaArray(key: string, value: unknown): unknown {
   return value.map((item) => normalizeSaArrayItem(item, key));
 }
 
+function saTelecomOperators(baseData: UnknownRecord): string[] {
+  const sa = isPlainObject(baseData.situation_actuelle) ? baseData.situation_actuelle : {};
+  const names = new Map<string, string>();
+  const add = (name: unknown) => {
+    if (typeof name !== 'string' || !name.trim()) return;
+    const trimmed = name.trim();
+    const key = trimmed.toLocaleLowerCase('fr-FR');
+    if (!names.has(key)) names.set(key, trimmed);
+  };
+  if (Array.isArray(sa.operateurs)) {
+    for (const operator of sa.operateurs) {
+      if (!isPlainObject(operator)) continue;
+      if (operator.type && String(operator.type).trim().toLowerCase() !== 'operateur_telecom') continue;
+      add(operator.nom);
+    }
+  }
+  if (!names.size) {
+    for (const key of ['lignes', 'abonnements', 'lignes_mobiles', 'lignes_fixes']) {
+      for (const source of [sa, baseData]) {
+        const rows = source[key];
+        if (!Array.isArray(rows)) continue;
+        for (const row of rows) if (isPlainObject(row)) add(row.operateur);
+      }
+    }
+  }
+  return [...names.values()];
+}
+
 function buildSaTelephoneLines(baseData: UnknownRecord): UnknownRecord[] {
   const sa = isPlainObject(baseData.situation_actuelle) ? baseData.situation_actuelle : {};
+  const operators = saTelecomOperators(baseData);
   const sources: Array<{ key: string; rows: unknown[] }> = [
     { key: 'lignes_mobiles', rows: Array.isArray(baseData.lignes_mobiles) ? baseData.lignes_mobiles : [] },
     { key: 'lignes_fixes', rows: Array.isArray(baseData.lignes_fixes) ? baseData.lignes_fixes : [] },
@@ -173,6 +202,15 @@ function buildSaTelephoneLines(baseData: UnknownRecord): UnknownRecord[] {
   ];
   const seen = new Set<string>();
   const lines: UnknownRecord[] = [];
+  const operatorsByNumber = new Map<string, string>();
+  for (const { rows } of sources) {
+    for (const row of rows) {
+      if (!isPlainObject(row)) continue;
+      const number = (pickFirstString(row, ['numero_ligne', 'numero']) ?? '').replace(/\D/g, '');
+      const operator = pickFirstString(row, ['operateur']);
+      if (number && operator && !operatorsByNumber.has(number)) operatorsByNumber.set(number, operator);
+    }
+  }
 
   for (const source of sources) {
     for (const row of source.rows) {
@@ -191,10 +229,14 @@ function buildSaTelephoneLines(baseData: UnknownRecord): UnknownRecord[] {
         'tarif',
         'prix_mensuel_ht',
       ]);
+      const operator = pickFirstString(row, ['operateur'])
+        ?? operatorsByNumber.get(dedupeKey)
+        ?? (operators.length === 1 ? operators[0] : '');
       lines.push({
         sa_type_ligne: type,
         sa_numero: numero,
         sa_prix_mensuel_ht: formatEuro(prix),
+        sa_operateur: operator,
       });
     }
   }
@@ -235,6 +277,8 @@ function scoreSaArray(value: unknown): number {
  */
 export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
   const out: UnknownRecord = {};
+  const operators = saTelecomOperators(baseData);
+  out.sa_operateur_telephonique = operators.join(', ');
 
   const hoistArrays = (obj: unknown) => {
     if (!isPlainObject(obj)) return;
@@ -290,6 +334,7 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
       prix_mensuel_ht: prixFormatted,
       tarif: prixFormatted,
       type: typeForExportLine(line.offre, line.numero),
+      ...(line.operateur ? { operateur: line.operateur } : {}),
     };
   });
   if (scoreSaArray(fallbackSaLines) >= scoreSaArray(out.lignes)) {
@@ -333,7 +378,30 @@ export function buildSaWordData(baseData: UnknownRecord): UnknownRecord {
     }
   }
 
-  return withTableTotals(deepApplyTitleCase(out) as UnknownRecord);
+  if (Array.isArray(out.lignes)) {
+    out.lignes = out.lignes.map((row) => {
+      if (!isPlainObject(row)) return row;
+      const type = typeof row.type === 'string' ? normalizeText(row.type) : '';
+      const operator = pickFirstString(row, ['operateur'])
+        ?? (operators.length === 1 && ['mobile', 'fixe', 'internet'].includes(type) ? operators[0] : '');
+      return operator ? { ...row, operateur: operator } : row;
+    });
+  }
+
+  const formatted = deepApplyTitleCase(out) as UnknownRecord;
+  formatted.sa_operateur_telephonique = out.sa_operateur_telephonique;
+  if (Array.isArray(out.lignes)) {
+    const originalLines = out.lignes as UnknownRecord[];
+    formatted.lignes = (formatted.lignes as UnknownRecord[]).map((row, index) => ({
+      ...row,
+      ...(originalLines[index].operateur ? { operateur: originalLines[index].operateur } : {}),
+    }));
+  }
+  formatted.sa_lignes_telephoniques = (formatted.sa_lignes_telephoniques as UnknownRecord[]).map((line, index) => ({
+    ...line,
+    sa_operateur: (out.sa_lignes_telephoniques as UnknownRecord[])[index].sa_operateur,
+  }));
+  return withTableTotals(formatted);
 }
 
 export function toTitleCase(s: string): string {
