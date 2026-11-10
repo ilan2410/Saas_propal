@@ -745,7 +745,7 @@ export function EditableSpResumePanel({
   const [editingDiscountProductId, setEditingDiscountProductId] = useState<string | null>(null);
   const [discountOverrides, setDiscountOverrides] = useState<Record<string, string>>({});
   const [isHeroStickyVisible, setIsHeroStickyVisible] = useState(false);
-  const [floatingPosition, setFloatingPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [floatingPosition, setFloatingPosition] = useState({ left: 0, width: 0 });
   const heroCardRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -1132,13 +1132,12 @@ export function EditableSpResumePanel({
       const header = document.querySelector('[data-proposition-detail-header]');
       const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
       const panelBottom = panelRef.current?.getBoundingClientRect().bottom ?? 0;
-      setIsHeroStickyVisible(rect.top < headerBottom + 12 && panelBottom > headerBottom + 80);
+      // Apparaît une fois le hero entièrement sorti de l'écran (au-dessus du header).
+      setIsHeroStickyVisible(rect.bottom < headerBottom - 40 && panelBottom > headerBottom + 80);
     };
     const updatePosition = () => {
       const rect = el.getBoundingClientRect();
-      const header = document.querySelector('[data-proposition-detail-header]');
       setFloatingPosition({
-        top: (header?.getBoundingClientRect().bottom ?? 0) + 8,
         left: rect.left,
         width: rect.width,
       });
@@ -1610,7 +1609,7 @@ export function EditableSpResumePanel({
       {isHeroStickyVisible && (
         <div
           className="fixed z-20 rounded-xl border border-slate-300 bg-white/95 backdrop-blur-md shadow-lg px-4 py-3"
-          style={floatingPosition}
+          style={{ ...floatingPosition, bottom: 12 }}
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Gauche : Total mensuel proposé + Économie/Surcoût */}
