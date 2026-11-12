@@ -288,6 +288,7 @@ export interface TestResult {
 
 // Proposition générée
 export interface Proposition {
+  selected_sub_template_ids?: string[] | null;
   id: string;
   template_id?: string;
   organization_id: string;

@@ -9,6 +9,9 @@ import { StructuredSaAiSchema, normalizeStructuredSaOutput, type StructuredSa } 
 
 import type { ClaudeCallUsage } from '@/lib/ai/claude-pricing';
 import { ClaudeCallError } from '@/lib/ai/claude-errors';
+import { checkDocumentLimits, DocumentLimitError, type DocumentCheckOptions, type DocumentInfo } from '@/lib/ai/document-limits';
+import { inspectDocument } from '@/lib/ai/document-inspect';
+import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -90,36 +93,59 @@ function sanitizeJsonControlCharacters(jsonStr: string): string {
  * @param options - Options d'extraction
  * @returns Données extraites
  */
-export async function prepareDocumentsForClaude(documents_urls: string[]) {
-  const documentContents = await Promise.all(
+async function downloadSourceDocuments(documents_urls: string[]) {
+  return Promise.all(
     documents_urls.map(async (url, index) => {
       assertAllowedFetchUrl(url);
       console.log(`📥 Téléchargement document ${index + 1}:`, url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Échec téléchargement: ${response.status} ${response.statusText}`);
       const buffer = await response.arrayBuffer();
-      const base64Data = Buffer.from(buffer).toString('base64');
       const pathname = new URL(url).pathname.toLowerCase();
       const isPDF = pathname.endsWith('.pdf');
-      const isJPEG = pathname.match(/\.(jpg|jpeg)$/);
-      const isPNG = pathname.endsWith('.png');
-      const isGIF = pathname.endsWith('.gif');
-      const isWebP = pathname.endsWith('.webp');
-      if (isPDF) {
-        return {
-          type: 'document' as const,
-          source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data },
-        };
-      }
       const imageMediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null =
-        isJPEG ? 'image/jpeg' : isPNG ? 'image/png' : isGIF ? 'image/gif' : isWebP ? 'image/webp' : null;
-      if (!imageMediaType) throw new Error(`Type de document non supporté: ${pathname}`);
-      return {
-        type: 'image' as const,
-        source: { type: 'base64' as const, media_type: imageMediaType, data: base64Data },
-      };
+        pathname.match(/\.(jpg|jpeg)$/) ? 'image/jpeg'
+          : pathname.endsWith('.png') ? 'image/png'
+          : pathname.endsWith('.gif') ? 'image/gif'
+          : pathname.endsWith('.webp') ? 'image/webp'
+          : null;
+      if (!isPDF && !imageMediaType) throw new Error(`Type de document non supporté: ${pathname}`);
+      const info = await inspectDocument(friendlyFileNameFromUrl(url), isPDF ? 'pdf' : 'image', new Uint8Array(buffer));
+      return { buffer, isPDF, imageMediaType, info };
     })
   );
+}
+
+/** Taille, pages et dimensions des documents, sans rien envoyer à l'IA (devis avant extraction). */
+export async function inspectDocumentsFromUrls(documents_urls: string[]): Promise<DocumentInfo[]> {
+  return (await downloadSourceDocuments(documents_urls)).map((d) => d.info);
+}
+
+export async function prepareDocumentsForClaude(
+  documents_urls: string[],
+  limits?: DocumentCheckOptions,
+) {
+  const downloaded = await downloadSourceDocuments(documents_urls);
+
+  // Contrôle AVANT envoi : taille, pages et tokens estimés. Évite un refus
+  // opaque d'Anthropic (ou un contexte saturé) après avoir tout téléchargé.
+  const check = checkDocumentLimits(downloaded.map((d) => d.info), limits);
+  console.log(`📏 Documents: ${check.totalBytes} octets, ${check.totalPages} pages PDF, ~${check.estimatedTokens}/${check.tokenBudget} tokens`);
+  if (!check.ok) throw new DocumentLimitError(check.errors);
+
+  const documentContents = downloaded.map(({ buffer, isPDF, imageMediaType }) => {
+    const data = Buffer.from(buffer).toString('base64');
+    if (isPDF) {
+      return {
+        type: 'document' as const,
+        source: { type: 'base64' as const, media_type: 'application/pdf' as const, data },
+      };
+    }
+    return {
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: imageMediaType!, data },
+    };
+  });
   console.log(`✅ ${documentContents.length} document(s) préparé(s) pour Claude`);
   return documentContents;
 }
@@ -134,7 +160,7 @@ export async function extractDataFromDocuments(options: {
 }): Promise<WithUsage<Record<string, unknown>>> {
   const { documents_urls, champs_actifs, prompt_template, claude_model } = options;
   if (isDeepSeekSaModel(claude_model)) throw new Error('DeepSeek V4.1 Flash est réservé au pipeline SA.');
-  const documentContents = await prepareDocumentsForClaude(documents_urls);
+  const documentContents = await prepareDocumentsForClaude(documents_urls, { maxOutputTokens: 16000, model: claude_model || process.env.CLAUDE_MODEL_EXTRACTION || DEFAULT_CLAUDE_MODEL });
 
   // Construire le prompt final
   const finalPrompt = prompt_template
@@ -255,7 +281,11 @@ export async function analyzeInvoicesForSa(options: {
 }): Promise<WithUsage<InvoiceAnalysisReport>> {
   const documentContents = isDeepSeekSaModel(options.claude_model)
     ? await prepareDocumentsForDeepSeek(options.documents_urls)
-    : await prepareDocumentsForClaude(options.documents_urls);
+    : await prepareDocumentsForClaude(options.documents_urls, {
+        maxOutputTokens: getClaudeMaxOutputTokens(options.claude_model, 64000),
+        promptTokens: 16000,
+        model: options.claude_model,
+      });
   const fields = options.active_fields.map((field) => `- ${field}`).join('\n');
   const prompt = `Tu es un analyste expert des factures télécom B2B. Ta priorité absolue est de déterminer exactement le TOTAL HT MENSUEL réellement payé par le client sur l'ensemble des documents.
 

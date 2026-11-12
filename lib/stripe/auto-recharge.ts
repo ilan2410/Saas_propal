@@ -1,21 +1,15 @@
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/server';
+import { creditPurchase } from './credit-purchase';
 
 // Initialisation Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
 });
 
-// Calcul du bonus (identique à create-checkout-session)
-function calculateBonus(montant: number): number {
-  if (montant >= 1000) return 20;
-  if (montant >= 500) return 15;
-  if (montant >= 250) return 10;
-  if (montant >= 100) return 5;
-  return 0;
-}
-
 export async function attemptAutoRecharge(organizationId: string, amount: number) {
+  const purchase = creditPurchase(amount);
+  if (!purchase) return { success: false, error: 'Invalid recharge amount' };
   console.log(`[AutoRecharge] Tentative de recharge pour ${organizationId}, montant: ${amount}€`);
 
   try {
@@ -58,14 +52,11 @@ export async function attemptAutoRecharge(organizationId: string, amount: number
     }
 
     // 3. Calculer les crédits et bonus
-    const bonus = calculateBonus(amount);
-    const creditsBase = amount;
-    const creditsBonus = bonus > 0 ? Math.round(amount * (bonus / 100)) : 0;
-    const creditsTotal = creditsBase + creditsBonus;
+    const creditsTotal = purchase.credits;
 
     // 4. Créer le PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // En centimes
+      amount: purchase.cents,
       currency: 'eur',
       customer: org.stripe_customer_id,
       payment_method: paymentMethodId,

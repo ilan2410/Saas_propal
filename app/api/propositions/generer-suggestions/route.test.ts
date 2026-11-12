@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { DEFAULT_CONFIG_LOYER } from '@/lib/sp/calculLoyer';
+import { DEFAULT_CONFIG_LOYER, DEFAULT_COMPOSANTES_BASE_LOYER } from '@/lib/sp/calculLoyer';
 import { calculateCartSummary } from '@/lib/sp/calculateCart';
 import type { SpConfigLoyer } from '@/types';
 import { POST } from './route';
@@ -29,7 +29,7 @@ beforeEach(() => {
   state.config = {
     ...DEFAULT_CONFIG_LOYER,
     duree_mois_par_defaut: undefined,
-    composantes_base: { marge: false },
+    composantes_base: { ...DEFAULT_COMPOSANTES_BASE_LOYER, marge: false },
     widget_marge: { mode: 'automatique', operandes: ['montant_finance', 'base_loyer'], operateurs: ['-'] },
   };
 });

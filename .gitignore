@@ -71,3 +71,5 @@ __pycache__/
 /proposition-commerciale-demo-novalis.docx
 /file_000000001ba881f5b293b5430903f82c.png
 /C*scratchpadverification_checklist.txt
+supabase/.temp/cli-latest
+.claude/settings.json

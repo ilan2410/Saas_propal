@@ -1,17 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Sparkles, Play, X, GripVertical, Download, Upload, Package, FileText, PenLine, Layers, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, HelpCircle, Play, X, GripVertical, Download, Upload, Package, FileText, PenLine, Layers, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SpQuestion, SpCondition, SpVariableCustom, WordConfig } from '@/types';
 import { SpQuestionBuilder } from './SpQuestionBuilder';
-import { SpAiGeneratorModal } from './SpAiGeneratorModal';
+
 import { SpWorkflowSimulatorModal } from './SpWorkflowSimulatorModal';
 import { supportsSp } from '@/lib/templates/supportsSp';
 
 interface Template { id: string; nom: string; file_type: string; file_config?: unknown; }
-type SpAiWorkflowMode = 'create' | 'modify' | 'append';
-const SHOW_SP_AI_APPEND_EDIT = false;
 
 interface Props {
   templates: Template[];
@@ -478,7 +476,7 @@ function QuestionCard({
         )}
 
         {q.priorite_ia === 'haute' && (
-          <Tooltip text="Priorité haute — l'IA appliquera cette réponse sans exception lors de la génération SP.">
+          <Tooltip text="Réponse prioritaire dans le workflow SP.">
             <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 cursor-help">
               🔒 Priorité haute
             </span>
@@ -526,7 +524,6 @@ export function SpQuestionsManager({ templates }: Props) {
   const [questionsByTemplate, setQuestionsByTemplate] = useState<Record<string, SpQuestion[]>>({});
   const [buildingForTemplate, setBuildingForTemplate] = useState<string | null>(null);
   const [builderQuestionTitle, setBuilderQuestionTitle] = useState('');
-  const [aiGeneratingForTemplate, setAiGeneratingForTemplate] = useState<{ templateId: string; mode: SpAiWorkflowMode } | null>(null);
   const [simulatingForTemplate, setSimulatingForTemplate] = useState<{ templateId: string; startFromQuestionId?: string } | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<{ templateId: string; question: SpQuestion } | null>(null);
   const [hideInactive, setHideInactive] = useState(true);
@@ -786,7 +783,7 @@ export function SpQuestionsManager({ templates }: Props) {
           <div>
             <p className="font-medium">Comment fonctionnent les questions SP ?</p>
             <p className="mt-0.5 text-blue-700">
-              Ces questions sont posées à l&apos;utilisateur avant la génération de la Situation Proposée. Les réponses guident l&apos;IA et alimentent les variables <code className="bg-blue-100 px-1 rounded">{'{{sp_...}}'}</code> de votre template Word.
+              Ces questions sont posées à l&apos;utilisateur avant la génération de la Situation Proposée. Les réponses alimentent les variables <code className="bg-blue-100 px-1 rounded">{'{{sp_...}}'}</code> de votre template Word.
             </p>
           </div>
         </div>
@@ -1009,50 +1006,6 @@ export function SpQuestionsManager({ templates }: Props) {
                       Importer
                     </Button>
                   </Tooltip>
-                  {questions.length === 0 ? (
-                    SHOW_SP_AI_APPEND_EDIT && (
-                      <Tooltip text="Décris ton workflow en langage naturel et l'IA génère les questions SP automatiquement.">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'create' })}
-                          className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Générer IA
-                        </Button>
-                      </Tooltip>
-                    )
-                  ) : (
-                    <>
-                      {SHOW_SP_AI_APPEND_EDIT && (
-                        <>
-                          <Tooltip text="Ajoute de nouvelles questions avec l'IA sans modifier le workflow existant.">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'append' })}
-                              className="flex-1 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
-                            >
-                              <Sparkles className="w-4 h-4 mr-2" />
-                              Ajouter IA
-                            </Button>
-                          </Tooltip>
-                          <Tooltip text="Modifie le workflow complet avec l'IA. Cette action remplacera le workflow après validation.">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setAiGeneratingForTemplate({ templateId: t.id, mode: 'modify' })}
-                              className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300"
-                            >
-                              <Sparkles className="w-4 h-4 mr-2" />
-                              Modifier IA
-                            </Button>
-                          </Tooltip>
-                        </>
-                      )}
-                    </>
-                  )}
                   <Tooltip text="Simule le formulaire de questions pour tester les conditions et la logique du workflow.">
                     <Button
                       size="sm"
@@ -1080,7 +1033,7 @@ export function SpQuestionsManager({ templates }: Props) {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-bold">Nouvelle question SP</h2>
-                  <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse guide l'IA et peut alimenter une variable dans votre template Word." />
+                  <InfoIcon tooltip="Une question SP est posée à l'utilisateur avant la génération de la Situation Proposée. Sa réponse peut alimenter une variable dans votre template Word." />
                 </div>
                 <p className="mt-1 text-sm text-gray-600">
                   {builderQuestionTitle || 'Titre de la question a definir'}
@@ -1124,76 +1077,6 @@ export function SpQuestionsManager({ templates }: Props) {
           onClose={() => setSimulatingForTemplate(null)}
         />
       )}
-
-      {/* Modal génération / modification IA */}
-      {aiGeneratingForTemplate && (() => {
-        const aiTemplateId = aiGeneratingForTemplate.templateId;
-        return (
-        <SpAiGeneratorModal
-          templateId={aiTemplateId}
-          mode={aiGeneratingForTemplate.mode}
-          nextOrdre={(questionsByTemplate[aiTemplateId] ?? []).length + 1}
-          existingQuestions={questionsByTemplate[aiTemplateId] ?? []}
-          onImport={async (questions, replace) => {
-            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            const idMap = new Map<string, string>(
-              questions.map((q) => [
-                q.id,
-                UUID_RE.test(q.id ?? '') ? q.id : crypto.randomUUID(),
-              ])
-            );
-            const remapped = questions.map((q) => ({
-              ...q,
-              id: idMap.get(q.id)!,
-              groupes_conditions: q.groupes_conditions?.map((g) => ({
-                ...g,
-                conditions: g.conditions.map((c) => ({
-                  ...c,
-                  question_id: c.question_id ? (idMap.get(c.question_id) ?? c.question_id) : c.question_id,
-                })),
-              })),
-              consequences: (q.consequences ?? []).map((c) => ({
-                ...c,
-                question_id: c.question_id ? (idMap.get(c.question_id) ?? c.question_id) : c.question_id,
-              })),
-            }));
-
-            if (replace) {
-              const res = await fetch(`/api/templates/${aiTemplateId}/sp-questions/replace`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ questions: remapped }),
-              });
-              const data = await res.json() as { questions: SpQuestion[] };
-              setQuestionsByTemplate((prev) => ({
-                ...prev,
-                [aiTemplateId]: (data.questions ?? []).sort((a, b) => a.ordre - b.ordre),
-              }));
-            } else {
-              const saved: SpQuestion[] = [];
-              for (const q of remapped) {
-                const res = await fetch(`/api/templates/${aiTemplateId}/sp-questions`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(q),
-                });
-                const data = await res.json() as { question: SpQuestion };
-                if (data.question) saved.push(data.question);
-              }
-              setQuestionsByTemplate((prev) => ({
-                ...prev,
-                [aiTemplateId]: [
-                  ...(prev[aiTemplateId] ?? []),
-                  ...saved,
-                ].sort((a, b) => a.ordre - b.ordre),
-              }));
-            }
-            setAiGeneratingForTemplate(null);
-          }}
-          onClose={() => setAiGeneratingForTemplate(null)}
-        />
-        );
-      })()}
 
       {/* Modal édition */}
       {editingQuestion && (

@@ -1,4 +1,6 @@
 export type UnknownRecord = Record<string, unknown>;
+const UNSAFE_PATH_PARTS = new Set(['__proto__', 'prototype', 'constructor']);
+const owns = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 
 export function isPlainObject(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -10,6 +12,7 @@ export function isPlainObject(value: unknown): value is UnknownRecord {
  */
 export function getNestedValue(obj: unknown, path: string): unknown {
   const parts = path.split('.');
+  if (parts.some((part) => UNSAFE_PATH_PARTS.has(part))) return undefined;
   let current: unknown = obj;
 
   for (const part of parts) {
@@ -20,7 +23,7 @@ export function getNestedValue(obj: unknown, path: string): unknown {
       if (!Array.isArray(current)) return undefined;
       current = current[parseInt(part, 10)];
     } else {
-      if (!isPlainObject(current)) return undefined;
+      if (!isPlainObject(current) || !owns(current, part)) return undefined;
       current = current[part];
     }
   }
@@ -31,16 +34,17 @@ export function getNestedValue(obj: unknown, path: string): unknown {
 export function setNestedValue(obj: UnknownRecord, path: string, value: unknown) {
   const parts = path.split('.').filter(Boolean);
   if (parts.length === 0) return;
+  if (parts.some((part) => UNSAFE_PATH_PARTS.has(part))) throw new Error('Chemin de mapping interdit');
 
   let current: UnknownRecord = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
-    const next = current[key];
+    const next = owns(current, key) ? current[key] : undefined;
     if (isPlainObject(next)) {
       current = next;
       continue;
     }
-    const created: UnknownRecord = {};
+    const created: UnknownRecord = Object.create(null);
     current[key] = created;
     current = created;
   }
@@ -54,7 +58,7 @@ export function setNestedValue(obj: UnknownRecord, path: string, value: unknown)
  */
 export function findValueInData(donnees: UnknownRecord, fieldName: string): unknown {
   // 1. Chercher directement à la racine
-  if (donnees[fieldName] !== undefined && donnees[fieldName] !== null) {
+  if (!UNSAFE_PATH_PARTS.has(fieldName) && owns(donnees, fieldName) && donnees[fieldName] !== undefined && donnees[fieldName] !== null) {
     return donnees[fieldName];
   }
 

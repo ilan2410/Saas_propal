@@ -3,6 +3,8 @@ import { organizationStoragePath, storagePathFromUrl } from '@/lib/security/stor
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import mammoth from 'mammoth';
+import { validateUploadedFile } from '@/lib/security/validate-upload';
+import { readLimitedResponse } from '@/lib/security/read-limited-response';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -22,6 +24,11 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const ctx = await resolveOrgContext(supabase, user);
+    const admin = user.app_metadata?.role === 'admin';
+    if (!admin && !ctx?.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     let buffer: ArrayBuffer;
     let fileName = 'template.docx';
@@ -36,14 +43,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
       }
 
-      const ctx = await resolveOrgContext(supabase, user);
-      const admin = user.app_metadata?.role === 'admin';
       const key = admin ? storagePathFromUrl(fileUrl, 'templates') : ctx ? organizationStoragePath(fileUrl, 'templates', ctx.organizationId) : null;
       if (!key) {
         return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
       }
 
-      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error' });
+      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error', signal: AbortSignal.timeout(15000) });
       if (!response.ok) {
         return NextResponse.json(
           { error: 'Failed to download file', details: `Status: ${response.status}` },
@@ -51,7 +56,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      buffer = await response.arrayBuffer();
+      buffer = await readLimitedResponse(response);
       fileName = fileUrl.split('/').pop() || 'template.docx';
     } else {
       const formData = await request.formData();
@@ -66,7 +71,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Only .docx files are supported' }, { status: 400 });
       }
 
-      buffer = await file.arrayBuffer();
+      const validation = await validateUploadedFile(file, ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
+      buffer = Uint8Array.from(validation.buffer).buffer;
       fileName = file.name;
     }
 

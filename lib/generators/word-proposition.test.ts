@@ -32,6 +32,29 @@ afterEach(() => {
 });
 
 describe('generatePropositionFile Word', () => {
+  it('rend les opérateurs télécom SA sans confondre le distributeur et les leasers', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const docx = makeDocx('{{sa_operateur_telephonique}}');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => Uint8Array.from(docx).buffer }));
+    await generatePropositionFile({
+      template: { id: 'word', file_type: 'word', file_url: 'https://storage.example.test/template.docx', file_config: {}, champs_actifs: [] },
+      donnees: {
+        fournisseur: 'Distributeur distinct',
+        situation_actuelle: {
+          operateurs: [
+            { nom: 'Orange', type: 'operateur_telecom' },
+            { nom: 'SFR', type: 'operateur_telecom' },
+            { nom: 'Banque', type: 'organisme_financement' },
+          ],
+        },
+      },
+      organization_id: 'org-1', proposition_id: 'prop-1',
+    });
+    const xml = new PizZip(Buffer.from(upload.mock.calls[0][1])).file('word/document.xml')!.asText();
+    expect(xml).toContain('Orange, SFR');
+    expect(xml).not.toContain('Distributeur distinct');
+  });
+
   it.each([false, true])('applique le regroupement optionnel des numéros aux tableaux Word (%s)', async enabled => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
     const docx = makeDocx('{{#lignes}}{{designation}}:{{numero}}:{{tarif}};{{/lignes}}');
@@ -73,12 +96,12 @@ describe('generatePropositionFile Word', () => {
       },
       donnees: { client: { raison_sociale: 'SOCIÉTÉ TEST' } },
       organization_id: 'org-1', proposition_id: 'prop-1',
-      proposition_created_at: '2026-09-07T00:00:00.000Z', sp_reference: 'REF-42',
+      proposition_created_at: '2026-09-07T00:00:00.000Z', variant_name: 'Variante 2', sp_reference: 'REF-42',
     });
     expect(url).toBe('https://example.test/generated.docx');
     expect(upload).toHaveBeenCalledOnce();
     const [path, bytes, config] = upload.mock.calls[0];
-    expect(path).toMatch(/^generated\/org-1\/Propal_SOCIT_TEST_\d+\.docx$/);
+    expect(path).toMatch(/^generated\/org-1\/prop-1\/template-word\/[0-9a-f-]+\/Propal_SOCIT_TEST_Variante_2\.docx$/);
     expect(config.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     const xml = new PizZip(Buffer.from(bytes)).file('word/document.xml')!.asText();
     expect(xml).toContain('Société Test');

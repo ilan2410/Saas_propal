@@ -1,4 +1,6 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { resolveOrgContext, canAccessSecteur } from '@/lib/auth/org-context';
+import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
 import { getCalendarAccess, loadCalendarConnection } from './connection';
@@ -32,18 +34,27 @@ async function loadReminderContext(service: SupabaseClient, noteId: string) {
   const { data: note, error } = await service.from('proposition_notes').select('*').eq('id', noteId).single();
   if (error || !note) throw new Error('note_not_found');
   const typedNote = note as PropositionNote;
+  const authorContext = await resolveOrgContext(service, { id: typedNote.author_user_id } as User);
+  if (!authorContext || authorContext.organizationId !== typedNote.organization_id) {
+    throw new Error('calendar_note_author_forbidden');
+  }
   const [{ data: proposition }, { data: entries }] = await Promise.all([
-    service
+    scopePropositionsQuery(service
       .from('propositions')
-      .select('nom_client, extracted_data')
+      .select('nom_client, extracted_data, template:proposition_templates(secteur)')
       .eq('id', typedNote.proposition_id)
+      .eq('organization_id', typedNote.organization_id), authorContext)
       .single(),
     service
       .from('proposition_note_entries')
       .select('*')
       .eq('note_id', typedNote.id)
+      .eq('organization_id', typedNote.organization_id)
       .order('created_at', { ascending: true }),
   ]);
+  if (!proposition) throw new Error('calendar_proposition_forbidden');
+  const template = Array.isArray(proposition.template) ? proposition.template[0] : proposition.template;
+  if (!canAccessSecteur(authorContext, template?.secteur)) throw new Error('calendar_proposition_forbidden');
   return {
     note: typedNote,
     entries: (entries ?? []) as PropositionNoteEntry[],
@@ -62,7 +73,7 @@ async function syncLink(
   try {
     if (!link.connection_id) throw new Error('calendar_connection_disconnected');
     const connection = await loadCalendarConnection(service, link.connection_id);
-    if (connection.user_id !== note.author_user_id || connection.provider !== link.provider) {
+    if (connection.user_id !== note.author_user_id || connection.provider !== link.provider || connection.organization_id !== note.organization_id) {
       throw new Error('calendar_connection_forbidden');
     }
     const { accessToken, adapter } = await getCalendarAccess(service, connection);

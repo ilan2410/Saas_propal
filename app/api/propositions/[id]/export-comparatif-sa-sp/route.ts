@@ -1,3 +1,5 @@
+import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
+import { applySpVariant, variantFileSuffix } from '@/lib/propositions/sp-variants';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type {
@@ -46,7 +48,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   }
 
   // 1. Récupérer la proposition (avec sp_reponses, extracted_data, filled_data)
-  const { data: proposition, error } = await scopePropositionsQuery(
+  const { data: parentProposition, error } = await scopePropositionsQuery(
     supabase
       .from('propositions')
       .select(`
@@ -62,9 +64,15 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     ctx
   ).single();
 
-  if (error || !proposition) {
+  if (error || !parentProposition) {
     return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
   }
+
+  const variantId = req.nextUrl.searchParams.get('variant');
+  const variant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+  if (variantId && !variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+  const proposition = variant ? applySpVariant(parentProposition, variant) : parentProposition;
+  const suffix = variant ? '-' + variantFileSuffix(variant.nom) : '';
 
   // Preferences are private columns: read only after the user-scoped proposal
   // authorizes access, and keep them server-side for document generation.
@@ -191,7 +199,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         status: 200,
         headers: {
           'Content-Type': 'application/msword',
-          'Content-Disposition': `attachment; filename="comparatif-sa-sp-${safeClient}.doc"`,
+          'Content-Disposition': `attachment; filename="comparatif-sa-sp-${safeClient}${suffix}.doc"`,
           'Content-Length': buf.length.toString(),
         },
       });
@@ -202,7 +210,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="comparatif-sa-sp-${safeClient}.xlsx"`,
+        'Content-Disposition': `attachment; filename="comparatif-sa-sp-${safeClient}${suffix}.xlsx"`,
         'Content-Length': buf.length.toString(),
       },
     });

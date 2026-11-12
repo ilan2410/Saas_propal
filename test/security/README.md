@@ -1,5 +1,17 @@
 # Organization access checks
 
+The November 11 remediation adds `security-boundaries.sql`, to run separately in
+another empty disposable database. It extends this fixture with notes, sectors,
+subtemplates/variants and atomic checkout settlement. See
+`docs/security-remediation-2026-11-11.md` for the release dependency, successful
+isolated SQL/Node runs and remaining build/browser checks. Never point these fixtures at
+the application or production database.
+
+`local-regression.cjs` is a dedicated Node harness that loads the real TypeScript
+sources and replaces every external provider/database sink used by its tests.
+It runs eight regression groups. Run it only in the isolated setup described in
+the report; it is not a substitute for the full Vitest suite or browser testing.
+
 Run the application regression tests with `npm test` and the type check with
 `npx tsc --noEmit`.
 

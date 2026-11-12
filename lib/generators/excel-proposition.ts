@@ -1,4 +1,5 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
+import { generatedFileName } from './file-name';
 import { fillExcelWorkbook } from './excel-workbook';
 export { fillExcelWorkbook } from './excel-workbook';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -60,8 +61,8 @@ export async function generateExcelFile(options: GenerateOptions): Promise<strin
       .replace(/\s+/g, '_'); // Remplacer les espaces par des underscores
   }
 
-  const fileName = `Propal_${clientName}_${Date.now()}.xlsx`;
-  const filePath = `generated/${organization_id}/${fileName}`;
+  const fileName = generatedFileName(clientName, 'xlsx', options.document_name, options.variant_name);
+  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${crypto.randomUUID()}/${fileName}`;
 
   console.log('📤 Upload vers:', filePath);
   console.log('📊 Taille du fichier:', uint8Array.byteLength, 'bytes');

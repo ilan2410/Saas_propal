@@ -94,7 +94,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     onMappingsChange(newMappings);
   };
 
-  // Un tableau peut être affiché sur plusieurs feuilles, avec un mapping par feuille.
+  // Chaque emplacement possède son propre mapping, y compris sur une même feuille.
   const startEditing = (arrayField: ArrayFieldDefinition, index: number | null = null) => {
     const existing = index === null ? null : mappings[index];
     const availableSheet = sheets.find(sheet => !mappings.some(mapping =>
@@ -107,7 +107,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
     setMappingError(null);
     setEditingMapping(existing || {
       arrayId: arrayField.id,
-      sheetName: availableSheet?.name || '',
+      sheetName: availableSheet?.name || sheets[0]?.name || '',
       startRow: 2,
       stopCondition: 'empty_first_col',
       overflowMode: 'error',
@@ -379,9 +379,7 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm"
             >
               {sheets.map(sheet => (
-                <option key={sheet.name} value={sheet.name}
-                  disabled={mappings.some((mapping, index) => index !== editingMappingIndex &&
-                    mapping.arrayId === editingArray.id && mapping.sheetName === sheet.name)}>
+                <option key={sheet.name} value={sheet.name}>
                   {sheet.name}
                 </option>
               ))}
@@ -727,16 +725,16 @@ export function ExcelArrayMapper({ sheets, arrayFields, spArrayIds, initialMappi
                   <div>
                     <div className="font-medium text-gray-900">{arrayField.label}</div>
                     <div className="text-sm text-gray-500">{arrayField.description}</div>
-                    {isConfigured && <div className="text-xs text-green-700 mt-1">{locations.length} feuille{locations.length > 1 ? 's' : ''} configurée{locations.length > 1 ? 's' : ''}</div>}
+                    {isConfigured && <div className="text-xs text-green-700 mt-1">{locations.length} emplacement{locations.length > 1 ? 's' : ''} configuré{locations.length > 1 ? 's' : ''}</div>}
                   </div>
                 </div>
 
-                {locations.length < sheets.length && (
+                {sheets.length > 0 && (
                   <button onClick={() => startEditing(arrayField)}
                     className={`px-3 py-1.5 rounded-lg text-sm ${isConfigured
                       ? 'border border-green-600 text-green-700 hover:bg-green-100'
                       : 'bg-purple-600 text-white hover:bg-purple-700'}`}>
-                    {isConfigured ? 'Ajouter une feuille' : 'Configurer'}
+                    {isConfigured ? 'Ajouter un emplacement' : 'Configurer'}
                   </button>
                 )}
               </div>

@@ -70,6 +70,12 @@ const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
   'download_comparatif_sa_sp',
 ];
 
+export function ownBooleanPermission(value: unknown, key: keyof OrgPermissions): boolean | undefined {
+  if (!value || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, key)) return undefined;
+  const permission = (value as Record<string, unknown>)[key];
+  return typeof permission === 'boolean' ? permission : undefined;
+}
+
 /** Vrai si l'utilisateur peut créer une proposition à partir de ce template. */
 export function canUseTemplate(ctx: OrgContext, templateId: string): boolean {
   return ctx.allowedTemplateIds === null || ctx.allowedTemplateIds.includes(templateId);
@@ -132,7 +138,7 @@ export async function resolveOrgContext(
     const overrides = member.permissions_override ?? {};
 
     const permissions = PERMISSION_KEYS.reduce((acc, key) => {
-      acc[key] = overrides?.[key] ?? defaults?.[key] ?? PERMISSION_DEFAULTS[key];
+      acc[key] = ownBooleanPermission(overrides, key) ?? ownBooleanPermission(defaults, key) ?? PERMISSION_DEFAULTS[key];
       return acc;
     }, {} as OrgPermissions);
 

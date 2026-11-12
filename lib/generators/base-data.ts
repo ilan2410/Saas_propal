@@ -13,6 +13,8 @@ import { withTableTotals } from './table-row-total';
 import type { SuggestionsSpCompletes, WordConfig } from '@/types';
 
 export interface GenerateOptions {
+  document_name?: string;
+  variant_name?: string;
   template: {
     id: string;
     file_type: 'excel' | 'word' | 'pdf';

@@ -4,10 +4,13 @@ import { composedFields, parseExcelCompositionPartStyles, parseExcelFieldStyle, 
 import { findValueInData, getNestedValue, isPlainObject, type UnknownRecord } from './data-utils';
 import { formatExcelValue, resolveExcelDynamicValue, type ExcelFieldType } from './excel-values';
 import { rewriteExcelFormula } from './excel-formulas';
-import { addExcelImage, addExcelImageRightCentered, clearExcelCellImages, loadExcelImage } from './excel-images';
+import { addExcelImage, addExcelImageRightCentered, clearExcelCellImages, isolateExcelImageReferences, loadExcelImage } from './excel-images';
 import { excelTableRowSpan, inferExcelTableCapacity } from './excel-table-capacity';
+import { fitExcelTableText } from './excel-table-height';
 import { withTableRowTotal } from './table-row-total';
 import { phoneRowsFirst } from './table-phone-order';
+import { preserveExcelPageBreaks } from './excel-page-breaks';
+import { preserveExcelShapes } from './excel-shapes';
 
 const ARRAY_PATHS: Record<string, string> = {
   lignes_fixes: 'lignes.fixes', lignes_mobiles: 'lignes.mobiles', lignes_internet: 'lignes.internet',
@@ -168,16 +171,45 @@ function expandRows(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, templa
     source.eachCell({ includeEmpty: true }, (cell, col) => {
       values.set(col, { value: structuredClone(cell.value), style: structuredClone(cell.style), formula: cell.type === ExcelJS.ValueType.Formula ? cell.formula : undefined });
     });
-    return { values, height: source.height };
+    return { values, height: source.height, hidden: source.hidden, outlineLevel: source.outlineLevel };
   });
   const merges = [...(sheet.model.merges ?? [])];
+  // Edge cells of a merge may carry borders absent from its master cell.
+  // Unmerging discards those styles, so retain them before moving the rows.
+  const mergedStyles = merges.flatMap(range => {
+    const [first, last] = range.split(':').map(ref => sheet.getCell(ref));
+    const cells: Array<{ ref: string; style: Partial<ExcelJS.Style> }> = [];
+    for (let row = Number(first.row); row <= Number(last.row); row++) {
+      for (let col = Number(first.col); col <= Number(last.col); col++) {
+        const cell = sheet.getCell(row, col);
+        cells.push({ ref: cell.address, style: structuredClone(cell.style) });
+      }
+    }
+    return cells;
+  });
   const blockMerges = merges.flatMap(merge => {
     const match = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(merge);
     return match && +match[2] >= templateRow && +match[4] < templateRow + span ? [{ left: match[1], top: +match[2], right: match[3], bottom: +match[4] }] : [];
   });
   for (const merge of merges) sheet.unMergeCells(merge);
+  // ExcelJS moves values/styles/heights, but leaves hidden/grouped state at old indices.
+  const rowVisibility = Array.from({ length: sheet.rowCount }, (_, index) => {
+    const row = sheet.getRow(index + 1);
+    return { hidden: row.hidden, outlineLevel: row.outlineLevel };
+  });
   sheet.insertRows(at, Array.from({ length: count }, () => []));
-  for (const merge of merges) sheet.mergeCells(moveRef(merge, at, count));
+  for (let number = 1; number <= rowVisibility.length + count; number++) {
+    const state = number < at ? rowVisibility[number - 1]
+      : number < at + count ? blocks[(number - at) % span]
+      : rowVisibility[number - count - 1];
+    const row = sheet.getRow(number);
+    row.hidden = state?.hidden ?? false;
+    row.outlineLevel = state?.outlineLevel ?? 0;
+    // Empty hidden rows without a height are otherwise omitted by ExcelJS on save.
+    if ((row.hidden || row.outlineLevel) && row.height === undefined) row.height = sheet.properties.defaultRowHeight ?? 15;
+  }
+  for (const cell of mergedStyles) sheet.getCell(moveRef(cell.ref, at, count)).style = cell.style;
+  for (const merge of merges) sheet.mergeCellsWithoutStyle(moveRef(merge, at, count));
   for (let i = 0; i < count; i++) {
     const row = sheet.getRow(at + i);
     const offset = i % span;
@@ -192,7 +224,7 @@ function expandRows(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet, templa
   }
   for (let block = 0; block < count / span; block++) {
     const shift = at + block * span - templateRow;
-    for (const merge of blockMerges) sheet.mergeCells(`${merge.left}${merge.top + shift}:${merge.right}${merge.bottom + shift}`);
+    for (const merge of blockMerges) sheet.mergeCellsWithoutStyle(`${merge.left}${merge.top + shift}:${merge.right}${merge.bottom + shift}`);
   }
   for (const original of formulas) {
     const row = original.sheet === sheet && original.row >= at ? original.row + count : original.row;
@@ -231,6 +263,8 @@ export async function fillExcelWorkbook(
   const workbook = new ExcelJS.Workbook();
   try { await workbook.xlsx.load(templateBuffer); }
   catch { throw new Error('Le fichier template Excel est corrompu ou invalide. Utilisez un fichier .xlsx.'); }
+  const pageBreaks = preserveExcelPageBreaks(templateBuffer);
+  const shapes = preserveExcelShapes(templateBuffer);
   unshareFormulas(workbook);
   const config = readConfig(rawConfig);
   const errors = validateExcelMappings(config, workbook.worksheets);
@@ -249,6 +283,7 @@ export async function fillExcelWorkbook(
   };
   const claimed = new Map<string, string>();
   const imageCache = new Map<string, ReturnType<typeof loadExcelImage>>();
+  const imagePlacements: Array<() => void> = [];
   const claim = (sheet: ExcelJS.Worksheet, ref: string, owner: string) => {
     const cell = sheet.getCell(normalizeRef(ref));
     // Two references into the same merged cell are also a collision.
@@ -269,7 +304,8 @@ export async function fillExcelWorkbook(
       if (value !== undefined && value !== null && value !== '') {
         const url = String(value);
         if (!imageCache.has(url)) imageCache.set(url, loadExcelImage(url));
-        addExcelImage(workbook, sheet, cell, await imageCache.get(url)!, config.imageWidth, config.imageHeight);
+        const image = await imageCache.get(url)!;
+        imagePlacements.push(() => { addExcelImage(workbook, sheet, cell, image, config.imageWidth, config.imageHeight); });
       }
       return;
     }
@@ -309,7 +345,8 @@ export async function fillExcelWorkbook(
     if (!url) return;
     const key = String(url);
     if (!imageCache.has(key)) imageCache.set(key, loadExcelImage(key));
-    addExcelImageRightCentered(workbook, sheet, cell, await imageCache.get(key)!, config.imageWidth, config.imageHeight);
+    const image = await imageCache.get(key)!;
+    imagePlacements.push(() => { addExcelImageRightCentered(workbook, sheet, cell, image, config.imageWidth, config.imageHeight); });
   };
 
   // Plan expansions before claiming/writing cells so all mappings use final coordinates.
@@ -345,6 +382,8 @@ export async function fillExcelWorkbook(
       const count = (items.length - table.capacity) * span;
       const crossingTables = tables.filter(t => t.mapping.sheetName === mapping.sheetName && t.mapping.startRow < at && t.mapping.startRow + t.capacity * t.span >= at);
       expandRows(workbook, sheet, mapping.startRow, span, at, count, config);
+      pageBreaks.insertRows(workbook.worksheets.indexOf(sheet), at, count);
+      shapes.insertRows(workbook.worksheets.indexOf(sheet), at, count);
       // Side-by-side tables share inserted worksheet rows; do not insert them twice.
       for (const crossing of crossingTables) crossing.capacity += Math.ceil(count / crossing.span);
     }
@@ -485,7 +524,15 @@ export async function fillExcelWorkbook(
     await write(sheet, cell, field, value, true);
   }
   workbook.calcProperties.fullCalcOnLoad = true;
+  for (const { mapping, items, span } of tables) {
+    const sheet = workbook.getWorksheet(mapping.sheetName)!;
+    const columns = [...Object.values(mapping.columnMapping), ...(mapping.composedColumns ?? []).map(column => column.column)];
+    fitExcelTableText(sheet, items.flatMap((_, index) => columns.map(column => sheet.getCell(`${column}${mapping.startRow + index * span}`))));
+  }
+  // Anchor pictures after field alignment and final row heights have been applied.
+  for (const place of imagePlacements) place();
+  isolateExcelImageReferences(workbook);
   const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
   if (!bytes.byteLength) throw new Error('Le fichier Excel généré est vide.');
-  return bytes;
+  return shapes.restore(pageBreaks.restore(bytes));
 }

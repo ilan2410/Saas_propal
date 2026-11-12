@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { HelpCircle, Plus, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SpConditionEditor } from './SpConditionEditor';
-import { SpAiAssistPanel } from './SpAiAssistPanel';
+
 import type {
   SpQuestion,
   SpQuestionSource,
@@ -150,8 +150,8 @@ const SOURCES: { value: SpQuestionSource; label: string; desc: string; tooltip: 
   {
     value: 'catalogue',
     label: 'Catalogue produits',
-    desc: "L'IA propose des choix issus de votre catalogue",
-    tooltip: "L'IA parcourt votre catalogue et propose les produits correspondant aux critères. Idéal pour choisir un opérateur, un forfait mobile, un équipement.",
+    desc: "Choix issus de votre catalogue",
+    tooltip: "Le formulaire propose les produits du catalogue correspondant aux critères. Idéal pour choisir un opérateur, un forfait mobile, un équipement.",
   },
   {
     value: 'aucune',
@@ -210,7 +210,7 @@ const BLOCK_TOOLTIPS: Record<Block, string> = {
   1: "D'où proviennent les choix proposés ? Catalogue, données SA extraites, ou saisie libre.",
   2: "Définissez sous quelles conditions cette question s'affiche (réponses précédentes, données SA…).",
   3: "Comment la question est présentée à l'utilisateur : type d'interface, libellé, aide.",
-  4: "Variable SP remplie, conséquences (afficher/masquer/sauter), et priorité IA.",
+  4: "Variable SP remplie, conséquences (afficher/masquer/sauter), et priorité de réponse.",
   5: "Optionnel — rattacher cette question à une boucle (multisite, multi-ligne…).",
 };
 
@@ -791,7 +791,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
             <InfoIcon tooltip="La source détermine d'où proviennent les choix proposés à l'utilisateur. Elle conditionne aussi les types d'affichage disponibles au bloc 3." />
           </div>
           <p className="text-sm text-gray-500">
-            Qu&apos;est-ce que l&apos;IA utilise pour répondre à cette question ?
+            Quelle source utiliser pour cette question ?
           </p>
           <div className="space-y-2">
             {SOURCES.map((s) => (
@@ -1453,7 +1453,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                           <input
                             value={newVarDescription}
                             onChange={(e) => setNewVarDescription(e.target.value)}
-                            placeholder="Description (optionnel - aide l'IA et l'utilisateur)"
+                            placeholder="Description (optionnel - aide l'utilisateur)"
                             className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
                           />
                         </div>
@@ -1534,11 +1534,11 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
           {/* Priorité IA */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Priorité pour l&apos;IA</label>
-              <InfoIcon tooltip="Indique à l'IA l'importance de cette réponse lors de la génération SP. Haute = l'IA doit s'y conformer absolument." />
+              <label className="text-sm font-medium text-gray-700">Priorité de la réponse</label>
+              <InfoIcon tooltip="Importance de cette réponse dans le workflow SP." />
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Tooltip text="L'IA tient compte de la réponse comme d'une indication forte, mais peut en tenir compte avec nuance.">
+              <Tooltip text="Priorité normale dans le workflow.">
                 <button
                   onClick={() => setPrioriteIa('normale')}
                   className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
@@ -1548,14 +1548,14 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
                   Normale
                 </button>
               </Tooltip>
-              <Tooltip text="L'IA doit absolument respecter cette réponse. Elle prime sur toute autre logique.">
+              <Tooltip text="Marque cette réponse comme prioritaire dans le workflow.">
                 <button
                   onClick={() => setPrioriteIa('haute')}
                   className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                     prioriteIa === 'haute' ? 'border-orange-500 bg-orange-50 text-orange-800' : 'border-gray-200 text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  Haute — l&apos;IA doit l&apos;appliquer sans exception
+                  Haute — réponse prioritaire
                 </button>
               </Tooltip>
             </div>
@@ -1795,66 +1795,6 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         </div>
       )}
 
-      {/* ── ASSISTANT IA ─────────────────────────────────────────────── */}
-      <SpAiAssistPanel
-        currentQuestion={{
-          libelle,
-          description,
-          source,
-          affichage,
-          options_manuelles: optionsManuelles,
-          options_libres: optionsLibres,
-          filtres_catalogue: filtresCatalogue,
-          groupes_conditions: groupesConditions,
-          logique_declencheur: logiqueDeclencheur,
-          obligatoire,
-          priorite_ia: prioriteIa,
-          nombre_config: nombreConfig,
-          consequences,
-          groupe_boucle_id: groupeBoucleId,
-          boucle: boucleEnabled ? boucle : undefined,
-        }}
-        otherQuestions={otherQuestions}
-        spVariables={spVariables}
-        onApply={(patch) => {
-          if (patch.libelle !== undefined) setLibelle(patch.libelle);
-          if (patch.description !== undefined) setDescription(patch.description);
-          if (patch.source !== undefined) {
-            setSource(patch.source);
-            setAffichage(AFFICHAGE_BY_SOURCE[patch.source][0].value);
-          }
-          if (patch.affichage !== undefined) setAffichage(patch.affichage);
-          if (patch.options_manuelles !== undefined) setOptionsManuelles(patch.options_manuelles);
-          if (patch.options_libres !== undefined) setOptionsLibres(patch.options_libres);
-          if (patch.filtres_catalogue !== undefined) setFiltresCatalogue(patch.filtres_catalogue);
-          if (patch.groupes_conditions !== undefined) setGroupesConditions(patch.groupes_conditions);
-          if (patch.logique_declencheur !== undefined) setLogiqueDeclencheur(patch.logique_declencheur);
-          if (patch.consequences !== undefined) setConsequences(patch.consequences);
-          if (patch.obligatoire !== undefined) setObligatoire(patch.obligatoire);
-          if (patch.priorite_ia !== undefined) setPrioriteIa(patch.priorite_ia);
-          if (patch.groupe_boucle_id !== undefined) setGroupeBoucleId(patch.groupe_boucle_id);
-          if (patch.boucle !== undefined) {
-            setBoucleEnabled(true);
-            setBoucle(patch.boucle);
-          }
-        }}
-        onVariableSuggestion={(suggestion) => {
-          // If a variable is suggested and exists, auto-add a renseigner_variable consequence
-          if (suggestion.exists) {
-            const alreadyHas = consequences.some((c) => c.type === 'renseigner_variable' && c.variable_cible === suggestion.key);
-            if (!alreadyHas) {
-              setConsequences((prev) => [...prev, { type: 'renseigner_variable', variable_cible: suggestion.key }]);
-            }
-          }
-          // If doesn't exist, pre-fill the create form for when user goes to Bloc 4
-          if (!suggestion.exists) {
-            setNewVarLabel(suggestion.label);
-            setNewVarKey(suggestion.key);
-            setNewVarDescription(suggestion.description ?? '');
-          }
-        }}
-      />
-
       {/* Aperçu */}
       {libelle && (
         <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
@@ -1877,7 +1817,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
               </Tooltip>
             )}
             {prioriteIa === 'haute' && (
-              <Tooltip text="Priorité haute — l'IA appliquera cette réponse sans exception.">
+              <Tooltip text="Réponse prioritaire dans le workflow SP.">
                 <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 cursor-help">🔒 Priorité haute</span>
               </Tooltip>
             )}

@@ -80,7 +80,9 @@
       "Bash(cat)",
       "PowerShell(npx tsc --noEmit 2>&1)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(docker volume *)",
+      "Bash(docker system *)"
     ],
     "additionalDirectories": [
       "\\tmp",

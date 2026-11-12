@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
 
     // Gérer l'événement
     switch (event.type) {
+      case 'checkout.session.async_payment_succeeded':
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         
@@ -66,82 +67,28 @@ export async function POST(request: NextRequest) {
           break;
         }
 
+        // Signed provider data establishes payment, never a caller-derived credit total.
+        if (session.payment_status !== 'paid') break;
         const organizationId = metadata.organization_id;
-        const creditsTotal = parseFloat(metadata.credits_total);
-
-        const stripeCustomerId =
-          typeof session.customer === 'string' && session.customer.length > 0 ? session.customer : null;
-
-        if (stripeCustomerId) {
-          const { data: orgRow, error: orgRowError } = await supabaseAdmin
-            .from('organizations')
-            .select('stripe_customer_id')
-            .eq('id', organizationId)
-            .single();
-
-          if (orgRowError) {
-            console.error('Error fetching organization for customer id:', orgRowError);
-          } else if (!orgRow?.stripe_customer_id) {
-            const { error: customerUpdateError } = await supabaseAdmin
-              .from('organizations')
-              .update({ stripe_customer_id: stripeCustomerId })
-              .eq('id', organizationId);
-
-            if (customerUpdateError) {
-              console.error('Error updating stripe_customer_id:', customerUpdateError);
-            }
-          }
+        if (!organizationId || session.client_reference_id !== organizationId
+          || session.currency !== 'eur' || !Number.isSafeInteger(session.amount_total)
+          || session.amount_total! < 1000 || session.amount_total! > 1000000) {
+          throw new Error('Invalid paid checkout session');
         }
-
-        // Mettre à jour la transaction — idempotent : ne matche que si elle n'est pas
-        // déjà marquée "succeeded", pour ne pas re-créditer sur une redélivraison Stripe
-        // du même événement (Stripe garantit une livraison "au moins une fois").
-        const { data: updatedTx, error: updateError } = await supabaseAdmin
-          .from('stripe_transactions')
-          .update({
-            stripe_payment_intent_id: session.payment_intent as string,
-            statut: 'succeeded',
-          })
-          .eq('stripe_session_id', session.id)
-          .neq('statut', 'succeeded')
-          .select('id')
-          .maybeSingle();
-
-        if (updateError) {
-          console.error('Error updating transaction:', updateError);
-          break;
-        }
-
-        if (!updatedTx) {
-          console.log(`Transaction ${session.id} already processed (replay), skipping credit`);
-          break;
-        }
-
-        // Ajouter les crédits à l'organization
-        const { data: org, error: orgError } = await supabaseAdmin
-          .from('organizations')
-          .select('credits')
-          .eq('id', organizationId)
-          .single();
-
-        if (orgError) {
-          console.error('Error fetching organization:', orgError);
-          break;
-        }
-
-        const { error: creditError } = await supabaseAdmin
-          .from('organizations')
-          .update({
-            credits: (org.credits || 0) + creditsTotal,
-          })
-          .eq('id', organizationId);
-
-        if (creditError) {
-          console.error('Error updating credits:', creditError);
-          break;
-        }
-
-        console.log(`Added ${creditsTotal}€ credits to organization ${organizationId}`);
+        const stripeCustomerId = typeof session.customer === 'string' ? session.customer : null;
+        const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : null;
+        if (!stripeCustomerId || !paymentIntentId) throw new Error('Missing checkout payment identity');
+        // Transaction and organization locks make payment recording + credit atomic.
+        // Failure returns 500 so Stripe retries; replay cannot credit a second time.
+        const { data: settled, error: creditError } = await supabaseAdmin.rpc('settle_credit_checkout', {
+          p_session_id: session.id,
+          p_organization_id: organizationId,
+          p_amount_cents: session.amount_total,
+          p_customer_id: stripeCustomerId,
+          p_payment_intent_id: paymentIntentId,
+        });
+        if (creditError) throw creditError;
+        if (settled === false) break;
 
         // Définit la carte utilisée comme moyen de paiement par défaut du client,
         // pour que l'auto-recharge cible toujours la dernière carte utilisée de
@@ -165,20 +112,14 @@ export async function POST(request: NextRequest) {
         break;
       }
 
-      case 'checkout.session.expired':
-      case 'payment_intent.payment_failed': {
+      case 'checkout.session.expired': {
         const session = event.data.object as Stripe.Checkout.Session;
-        
-        console.log('Payment failed or expired:', session.id);
-
-        // Mettre à jour la transaction
-        await supabaseAdmin
-          .from('stripe_transactions')
-          .update({
-            statut: 'failed',
-          })
-          .eq('stripe_session_id', session.id);
-
+        if (session.metadata?.source !== 'saas_propal_credits') break;
+        const { error } = await supabaseAdmin.from('stripe_transactions')
+          .update({ statut: 'failed' })
+          .eq('stripe_session_id', session.id)
+          .eq('statut', 'pending');
+        if (error) throw error;
         break;
       }
 

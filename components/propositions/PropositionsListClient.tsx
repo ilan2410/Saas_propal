@@ -39,6 +39,7 @@ import { TeleprospecteurSelect, type TeleprospecteurOption } from '@/components/
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 export type PropositionListItem = {
+  spVariantsCount?: number;
   id: string;
   statut: string;
   statutCommercial: StatutCommercial;
@@ -313,7 +314,7 @@ export function PropositionsListClient({
               <tbody className="divide-y divide-slate-100">
                 {visible.map((prop) => (
                   <tr key={prop.id} onClick={() => goToDetail(prop.id)} className="cursor-pointer transition-colors hover:bg-slate-50">
-                    <td className="truncate px-3 py-2 font-medium text-slate-900"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} /></td>
+                    <td className="truncate px-3 py-2 font-medium text-slate-900"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} />{!!prop.spVariantsCount && <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">{prop.spVariantsCount + 1} offres SP</span>}</td>
                     {hasColumn('team') && <td className="truncate px-3 py-2 text-slate-600" title={prop.creatorName}>{prop.creatorName}</td>}
                     {hasColumn('telepro') && <td className="px-3 py-2"><TeleprospecteurSelect propositionId={prop.id} value={prop.teleproId} options={teleproOptions} canCreate={canManageTelepros} onChanged={(teleproId, option) => updateRow(prop.id, { teleproId, teleproName: option?.name ?? '' })} /></td>}
                     {hasColumn('template') && <td className="truncate px-3 py-2 text-slate-500" title={prop.templateNom || undefined}>{prop.templateNom || '—'}</td>}
@@ -338,7 +339,7 @@ export function PropositionsListClient({
             {visible.map((prop) => (
               <div key={prop.id} onClick={() => goToDetail(prop.id)} className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} className="font-medium text-slate-900" onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} /><p className="mt-0.5 truncate text-xs text-slate-500">{prop.templateNom || '—'}</p></div>
+                  <div className="min-w-0"><EditableClientName propositionId={prop.id} value={prop.clientName || 'Sans nom'} className="font-medium text-slate-900" onSaved={(clientName) => updateRow(prop.id, { clientName }, true)} /><p className="mt-0.5 truncate text-xs text-slate-500">{prop.templateNom || '—'}{prop.spVariantsCount ? ` · ${prop.spVariantsCount + 1} offres SP` : ''}</p></div>
                   <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}><PropositionNotesActions propositionId={prop.id} initialCount={prop.notesCount} titleContext={{ client: prop.clientName, template: prop.templateNom, statut: noteStatusLabel(prop) }} onChanged={() => updateRow(prop.id, {}, true)} /><PropositionRowMenu propositionId={prop.id} onAttachmentCountChange={(attachmentsCount, changed) => updateRow(prop.id, { attachmentsCount }, changed)} /></div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">{prop.statut === 'exported' ? <StatutCommercialSelect propositionId={prop.id} value={prop.statutCommercial} /> : <PropositionStatusBadge statut={prop.statut} />}<span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-400"><Calendar className="h-3 w-3" />{formatDate(prop.updatedAt)}</span></div>

@@ -1,4 +1,5 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
+import { generatedFileName } from './file-name';
 import { createServiceClient } from '@/lib/supabase/server';
 import { withTableTotals } from './table-row-total';
 import { orderTablePhoneRows } from './table-phone-order';
@@ -30,12 +31,51 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
 
   const templateBuffer = await response.arrayBuffer();
 
+  const uint8Array = await renderWordProposition(templateBuffer, options);
+  const baseData = isPlainObject(donnees) ? donnees : {};
+
+  const supabase = createServiceClient();
+
+  let clientName = 'Proposition';
+  const raisonSociale =
+    findValueInData(baseData, 'raison_sociale') ||
+    findValueInData(baseData, 'nom_commercial') ||
+    findValueInData(baseData, 'client_nom') ||
+    baseData['nom_client'];
+
+  if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
+    clientName = raisonSociale
+      .replace(/[^a-zA-Z0-9\s-]/g, '')
+      .trim()
+      .substring(0, 50)
+      .replace(/\s+/g, '_');
+  }
+
+  const fileName = generatedFileName(clientName, 'docx', options.document_name, options.variant_name);
+  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${crypto.randomUUID()}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    upsert: true,
+    cacheControl: '3600',
+  });
+
+  if (uploadError) {
+    throw new Error(`Erreur upload: ${uploadError.message}`);
+  }
+
+  const { data: urlData } = supabase.storage.from('templates').getPublicUrl(filePath);
+  return urlData.publicUrl;
+}
+
+export async function renderWordProposition(templateBuffer: ArrayBuffer, options: GenerateOptions): Promise<Uint8Array> {
+ const { template, donnees } = options;
   const fileConfig = isPlainObject(template.file_config) ? template.file_config : {};
   const baseData: UnknownRecord = isPlainObject(donnees) ? donnees : {};
   const mappedData: UnknownRecord = { ...baseData };
 
   const rawFieldMappings = fileConfig.fieldMappings;
-  const fieldMappings: Record<string, string> = {};
+  const fieldMappings: Record<string, string> = Object.create(null);
   if (isPlainObject(rawFieldMappings)) {
     for (const [k, v] of Object.entries(rawFieldMappings)) {
       if (typeof v === 'string') fieldMappings[k] = v;
@@ -49,11 +89,7 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
     const value = findValueInData(baseData, dataKey);
     const formatted = formatValueForWord(value);
 
-    if (cleanVar.includes('.')) {
-      setNestedValue(mappedData, cleanVar, formatted);
-    } else {
-      mappedData[cleanVar] = formatted;
-    }
+    setNestedValue(mappedData, cleanVar, formatted);
   }
 
   // Dictionnaire complet SA + SP + clauses + référence, partagé avec la génération Excel.
@@ -85,36 +121,5 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
     throw new Error('Le fichier Word généré est vide');
   }
 
-  const supabase = createServiceClient();
-
-  let clientName = 'Proposition';
-  const raisonSociale =
-    findValueInData(baseData, 'raison_sociale') ||
-    findValueInData(baseData, 'nom_commercial') ||
-    findValueInData(baseData, 'client_nom') ||
-    baseData['nom_client'];
-
-  if (raisonSociale && typeof raisonSociale === 'string' && raisonSociale.trim()) {
-    clientName = raisonSociale
-      .replace(/[^a-zA-Z0-9\s-]/g, '')
-      .trim()
-      .substring(0, 50)
-      .replace(/\s+/g, '_');
-  }
-
-  const fileName = `Propal_${clientName}_${Date.now()}.docx`;
-  const filePath = `generated/${organization_id}/${fileName}`;
-
-  const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
-    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    upsert: true,
-    cacheControl: '3600',
-  });
-
-  if (uploadError) {
-    throw new Error(`Erreur upload: ${uploadError.message}`);
-  }
-
-  const { data: urlData } = supabase.storage.from('templates').getPublicUrl(filePath);
-  return urlData.publicUrl;
+ return uint8Array;
 }

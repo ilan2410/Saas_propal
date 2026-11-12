@@ -1,22 +1,25 @@
+import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
+import { applySpVariant } from '@/lib/propositions/sp-variants';
+import { preparePropositionGeneration } from '@/lib/generators/prepare-proposition';
+import { resolveSubTemplateSelection, subTemplateConfig, subTemplatesEnabled, type SubTemplateGenerationResult } from '@/lib/templates/sub-templates';
+import { removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
 import { signedOrganizationStorageUrl, organizationStoragePath } from '@/lib/security/storage-access';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generatePropositionFile } from '@/lib/generators';
-import { renderClauses } from '@/lib/sp/renderClauses';
-import { buildSpReference } from '@/lib/sp/buildReference';
-import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
-import type { CatalogueProduit, SpClauseConditionnelle, SpQuestion, SpQuestionReponse, SuggestionsSpCompletes, SpPreferencesProduits, SpConfigLoyer, SpConfigResumeRef, OrganizationPreferences, SpTableProductOrders } from '@/types';
-import { resolveOrgContext, buildPropositionAuthorProfile, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
-import { catalogueForSecteur } from '@/lib/sectors';
+import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 
-type UnknownRecord = Record<string, unknown>;
+
+
+export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let failedProposition: { id: string; organizationId: string } | null = null;
   try {
     const { id } = await params;
     const supabase = await createClient();
@@ -46,14 +49,22 @@ export async function POST(
     }
 
     // Récupérer la proposition
-    const { data: proposition, error: propError } = await scopePropositionsQuery(
+    const { data: parentProposition, error: propError } = await scopePropositionsQuery(
       supabase.from('propositions').select('*').eq('id', id),
       ctx
     ).single();
 
-    if (propError || !proposition) {
+    if (propError || !parentProposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
     }
+
+    const variantId = request.nextUrl.searchParams.get('variant');
+    const variant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+    if (variantId && !variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+    const proposition = variant ? applySpVariant(parentProposition, variant) : parentProposition;
+    const resultTable = variant ? 'proposition_sp_variant_results' : 'proposition_sub_template_results';
+    const resultKey = variant ? 'variant_id' : 'proposition_id';
+    const resultId = variant?.id ?? id;
 
     // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter
     // qu'un utilisateur authentifié puisse déclencher une génération sur un
@@ -69,121 +80,67 @@ export async function POST(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Fusionner extracted_data + filled_data pour conserver les champs SA riches
-    // tout en laissant les éventuelles corrections utilisateur prendre la priorité.
-    const extracted =
-      proposition.extracted_data && typeof proposition.extracted_data === 'object'
-        ? proposition.extracted_data
-        : {};
-    const filled =
-      proposition.filled_data && typeof proposition.filled_data === 'object'
-        ? proposition.filled_data
-        : {};
-    const donnees = { ...extracted, ...filled };
-
-    const { data: organization } = await createServiceClient().from('organizations')
-      .select('nom, email, secteur, siret, adresse, code_postal, ville, telephone_fixe, telephone_mobile, contact_prenom, contact_nom, logo_url, sp_questions, credits, tarif_par_proposition, preferences')
-      .eq('id', ctx.organizationId)
-      .single();
-
-    const { data: catalogueRows } = await supabase
-      .from('catalogues_produits')
-      .select('*')
-      .eq('actif', true)
-      .eq('organization_id', ctx.organizationId);
-
-    const allQuestions = Array.isArray(organization?.sp_questions) ? organization.sp_questions as SpQuestion[] : [];
-    const templateQuestions = allQuestions.filter((question) => question.template_id === proposition.template_id);
-    const spReponses = Array.isArray(proposition.sp_reponses) ? proposition.sp_reponses as SpQuestionReponse[] : [];
-    const catalogue = catalogueForSecteur(Array.isArray(catalogueRows) ? catalogueRows as CatalogueProduit[] : [], template.secteur ?? 'telephonie');
-    const templateFileCfg = typeof template.file_config === 'object' && template.file_config !== null ? template.file_config as UnknownRecord : {};
-    const spPreferencesProduits = typeof templateFileCfg.sp_preferences_produits === 'object' && templateFileCfg.sp_preferences_produits !== null
-      ? templateFileCfg.sp_preferences_produits as SpPreferencesProduits
-      : undefined;
-
-    // Config loyer / mois offerts : même source que l'aperçu Word, pour garantir des
-    // montants identiques entre l'aperçu et le document Word généré.
-    const orgPreferences = (typeof organization?.preferences === 'object' && organization.preferences !== null
-      ? organization.preferences
-      : {}) as OrganizationPreferences;
-    const spConfigLoyer = (templateFileCfg.sp_config_loyer as SpConfigLoyer | undefined)?.baremes
-      ? (templateFileCfg.sp_config_loyer as SpConfigLoyer)
-      : undefined;
-    const spConfigMoisOfferts = orgPreferences.sp_config_mois_offerts;
-
-    const isModeDirect = Boolean(
-      (templateFileCfg.sp_config_mode_direct as { actif?: boolean } | undefined)?.actif,
-    );
-
-    const suggestionsSpCompletes = repairSpCompletesFromQuestionnaire(
-      (proposition.suggestions_sp_completes ?? null) as SuggestionsSpCompletes | null,
-      spReponses,
-      templateQuestions,
-      catalogue,
-      donnees as UnknownRecord,
-      spConfigLoyer,
-      spConfigMoisOfferts,
-      spPreferencesProduits,
-      orgPreferences.sp_categories_order,
-      templateFileCfg.sp_table_product_orders as SpTableProductOrders | undefined,
-      isModeDirect ? { allowEmptyCart: true } : undefined,
-    );
-
-    // Clauses conditionnelles → variables Word {{sp_clause_<cle>}}
-    const clauses = Array.isArray(templateFileCfg.spClausesConditionnelles)
-      ? templateFileCfg.spClausesConditionnelles as unknown as SpClauseConditionnelle[]
-      : [];
-    const sp_clauses_rendered = renderClauses(
-      clauses,
-      suggestionsSpCompletes,
-      spReponses,
-      donnees as UnknownRecord,
-      catalogue,
-    );
-
-    // Référence proposition → variable Word {{sp_reference}}
-    // Loyer évalué sur l'état FINAL des réponses (cf. config résumé/réf du template).
-    const spConfigResumeRef = templateFileCfg.sp_config_resume_ref as SpConfigResumeRef | undefined;
-    const sp_reference = buildSpReference(
-      spConfigResumeRef,
-      spReponses,
-      templateQuestions,
-      catalogue,
-      donnees as UnknownRecord,
-      spConfigLoyer,
-      spConfigMoisOfferts,
-      spPreferencesProduits,
-    );
-
-    // Profil entreprise transmis au générateur : champs société inchangés, mais
-    // contact_prenom/contact_nom/telephone_fixe/telephone_mobile proviennent de
-    // l'utilisateur agissant (le commercial lui-même pour un sous-compte).
-    const organizationProfile = organization
-      ? await buildPropositionAuthorProfile(supabase, organization, ctx, proposition.created_by as string | null)
-      : organization;
-
-    // Générer le fichier
-    const fileUrl = await generatePropositionFile({
-      template,
-      donnees,
-      organization_id: ctx.organizationId,
-      proposition_id: id,
-      proposition_created_at: proposition.created_at as string | undefined,
-      suggestions_sp_completes: suggestionsSpCompletes,
-      sp_clauses_rendered,
-      sp_reference,
-      organization_profile: organizationProfile,
-    });
+    const service = createServiceClient();
+    const { data: configuredChildren, error: childrenError } = await service.from('template_sub_templates').select('*').eq('template_id', template.id).eq('organization_id', ctx.organizationId).order('created_at').order('id');
+    if (childrenError) throw childrenError;
+    const enabled = subTemplatesEnabled(template.file_config, configuredChildren?.length ?? 0);
+    const children = enabled ? configuredChildren : [];
+    const { data: pref, error: prefError } = await service.from('template_generation_preferences').select('mode').eq('user_id', user.id).eq('template_id', template.id).maybeSingle();
+    if (prefError) throw prefError;
+    const body = await request.json().catch(() => ({}));
+    const ids = (children ?? []).map(c => c.id as string);
+    if (body.selected_sub_template_ids !== undefined && (!Array.isArray(body.selected_sub_template_ids) || body.selected_sub_template_ids.some((id: unknown) => typeof id !== 'string' || !ids.includes(id)))) {
+      return NextResponse.json({ error: 'Sélection de sous-templates invalide' }, { status: 400 });
+    }
+    const selected = resolveSubTemplateSelection(ids, pref?.mode ?? 'all', proposition.selected_sub_template_ids, body.selected_sub_template_ids);
+    const target = body.target_sub_template_id;
+    if (target !== undefined && (!ids.includes(target) || !selected.includes(target))) return NextResponse.json({ error: 'Sous-template non sélectionné' }, { status: 400 });
+    const { error: selectionError } = !enabled ? { error: null } : await service.from(variant ? 'proposition_sp_variants' : 'propositions').update({ selected_sub_template_ids: selected }).eq('id', resultId).eq('organization_id', ctx.organizationId);
+    if (selectionError) throw selectionError;
+    const { data: previousResults, error: resultsError } = await service.from(resultTable).select('*').eq(resultKey, resultId).eq('organization_id', ctx.organizationId);
+    if (resultsError) throw resultsError;
+    const removed = !enabled ? [] : (previousResults ?? []).filter(r => !selected.includes(r.sub_template_id));
+    if (removed.length) {
+      const { error } = await service.from(resultTable).delete().eq(resultKey, resultId).eq('organization_id', ctx.organizationId).in('sub_template_id', removed.map(r => r.sub_template_id));
+      if (error) throw error;
+      await removeSubTemplateFiles(removed.map(r => r.file_url), ctx.organizationId);
+    }
+    if (!target && !variant) failedProposition = { id, organizationId: ctx.organizationId };
+    const options = await preparePropositionGeneration(supabase, ctx, proposition, template);
+    if (variant) options.variant_name = variant.nom;
+    const fileUrl = target ? proposition.duplicated_template_url : await generatePropositionFile(options);
+    const results: SubTemplateGenerationResult[] = [];
+    for (const child of children ?? []) {
+      if (!selected.includes(child.id) || (target && child.id !== target) || body.proposition_only === true) continue;
+      const previous = previousResults?.find(r => r.sub_template_id === child.id);
+      let generatedUrl: string | undefined;
+      try {
+        generatedUrl = await generatePropositionFile({ ...options, document_name: child.nom,
+          template: { ...options.template, id: child.id, file_url: child.file_url, file_type: child.file_type,
+            file_config: subTemplateConfig(template.file_config, child.file_config) } });
+        const signed = await signedOrganizationStorageUrl(supabase, generatedUrl, 'templates', ctx.organizationId);
+        const { error } = await service.from(resultTable).upsert({ [resultKey]: resultId, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'success', file_url: generatedUrl, error: null, generated_at: new Date().toISOString() });
+        if (error) throw error;
+        if (previous?.file_url && previous.file_url !== generatedUrl) await removeSubTemplateFiles([previous.file_url], ctx.organizationId);
+        results.push({ id: child.id, nom: child.nom, status: 'success', file_url: signed });
+      } catch (error) {
+        if (generatedUrl) await removeSubTemplateFiles([generatedUrl], ctx.organizationId);
+        const message = error instanceof Error ? error.message : 'Erreur de génération';
+        const { error: saveError } = await service.from(resultTable).upsert({ [resultKey]: resultId, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'error', file_url: previous?.file_url ?? null, error: message, generated_at: new Date().toISOString() });
+        if (saveError) console.error('Enregistrement erreur annexe', saveError);
+        results.push({ id: child.id, nom: child.nom, status: 'error', error: message });
+      }
+    }
 
     // Mettre à jour la proposition avec les bons noms de colonnes
-    const { error: updateError } = await createServiceClient()
-      .from('propositions')
-      .update({
+    const { error: updateError } = target ? { error: null } : await createServiceClient()
+      .from(variant ? 'proposition_sp_variants' : 'propositions')
+      .update(variant ? { duplicated_template_url: fileUrl } : {
         duplicated_template_url: fileUrl,
         statut: 'exported',
         exported_at: new Date().toISOString(),
       })
-      .eq('id', id);
+      .eq('id', resultId).eq('organization_id', ctx.organizationId);
 
     if (updateError) throw updateError;
 
@@ -216,17 +173,13 @@ export async function POST(
     // Note: les crédits sont débités lors de l'extraction (extract/route.ts),
     // pas ici. On ne déduit donc pas une seconde fois au téléchargement/génération.
 
-    return NextResponse.json({ success: true, file_url: await signedOrganizationStorageUrl(supabase, fileUrl, 'templates', ctx.organizationId) });
+    return NextResponse.json({ success: true, file_url: !target && fileUrl ? await signedOrganizationStorageUrl(supabase, fileUrl, 'templates', ctx.organizationId) : null, sub_templates: results });
   } catch (error) {
     console.error('Error generating proposition:', error);
 
-    // Marquer la proposition en erreur
-    const { id } = await params;
-    const supabase = await createClient();
-    await supabase
-      .from('propositions')
-      .update({ statut: 'error' })
-      .eq('id', id);
+    if (failedProposition) {
+      await createServiceClient().from('propositions').update({ statut: 'error' }).eq('id', failedProposition.id).eq('organization_id', failedProposition.organizationId);
+    }
 
     return NextResponse.json(
       {
@@ -236,4 +189,41 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+/** Current selection and preference; the same visibility checks as generation. */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+ try {
+  const { id } = await params;
+  const client = await createClient();
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await resolveOrgContext(client, user);
+  if (!ctx || (ctx.role !== 'owner' && !ctx.permissions.download_proposition)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (await propositionSecteurBlocked(ctx, id)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
+  const { data: proposition } = await scopePropositionsQuery(client.from('propositions').select('id,template_id,selected_sub_template_ids').eq('id', id), ctx).maybeSingle();
+  if (!proposition) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+  const variantId = request.nextUrl.searchParams.get('variant');
+  const variant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+  if (variantId && !variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+  const resultTable = variant ? 'proposition_sp_variant_results' : 'proposition_sub_template_results';
+  const resultKey = variant ? 'variant_id' : 'proposition_id';
+  const resultId = variant?.id ?? id;
+  const selectedIds = variant ? variant.selected_sub_template_ids : proposition.selected_sub_template_ids;
+  const service = createServiceClient();
+  const { data: configuredChildren, error } = await service.from('template_sub_templates').select('id,nom,file_type').eq('template_id', proposition.template_id).eq('organization_id', ctx.organizationId).order('created_at').order('id');
+  if (error) throw error;
+  const { data: parent, error: parentError } = await service.from('proposition_templates').select('file_config').eq('id', proposition.template_id).eq('organization_id', ctx.organizationId).maybeSingle();
+  if (parentError) throw parentError;
+  if (!parent) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
+  const children = subTemplatesEnabled(parent.file_config, configuredChildren?.length ?? 0) ? configuredChildren : [];
+  const { data: pref, error: prefError } = await service.from('template_generation_preferences').select('mode').eq('user_id', user.id).eq('template_id', proposition.template_id).maybeSingle();
+  if (prefError) throw prefError;
+  const { data: results, error: resultError } = await service.from(resultTable).select('sub_template_id,status,error').eq(resultKey, resultId).eq('organization_id', ctx.organizationId);
+  if (resultError) throw resultError;
+  return NextResponse.json({ template_id: proposition.template_id, variant_name: variant?.nom, mode: pref?.mode ?? 'all', selected_sub_template_ids: resolveSubTemplateSelection((children ?? []).map(c => c.id), pref?.mode ?? 'all', selectedIds), sub_templates: (children ?? []).map(c => ({ ...c, result: results?.find(r => r.sub_template_id === c.id) })) });
+ } catch (error) {
+  console.error('Chargement annexes', error);
+  return NextResponse.json({ error: 'Impossible de charger les annexes' }, { status: 500 });
+ }
 }

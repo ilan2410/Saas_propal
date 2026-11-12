@@ -1,9 +1,10 @@
 'use client';
 
-import { storageFileUrl } from '@/lib/security/storage-file-url';
+import { GenerateButton } from './GenerateButton';
+import { usePropositionGeneration } from './usePropositionGeneration';
 
 import { useState } from 'react';
-import { Download, Loader2, CheckCircle, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { Button } from '@/components/ui/button';
 
@@ -24,6 +25,7 @@ export function Step5Generate({
   canDownloadProposition = true,
   canDownloadComparatifSaSp = true,
 }: Props) {
+  const { generate, selectionDialog } = usePropositionGeneration();
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
   const [fileUrl, setFileUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -52,15 +54,7 @@ export function Step5Generate({
               {!canDownloadProposition ? (
                 <span className="text-xs text-gray-400">Téléchargement non autorisé</span>
               ) : sp.file_url ? (
-                <a
-                  href={storageFileUrl(sp.file_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  Télécharger
-                </a>
+                <GenerateButton propositionId={sp.proposition_id!} label="Télécharger" variant="secondary" />
               ) : (
                 <span className="text-xs text-gray-400">Lien indisponible</span>
               )}
@@ -83,18 +77,10 @@ export function Step5Generate({
     setError('');
 
     try {
-      const response = await fetch(`/api/propositions/${propositionData.proposition_id}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.details || result.error || 'Erreur génération');
-      }
-
-      setFileUrl(result.file_url);
+      const result = await generate(propositionData.proposition_id!);
+      const failures = result.sub_templates.filter(c => c.status === 'error');
+      if (failures.length) setError(failures.map(c => c.nom + ' : ' + c.error).join(' ; '));
+      setFileUrl(result.file_url ?? '');
       setGenerationStatus('success');
     } catch (err: unknown) {
       console.error('Erreur génération:', err);
@@ -115,6 +101,8 @@ export function Step5Generate({
         </p>
       </div>
 
+      {selectionDialog}
+      {error && generationStatus === 'success' && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {/* Status */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         {generationStatus === 'idle' && (
@@ -138,12 +126,7 @@ export function Step5Generate({
             )}
             <div className="flex flex-wrap gap-3 justify-center">
               {canDownloadProposition && (
-                <button
-                  onClick={startGeneration}
-                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  Générer la proposition
-                </button>
+                <GenerateButton propositionId={propositionData.proposition_id!} download={false} onGenerated={result => { setFileUrl(result.file_url ?? ''); setError(result.sub_templates.filter(c => c.status === 'error').map(c => c.nom + ' : ' + c.error).join(' ; ')); setGenerationStatus('success'); }} />
               )}
               {canDownloadComparatifSaSp && propositionData.suggestions_sp_completes && propositionData.proposition_id && (
                 <>
@@ -185,15 +168,7 @@ export function Step5Generate({
             </h3>
             <p className="text-gray-600 mb-6">Votre fichier est prêt à être téléchargé</p>
             <div className="flex flex-wrap gap-3 justify-center">
-              <a
-                href={storageFileUrl(fileUrl)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Download className="w-5 h-5" />
-                Télécharger la proposition
-              </a>
+              <GenerateButton propositionId={propositionData.proposition_id!} label="Télécharger" variant="secondary" />
               {canDownloadComparatifSaSp && propositionData.suggestions_sp_completes && propositionData.proposition_id && (
                 <>
                   <a

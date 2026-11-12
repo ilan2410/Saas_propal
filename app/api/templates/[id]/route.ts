@@ -1,3 +1,4 @@
+import { subTemplateFiles, removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { generateMergedPrompt } from '@/components/admin/organizationFormConfig';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
@@ -79,6 +80,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
     }
 
+    const annexFiles = await subTemplateFiles(id, ctx.organizationId);
+
     const { error } = await supabase
       .from('proposition_templates')
       .delete()
@@ -89,6 +92,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    await removeSubTemplateFiles(annexFiles, ctx.organizationId);
 
     // Nettoyage des données associées (best-effort : la ligne est déjà supprimée)
 

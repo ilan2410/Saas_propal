@@ -24,6 +24,18 @@ import type { InvoiceAnalysisReport } from '@/lib/sa/invoice-analysis';
 
 type UnknownRecord = Record<string, unknown>;
 
+interface ExtractionQuote {
+  tarif: number;
+  surcharge: number;
+  total_debit: number;
+  sufficient: boolean;
+  total_pages?: number;
+  document_count?: number;
+  credits?: number;
+}
+
+const formatEur = (amount: number) => `${amount.toFixed(2).replace('.', ',')} €`;
+
 function isPlainObject(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -66,11 +78,50 @@ export function Step3ExtractData({
   const [creditsInfo, setCreditsInfo] = useState<{ restants: number; debite: number } | null>(null);
   const [requiresReview, setRequiresReview] = useState(initialControl?.status === 'review_required');
   const [reviewRequestedManually, setReviewRequestedManually] = useState(false);
+  const [isCheckingCost, setIsCheckingCost] = useState(false);
+  const [pendingQuote, setPendingQuote] = useState<ExtractionQuote | null>(null);
 
-  const startExtraction = async () => {
+  // Devis avant envoi : solde suffisant ? supplément pour documents volumineux ?
+  // Rien n'est débité ni envoyé à l'IA tant que l'utilisateur n'a pas confirmé.
+  const requestExtraction = async () => {
+    setIsCheckingCost(true);
+    setError('');
+    setPendingQuote(null);
+    try {
+      const response = await fetch('/api/propositions/estimate-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: propositionData.template_id,
+          documents_urls: propositionData.documents_urls,
+          proposition_id: propositionData.proposition_id,
+        }),
+      });
+      const quote = await response.json();
+      if (!response.ok) throw new Error(quote.details || quote.error || 'Estimation impossible');
+
+      if (!quote.sufficient) {
+        const balance = typeof quote.credits === 'number' ? ` (solde : ${formatEur(quote.credits)})` : '';
+        throw new Error(`Crédits insuffisants : cette proposition nécessite ${formatEur(quote.total_debit)}${balance}.`);
+      }
+      if (quote.surcharge > 0) {
+        setPendingQuote(quote);
+        return;
+      }
+      await startExtraction(false);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Erreur inconnue');
+      setExtractionStatus('error');
+    } finally {
+      setIsCheckingCost(false);
+    }
+  };
+
+  const startExtraction = async (acceptSurcharge: boolean) => {
     setIsExtracting(true);
     setExtractionStatus('extracting');
     setError('');
+    setPendingQuote(null);
 
     try {
       const response = await fetch('/api/propositions/extract', {
@@ -82,10 +133,18 @@ export function Step3ExtractData({
           nom_client: propositionData.nom_client,
           proposition_id: propositionData.proposition_id,
           copieurs_count: secteur === 'bureautique' ? Math.max(1, Number(propositionData.copieurs_count || 1)) : 1,
+          accept_surcharge: acceptSurcharge,
         }),
       });
 
       const result = await response.json();
+
+      if (response.status === 409 && result.code === 'surcharge_required') {
+        // Le serveur exige la confirmation du supplément (autorité côté serveur).
+        setPendingQuote({ tarif: result.total_debit - result.surcharge, surcharge: result.surcharge, total_debit: result.total_debit, sufficient: true });
+        setExtractionStatus('idle');
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(result.details || result.error || 'Erreur extraction');
@@ -183,14 +242,49 @@ export function Step3ExtractData({
             <p className="text-gray-600 mb-8 max-w-md mx-auto">
               Le système va analyser automatiquement vos documents et extraire toutes les informations nécessaires selon votre template
             </p>
-            <button
-              onClick={startExtraction}
-              className="group px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:from-indigo-700 hover:to-indigo-800 transition-all font-semibold text-lg shadow-lg shadow-indigo-500/30 flex items-center gap-3 mx-auto hover:scale-105 active:scale-95"
-            >
-              <Sparkles className="w-5 h-5" />
-              Lancer l&apos;extraction
-              <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-            </button>
+            {pendingQuote ? (
+              <div role="alert" className="max-w-xl mx-auto bg-amber-50 border-2 border-amber-300 rounded-xl p-6 text-left">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-bold text-amber-900 text-lg mb-2">Documents volumineux</h4>
+                    <p className="text-sm text-amber-800 mb-2">
+                      L&apos;analyse de ces documents{pendingQuote.total_pages ? ` (${pendingQuote.total_pages} pages)` : ''} est coûteuse :
+                      cette proposition débitera <strong>{formatEur(pendingQuote.surcharge)} supplémentaire</strong> sur vos crédits,
+                      soit <strong>{formatEur(pendingQuote.total_debit)}</strong> au total.
+                    </p>
+                    <p className="text-sm text-amber-700">
+                      Vous pouvez continuer, ou limiter les documents envoyés pour éviter ce supplément.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                  <button
+                    onClick={() => startExtraction(true)}
+                    disabled={isExtracting}
+                    className="flex-1 px-5 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all disabled:opacity-50"
+                  >
+                    Continuer ({formatEur(pendingQuote.total_debit)})
+                  </button>
+                  <button
+                    onClick={onPrev}
+                    className="flex-1 px-5 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
+                  >
+                    Limiter les documents
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={requestExtraction}
+                disabled={isCheckingCost}
+                className="group px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:from-indigo-700 hover:to-indigo-800 transition-all font-semibold text-lg shadow-lg shadow-indigo-500/30 flex items-center gap-3 mx-auto hover:scale-105 active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
+              >
+                {isCheckingCost ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                {isCheckingCost ? 'Vérification des documents…' : "Lancer l'extraction"}
+                <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+              </button>
+            )}
           </div>
         )}
 
@@ -421,7 +515,8 @@ export function Step3ExtractData({
             {/* Bouton réessayer */}
             <div className="text-center">
               <button
-                onClick={startExtraction}
+                onClick={requestExtraction}
+                disabled={isCheckingCost}
                 className="px-8 py-4 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 transition-all font-semibold shadow-lg shadow-red-500/30 flex items-center gap-3 mx-auto hover:scale-105 active:scale-95"
               >
                 <Zap className="w-5 h-5" />
@@ -464,7 +559,7 @@ export function Step3ExtractData({
       <div className="flex justify-between items-center pt-8 border-t-2 border-gray-200">
         <button
           onClick={onPrev}
-          disabled={isExtracting}
+          disabled={isExtracting || isCheckingCost}
           className="group px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />

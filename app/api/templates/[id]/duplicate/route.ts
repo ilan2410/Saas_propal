@@ -1,3 +1,4 @@
+import { duplicateSubTemplates } from '@/lib/templates/sub-template-server';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -15,7 +16,7 @@ interface RouteParams {
 
 // Options de duplication acceptées (toutes si `options` absent du body).
 const ALL_OPTIONS = [
-  'fichier', 'description', 'champs', 'mapping', 'prompt', 'merge',
+  'sous_templates', 'fichier', 'description', 'champs', 'mapping', 'prompt', 'merge',
   'questions', 'objectifs', 'variables', 'clauses', 'loyer',
   'remises', 'codes_promo', 'produits', 'mode_client', 'reference', 'libelles',
 ] as const;
@@ -177,6 +178,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    if (selected.has('sous_templates') && typeof original.file_config?.sub_templates_enabled === 'boolean') newFileConfig.sub_templates_enabled = original.file_config.sub_templates_enabled;
+
     const insertData: Record<string, unknown> = {
       organization_id: ctx.organizationId,
       secteur: original.secteur,
@@ -220,6 +223,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 500 }
       );
     }
+
+    if (selected.has('sous_templates')) await duplicateSubTemplates(id, newTemplate.id, ctx.organizationId);
 
     // Questions SP
     const orgUpdates: Record<string, unknown> = {};

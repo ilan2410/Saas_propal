@@ -19,6 +19,7 @@ interface OptionDef {
 }
 
 const CONTENT_OPTIONS: OptionDef[] = [
+  { key: 'sous_templates', label: 'Sous-templates', hint: 'Copie les documents annexes et leur mapping' },
   { key: 'fichier', label: 'Fichier du template', hint: 'Copie le fichier Excel/Word dans le stockage' },
   { key: 'description', label: 'Description' },
   { key: 'champs', label: 'Champs à extraire' },
