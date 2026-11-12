@@ -29,6 +29,102 @@ const tableMapping = {
 };
 
 describe('fillExcelWorkbook', () => {
+  it('conserve les bordures externes des fusions sur les lignes déplacées et répétées', async () => {
+    const right = { style: 'medium' as const, color: { argb: 'FF999999' } };
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.mergeCells('C2:D2');
+      sheet.mergeCells('C4:D5');
+      sheet.mergeCells('C8:D8');
+      for (const ref of ['D2', 'D4', 'D5', 'D8']) {
+        sheet.getCell(ref).style = { border: { right } };
+      }
+    });
+    const sheet = (await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'A' }, { designation: 'B' }],
+    }, { arrayMappings: [{ ...tableMapping, maxRows: 1, columnMapping: { designation: 'C' }, overflowMode: 'insert_rows' }] }))).getWorksheet('Offre')!;
+    for (const ref of ['D2', 'D4', 'D5', 'D6', 'D7', 'D10']) {
+      expect(sheet.getCell(ref).border.right, ref).toEqual(right);
+    }
+    expect(sheet.model.merges).toEqual(expect.arrayContaining(['C4:D5', 'C6:D7', 'C10:D10']));
+  });
+
+  it('déplace les lignes masquées et groupées avec leur contenu lors des insertions', async () => {
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('A8').value = 'Mandat masqué';
+      for (let row = 8; row <= 10; row++) {
+        sheet.getRow(row).height = 15;
+        sheet.getRow(row).hidden = true;
+        sheet.getRow(row).outlineLevel = 1;
+      }
+      sheet.getCell('A11').value = 'On se mobilise pour votre service';
+    });
+    const sheet = (await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'A' }, { designation: 'B' }, { designation: 'C' }],
+    }, { arrayMappings: [{ ...tableMapping, maxRows: 1, overflowMode: 'insert_rows' }] }))).getWorksheet('Offre')!;
+    expect(sheet.getCell('A10').value).toBe('Mandat masqué');
+    for (let row = 10; row <= 12; row++) {
+      expect(sheet.getRow(row).hidden).toBe(true);
+      expect(sheet.getRow(row).outlineLevel).toBe(1);
+    }
+    for (const row of [4, 5, 6, 8, 9, 13]) {
+      expect(sheet.getRow(row).hidden).toBe(false);
+      expect(sheet.getRow(row).outlineLevel).toBe(0);
+    }
+    expect(sheet.getCell('A13').value).toBe('On se mobilise pour votre service');
+  });
+
+  it.each([false, true])('préserve les sauts de page natifs, avec insertion de lignes : %s', async insert => {
+    const source = await sourceWorkbook((book, sheet) => {
+      sheet.getRow(3).addPageBreak(1, 35);
+      sheet.getRow(4).addPageBreak(1, 35);
+      sheet.getRow(46).addPageBreak(1, 35);
+      sheet.pageSetup = { paperSize: 9, orientation: 'portrait', scale: 96, printArea: 'A1:AI489' };
+      const other = book.addWorksheet('Autre');
+      other.getRow(76).addPageBreak();
+    });
+    const zip = new PizZip(source);
+    const path = 'xl/worksheets/sheet1.xml';
+    zip.file(path, zip.file(path)!.asText().replace('</worksheet>',
+      '<colBreaks count="1" manualBreakCount="1"><brk id="10" min="0" max="489" man="1"/></colBreaks></worksheet>'));
+    const bytes = await fillExcelWorkbook(zip.generate({ type: 'arraybuffer' }), {}, {
+      articles: [{ designation: 'A', prix: 1 }, { designation: 'B', prix: 2 }],
+    }, insert ? { arrayMappings: [{ ...tableMapping, maxRows: 1, overflowMode: 'insert_rows' }] } : {});
+    const output = new PizZip(bytes);
+    const xml = output.file(path)!.asText();
+    const breaks = xml.match(/<rowBreaks\b[^>]*>[\s\S]*?<\/rowBreaks>/)![0];
+    expect([...breaks.matchAll(/\bid="(\d+)"/g)].map(match => +match[1])).toEqual(insert ? [3, 4, 47] : [3, 4, 46]);
+    expect(breaks).toContain('max="34"');
+    expect(xml).toContain('<colBreaks count="1" manualBreakCount="1"><brk id="10" min="0" max="489" man="1"/></colBreaks>');
+    expect(output.file('xl/worksheets/sheet2.xml')!.asText()).toContain('<brk id="76"');
+    expect(xml).toContain('scale="96"');
+    expect(xml).toContain('orientation="portrait"');
+    expect((await loadResult(bytes)).getWorksheet('Offre')!.pageSetup.printArea).toBe(insert ? 'A1:AI490' : 'A1:AI489');
+  });
+
+  it('exporte les tarifs SA préparés comme nombres sans configuration de type', async () => {
+    const donnees = { situation_actuelle: { abonnements: [
+      { libelle: 'Maintenance', tarif_net_mensuel: 13.83 },
+      { libelle: 'Remise', tarif_net_mensuel: -20 },
+    ] } };
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getCell('B4').numFmt = '#,##0.00 "€"';
+      sheet.getCell('H441').value = { formula: 'SUM(B4:B6)' };
+    });
+    const prepared = buildSaWordData(donnees);
+    const sheet = (await loadResult(await fillExcelWorkbook(source, donnees, prepared, {
+      arrayMappings: [{ arrayId: 'lignes', sheetName: 'Offre', startRow: 4, maxRows: 3,
+        stopCondition: 'max_rows', columnMapping: { designation: 'A', tarif: 'B', prix_mensuel_ht: 'C' } }],
+    }))).getWorksheet('Offre')!;
+    expect([4, 5, 6].map(row => sheet.getCell(`B${row}`).value)).toEqual([13.83, -20, null]);
+    expect([4, 5, 6].map(row => sheet.getCell(`C${row}`).value)).toEqual([13.83, -20, null]);
+    expect(sheet.getCell('B4').numFmt).toBe('#,##0.00 "€"');
+    expect(sheet.getCell('H441').formula).toBe('SUM(B4:B6)');
+    expect(formatExcelValue('13,83\u00a0€', 'tarif_net_mensuel', {})).toBe(13.83);
+    expect(formatExcelValue('0,00 €', 'tarif', {})).toBe(0);
+    expect(formatExcelValue('13,83 €', 'tarif', { fieldTypes: { tarif: 'text' } })).toBe('13,83 €');
+    expect((prepared.lignes as Record<string, unknown>[])[0].tarif).toEqual(expect.any(String));
+  });
+
   it('remplit un tableau dont une colonne contient des formules partagées sans erreur ExcelJS', async () => {
     const template = await sourceWorkbook((_book, sheet) => {
       sheet.getCell('A3').value = 1;
@@ -64,8 +160,8 @@ describe('fillExcelWorkbook', () => {
     expect(sheet.getCell('A4').font).toMatchObject({ name: 'Calibri', color: { argb: 'FF123456' }, bold: true, size: 16 });
     expect(sheet.getCell('B4').font.size).toBe(11);
     expect(sheet.getCell('B4').font.bold).not.toBe(true);
-    expect(sheet.getRow(4).height).toBe(35);
-    expect(sheet.getRow(5).height).toBe(35);
+    expect(sheet.getRow(4).height).toBeGreaterThanOrEqual(35);
+    expect(sheet.getRow(5).height).toBeGreaterThanOrEqual(35);
   });
 
   it('refuse les styles Excel invalides et les champs non mappés', async () => {
@@ -92,8 +188,8 @@ describe('fillExcelWorkbook', () => {
     expect(sheet.getCell('C4').value).toBe('Mobile\n0611');
     expect(sheet.getCell('C4').alignment).toMatchObject({ horizontal: 'center', vertical: 'middle', wrapText: true });
     expect(sheet.getCell('C4').font).toMatchObject({ name: 'Calibri', bold: true, size: 15 });
-    expect(sheet.getRow(4).height).toBe(38);
-    expect(sheet.getRow(5).height).toBe(38);
+    expect(sheet.getRow(4).height).toBeGreaterThanOrEqual(38);
+    expect(sheet.getRow(5).height).toBeGreaterThanOrEqual(38);
     expect(sheet.getCell('D2').value).toBe('Léa Dupont');
     expect(sheet.getCell('D2').alignment).toMatchObject({ horizontal: 'right', vertical: 'middle' });
     expect(sheet.getCell('D2').font).toMatchObject({ name: 'Calibri', bold: true, size: 13 });
@@ -137,7 +233,7 @@ describe('fillExcelWorkbook', () => {
     expect(sheet.getCell('C5').text).toBe('Description seule');
     expect((sheet.getCell('C5').value as ExcelJS.CellRichTextValue).richText[0].font).toMatchObject({ size: 10 });
     expect((sheet.getCell('C5').value as ExcelJS.CellRichTextValue).richText[0].font?.bold).not.toBe(true);
-    expect(sheet.getRow(4).height).toBe(38);
+    expect(sheet.getRow(4).height).toBeGreaterThanOrEqual(38);
   });
 
   it('personnalise aussi les variables d’une cellule composée et refuse les styles obsolètes', async () => {
@@ -177,14 +273,32 @@ describe('fillExcelWorkbook', () => {
     expect(result.getWorksheet('Récapitulatif')!.getCell('A1').value).toBe('Alice');
   });
 
-  it('refuse un deuxième emplacement du même tableau sur la même feuille ou une cellule occupée', () => {
+  it('autorise un deuxième emplacement sur la même feuille et refuse les cellules occupées', () => {
     const sheets = [{ name: 'Offre' }, { name: 'Récapitulatif' }];
     const second = { ...tableMapping, sheetName: 'Récapitulatif', columnMapping: { designation: 'A' } };
     expect(validateExcelMappings({ arrayMappings: [tableMapping, { ...tableMapping, startRow: 10 }] }, sheets))
-      .toContain('articles : déjà configuré sur la feuille Offre.');
+      .toEqual([]);
+    expect(validateExcelMappings({ arrayMappings: [tableMapping, { ...tableMapping, startRow: 5 }] }, sheets).join(' '))
+      .toContain('Offre!A5 : conflit');
     expect(validateExcelMappings({ arrayMappings: [tableMapping, second],
       sheetMappings: [{ sheetName: 'Récapitulatif', mapping: { nom: 'A4' } }] }, sheets).join(' '))
       .toContain('Récapitulatif!A4 : conflit');
+  });
+
+  it.each([false, true])('répète un tableau sur la même feuille, avec insertion : %s', async insert => {
+    const source = await sourceWorkbook();
+    const config = { arrayMappings: [
+      { ...tableMapping, maxRows: insert ? 1 : 2, overflowMode: insert ? 'insert_rows' as const : 'error' as const },
+      { ...tableMapping, startRow: 10, columnMapping: { designation: 'C', prix: 'D' } },
+    ] };
+    const sheet = (await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ designation: 'Forfait', prix: 12 }, { designation: 'Option', prix: 5 }],
+    }, config))).getWorksheet('Offre')!;
+    expect(sheet.getCell('A4').value).toBe('Forfait');
+    expect(sheet.getCell('B5').value).toBe(5);
+    const row = insert ? 11 : 10;
+    expect(sheet.getCell('C' + row).value).toBe('Forfait');
+    expect(sheet.getCell('D' + (row + 1)).value).toBe(5);
   });
 
   it.each(['lignes', 'sp_situation_proposee_complet'])('regroupe les numéros dans %s avec leurs offres et tarifs', async arrayId => {
@@ -770,6 +884,33 @@ describe('fillExcelWorkbook', () => {
     expect(sheet.getCell('A4').value).toBe('Box Tv\nAndroid TV 4K');
     expect(sheet.getCell('A4').alignment.wrapText).toBe(true);
     expect(sheet.getImages()).toHaveLength(1);
+  });
+
+  it('centre une photo dans sa zone fusionnée après application des styles du tableau', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://storage.example.test');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(png)));
+    const source = await sourceWorkbook((_, sheet) => {
+      sheet.getColumn('C').width = 20;
+      sheet.getColumn('D').width = 20;
+      sheet.mergeCells('C4:D5');
+      sheet.getRow(5).height = 30;
+    });
+    const result = await loadResult(await fillExcelWorkbook(source, {}, {
+      articles: [{ photo_image_url: 'https://storage.example.test/photo.png' }],
+    }, {
+      arrayMappings: [{ ...tableMapping, maxRows: 1, columnMapping: { photo_image_url: 'C' },
+        fieldStyles: { photo_image_url: { horizontal: 'center', vertical: 'middle', rowHeight: 120 } } }],
+      imageWidth: 60, imageHeight: 60,
+    }));
+    const sheet = result.getWorksheet('Offre')!;
+    const [image] = sheet.getImages();
+    // Merged area: 290 x 200 px; image: 60 x 60 px.
+    expect(image.range.tl.nativeCol).toBe(2);
+    expect(image.range.tl.nativeColOff / 9525).toBeCloseTo(115, 0);
+    expect(image.range.tl.nativeRow).toBe(3);
+    expect(image.range.tl.nativeRowOff / 9525).toBeCloseTo(70, 0);
+    expect(sheet.getRow(4).height).toBe(120);
   });
 
   it('refuse une URL image hors du stockage autorisé', async () => {

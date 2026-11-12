@@ -1,3 +1,4 @@
+import { isMissingRelationError } from '@/lib/supabase/errors';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Plus, FileText, Sparkles } from 'lucide-react';
@@ -184,6 +185,14 @@ export default async function PropositionsPage() {
     ? parsePropositionColumns(preferenceValue?.columns)
     : parsePropositionColumns(['team', 'template', 'fields', 'status', 'createdAt']);
 
+  const variantCounts = new Map<string, number>();
+  if (ctx && displayedPropositions.length) {
+    const { data, error } = await serviceSupabase.from('proposition_sp_variants').select('proposition_id')
+      .eq('organization_id', ctx.organizationId).in('proposition_id', displayedPropositions.map(p => p.id));
+    if (error && !isMissingRelationError(error)) throw error;
+    for (const variant of data ?? []) variantCounts.set(variant.proposition_id, (variantCounts.get(variant.proposition_id) ?? 0) + 1);
+  }
+
   // Préparation des données sérialisables pour le composant client
   const listItems: PropositionListItem[] = displayedPropositions.map((prop) => ({
     id: prop.id,
@@ -222,6 +231,7 @@ export default async function PropositionsPage() {
       : 0,
     createdAt: prop.created_at,
     updatedAt: prop.updated_at || prop.created_at,
+    spVariantsCount: variantCounts.get(prop.id) ?? 0,
   }));
 
   // Compteurs pour les filtres (pills). « Brouillons » = pas encore exportée ;

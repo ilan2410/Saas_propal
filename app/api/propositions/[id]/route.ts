@@ -101,6 +101,15 @@ export async function DELETE(
     const { data: annexResults, error: annexError } = await serviceSupabase.from('proposition_sub_template_results').select('file_url').eq('proposition_id', id).eq('organization_id', ctx.organizationId);
     if (annexError) throw annexError;
     const annexUrls = (annexResults ?? []).map(r => r.file_url as string | null);
+    const { data: variantFiles, error: variantError } = await serviceSupabase.from('proposition_sp_variants')
+      .select('id,duplicated_template_url').eq('proposition_id', id).eq('organization_id', ctx.organizationId);
+    if (variantError && !isMissingRelationError(variantError)) throw variantError;
+    const variantIds = (variantFiles ?? []).map(v => v.id);
+    const { data: variantResults, error: variantResultsError } = variantIds.length
+      ? await serviceSupabase.from('proposition_sp_variant_results').select('file_url').in('variant_id', variantIds).eq('organization_id', ctx.organizationId)
+      : { data: [], error: null };
+    if (variantResultsError) throw variantResultsError;
+    annexUrls.push(...(variantFiles ?? []).map(v => v.duplicated_template_url), ...(variantResults ?? []).map(v => v.file_url));
     const urls: string[] = [];
     const sourceDocsRaw =
       proposition.source_documents ?? proposition.documents_urls ?? proposition.documents_sources_urls;

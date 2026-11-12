@@ -183,13 +183,13 @@ describe('generatePropositionFile Excel', () => {
       template: { id: 'excel', file_type: 'excel', file_url: 'https://storage.example.test/template.xlsx', champs_actifs: [],
         file_config: { sheetMappings: [{ sheetName: 'Offre', mapping: { entreprise_nom: 'B1', numero: 'B2', sp_clause_geste: 'B3', prix: 'B4' } }] } },
       donnees: { numero: '0612345678', prix: '12,50 €' },
-      organization_id: 'org-1', proposition_id: 'prop-1', proposition_created_at: '2026-09-07T00:00:00Z',
+      organization_id: 'org-1', proposition_id: 'prop-1', variant_name: 'Variante 2', proposition_created_at: '2026-09-07T00:00:00Z',
       sp_reference: 'REF-42', sp_clauses_rendered: { sp_clause_geste: 'Offert' }, organization_profile: { nom: 'Entreprise Test' },
     });
     expect(url).toBe('https://example.test/generated.xlsx');
     expect(upload).toHaveBeenCalledOnce();
     const [path, bytes, options] = upload.mock.calls[0];
-    expect(path).toMatch(/^generated\/org-1\/prop-1\/excel\/Propal_Proposition_[0-9a-f-]+\.xlsx$/);
+    expect(path).toMatch(/^generated\/org-1\/prop-1\/excel\/[0-9a-f-]+\/Propal_Proposition_Variante_2\.xlsx$/);
     expect(options.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const result = new ExcelJS.Workbook();
     await result.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));

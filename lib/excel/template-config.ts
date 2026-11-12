@@ -123,14 +123,10 @@ export function validateExcelMappings(
     else claim(mapping.sheetName, mapping.cellRef, `composition ${index + 1}`);
     if (!composedFields(mapping.template)) errors.push(`${mapping.sheetName}!${mapping.cellRef} : utilisez au moins deux variables simples distinctes au format {{variable}}.`);
   }
-  const arraySheets = new Set<string>();
   for (const mapping of config.arrayMappings ?? []) {
     try { parseExcelFieldStyles(mapping.fieldStyles); } catch (error) { errors.push((error as Error).message); }
     for (const field of Object.keys(mapping.fieldStyles ?? {})) if (!mapping.columnMapping[field]) errors.push(`Style Excel sans champ mappé : ${field}.`);
     if (!sheets.some(s => s.name === mapping.sheetName)) errors.push(`Feuille introuvable : ${mapping.sheetName}.`);
-    const arraySheet = JSON.stringify([mapping.arrayId, mapping.sheetName]);
-    if (arraySheets.has(arraySheet)) errors.push(`${mapping.arrayId} : déjà configuré sur la feuille ${mapping.sheetName}.`);
-    arraySheets.add(arraySheet);
     const validRow = Number.isInteger(mapping.startRow) && mapping.startRow >= 1 && mapping.startRow <= 1048576;
     const validSize = mapping.maxRows === undefined || (Number.isInteger(mapping.maxRows) && mapping.maxRows >= 1 && mapping.maxRows <= 10000);
     if (!validRow) errors.push(`${mapping.arrayId} : ligne de départ invalide.`);

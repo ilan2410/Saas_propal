@@ -2,7 +2,7 @@ import type { ExcelConfig } from '@/types';
 
 export type ExcelFieldType = NonNullable<ExcelConfig['fieldTypes']>[string];
 const IDENTIFIER = /(?:numero|numéro|telephone|téléphone|mobile|fixe|siret|siren|postal|iban|reference|référence|code|identifiant|(^|_)id($|_))/i;
-const MONEY = /(?:prix|price|montant|amount|total|loyer|economie|économie|remise|cout|coût|frais|taux|quantite|quantité|capital|charges|mensual|abonnements_ht|services_ht|reductions_ht|consommations_ht)/i;
+const MONEY = /(?:prix|price|tarif|montant|amount|total|loyer|economie|économie|remise|cout|coût|frais|taux|quantite|quantité|capital|charges|mensual|abonnements_ht|services_ht|reductions_ht|consommations_ht)/i;
 
 export function uppercaseExcelText(value: string): string {
   return value.split(/([^\s@]+@[^\s@]+\.[^\s@]+)/g)

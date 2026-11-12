@@ -4,6 +4,17 @@ import { assertAllowedFetchUrl } from '@/lib/security/validate-fetch-url';
 type ExcelImage = { bytes: Buffer; extension: 'png' | 'jpeg' | 'gif'; width: number; height: number };
 const MAX_BYTES = 5 * 1024 * 1024;
 
+/** Avoid ExcelJS's drawing relationship cache mixing up repeated image IDs. */
+export function isolateExcelImageReferences(workbook: ExcelJS.Workbook) {
+  for (const sheet of workbook.worksheets) {
+    for (const picture of sheet.getImages()) {
+      const source = workbook.getImage(Number(picture.imageId));
+      // ExcelJS declares this read value as string, but its media model uses numbers.
+      (picture as unknown as { imageId: number }).imageId = workbook.addImage({ ...source });
+    }
+  }
+}
+
 export async function loadExcelImage(url: string): Promise<ExcelImage> {
   assertAllowedFetchUrl(url);
   const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(15000) });
@@ -64,21 +75,13 @@ export function clearExcelCellImages(worksheet: ExcelJS.Worksheet, cell: ExcelJS
 }
 
 export function addExcelImage(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, image: ExcelImage, width = 110, height = 73) {
-  if (!image.width || !image.height) throw new Error("Dimensions de l'image invalides.");
-  const scale = Math.min(width / image.width, height / image.height);
-  const ext = { width: image.width * scale, height: image.height * scale };
-  const imageId = workbook.addImage({ buffer: image.bytes as unknown as ExcelJS.Buffer, extension: image.extension });
-  worksheet.addImage(imageId, {
-    tl: { col: Number(cell.col) - 1, row: Number(cell.row) - 1 }, ext, editAs: 'oneCell',
-  });
-  worksheet.getRow(Number(cell.row)).height = Math.max(worksheet.getRow(Number(cell.row)).height ?? 15, ext.height * 0.75);
-  return ext;
+  return addExcelImageRightCentered(workbook, worksheet, cell.master, image, width, height, true);
 }
 
 const EMU_PER_PIXEL = 9525;
 
 /** Place an image against the right edge of the cell (or of its merged area), vertically centred. */
-export function addExcelImageRightCentered(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, image: ExcelImage, width = 110, height = 73) {
+export function addExcelImageRightCentered(workbook: ExcelJS.Workbook, worksheet: ExcelJS.Worksheet, cell: ExcelJS.Cell, image: ExcelImage, width = 110, height = 73, useCellAlignment = false) {
   if (!image.width || !image.height) throw new Error("Dimensions de l'image invalides.");
   const scale = Math.min(width / image.width, height / image.height);
   const ext = { width: image.width * scale, height: image.height * scale };
@@ -111,8 +114,16 @@ export function addExcelImageRightCentered(workbook: ExcelJS.Workbook, worksheet
     while (offset >= size(index) && index < 16384) { offset -= size(index); index++; }
     return { index, offset };
   };
-  const x = walk(firstCol, Math.max(0, areaWidth - ext.width - rightGap), columnPixels);
-  const y = walk(firstRow, Math.max(0, (areaHeight - ext.height) / 2), rowPixels);
+  const horizontal = cell.alignment?.horizontal;
+  const vertical = cell.alignment?.vertical;
+  const xOffset = useCellAlignment
+    ? horizontal === 'center' ? (areaWidth - ext.width) / 2 : horizontal === 'right' ? areaWidth - ext.width : 0
+    : areaWidth - ext.width - rightGap;
+  const yOffset = useCellAlignment
+    ? vertical === 'middle' ? (areaHeight - ext.height) / 2 : vertical === 'bottom' ? areaHeight - ext.height : 0
+    : (areaHeight - ext.height) / 2;
+  const x = walk(firstCol, Math.max(0, xOffset), columnPixels);
+  const y = walk(firstRow, Math.max(0, yOffset), rowPixels);
   const imageId = workbook.addImage({ buffer: image.bytes as unknown as ExcelJS.Buffer, extension: image.extension });
   worksheet.addImage(imageId, {
     tl: { nativeCol: x.index - 1, nativeColOff: Math.round(x.offset * EMU_PER_PIXEL), nativeRow: y.index - 1, nativeRowOff: Math.round(y.offset * EMU_PER_PIXEL) },

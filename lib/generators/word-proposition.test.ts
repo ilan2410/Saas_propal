@@ -96,12 +96,12 @@ describe('generatePropositionFile Word', () => {
       },
       donnees: { client: { raison_sociale: 'SOCIÉTÉ TEST' } },
       organization_id: 'org-1', proposition_id: 'prop-1',
-      proposition_created_at: '2026-09-07T00:00:00.000Z', sp_reference: 'REF-42',
+      proposition_created_at: '2026-09-07T00:00:00.000Z', variant_name: 'Variante 2', sp_reference: 'REF-42',
     });
     expect(url).toBe('https://example.test/generated.docx');
     expect(upload).toHaveBeenCalledOnce();
     const [path, bytes, config] = upload.mock.calls[0];
-    expect(path).toMatch(/^generated\/org-1\/prop-1\/template-word\/Propal_SOCIT_TEST_[0-9a-f-]+\.docx$/);
+    expect(path).toMatch(/^generated\/org-1\/prop-1\/template-word\/[0-9a-f-]+\/Propal_SOCIT_TEST_Variante_2\.docx$/);
     expect(config.contentType).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     const xml = new PizZip(Buffer.from(bytes)).file('word/document.xml')!.asText();
     expect(xml).toContain('Société Test');

@@ -1,3 +1,4 @@
+import { isMissingRelationError } from '@/lib/supabase/errors';
 import { createServiceClient } from '@/lib/supabase/server';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 export async function removeSubTemplateFiles(urls: (string | null | undefined)[], organizationId: string) {
@@ -13,7 +14,9 @@ export async function subTemplateFiles(templateId: string, organizationId: strin
  const ids = (children ?? []).map(c => c.id);
  const { data: results, error: resultsError } = ids.length ? await service.from('proposition_sub_template_results').select('file_url').in('sub_template_id', ids).eq('organization_id', organizationId) : {data: [], error: null};
  if (resultsError) throw resultsError;
- return [...(children ?? []), ...(results ?? [])].map(c => c.file_url as string | null);
+ const { data: variantResults, error: variantError } = ids.length ? await service.from('proposition_sp_variant_results').select('file_url').in('sub_template_id', ids).eq('organization_id', organizationId) : { data: [], error: null };
+ if (variantError && !isMissingRelationError(variantError)) throw variantError;
+ return [...(children ?? []), ...(results ?? []), ...(variantResults ?? [])].map(c => c.file_url as string | null);
 }
 
 export async function duplicateSubTemplates(sourceId: string, targetId: string, organizationId: string) {

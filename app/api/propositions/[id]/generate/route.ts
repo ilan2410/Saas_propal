@@ -1,3 +1,5 @@
+import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
+import { applySpVariant } from '@/lib/propositions/sp-variants';
 import { preparePropositionGeneration } from '@/lib/generators/prepare-proposition';
 import { resolveSubTemplateSelection, subTemplateConfig, subTemplatesEnabled, type SubTemplateGenerationResult } from '@/lib/templates/sub-templates';
 import { removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
@@ -47,14 +49,22 @@ export async function POST(
     }
 
     // Récupérer la proposition
-    const { data: proposition, error: propError } = await scopePropositionsQuery(
+    const { data: parentProposition, error: propError } = await scopePropositionsQuery(
       supabase.from('propositions').select('*').eq('id', id),
       ctx
     ).single();
 
-    if (propError || !proposition) {
+    if (propError || !parentProposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
     }
+
+    const variantId = request.nextUrl.searchParams.get('variant');
+    const variant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+    if (variantId && !variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+    const proposition = variant ? applySpVariant(parentProposition, variant) : parentProposition;
+    const resultTable = variant ? 'proposition_sp_variant_results' : 'proposition_sub_template_results';
+    const resultKey = variant ? 'variant_id' : 'proposition_id';
+    const resultId = variant?.id ?? id;
 
     // Récupérer le template (scopé à l'organisation de l'utilisateur pour éviter
     // qu'un utilisateur authentifié puisse déclencher une génération sur un
@@ -85,18 +95,19 @@ export async function POST(
     const selected = resolveSubTemplateSelection(ids, pref?.mode ?? 'all', proposition.selected_sub_template_ids, body.selected_sub_template_ids);
     const target = body.target_sub_template_id;
     if (target !== undefined && (!ids.includes(target) || !selected.includes(target))) return NextResponse.json({ error: 'Sous-template non sélectionné' }, { status: 400 });
-    const { error: selectionError } = !enabled ? { error: null } : await service.from('propositions').update({ selected_sub_template_ids: selected }).eq('id', id).eq('organization_id', ctx.organizationId);
+    const { error: selectionError } = !enabled ? { error: null } : await service.from(variant ? 'proposition_sp_variants' : 'propositions').update({ selected_sub_template_ids: selected }).eq('id', resultId).eq('organization_id', ctx.organizationId);
     if (selectionError) throw selectionError;
-    const { data: previousResults, error: resultsError } = await service.from('proposition_sub_template_results').select('*').eq('proposition_id', id).eq('organization_id', ctx.organizationId);
+    const { data: previousResults, error: resultsError } = await service.from(resultTable).select('*').eq(resultKey, resultId).eq('organization_id', ctx.organizationId);
     if (resultsError) throw resultsError;
     const removed = !enabled ? [] : (previousResults ?? []).filter(r => !selected.includes(r.sub_template_id));
     if (removed.length) {
-      const { error } = await service.from('proposition_sub_template_results').delete().eq('proposition_id', id).eq('organization_id', ctx.organizationId).in('sub_template_id', removed.map(r => r.sub_template_id));
+      const { error } = await service.from(resultTable).delete().eq(resultKey, resultId).eq('organization_id', ctx.organizationId).in('sub_template_id', removed.map(r => r.sub_template_id));
       if (error) throw error;
       await removeSubTemplateFiles(removed.map(r => r.file_url), ctx.organizationId);
     }
-    if (!target) failedProposition = { id, organizationId: ctx.organizationId };
+    if (!target && !variant) failedProposition = { id, organizationId: ctx.organizationId };
     const options = await preparePropositionGeneration(supabase, ctx, proposition, template);
+    if (variant) options.variant_name = variant.nom;
     const fileUrl = target ? proposition.duplicated_template_url : await generatePropositionFile(options);
     const results: SubTemplateGenerationResult[] = [];
     for (const child of children ?? []) {
@@ -108,14 +119,14 @@ export async function POST(
           template: { ...options.template, id: child.id, file_url: child.file_url, file_type: child.file_type,
             file_config: subTemplateConfig(template.file_config, child.file_config) } });
         const signed = await signedOrganizationStorageUrl(supabase, generatedUrl, 'templates', ctx.organizationId);
-        const { error } = await service.from('proposition_sub_template_results').upsert({ proposition_id: id, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'success', file_url: generatedUrl, error: null, generated_at: new Date().toISOString() });
+        const { error } = await service.from(resultTable).upsert({ [resultKey]: resultId, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'success', file_url: generatedUrl, error: null, generated_at: new Date().toISOString() });
         if (error) throw error;
         if (previous?.file_url && previous.file_url !== generatedUrl) await removeSubTemplateFiles([previous.file_url], ctx.organizationId);
         results.push({ id: child.id, nom: child.nom, status: 'success', file_url: signed });
       } catch (error) {
         if (generatedUrl) await removeSubTemplateFiles([generatedUrl], ctx.organizationId);
         const message = error instanceof Error ? error.message : 'Erreur de génération';
-        const { error: saveError } = await service.from('proposition_sub_template_results').upsert({ proposition_id: id, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'error', file_url: previous?.file_url ?? null, error: message, generated_at: new Date().toISOString() });
+        const { error: saveError } = await service.from(resultTable).upsert({ [resultKey]: resultId, sub_template_id: child.id, organization_id: ctx.organizationId, status: 'error', file_url: previous?.file_url ?? null, error: message, generated_at: new Date().toISOString() });
         if (saveError) console.error('Enregistrement erreur annexe', saveError);
         results.push({ id: child.id, nom: child.nom, status: 'error', error: message });
       }
@@ -123,13 +134,13 @@ export async function POST(
 
     // Mettre à jour la proposition avec les bons noms de colonnes
     const { error: updateError } = target ? { error: null } : await createServiceClient()
-      .from('propositions')
-      .update({
+      .from(variant ? 'proposition_sp_variants' : 'propositions')
+      .update(variant ? { duplicated_template_url: fileUrl } : {
         duplicated_template_url: fileUrl,
         statut: 'exported',
         exported_at: new Date().toISOString(),
       })
-      .eq('id', id);
+      .eq('id', resultId).eq('organization_id', ctx.organizationId);
 
     if (updateError) throw updateError;
 
@@ -192,6 +203,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (await propositionSecteurBlocked(ctx, id)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
   const { data: proposition } = await scopePropositionsQuery(client.from('propositions').select('id,template_id,selected_sub_template_ids').eq('id', id), ctx).maybeSingle();
   if (!proposition) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+  const variantId = request.nextUrl.searchParams.get('variant');
+  const variant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+  if (variantId && !variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+  const resultTable = variant ? 'proposition_sp_variant_results' : 'proposition_sub_template_results';
+  const resultKey = variant ? 'variant_id' : 'proposition_id';
+  const resultId = variant?.id ?? id;
+  const selectedIds = variant ? variant.selected_sub_template_ids : proposition.selected_sub_template_ids;
   const service = createServiceClient();
   const { data: configuredChildren, error } = await service.from('template_sub_templates').select('id,nom,file_type').eq('template_id', proposition.template_id).eq('organization_id', ctx.organizationId).order('created_at').order('id');
   if (error) throw error;
@@ -201,9 +219,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const children = subTemplatesEnabled(parent.file_config, configuredChildren?.length ?? 0) ? configuredChildren : [];
   const { data: pref, error: prefError } = await service.from('template_generation_preferences').select('mode').eq('user_id', user.id).eq('template_id', proposition.template_id).maybeSingle();
   if (prefError) throw prefError;
-  const { data: results, error: resultError } = await service.from('proposition_sub_template_results').select('sub_template_id,status,error').eq('proposition_id', id).eq('organization_id', ctx.organizationId);
+  const { data: results, error: resultError } = await service.from(resultTable).select('sub_template_id,status,error').eq(resultKey, resultId).eq('organization_id', ctx.organizationId);
   if (resultError) throw resultError;
-  return NextResponse.json({ template_id: proposition.template_id, mode: pref?.mode ?? 'all', selected_sub_template_ids: resolveSubTemplateSelection((children ?? []).map(c => c.id), pref?.mode ?? 'all', proposition.selected_sub_template_ids), sub_templates: (children ?? []).map(c => ({ ...c, result: results?.find(r => r.sub_template_id === c.id) })) });
+  return NextResponse.json({ template_id: proposition.template_id, variant_name: variant?.nom, mode: pref?.mode ?? 'all', selected_sub_template_ids: resolveSubTemplateSelection((children ?? []).map(c => c.id), pref?.mode ?? 'all', selectedIds), sub_templates: (children ?? []).map(c => ({ ...c, result: results?.find(r => r.sub_template_id === c.id) })) });
  } catch (error) {
   console.error('Chargement annexes', error);
   return NextResponse.json({ error: 'Impossible de charger les annexes' }, { status: 500 });

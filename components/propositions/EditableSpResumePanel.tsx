@@ -1,5 +1,6 @@
 'use client';
 
+import { scheduleSpSave, flushSpSaves, hasPendingSpSave } from '@/lib/propositions/sp-save-queue';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
@@ -681,6 +682,7 @@ function CategoryProductAdder({
 }
 
 export interface EditableSpResumePanelProps {
+  spVariantId?: string;
   propositionId: string;
   initialSp: SuggestionsSpCompletes | null;
   initialReponses: SpQuestionReponse[];
@@ -703,6 +705,7 @@ export interface EditableSpResumePanelProps {
 
 export function EditableSpResumePanel({
   propositionId,
+  spVariantId,
   initialSp,
   initialReponses,
   questions,
@@ -886,7 +889,6 @@ export function EditableSpResumePanel({
   ]);
 
   // Auto-sauvegarde debouncée (500 ms)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleAutoSave = useCallback(
@@ -898,12 +900,10 @@ export function EditableSpResumePanel({
       nextLivraisonIdentique: boolean,
       nextLivraisonEdit: ClientEdit,
     ) => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (savedResetTimerRef.current) clearTimeout(savedResetTimerRef.current);
       setSaveStatus('saving');
 
-      saveTimerRef.current = setTimeout(async () => {
-        saveTimerRef.current = null;
+      scheduleSpSave(async () => {
         try {
           const adresseFacturation = clientEditToSpAddress(nextClientEdit, initialSp?.sp_adresse_facturation);
           const adresseLivraison = nextLivraisonIdentique
@@ -941,7 +941,7 @@ export function EditableSpResumePanel({
             payload.nom_client = nextClientEdit.raison_sociale.trim();
           }
 
-          const res = await fetch(`/api/propositions/${propositionId}/update`, {
+          const res = await fetch(`/api/propositions/${propositionId}/update${spVariantId ? `?variant=${encodeURIComponent(spVariantId)}` : ''}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -952,11 +952,13 @@ export function EditableSpResumePanel({
         } catch (err) {
           console.error('Erreur auto-sauvegarde Résumé SP:', err);
           setSaveStatus('error');
+          throw err;
         }
-      }, 500);
+      });
     },
     [
       propositionId,
+      spVariantId,
       initialSp,
       questions,
       catalogue,
@@ -969,8 +971,13 @@ export function EditableSpResumePanel({
   );
 
   useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (hasPendingSpSave()) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      window.removeEventListener('beforeunload', warn);
+      void flushSpSaves().catch(() => {});
       if (savedResetTimerRef.current) clearTimeout(savedResetTimerRef.current);
     };
   }, []);

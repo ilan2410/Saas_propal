@@ -1,4 +1,5 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
+import { generatedFileName } from './file-name';
 import { createServiceClient } from '@/lib/supabase/server';
 import { withTableTotals } from './table-row-total';
 import { orderTablePhoneRows } from './table-phone-order';
@@ -50,9 +51,8 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
       .replace(/\s+/g, '_');
   }
 
-  const prefix = (options.document_name || 'Propal').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const fileName = `${prefix}_${clientName}_${crypto.randomUUID()}.docx`;
-  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${fileName}`;
+  const fileName = generatedFileName(clientName, 'docx', options.document_name, options.variant_name);
+  const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${crypto.randomUUID()}/${fileName}`;
 
   const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

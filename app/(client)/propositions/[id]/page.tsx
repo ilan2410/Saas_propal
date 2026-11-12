@@ -1,3 +1,7 @@
+import { isMissingRelationError } from '@/lib/supabase/errors';
+import { SpVariantSelector } from '@/components/propositions/SpVariantSelector';
+import { applySpVariant } from '@/lib/propositions/sp-variants';
+import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
@@ -96,8 +100,10 @@ function countTotalFields(data: unknown): number {
 
 export default async function PropositionDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ variant?: string }>;
 }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -142,6 +148,14 @@ export default async function PropositionDetailPage({
     notFound();
   }
 
+  const { variant: variantId } = await searchParams;
+  const { data: variants, error: variantsError } = await serviceSupabase.from('proposition_sp_variants')
+    .select('id,nom').eq('proposition_id', id).eq('organization_id', ctx.organizationId).order('created_at').order('id');
+  if (variantsError && !isMissingRelationError(variantsError)) throw new Error('Impossible de charger les variantes SP.');
+  const selectedVariant = variantId ? await loadSpVariant(id, ctx.organizationId, variantId) : null;
+  if (variantId && !selectedVariant) notFound();
+  const spProposition = selectedVariant ? applySpVariant(proposition, selectedVariant) : proposition;
+
   const extractedDataRaw = proposition.extracted_data || proposition.donnees_extraites || {};
   const extractedDataRecord: Record<string, unknown> = isRecord(extractedDataRaw) ? extractedDataRaw : {};
   const normalizeKey = (k: string) =>
@@ -185,10 +199,10 @@ export default async function PropositionDetailPage({
   const suggestionsGenerees =
     (proposition as Record<string, unknown>).suggestions_editees ||
     (proposition as Record<string, unknown>).suggestions_generees;
-  const suggestionsSpCompletesRaw = (proposition as Record<string, unknown>).suggestions_sp_completes;
+  const suggestionsSpCompletesRaw = (spProposition as Record<string, unknown>).suggestions_sp_completes;
   const suggestionsSpCompletes = hasSuggestionsSpCompletes(suggestionsSpCompletesRaw) ? suggestionsSpCompletesRaw : null;
-  const spReponses = Array.isArray((proposition as Record<string, unknown>).sp_reponses)
-    ? (proposition as Record<string, unknown>).sp_reponses as SpQuestionReponse[]
+  const spReponses = Array.isArray((spProposition as Record<string, unknown>).sp_reponses)
+    ? (spProposition as Record<string, unknown>).sp_reponses as SpQuestionReponse[]
     : [];
   const creatorId = typeof proposition.created_by === 'string' ? proposition.created_by : null;
   const [organizationResult, teleprosResult, creatorResult] = await Promise.all([
@@ -233,8 +247,8 @@ export default async function PropositionDetailPage({
     : [];
 
   // Données complètes pour le calcul et l'édition (fusion extracted_data + filled_data)
-  const filledDataRecord: Record<string, unknown> = isRecord((proposition as Record<string, unknown>).filled_data)
-    ? ((proposition as Record<string, unknown>).filled_data as Record<string, unknown>)
+  const filledDataRecord: Record<string, unknown> = isRecord((spProposition as Record<string, unknown>).filled_data)
+    ? ((spProposition as Record<string, unknown>).filled_data as Record<string, unknown>)
     : {};
   const donneesExtraitesForCalc: Record<string, unknown> = {
     ...extractedDataRecord,
@@ -270,7 +284,7 @@ export default async function PropositionDetailPage({
     ? (templateFileCfg.sp_config_mode_direct as unknown as SpConfigModeDirect)
     : undefined;
   const isModeDirect = spConfigModeDirect?.actif === true;
-  const hasGeneratedFile = Boolean(proposition.duplicated_template_url || proposition.fichier_genere_url);
+  const hasGeneratedFile = Boolean(spProposition.duplicated_template_url || spProposition.fichier_genere_url);
   const showSpResumeSection = Boolean(suggestionsSpCompletes || spReponses.length > 0 || isModeDirect);
 
   let catalogue: CatalogueProduit[] = [];
@@ -362,14 +376,15 @@ export default async function PropositionDetailPage({
               )}
 
               {canDownloadProposition &&
-                ['draft', 'ready', 'extracted'].includes(proposition.statut) &&
+                ['draft', 'ready', 'extracted', 'exported'].includes(proposition.statut) &&
                 !hasGeneratedFile && (
-                  <GenerateButton propositionId={proposition.id} variant="primary" />
+                  <GenerateButton propositionId={proposition.id} spVariantId={variantId} variant="primary" />
                 )}
 
               {canDownloadProposition && hasGeneratedFile && (
                 <GenerateButton
                   propositionId={proposition.id}
+                  spVariantId={variantId}
                   variant="primary"
                   label="Télécharger"
                   icon={<Download className="h-4 w-4" />}
@@ -377,7 +392,7 @@ export default async function PropositionDetailPage({
               )}
 
               {canDownloadComparatifSaSp && (proposition.suggestions_sp_completes || isModeDirect) && (
-                <ExportSaSpButtons propositionId={proposition.id} variant="outline" />
+                <ExportSaSpButtons propositionId={proposition.id} spVariantId={variantId} variant="outline" />
               )}
 
               <PropositionRowMenu
@@ -454,14 +469,16 @@ export default async function PropositionDetailPage({
           </details>
         )}
 
+        {showSpResumeSection && !variantsError && <SpVariantSelector propositionId={id} variants={variants ?? []} selectedId={variantId} />}
+
         {/* Résumé SP */}
         {showSpResumeSection && (
-          <details open={isModeDirect || !hasGeneratedFile} className="group rounded-xl border border-slate-200 bg-white">
+          <details open={!!variantId || isModeDirect || !hasGeneratedFile} className="group rounded-xl border border-slate-200 bg-white">
             <summary className="flex cursor-pointer select-none items-center justify-between gap-4 px-5 py-4 list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-3">
                 <ClipboardList className="h-4 w-4 text-slate-400" />
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">Résumé SP</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">Résumé SP{selectedVariant ? ` · ${selectedVariant.nom}` : ''}</h2>
                   <p className="text-xs text-slate-500">
                     {isModeDirect
                       ? 'Synthèse de la situation proposée et du panier SP'
@@ -473,7 +490,9 @@ export default async function PropositionDetailPage({
             </summary>
             <div className="border-t border-slate-100 p-5">
               <EditableSpResumePanel
+                key={variantId ?? 'initial'}
                 propositionId={proposition.id}
+                spVariantId={variantId}
                 initialSp={suggestionsSpCompletes}
                 initialReponses={spReponses}
                 questions={spQuestions}

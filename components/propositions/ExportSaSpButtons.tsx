@@ -1,9 +1,12 @@
 'use client';
 
+import { flushSpSaves } from '@/lib/propositions/sp-save-queue';
+import { toast } from 'sonner';
 import { FileSpreadsheet, FileText } from 'lucide-react';
 
 interface Props {
   propositionId: string;
+  spVariantId?: string;
   variant?: 'solid' | 'outline';
 }
 
@@ -18,12 +21,19 @@ const STYLES = {
   },
 } as const;
 
-export function ExportSaSpButtons({ propositionId, variant = 'solid' }: Props) {
+export function ExportSaSpButtons({ propositionId, spVariantId, variant = 'solid' }: Props) {
   const styles = STYLES[variant];
+  async function exportAfterSave(event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const href = event.currentTarget.href;
+    try { await flushSpSaves(); window.location.assign(href); }
+    catch { toast.error('Enregistrement impossible. Réessayez avant d’exporter.'); }
+  }
   return (
     <div className="flex gap-2">
       <a
-        href={`/api/propositions/${propositionId}/export-comparatif-sa-sp?format=excel`}
+        onClick={exportAfterSave}
+        href={`/api/propositions/${propositionId}/export-comparatif-sa-sp?format=excel&variant=${encodeURIComponent(spVariantId ?? '')}`}
         title="Exporter comparatif SA/SP (Excel)"
         className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${styles.excel}`}
       >
@@ -31,7 +41,8 @@ export function ExportSaSpButtons({ propositionId, variant = 'solid' }: Props) {
         SA/SP Excel
       </a>
       <a
-        href={`/api/propositions/${propositionId}/export-comparatif-sa-sp?format=word`}
+        onClick={exportAfterSave}
+        href={`/api/propositions/${propositionId}/export-comparatif-sa-sp?format=word&variant=${encodeURIComponent(spVariantId ?? '')}`}
         title="Exporter comparatif SA/SP (Word)"
         className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${styles.word}`}
       >

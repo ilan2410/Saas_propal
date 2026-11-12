@@ -1,3 +1,4 @@
+import { isMissingRelationError } from '@/lib/supabase/errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveTemplateEditorContext } from '@/lib/auth/template-editor-context';
@@ -47,9 +48,11 @@ async function handle(request: NextRequest, { params }: Params) {
   if (request.method === 'DELETE') {
    const { data: results, error: loadError } = await service.from('proposition_sub_template_results').select('file_url').eq('sub_template_id', childId).eq('organization_id', ctx.organizationId);
    if (loadError) throw loadError;
+   const { data: variantResults, error: variantError } = await service.from('proposition_sp_variant_results').select('file_url').eq('sub_template_id', childId).eq('organization_id', ctx.organizationId);
+   if (variantError && !isMissingRelationError(variantError)) throw variantError;
    const { error } = await service.from('template_sub_templates').delete().eq('id', childId).eq('template_id', id).eq('organization_id', ctx.organizationId);
    if (error) throw error;
-   await removeSubTemplateFiles([old.file_url, ...(results ?? []).map(r => r.file_url)], ctx.organizationId);
+   await removeSubTemplateFiles([old.file_url, ...(results ?? []).map(r => r.file_url), ...(variantResults ?? []).map(r => r.file_url)], ctx.organizationId);
    return NextResponse.json({ success: true });
   }
   if (typeof body.nom !== 'string' || !body.nom.trim() || body.nom.trim().length > 120 || !['word','excel'].includes(body.file_type)

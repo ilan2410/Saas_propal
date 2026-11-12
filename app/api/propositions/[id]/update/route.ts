@@ -1,3 +1,5 @@
+import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
+import { variantClientData } from '@/lib/propositions/sp-variants';
 import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -32,6 +34,23 @@ export async function PATCH(
     }
 
     const body = await request.json();
+
+    const variantId = request.nextUrl.searchParams.get('variant');
+    if (variantId) {
+      const { data: parent } = await scopePropositionsQuery(supabase.from('propositions').select('id').eq('id', id), ctx).maybeSingle();
+      if (!parent) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+      const variant = await loadSpVariant(id, ctx.organizationId, variantId);
+      if (!variant) return NextResponse.json({ error: 'Variante introuvable' }, { status: 404 });
+      if (!Array.isArray(body.sp_reponses) || !body.suggestions_sp_completes || typeof body.suggestions_sp_completes !== 'object' || Array.isArray(body.suggestions_sp_completes)) {
+        return NextResponse.json({ error: 'SP invalide' }, { status: 400 });
+      }
+      const { error } = await createServiceClient().from('proposition_sp_variants').update({
+        sp_reponses: body.sp_reponses, suggestions_sp_completes: body.suggestions_sp_completes,
+        filled_data: variantClientData(body.filled_data),
+      }).eq('id', variantId).eq('proposition_id', id).eq('organization_id', ctx.organizationId);
+      if (error) throw error;
+      return NextResponse.json({ success: true });
+    }
 
     console.log('Update proposition:', id);
     console.log('Body reçu:', body);
