@@ -11,6 +11,8 @@ import { buildExcelSourceData, buildPropositionBaseData } from '@/lib/generators
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { allowedSecteurs } from '@/lib/auth/org-context';
 import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { validateUploadedFile } from '@/lib/security/validate-upload';
+import { readLimitedResponse } from '@/lib/security/read-limited-response';
 export async function previewTemplateDocument(client: SupabaseClient, ctx: OrgContext, form: FormData, type: 'word' | 'excel') {
  const templateId = String(form.get('templateId'));
  const childId = form.get('subTemplateId');
@@ -32,11 +34,17 @@ export async function previewTemplateDocument(client: SupabaseClient, ctx: OrgCo
  options.template = { ...options.template, id: document?.id ?? 'new', file_type: type, file_url: document?.file_url ?? '', file_config: subTemplateConfig(parent.file_config, typeof draft === 'string' ? JSON.parse(draft) : document?.file_config) };
  const uploaded = form.get('file');
  let buffer: ArrayBuffer;
- if (uploaded instanceof File) buffer = await uploaded.arrayBuffer();
+ if (uploaded instanceof File) {
+  const validation = await validateUploadedFile(uploaded, [type === 'word'
+    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+  if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
+  buffer = Uint8Array.from(validation.buffer).buffer;
+ }
  else if (document?.file_url) {
-  const response = await fetch(await signedOrganizationStorageUrl(client, document.file_url, 'templates', ctx.organizationId), { redirect: 'error' });
+  const response = await fetch(await signedOrganizationStorageUrl(client, document.file_url, 'templates', ctx.organizationId), { redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error('Impossible de charger le sous-template');
-  buffer = await response.arrayBuffer();
+  buffer = await readLimitedResponse(response);
  } else return NextResponse.json({ error: 'Choisissez un fichier pour cet aperçu' }, { status: 400 });
  let bytes: Uint8Array;
  if (type === 'word') bytes = await renderWordProposition(buffer, options);

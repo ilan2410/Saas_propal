@@ -1,4 +1,5 @@
 'use client';
+import { renderSandboxedDocx } from '@/lib/security/docx-preview';
 
 import { storageFileUrl } from '@/lib/security/storage-file-url';
 
@@ -642,12 +643,7 @@ export function Step2UploadTemplate({
               });
         }
         if (cancelled || !docxPreviewRef.current) return;
-        docxPreviewRef.current.innerHTML = '';
-        await renderAsync(arrayBuffer, docxPreviewRef.current, undefined, {
-          className: 'docx',
-          inWrapper: false,
-          ignoreWidth: false,
-        });
+        await renderSandboxedDocx(arrayBuffer, docxPreviewRef.current, renderAsync);
       } catch {
         if (!cancelled) setDocxRenderError("Impossible de générer l'aperçu pour ce document.");
       } finally {

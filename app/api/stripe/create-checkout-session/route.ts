@@ -2,19 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 import { resolveOrgContext } from '@/lib/auth/org-context';
+import { creditPurchase } from '@/lib/stripe/credit-purchase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
 });
-
-// Calculer le bonus selon le montant
-function calculateBonus(montant: number): number {
-  if (montant >= 1000) return 20;
-  if (montant >= 500) return 15;
-  if (montant >= 250) return 10;
-  if (montant >= 100) return 5;
-  return 0;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,15 +29,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { montant } = body;
-
-    if (!montant || montant < 10 || montant > 10000) {
+    const body = await request.json().catch(() => null);
+    const purchase = creditPurchase(body?.montant);
+    if (!purchase) {
       return NextResponse.json(
         { error: 'Montant invalide (min: 10€, max: 10000€)' },
         { status: 400 }
       );
     }
+    const montant = purchase.amount;
 
     // Déterminer l'URL de base (évite un crash si NEXT_PUBLIC_URL n'est pas défini)
     const baseUrl = process.env.NEXT_PUBLIC_URL || new URL(request.url).origin;
@@ -98,10 +90,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculer le bonus
-    const bonus = calculateBonus(montant);
+    const bonus = purchase.bonusPercent;
     const creditsBase = montant;
-    const creditsBonus = bonus > 0 ? Math.round(montant * (bonus / 100)) : 0;
-    const creditsTotal = creditsBase + creditsBonus;
+    const creditsBonus = purchase.bonus;
+    const creditsTotal = purchase.credits;
 
     // Créer la session Stripe Checkout
     const session = await stripe.checkout.sessions.create({
@@ -114,7 +106,7 @@ export async function POST(request: NextRequest) {
               name: 'Crédits',
               description: `${creditsBase}€ de crédits${bonus > 0 ? ` + ${bonus}% bonus (${creditsBonus}€)` : ''}`,
             },
-            unit_amount: Math.round(montant * 100), // Convertir en centimes
+            unit_amount: purchase.cents,
           },
           quantity: 1,
         },

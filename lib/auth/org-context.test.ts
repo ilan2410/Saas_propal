@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
-import { allowedSecteurs, canAccessSecteur, canUseTemplate, resolveOrgContext, type OrgContext } from './org-context';
+import { allowedSecteurs, canAccessSecteur, canUseTemplate, ownBooleanPermission, resolveOrgContext, type OrgContext } from './org-context';
 
 // Mock minimal d'un client Supabase : chaque `.from(table)` renvoie un builder
 // chaînable dont `.maybeSingle()` / `.single()` résout la valeur configurée.
@@ -20,6 +20,14 @@ function makeSupabase(tables: Record<string, unknown>): SupabaseClient {
 }
 
 const user = { id: 'user-1' } as User;
+
+describe('permission values', () => {
+  it('ignores inherited and non-boolean permissions', () => {
+    expect(ownBooleanPermission(Object.create({ manage_templates: true }), 'manage_templates')).toBeUndefined();
+    expect(ownBooleanPermission({ manage_templates: 'true' }, 'manage_templates')).toBeUndefined();
+    expect(ownBooleanPermission({ manage_templates: false }, 'manage_templates')).toBe(false);
+  });
+});
 
 function commercialMember(overrides: {
   permissions_override?: Record<string, boolean> | null;

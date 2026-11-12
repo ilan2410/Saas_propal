@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
+import { sameOriginRedirect } from '@/lib/security/safe-redirect';
 
 type CallbackType = 'email' | 'recovery' | 'invite' | 'magiclink' | 'signup' | 'email_change';
 
@@ -27,7 +28,7 @@ export default function AuthCallbackPage() {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
       const hashType = hashParams.get('type');
       const type = (queryType || hashType) as CallbackType | null;
-      const safeNext = next?.startsWith('/') ? next : null;
+      const safeNext = sameOriginRedirect(next, window.location.origin);
 
       const redirectAfterAuth = () => {
         if (type === 'recovery') {

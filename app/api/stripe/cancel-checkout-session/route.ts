@@ -60,22 +60,33 @@ export async function POST(request: NextRequest) {
       try {
         await stripe.checkout.sessions.expire(tx.stripe_session_id);
       } catch (e) {
-        // Si la session est déjà expirée / complétée, on continue quand même.
         console.warn('Unable to expire Stripe session:', e);
+        // A completed or unavailable session must not be reported as canceled.
+        const session = await stripe.checkout.sessions.retrieve(tx.stripe_session_id);
+        if (session.status !== 'expired') {
+          return NextResponse.json({ error: 'Le paiement ne peut plus être annulé' }, { status: 409 });
+        }
       }
     }
 
     const supabaseAdmin = createServiceClient();
-    const { error: updateError } = await supabaseAdmin
+    const { data: canceledTx, error: updateError } = await supabaseAdmin
       .from('stripe_transactions')
       .update({ statut: 'canceled' })
-      .eq('id', tx.id);
+      .eq('id', tx.id)
+      .eq('organization_id', ctx.organizationId)
+      .eq('statut', 'pending')
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
       return NextResponse.json(
         { error: 'Erreur mise à jour transaction', details: updateError.message },
         { status: 500 }
       );
+    }
+    if (!canceledTx) {
+      return NextResponse.json({ error: 'Le statut du paiement a changé' }, { status: 409 });
     }
 
     return NextResponse.json({ ok: true });

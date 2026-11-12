@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const form = await request.formData();
   const context = await resolveTemplateEditorContext(client, user, form.get('organizationId'));
-  if (!context || !context.ctx.permissions.download_proposition) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!context || !context.ctx.permissions.manage_templates || !context.ctx.permissions.download_proposition) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return await previewTemplateDocument(context.client, context.ctx, form, 'word');
  } catch(error) {
   console.error('Aperçu word', error);

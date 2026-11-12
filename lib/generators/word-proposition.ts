@@ -75,7 +75,7 @@ export async function renderWordProposition(templateBuffer: ArrayBuffer, options
   const mappedData: UnknownRecord = { ...baseData };
 
   const rawFieldMappings = fileConfig.fieldMappings;
-  const fieldMappings: Record<string, string> = {};
+  const fieldMappings: Record<string, string> = Object.create(null);
   if (isPlainObject(rawFieldMappings)) {
     for (const [k, v] of Object.entries(rawFieldMappings)) {
       if (typeof v === 'string') fieldMappings[k] = v;
@@ -89,11 +89,7 @@ export async function renderWordProposition(templateBuffer: ArrayBuffer, options
     const value = findValueInData(baseData, dataKey);
     const formatted = formatValueForWord(value);
 
-    if (cleanVar.includes('.')) {
-      setNestedValue(mappedData, cleanVar, formatted);
-    } else {
-      mappedData[cleanVar] = formatted;
-    }
+    setNestedValue(mappedData, cleanVar, formatted);
   }
 
   // Dictionnaire complet SA + SP + clauses + référence, partagé avec la génération Excel.

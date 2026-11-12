@@ -1,5 +1,7 @@
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { organizationStoragePath, storagePathFromUrl } from '@/lib/security/storage-access';
+import { validateUploadedFile } from '@/lib/security/validate-upload';
+import { readLimitedResponse } from '@/lib/security/read-limited-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import ExcelJS from 'exceljs';
@@ -13,6 +15,11 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const ctx = await resolveOrgContext(supabase, user);
+    const admin = user.app_metadata?.role === 'admin';
+    if (!admin && !ctx?.permissions.manage_templates) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     let buffer: ArrayBuffer;
@@ -30,8 +37,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No fileUrl provided' }, { status: 400 });
       }
 
-      const ctx = await resolveOrgContext(supabase, user);
-      const admin = user.app_metadata?.role === 'admin';
       const key = admin ? storagePathFromUrl(fileUrl, 'templates') : ctx ? organizationStoragePath(fileUrl, 'templates', ctx.organizationId) : null;
       if (!key) {
         return NextResponse.json({ error: 'URL non autorisée' }, { status: 400 });
@@ -39,7 +44,7 @@ export async function POST(request: NextRequest) {
 
       // Télécharger le fichier depuis l'URL
       console.log('📥 Téléchargement du fichier Excel:', fileUrl);
-      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error' });
+      const response = await fetch((await (admin ? createServiceClient() : supabase).storage.from('templates').createSignedUrl(key, 60)).data?.signedUrl ?? '', { redirect: 'error', signal: AbortSignal.timeout(15000) });
 
       if (!response.ok) {
         return NextResponse.json({
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      buffer = await response.arrayBuffer();
+      buffer = await readLimitedResponse(response);
       fileName = fileUrl.split('/').pop() || 'template.xlsx';
     } else {
       // Requête FormData avec fichier uploadé
@@ -65,7 +70,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Utilisez un fichier .xlsx. Convertissez les anciens fichiers .xls dans Excel avant de les importer.' }, { status: 400 });
       }
 
-      buffer = await file.arrayBuffer();
+      const validation = await validateUploadedFile(file, ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
+      buffer = Uint8Array.from(validation.buffer).buffer;
       fileName = file.name;
     }
 

@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const context = await resolveTemplateEditorContext(supabase, user, form.get('organizationId'));
-    if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!context || !context.ctx.permissions.manage_templates) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     const { ctx } = context;
     supabase = context.client;
     const rawConfig = form.get('fileConfig');
