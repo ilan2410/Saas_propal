@@ -134,9 +134,9 @@ export default function LoginPage() {
           <div className="mt-6 text-center text-sm text-gray-600">
             <p className="mb-2">Plateforme de génération de propositions commerciales</p>
             <p>
-              Pas encore de compte ?{' '}
-              <Link href="/register" className="text-blue-600 hover:text-blue-700">
-                Créer un compte
+              Pas encore client ?{' '}
+              <Link href="/#contact" className="text-blue-600 hover:text-blue-700">
+                Être recontacté
               </Link>
             </p>
           </div>

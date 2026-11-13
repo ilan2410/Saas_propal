@@ -21,6 +21,7 @@ import {
   WandSparkles,
   Zap,
 } from 'lucide-react';
+import { ContactForm } from '@/components/marketing/ContactForm';
 
 const workflow = [
   {
@@ -117,14 +118,14 @@ export function LandingPage() {
             >
               Se connecter
             </Link>
-            <Link
-              href="/register"
+            <a
+              href="#contact"
               className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#3d7eff] px-3.5 py-2 text-sm font-bold text-white shadow-[0_8px_24px_rgba(61,126,255,0.28)] transition-colors hover:bg-[#2f6fe9] sm:px-4 ${focusRing}`}
             >
-              <span className="sm:hidden">Essayer</span>
-              <span className="hidden sm:inline">Créer un compte</span>
+              <span className="sm:hidden">Contact</span>
+              <span className="hidden sm:inline">Être recontacté</span>
               <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
+            </a>
           </div>
         </nav>
       </header>
@@ -152,13 +153,13 @@ export function LandingPage() {
                 Proboost réunit l’extraction, la préparation de l’offre, la génération et le suivi dans un seul workflow. Moins de ressaisie, plus de maîtrise à chaque étape.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/register"
+                <a
+                  href="#contact"
                   className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#3d7eff] px-6 py-3 font-bold text-white shadow-[0_14px_36px_rgba(61,126,255,0.32)] transition-colors hover:bg-[#2f6fe9] ${focusRing}`}
                 >
-                  Créer mon espace
+                  Être recontacté
                   <ArrowRight className="size-4" aria-hidden="true" />
-                </Link>
+                </a>
                 <a
                   href="#produit"
                   className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/[0.04] px-6 py-3 font-semibold text-white transition-colors hover:border-white/35 hover:bg-white/[0.08] ${focusRing}`}
@@ -490,13 +491,13 @@ export function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href="/register"
+              <a
+                href="#contact"
                 className={`mt-9 inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#07111f] px-6 py-3 font-bold text-white transition-colors hover:bg-[#13263f] ${focusRing}`}
               >
                 Découvrir Proboost
                 <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
+              </a>
             </div>
 
             <div className="overflow-hidden rounded-[1.4rem] border border-[#7793bc]/30 bg-white shadow-[0_28px_70px_rgba(31,63,108,0.2)]">
@@ -609,17 +610,17 @@ export function LandingPage() {
                 Faites avancer la prochaine proposition, pas la ressaisie.
               </h2>
               <p className="mt-6 max-w-[62ch] text-pretty text-lg leading-8 text-[#e0ebff]">
-                Créez votre espace Proboost et retrouvez un workflow conçu pour la réalité des équipes commerciales télécom.
+                Demandez à être recontacté et découvrez un workflow conçu pour la réalité des équipes commerciales télécom.
               </p>
             </div>
             <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col">
-              <Link
-                href="/register"
+              <a
+                href="#contact"
                 className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-white px-6 py-3 font-bold text-[#174da9] shadow-[0_14px_36px_rgba(14,46,103,0.2)] transition-colors hover:bg-[#eef4ff] ${focusRing}`}
               >
-                Créer mon compte
+                Être recontacté
                 <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
+              </a>
               <Link
                 href="/login"
                 className={`inline-flex min-h-12 items-center justify-center rounded-lg border border-white/30 px-6 py-3 font-semibold text-white transition-colors hover:bg-white/10 ${focusRing}`}
@@ -627,6 +628,31 @@ export function LandingPage() {
                 J’ai déjà un compte
               </Link>
             </div>
+          </div>
+        </section>
+
+        <section id="contact" className="scroll-mt-20 bg-[#f5f7fb] py-24 sm:py-28">
+          <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 lg:px-8">
+            <div className="max-w-md">
+              <p className="text-sm font-bold uppercase tracking-[0.12em] text-[#2768e3]">Contact</p>
+              <h2 className="mt-3 text-balance text-[clamp(2rem,4vw,3.25rem)] font-bold leading-[1.02] tracking-[-0.03em] text-[#07111f]">
+                Parlons de votre prochaine proposition.
+              </h2>
+              <p className="mt-5 text-pretty text-lg leading-8 text-[#41546e]">
+                Laissez-nous vos coordonnées : nous vous recontactons pour échanger sur vos besoins et ouvrir votre espace Proboost.
+              </p>
+              <ul className="mt-8 space-y-3 text-[#1d304a]">
+                {['Sans engagement', 'Espace créé et configuré pour vous'].map((item) => (
+                  <li key={item} className="flex items-center gap-3 font-medium">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#07111f] text-white">
+                      <Check className="size-3.5" aria-hidden="true" />
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <ContactForm />
           </div>
         </section>
       </main>

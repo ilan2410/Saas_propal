@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, Users, BarChart3, Settings, Package, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Settings, Package, Menu, X, Inbox } from 'lucide-react';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { usePathname } from 'next/navigation';
 
@@ -73,6 +73,17 @@ export function AdminSidebar({ user }: { user: { email?: string | null } }) {
           >
             <Users className="w-5 h-5" />
             <span className="font-medium">Clients</span>
+          </Link>
+
+          <Link
+            href="/admin/demandes"
+            onClick={closeSidebar}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              pathname.startsWith('/admin/demandes') ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+          >
+            <Inbox className="w-5 h-5" />
+            <span className="font-medium">Demandes</span>
           </Link>
 
           {/* Menu Catalogue avec sous-menus */}

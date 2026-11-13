@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createImplicitClient } from '@/lib/supabase/client';
 import { Loader2, ArrowLeft, Mail } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
@@ -18,14 +17,16 @@ export default function ForgotPasswordPage() {
     setError('');
 
     try {
-      const supabase = createImplicitClient();
-      const origin = process.env.NEXT_PUBLIC_URL || window.location.origin;
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/auth/callback`,
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Une erreur est survenue');
+      }
 
       setSuccess(true);
     } catch (err: unknown) {

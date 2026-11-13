@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveOrigin, sendPasswordReset } from '@/lib/email/auth-emails';
 
 export async function POST(
   request: NextRequest,
@@ -38,12 +39,7 @@ export async function POST(
         return NextResponse.json({ error: 'Client introuvable' }, { status: 404 });
       }
 
-      const origin = process.env.NEXT_PUBLIC_URL || request.headers.get('origin') || '';
-      const { error } = await supabaseAdmin.auth.resetPasswordForEmail(org.email, {
-        redirectTo: `${origin}/auth/callback`,
-      });
-
-      if (error) throw error;
+      await sendPasswordReset({ email: org.email, origin: resolveOrigin(request) });
 
       return NextResponse.json({ success: true, message: 'Email de réinitialisation envoyé' });
     }
