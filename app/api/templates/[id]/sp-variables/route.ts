@@ -108,13 +108,15 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (await templateSecteurBlocked(ctx, id)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
+  const service = createServiceClient();
+  const db = user.app_metadata?.role === 'admin' ? service : supabase;
   const [{ data: template }, { data: org }] = await Promise.all([
-    supabase
+    db
       .from('proposition_templates')
       .select('file_config')
       .eq('id', id)
       .single(),
-    createServiceClient().from('organizations')
+    service.from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -149,13 +151,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'key et label requis' }, { status: 400 });
   }
 
+  const service = createServiceClient();
+  const db = user.app_metadata?.role === 'admin' ? service : supabase;
   const [{ data: template }, { data: org }] = await Promise.all([
-    supabase
+    db
       .from('proposition_templates')
       .select('file_config')
       .eq('id', id)
       .single(),
-    createServiceClient().from('organizations')
+    service
+      .from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -181,7 +186,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const updatedConfig = { ...cfg, spVariablesCustom: [...existing, newVar] };
 
-  const { error } = await supabase
+  const { error } = await db
     .from('proposition_templates')
     .update({ file_config: updatedConfig })
     .eq('id', id);
@@ -218,13 +223,16 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Les variables standard ne peuvent pas être renommées' }, { status: 400 });
   }
 
+  const service = createServiceClient();
+  const db = user.app_metadata?.role === 'admin' ? service : supabase;
   const [{ data: template }, { data: org }] = await Promise.all([
-    supabase
+    db
       .from('proposition_templates')
       .select('file_config')
       .eq('id', id)
       .single(),
-    createServiceClient().from('organizations')
+    service
+      .from('organizations')
       .select('sp_questions')
       .eq('id', ctx.organizationId)
       .single(),
@@ -268,11 +276,12 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const updatedConfig = { ...cfg, spVariablesCustom: updatedCustom };
 
   const [templateUpdate, orgUpdate] = await Promise.all([
-    supabase
+    db
       .from('proposition_templates')
       .update({ file_config: updatedConfig })
       .eq('id', id),
-    createServiceClient().from('organizations')
+    service
+      .from('organizations')
       .update({ sp_questions: updatedQuestions })
       .eq('id', ctx.organizationId),
   ]);

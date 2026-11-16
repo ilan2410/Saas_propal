@@ -640,80 +640,6 @@ export function getMergeLabel(categories: string[]): string {
   });
   return labels.join(' + ');
 }
-export function generateMergedPrompt(
-  basePrompt: string,
-  mergedCategories: string[]  // Catégories à fusionner
-): string {
-  const promptWithoutPreviousMergeRule = basePrompt
-    .replace(/\n{0,2}RÈGLE DE FUSION TÉLÉCOM:\n(?:- .*\n?)+/g, '')
-    .trim();
-
-  const includesMateriel = mergedCategories.includes('location_materiel');
-  const mergedTypes = mergedCategories
-    .map((cat) => MERGEABLE_CATEGORIES.find((m) => m.id === cat)?.type)
-    .filter((t): t is string => Boolean(t));
-
-  if (promptWithoutPreviousMergeRule.includes('"situation_actuelle"')) {
-    return `${promptWithoutPreviousMergeRule}
-
-RÈGLE DE FUSION TÉLÉCOM:
-- Les catégories fusionnées (${getMergeLabel(mergedCategories)}) doivent être extraites dans situation_actuelle.lignes uniquement.
-- Utilise situation_actuelle.lignes[].type pour distinguer les valeurs parmi : ${mergedTypes.join(', ')}.
-- Ne crée pas de tableaux racine séparés lignes_mobiles, lignes_fixes, lignes_internet${includesMateriel ? ' ou location_materiel' : ''} lorsque situation_actuelle est présente.${includesMateriel ? `
-- Pour les éléments de type "materiel", remplis libellé/matériel, quantité, tarif/loyer, leaser si présent, et date de fin d'engagement dans situation_actuelle.lignes.` : ''}
-`;
-  }
-
-  // Déterminer les types pour chaque catégorie
-  const types = mergedTypes.length > 0 ? mergedTypes : mergedCategories;
-
-  // Construire la structure JSON fusionnée
-  const mergedRowFields = includesMateriel
-    ? `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "libelle": "Ligne ou matériel", "forfait": "Nom forfait", "materiel": "Description matériel", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`
-    : `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`;
-  const mergedStructure = `"lignes": [
-    {${mergedRowFields}}
-  ]`;
-
-  let modifiedPrompt = basePrompt;
-
-  // Remplacer chaque section individuelle par rien, puis ajouter la section fusionnée
-  for (const cat of mergedCategories) {
-    const regex = new RegExp(`"${cat}":\\s*\\[[^\\]]*\\],?\\s*`, 'g');
-    modifiedPrompt = modifiedPrompt.replace(regex, '');
-  }
-
-  // Trouver où insérer la section fusionnée (après "client" ou avant "location_materiel")
-  if (mergedCategories.includes('location_materiel')) {
-    // Si location_materiel est fusionné, on remplace tout
-    modifiedPrompt = modifiedPrompt.replace(
-      /("client":\s*\{[^}]*\}),?\s*/,
-      `$1,\n  ${mergedStructure},\n  `
-    );
-  } else {
-    // Sinon on insère après client
-    const beforeInsert = modifiedPrompt;
-    modifiedPrompt = modifiedPrompt.replace(
-      /("client":\s*\{[^}]*\}),?\s*("lignes_|"location_)/,
-      `$1,\n  ${mergedStructure},\n  $2`
-    );
-
-    // Fallback : si on a supprimé toutes les sections "lignes_*" et qu'il n'y a pas de clé suivante attendue,
-    // l'insertion ci-dessus ne matche pas. Dans ce cas, on insère quand même juste après "client".
-    if (modifiedPrompt === beforeInsert) {
-      modifiedPrompt = modifiedPrompt.replace(
-        /("client":\s*\{[^}]*\}),?\s*/,
-        `$1,\n  ${mergedStructure},\n  `
-      );
-    }
-  }
-
-  // Nettoyer les virgules en trop
-  modifiedPrompt = modifiedPrompt.replace(/,(\s*[}\]])/g, '$1');
-  modifiedPrompt = modifiedPrompt.replace(/,\s*,/g, ',');
-
-  return modifiedPrompt;
-}
 
 // ============================================
 // DÉFINITION DES CHAMPS TABLEAU (pour le mapping Excel)
@@ -993,14 +919,6 @@ export const SECTEURS = [
   { value: 'bureautique', label: 'Bureautique (copieurs/imprimantes)' },
   { value: 'mixte', label: 'Mixte (Téléphonie + Bureautique)' },
 ];
-
-export {
-  CLAUDE_MODELS,
-  DEFAULT_CLAUDE_MODEL,
-  CLAUDE_EFFORT_LEVELS,
-  DEFAULT_CLAUDE_EFFORT,
-  supportsClaudeEffort,
-} from '@/lib/ai/claude-models';
 
 // Types
 export type Question = {

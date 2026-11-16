@@ -4,7 +4,6 @@ import { signedOrganizationStorageUrl, validateSourceDocuments } from '@/lib/sec
 import { canAccessSecteur, canUseTemplate, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE, TEMPLATE_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { DocumentLimitError } from '@/lib/ai/document-limits';
-import { SURCHARGE_THRESHOLD_EUR } from '@/lib/ai/extraction-cost';
 import { buildExtractionQuote, getUsdToEurRate, resolveExtractionSetup } from '@/lib/propositions/extraction-quote';
 
 /**
@@ -76,7 +75,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       tarif: quote.tarif,
       surcharge: quote.surcharge,
-      surcharge_threshold_eur: SURCHARGE_THRESHOLD_EUR,
       total_debit: quote.totalDebit,
       sufficient: quote.sufficient,
       total_pages: quote.totalPages,

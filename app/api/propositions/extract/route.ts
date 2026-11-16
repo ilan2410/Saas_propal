@@ -1,5 +1,6 @@
 import { signedOrganizationStorageUrl } from '@/lib/security/storage-access';
 import { validateSourceDocuments } from '@/lib/security/storage-access';
+import { clientExtractedData } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { analyzeInvoicesForSa, extractDataFromDocuments, structureSaAnalysis, validateClaudeApiKey } from '@/lib/ai/claude';
@@ -526,12 +527,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     console.log('📝 Champs à extraire:', template.champs_actifs?.length || 0);
     const { activeFields, useSaPipeline } = extractionSetup;
     if (isDeepSeekSaModel(modelToUse) && !useSaPipeline) {
-      return NextResponse.json({ error: 'DeepSeek V4.1 Flash est réservé aux extractions SA.' }, { status: 400 });
+      return NextResponse.json({ error: 'Ce modèle est réservé aux extractions SA.' }, { status: 400 });
     }
-    // Vérifier la clé API Claude
+    // Vérifier la clé API du modèle
     if (isDeepSeekSaModel(modelToUse) ? !validateDeepSeekApiKey() : !validateClaudeApiKey()) {
       const variable = isDeepSeekSaModel(modelToUse) ? 'DEEPSEEK_API_KEY' : 'ANTHROPIC_API_KEY';
-      return NextResponse.json({ error: 'Clé API du modèle non configurée', details: `La variable ${variable} n'est pas définie` }, { status: 500 });
+      console.error(`Clé API manquante: ${variable}`);
+      return NextResponse.json({ error: 'Service d\'analyse temporairement indisponible' }, { status: 500 });
     }
 
     // Devis AVANT toute écriture : limites Claude, coût IA estimé en euros,
@@ -865,12 +867,15 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       }
     }
 
+    const clientData = clientExtractedData(extractedDataFinal);
+    const clientControl = isRecord(clientData._extraction_control) ? clientData._extraction_control : null;
+
     return NextResponse.json({
       success: true,
       proposition_id: proposition.id,
-      donnees_extraites: extractedDataFinal,
+      donnees_extraites: clientData,
       validation_status: requiresReview ? 'review_required' : 'valid',
-      quality_issues: extractionControl && Array.isArray(extractionControl.issues) ? extractionControl.issues : [],
+      quality_issues: clientControl && Array.isArray(clientControl.issues) ? clientControl.issues : [],
       ...(ctx.permissions.view_credits_billing ? { credits_restants: updatedOrg?.credits || 0 } : {}),
       montant_debite: debitAmount,
     });

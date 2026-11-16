@@ -19,7 +19,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data, error } = await supabase
+    const supabaseAdmin = createServiceClient();
+    const db = user.app_metadata?.role === 'admin' ? supabaseAdmin : supabase;
+    const { data, error } = await db
       .from('organization_members')
       .select('*')
       .eq('organization_id', ctx.organizationId)
@@ -31,7 +33,6 @@ export async function GET() {
 
     // organization_members ne stocke pas l'email (il vit dans auth.users) : on l'enrichit
     // via l'API admin pour l'affichage dans le tableau des membres.
-    const supabaseAdmin = createServiceClient();
     const members = await Promise.all(
       (data ?? []).map(async (member) => {
         const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(member.user_id);

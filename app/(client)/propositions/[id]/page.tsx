@@ -2,7 +2,7 @@ import { isMissingRelationError } from '@/lib/supabase/errors';
 import { SpVariantSelector } from '@/components/propositions/SpVariantSelector';
 import { applySpVariant } from '@/lib/propositions/sp-variants';
 import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientExtractedData } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -250,10 +250,10 @@ export default async function PropositionDetailPage({
   const filledDataRecord: Record<string, unknown> = isRecord((spProposition as Record<string, unknown>).filled_data)
     ? ((spProposition as Record<string, unknown>).filled_data as Record<string, unknown>)
     : {};
-  const donneesExtraitesForCalc: Record<string, unknown> = {
+  const donneesExtraitesForCalc: Record<string, unknown> = clientExtractedData({
     ...extractedDataRecord,
     ...filledDataRecord,
-  };
+  });
   const saTotalMensuel = calculateSaCartSummary(donneesExtraitesForCalc).totalMensuel;
 
   const prefs = (isRecord(organization?.preferences) ? organization.preferences : {}) as OrganizationPreferences;

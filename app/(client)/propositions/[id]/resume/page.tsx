@@ -1,4 +1,4 @@
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientExtractedData, clientTemplate } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -71,7 +71,9 @@ export default async function ResumePropositionPage({
 
   const dataRaw = proposition.filled_data ?? proposition.extracted_data ?? {};
   const dataToEdit: Record<string, unknown> =
-    dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw) ? (dataRaw as Record<string, unknown>) : {};
+    dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw)
+      ? clientExtractedData(dataRaw as Record<string, unknown>)
+      : {};
 
   // Déduire l'étape à partir des données réellement disponibles en base
   // (plus fiable que current_step seul, qui peut ne pas refléter l'état exact)
@@ -158,7 +160,7 @@ export default async function ResumePropositionPage({
       </div>
 
       <PropositionWizard
-        templates={templates}
+        templates={templates.map((t) => clientTemplate(t))}
         secteur={secteur}
         initialStep={initialStep}
         canDownloadProposition={ctx.role === 'owner' || ctx.permissions.download_proposition}

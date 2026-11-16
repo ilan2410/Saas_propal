@@ -5,17 +5,21 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Save, FileText, Settings, Sparkles, Upload, ArrowLeft } from 'lucide-react';
 import { Step2UploadTemplate } from '../templates/Step2UploadTemplate';
 import { TemplateData, ExcelState } from '../templates/TemplateWizard';
-import { renderPromptTemplate, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { renderPromptTemplate, updateExpectedJsonStructureFromFields, generateMergedPrompt } from '@/lib/utils/prompt';
 import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
-import { SA_EXTRACTION_MODELS, isDeepSeekSaModel, isSaExtractionEligible } from '@/lib/ai/claude-models';
-import { CustomFieldsEditor, type CustomArrayCategory, type CustomCategory, type CustomFieldDefinition } from '@/components/shared/CustomFieldsEditor';
-import { UpdateExpectedJsonStructureButton } from '@/components/shared/UpdateExpectedJsonStructureButton';
 import {
+  SA_EXTRACTION_MODELS,
   DEFAULT_CLAUDE_MODEL,
   CLAUDE_EFFORT_LEVELS,
   DEFAULT_CLAUDE_EFFORT,
   supportsClaudeEffort,
+  isDeepSeekSaModel,
+  isSaExtractionEligible,
+} from '@/lib/ai/claude-models';
+import { CustomFieldsEditor, type CustomArrayCategory, type CustomCategory, type CustomFieldDefinition } from '@/components/shared/CustomFieldsEditor';
+import { UpdateExpectedJsonStructureButton } from '@/components/shared/UpdateExpectedJsonStructureButton';
+import {
   getCategoryLabelForSecteur,
   getFieldsByCategoryForSecteur,
   getQuestionsForSecteur,
@@ -27,7 +31,6 @@ import {
   MERGEABLE_CATEGORIES,
   getSelectedTelecomCategories,
   getMergeLabel,
-  generateMergedPrompt,
   normalizeTemplateFieldPaths,
   type ViewMode,
 } from './organizationFormConfig';

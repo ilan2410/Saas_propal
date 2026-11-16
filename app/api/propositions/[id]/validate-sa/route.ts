@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { clientExtractedData } from '@/lib/security/client-data';
 import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 import { InvoiceAnalysisReportSchema, calculateCanonicalSaAnalysis, hasTotalBlockingIssue } from '@/lib/sa/invoice-analysis';
@@ -56,7 +57,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const body = await request.json().catch(() => ({}));
   const extracted = isRecord(proposition.extracted_data) ? proposition.extracted_data : {};
-  const reportResult = InvoiceAnalysisReportSchema.safeParse(body.report ?? extracted._invoice_analysis);
+  const storedReport = isRecord(extracted._invoice_analysis) ? extracted._invoice_analysis : null;
+  const rawReport = isRecord(body.report)
+    ? {
+        ...body.report,
+        field_coverage:
+          Array.isArray(body.report.field_coverage) && body.report.field_coverage.length > 0
+            ? body.report.field_coverage
+            : Array.isArray(storedReport?.field_coverage)
+              ? storedReport.field_coverage
+              : [],
+      }
+    : extracted._invoice_analysis;
+  const reportResult = InvoiceAnalysisReportSchema.safeParse(rawReport);
   const structuredResult = StructuredSaSchema.safeParse(extracted._structured_sa);
   if (!reportResult.success || !structuredResult.success) {
     return NextResponse.json({ error: 'Données de revue SA invalides' }, { status: 400 });
@@ -185,7 +198,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   return NextResponse.json({
     success: true,
     validation_status: validationStatus,
-    donnees_extraites: filledData,
+    donnees_extraites: clientExtractedData(filledData),
     total_ht_mensuel_client: canonical.total_ht_mensuel_client,
   });
 }

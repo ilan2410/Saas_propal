@@ -100,6 +100,47 @@ export async function resolveOrgContext(
   supabase: SupabaseClient,
   user: User
 ): Promise<OrgContext | null> {
+  // 0. Cas administrateur : lorsqu'il agit depuis une fiche client (/admin/clients/[id]...)
+  // ou via l'en-tête x-admin-org-id, on résout le contexte propriétaire de ce client.
+  if (user.app_metadata?.role === 'admin') {
+    let targetOrgId: string | null = null;
+    try {
+      const { headers } = await import('next/headers');
+      const reqHeaders = await headers();
+      const explicitOrg = reqHeaders.get('x-admin-org-id');
+      const referer = reqHeaders.get('referer') || '';
+      const refererMatch = referer.match(/\/admin\/clients\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      targetOrgId = explicitOrg || (refererMatch ? refererMatch[1] : null);
+    } catch {
+      // Hors contexte de requête Next.js (ex: tests unitaires)
+    }
+    if (targetOrgId) {
+      const service = createServiceClient();
+      const { data: adminTargetOrg } = await service
+        .from('organizations')
+        .select('id, commercial_default_permissions, contact_prenom, contact_nom, telephone_fixe, telephone_mobile')
+        .eq('id', targetOrgId)
+        .maybeSingle();
+      if (adminTargetOrg) {
+        return {
+          organizationId: adminTargetOrg.id,
+          role: 'owner',
+          memberId: null,
+          memberUserId: null,
+          permissions: { ...ALL_PERMISSIONS_TRUE },
+          allowedTemplateIds: null,
+          secteur: null,
+          displayName: {
+            prenom: adminTargetOrg.contact_prenom ?? '',
+            nom: adminTargetOrg.contact_nom ?? '',
+            telephone_fixe: adminTargetOrg.telephone_fixe ?? '',
+            telephone_mobile: adminTargetOrg.telephone_mobile ?? '',
+          },
+        };
+      }
+    }
+  }
+
   // 1. Cas propriétaire : une ligne organizations dont l'id == user.id.
   const { data: ownerOrg } = await supabase
     .from('organizations')

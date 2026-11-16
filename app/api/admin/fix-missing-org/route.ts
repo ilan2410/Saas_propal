@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 
 // POST /api/admin/fix-missing-org
 // Body: { userId: string, nom?: string, secteur?: string, credits?: number }

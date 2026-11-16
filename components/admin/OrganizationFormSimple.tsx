@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Building2, Mail, Lock, Briefcase, CreditCard } from 'lucide-react';
-import { DEFAULT_CLAUDE_MODEL } from './organizationFormConfig';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 
 // Schéma de validation simplifié pour le client
 const clientSchema = z.object({

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveClientConfigPermissions } from '@/lib/security/client-data';
 import { EditTemplateForm } from '@/components/templates/EditTemplateForm';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
@@ -23,9 +24,13 @@ export default async function EditTemplatePage({ params }: PageProps) {
 
   // Récupérer le secteur et les champs par défaut de l'organisation
   const { data: organization } = await createServiceClient().from('organizations')
-    .select('secteur, champs_defaut')
+    .select('secteur, champs_defaut, preferences')
     .eq('id', ctx.organizationId)
     .single();
+
+  if (!resolveClientConfigPermissions(organization?.preferences).templates) {
+    redirect('/dashboard');
+  }
 
   return (
     <EditTemplateForm

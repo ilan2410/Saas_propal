@@ -1,4 +1,4 @@
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientTemplate } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -46,7 +46,7 @@ export default async function NewPropositionPage() {
   }
 
   // Un commercial restreint ne voit que les templates qui lui sont attribués
-  const templates = (allTemplates ?? []).filter((t) => canUseTemplate(ctx, t.id) && canAccessSecteur(ctx, t.secteur));
+  const templates = (allTemplates ?? []).filter((t) => canUseTemplate(ctx, t.id) && canAccessSecteur(ctx, t.secteur)).map((t) => clientTemplate(t));
   const restricted = (ctx.allowedTemplateIds !== null || ctx.secteur !== null) && (allTemplates ?? []).length > 0;
 
   // Vérifier qu'il y a au moins un template

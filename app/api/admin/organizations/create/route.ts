@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureChampsActifsPlaceholder } from '@/lib/utils/prompt';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 
 export async function POST(request: NextRequest) {
   try {

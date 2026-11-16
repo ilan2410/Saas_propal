@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { clientExtractedData } from '@/lib/security/client-data';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
 import { resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { scopePropositionsQuery, templateSecteurBlocked } from '@/lib/propositions/visibility';
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      extracted_data: extractedData,
+      extracted_data: extractedData ? clientExtractedData(extractedData) : null,
       proposition_id: propositionId,
       from_other_template: fromOtherTemplate,
     });

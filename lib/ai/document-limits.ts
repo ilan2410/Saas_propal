@@ -133,7 +133,7 @@ export function checkDocumentLimits(
   const tokenBudget = documentTokenBudget(options);
   if (estimatedTokens > tokenBudget) {
     errors.push(
-      `Les documents représentent environ ${estimatedTokens.toLocaleString('fr-FR')} tokens, au-delà du maximum de ${tokenBudget.toLocaleString('fr-FR')}. Retirez des pages ou des documents.`,
+      `Le volume total des documents dépasse la capacité maximale d'analyse par extraction. Retirez des pages ou des documents.`,
     );
   }
 

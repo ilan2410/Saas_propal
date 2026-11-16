@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveClientConfigPermissions } from '@/lib/security/client-data';
 import { TemplateWizard } from '@/components/templates/TemplateWizard';
 import { TemplatePageTourTrigger } from '@/components/onboarding/TemplatePageTourTrigger';
 import type { Secteur } from '@/lib/onboarding/onboarding.types';
@@ -21,11 +22,15 @@ export default async function NewTemplatePage() {
 
   if (!ctx.permissions.manage_templates) redirect('/dashboard');
 
-  // Récupérer l'organisation avec ses champs par défaut
+  // Récupérer l'organisation avec ses champs par défaut et ses préférences
   const { data: organization } = await createServiceClient().from('organizations')
-    .select('champs_defaut, secteur')
+    .select('champs_defaut, secteur, preferences')
     .eq('id', ctx.organizationId)
     .single();
+
+  if (!resolveClientConfigPermissions(organization?.preferences).templates) {
+    redirect('/dashboard');
+  }
 
   // Un commercial limité à un secteur crée uniquement des templates de ce secteur
   const secteur = ctx.secteur ?? organization?.secteur ?? 'telephonie';

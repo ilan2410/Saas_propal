@@ -7,11 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { organizationSchema, type OrganizationFormData } from '@/lib/utils/validation';
 import { Loader2, Settings, Sparkles } from 'lucide-react';
 import { TestExtractionIA } from './TestExtractionIA';
+import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import {
   SIMPLE_QUESTIONS,
   ALL_FIELDS,
-  CLAUDE_MODELS,
-  DEFAULT_CLAUDE_MODEL,
   getCategoryLabel,
   getFieldsCount,
 } from './organizationFormConfig';

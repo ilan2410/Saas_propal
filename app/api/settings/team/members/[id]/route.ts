@@ -32,9 +32,10 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    const db = user.app_metadata?.role === 'admin' ? createServiceClient() : supabase;
 
     // Vérifier que le membre appartient bien à l'organisation courante
-    const { data: existingMember, error: existingError } = await supabase
+    const { data: existingMember, error: existingError } = await db
       .from('organization_members')
       .select('id, organization_id')
       .eq('id', id)
@@ -100,7 +101,7 @@ export async function PATCH(
         const ids = Array.from(new Set(allowed_template_ids as string[]));
         if (ids.length > 0) {
           // Ne garder que des templates appartenant à l'organisation
-          const { data: owned, error: ownedError } = await supabase
+          const { data: owned, error: ownedError } = await db
             .from('proposition_templates')
             .select('id')
             .eq('organization_id', ctx.organizationId)
@@ -122,7 +123,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Aucune donnée à mettre à jour' }, { status: 400 });
     }
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await db
       .from('organization_members')
       .update(updates)
       .eq('id', id)
@@ -161,8 +162,10 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const supabaseAdmin = createServiceClient();
+    const db = user.app_metadata?.role === 'admin' ? supabaseAdmin : supabase;
 
-    const { data: member, error: memberError } = await supabase
+    const { data: member, error: memberError } = await db
       .from('organization_members')
       .select('id, user_id, organization_id')
       .eq('id', id)
@@ -176,7 +179,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Membre introuvable' }, { status: 404 });
     }
 
-    const supabaseAdmin = createServiceClient();
     // Supprime l'auth user ; la ligne organization_members est supprimée en cascade via FK ON DELETE CASCADE.
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(member.user_id);
 

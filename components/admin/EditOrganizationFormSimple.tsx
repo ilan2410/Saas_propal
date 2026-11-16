@@ -2,7 +2,26 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Save, Building2, Mail, Briefcase, CreditCard, Wallet } from 'lucide-react';
+import { Loader2, Save, Building2, Mail, Briefcase, CreditCard, Wallet, Shield } from 'lucide-react';
+import type { ClientConfigPermissions } from '@/types';
+import { CLIENT_CONFIG_PERMISSION_KEYS, resolveClientConfigPermissions } from '@/lib/security/client-data';
+
+const CLIENT_PERMISSION_LABELS: Array<{ key: keyof ClientConfigPermissions; label: string; group: string }> = [
+  { key: 'templates', label: 'Onglet Templates (création / modification de templates)', group: 'Templates' },
+  { key: 'sp_questions', label: 'Questions SP', group: 'SP situation proposée' },
+  { key: 'sp_mode_direct', label: 'Mode direct', group: 'SP situation proposée' },
+  { key: 'sp_objectifs', label: 'Objectifs', group: 'SP situation proposée' },
+  { key: 'sp_reference', label: 'Référence', group: 'SP situation proposée' },
+  { key: 'sp_mode_client', label: 'Mode Client', group: 'SP situation proposée' },
+  { key: 'sp_apparence', label: 'Apparence du questionnaire', group: 'SP situation proposée' },
+  { key: 'sp_preferences_produits', label: 'Préférences produits', group: 'SP situation proposée' },
+  { key: 'sp_ordre_categories', label: 'Ordre d’affichage', group: 'SP situation proposée' },
+  { key: 'sp_libelles', label: 'Libellés', group: 'SP situation proposée' },
+  { key: 'sp_calcul_loyer', label: 'Calcul loyer & Marge', group: 'Calculs SP' },
+  { key: 'sp_calcul_resiliation', label: 'Calcul indemnité de résiliation', group: 'Calculs SP' },
+  { key: 'sp_remises_operateurs', label: 'Remises opérateurs', group: 'Remises SP' },
+  { key: 'sp_codes_promo', label: 'Codes promo', group: 'Remises SP' },
+];
 
 const SECTEURS = [
   { value: 'telephonie', label: 'Téléphonie d\'entreprise', icon: '📞' },
@@ -18,6 +37,9 @@ type Organization = {
   credits?: number;
   tarif_par_proposition?: number;
   tarif_clone_site?: number;
+  preferences?: {
+    client_config_enabled?: boolean;
+  } | null;
 };
 interface Props {
   organization: Organization;
@@ -35,6 +57,7 @@ export function EditOrganizationFormSimple({ organization }: Props) {
     credits: organization.credits || 0,
     tarif_par_proposition: organization.tarif_par_proposition || 5,
     tarif_clone_site: organization.tarif_clone_site ?? 1,
+    client_config_permissions: resolveClientConfigPermissions(organization.preferences),
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -231,6 +254,87 @@ export function EditOrganizationFormSimple({ organization }: Props) {
               Coût débité pour chaque proposition site supplémentaire (multisite, sans re-extraction)
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Accès à la configuration avancée (Permissions granulaires) */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Shield className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Permissions de configuration côté client</h2>
+              <p className="text-sm text-gray-600">Choisissez précisément ce que ce client est autorisé à voir et configurer</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  client_config_permissions: CLIENT_CONFIG_PERMISSION_KEYS.reduce((acc, k) => {
+                    acc[k] = true;
+                    return acc;
+                  }, {} as ClientConfigPermissions),
+                }))
+              }
+              className="text-blue-600 hover:text-blue-800"
+            >
+              Tout autoriser
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              type="button"
+              onClick={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  client_config_permissions: CLIENT_CONFIG_PERMISSION_KEYS.reduce((acc, k) => {
+                    acc[k] = false;
+                    return acc;
+                  }, {} as ClientConfigPermissions),
+                }))
+              }
+              className="text-gray-600 hover:text-gray-900"
+            >
+              Tout masquer (Clé en main)
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          {CLIENT_PERMISSION_LABELS.map((item) => {
+            const checked = formData.client_config_permissions[item.key];
+            return (
+              <label
+                key={item.key}
+                className={`flex items-center justify-between gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                  checked ? 'border-purple-300 bg-purple-50/40' : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <div>
+                  <span className="text-sm font-medium text-gray-900 block">{item.label}</span>
+                  <span className="text-xs text-gray-500">{item.group}</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      client_config_permissions: {
+                        ...prev.client_config_permissions,
+                        [item.key]: e.target.checked,
+                      },
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+              </label>
+            );
+          })}
         </div>
       </div>
 

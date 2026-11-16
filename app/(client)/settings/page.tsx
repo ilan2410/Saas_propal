@@ -1,4 +1,4 @@
-import { clientOrganization } from '@/lib/security/client-data';
+import { clientOrganization, resolveClientConfigPermissions } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import SettingsPage from '@/components/client/SettingsPage';
@@ -88,6 +88,13 @@ export default async function Settings() {
         )
       : null;
 
+  const clientConfigPermissions = resolveClientConfigPermissions(organization?.preferences);
+  const anyConfigAllowed = Object.values(clientConfigPermissions).some(Boolean);
+  const effectivePermissions = {
+    ...ctx.permissions,
+    manage_templates: anyConfigAllowed && (ctx.role === 'owner' || ctx.permissions.manage_templates),
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <SettingsPage
@@ -101,7 +108,8 @@ export default async function Settings() {
         oldestProposition={oldestProposition ? oldestProposition.created_at : null}
         billingStats={billingStats}
         role={ctx.role}
-        permissions={ctx.permissions}
+        permissions={effectivePermissions}
+        clientConfigPermissions={clientConfigPermissions}
         displayName={ctx.displayName}
       />
     </div>

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, CatalogueProduit, SpQuestion } from '@/types';
+import { Organization, Proposition, PropositionTemplate, StripeTransaction, SpCustomization, SpOutputFormat, SpLogoSize, SpLogoPosition, SpTextAlignment, CatalogueProduit, SpQuestion, ClientConfigPermissions } from '@/types';
+import { DEFAULT_CLIENT_CONFIG_PERMISSIONS } from '@/lib/security/client-data';
 import type { OrgRole, OrgPermissions } from '@/lib/auth/org-context';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -75,12 +76,9 @@ interface SettingsPageProps {
   // Rôle de l'utilisateur courant (propriétaire ou commercial) ; contrôle la visibilité de l'onglet Équipe
   // ainsi que le verrouillage des champs société dans l'onglet Profil.
   role?: OrgRole;
-  // Permissions effectives du commercial (toujours entièrement peuplées pour un propriétaire) ;
-  // contrôle la visibilité des onglets Facturation/Données/Questions SP/Calculs/Remises.
   permissions?: OrgPermissions;
-  // Coordonnées personnelles de l'utilisateur courant (issues de organizations.contact_* pour un
-  // propriétaire, de organization_members pour un commercial). Utilisé pour initialiser l'onglet Profil
-  // d'un commercial, dont les champs personnels ne viennent pas de `organization`.
+  /** Permissions granulaires activées par l'admin pour ce client. */
+  clientConfigPermissions?: ClientConfigPermissions;
   displayName?: {
     prenom: string;
     nom: string;
@@ -91,14 +89,39 @@ interface SettingsPageProps {
 
 type TabId = 'profil' | 'securite' | 'notifications' | 'calendriers' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
 
-function getVisibleTabs(role?: OrgRole, permissions?: OrgPermissions): TabId[] {
+const SP_QUESTIONS_SUBTAB_MAP: Array<{ id: QuestionsSpSubTabId; perm: keyof ClientConfigPermissions }> = [
+  { id: 'questions', perm: 'sp_questions' },
+  { id: 'mode_direct', perm: 'sp_mode_direct' },
+  { id: 'objectifs', perm: 'sp_objectifs' },
+  { id: 'reference', perm: 'sp_reference' },
+  { id: 'mode_client', perm: 'sp_mode_client' },
+  { id: 'apparence', perm: 'sp_apparence' },
+  { id: 'preferences_produits', perm: 'sp_preferences_produits' },
+  { id: 'ordre_categories', perm: 'sp_ordre_categories' },
+  { id: 'libelles', perm: 'sp_libelles' },
+];
+
+function getVisibleTabs(
+  role?: OrgRole,
+  permissions?: OrgPermissions,
+  configPerms: ClientConfigPermissions = DEFAULT_CLIENT_CONFIG_PERMISSIONS,
+): TabId[] {
   const isOwner = role === 'owner';
-  const base: TabId[] = ['profil', 'securite', 'notifications', 'calendriers', 'apparence'];
+  const base: TabId[] = ['profil', 'securite', 'calendriers'];
   if (isOwner || permissions?.view_credits_billing) {
     base.push('facturation', 'donnees');
   }
-  if (isOwner || permissions?.manage_templates) {
-    base.push('sp-questions', 'sp-calculs', 'sp-remises');
+  const memberAllowed = isOwner || Boolean(permissions?.manage_templates);
+  if (memberAllowed) {
+    if (SP_QUESTIONS_SUBTAB_MAP.some((item) => configPerms[item.perm])) {
+      base.push('sp-questions');
+    }
+    if (configPerms.sp_calcul_loyer || configPerms.sp_calcul_resiliation) {
+      base.push('sp-calculs');
+    }
+    if (configPerms.sp_remises_operateurs || configPerms.sp_codes_promo) {
+      base.push('sp-remises');
+    }
   }
   return isOwner ? [...base, 'equipe'] : base;
 }
@@ -260,25 +283,40 @@ export default function SettingsPage({
   billingStats,
   role,
   permissions,
+  clientConfigPermissions = DEFAULT_CLIENT_CONFIG_PERMISSIONS,
   displayName
 }: SettingsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const visibleTabs = useMemo(() => getVisibleTabs(role, permissions), [role, permissions]);
+  const visibleTabs = useMemo(
+    () => getVisibleTabs(role, permissions, clientConfigPermissions),
+    [role, permissions, clientConfigPermissions],
+  );
   const canViewBilling = role === 'owner' || !!permissions?.view_credits_billing;
-  const canManageTemplates = role === 'owner' || !!permissions?.manage_templates;
+  const canShowSpQuestionsTab = visibleTabs.includes('sp-questions');
+  const canShowSpCalculsTab = visibleTabs.includes('sp-calculs');
+  const canShowSpRemisesTab = visibleTabs.includes('sp-remises');
   const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
   const currentTab = visibleTabs.includes(requestedTab) ? requestedTab : 'profil';
   // Un commercial n'a pas la main sur les champs société (nom, logo, siret, adresse, code postal,
   // ville, email) : ils sont gérés par le compte principal (propriétaire) et affichés en lecture seule.
   const isOwner = role !== 'commercial';
 
+  const firstSpQuestionsSubTab =
+    SP_QUESTIONS_SUBTAB_MAP.find((item) => clientConfigPermissions[item.perm])?.id ?? 'questions';
+  const firstCalculsSubTab: CalculsSubTabId = clientConfigPermissions.sp_calcul_loyer
+    ? 'loyer'
+    : 'resiliation';
+  const firstRemisesSubTab: RemisesSubTabId = clientConfigPermissions.sp_remises_operateurs
+    ? 'regles_remise'
+    : 'codes_promo';
+
   const [isLoading, setIsLoading] = useState(false);
   const [isStripePortalLoading, setIsStripePortalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(currentTab);
-  const [calculsSubTab, setCalculsSubTab] = useState<CalculsSubTabId>('loyer');
-  const [remisesSubTab, setRemisesSubTab] = useState<RemisesSubTabId>('regles_remise');
-  const [questionsSpSubTab, setQuestionsSpSubTab] = useState<QuestionsSpSubTabId>('questions');
+  const [calculsSubTab, setCalculsSubTab] = useState<CalculsSubTabId>(firstCalculsSubTab);
+  const [remisesSubTab, setRemisesSubTab] = useState<RemisesSubTabId>(firstRemisesSubTab);
+  const [questionsSpSubTab, setQuestionsSpSubTab] = useState<QuestionsSpSubTabId>(firstSpQuestionsSubTab);
 
   // Profile State
   // Champs société : toujours initialisés depuis `organization` (affichage seul pour un commercial).
@@ -1131,14 +1169,12 @@ export default function SettingsPage({
         >
           <option value="profil">Profil & Entreprise</option>
           <option value="securite">Sécurité</option>
-          <option value="notifications">Notifications</option>
           <option value="calendriers">Calendriers</option>
           {canViewBilling && <option value="facturation">Facturation</option>}
           {canViewBilling && <option value="donnees">Données</option>}
-          <option value="apparence">Apparence</option>
-          {canManageTemplates && <option value="sp-questions">SP situation proposée</option>}
-          {canManageTemplates && <option value="sp-calculs">Calculs SP</option>}
-          {canManageTemplates && <option value="sp-remises">Remises SP</option>}
+          {canShowSpQuestionsTab && <option value="sp-questions">SP situation proposée</option>}
+          {canShowSpCalculsTab && <option value="sp-calculs">Calculs SP</option>}
+          {canShowSpRemisesTab && <option value="sp-remises">Remises SP</option>}
           {role === 'owner' && <option value="equipe">Équipe</option>}
         </select>
       </div>
@@ -1147,14 +1183,12 @@ export default function SettingsPage({
       <div className="hidden md:flex flex-wrap gap-2 border-b border-gray-200 pb-2">
         <TabButton id="profil" label="Profil & Entreprise" icon={Building} />
         <TabButton id="securite" label="Sécurité" icon={Shield} />
-        <TabButton id="notifications" label="Notifications" icon={Bell} />
         <TabButton id="calendriers" label="Calendriers" icon={CalendarDays} />
         {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
         {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
-        <TabButton id="apparence" label="Apparence" icon={Monitor} />
-        {canManageTemplates && <TabButton id="sp-questions" label="SP situation proposée" icon={Bot} />}
-        {canManageTemplates && <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />}
-        {canManageTemplates && <TabButton id="sp-remises" label="Remises" icon={Percent} />}
+        {canShowSpQuestionsTab && <TabButton id="sp-questions" label="SP situation proposée" icon={Bot} />}
+        {canShowSpCalculsTab && <TabButton id="sp-calculs" label="Calculs" icon={Calculator} />}
+        {canShowSpRemisesTab && <TabButton id="sp-remises" label="Remises" icon={Percent} />}
         {role === 'owner' && <TabButton id="equipe" label="Équipe" icon={Users} />}
       </div>
 
@@ -2409,122 +2443,140 @@ export default function SettingsPage({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('questions')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'questions'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Questions
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('mode_direct')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'mode_direct'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Mode direct
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('objectifs')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'objectifs'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Objectifs
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('reference')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'reference'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Référence
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('mode_client')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'mode_client'
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <EyeOff className="w-3.5 h-3.5" />
-                Mode Client
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('apparence')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'apparence'
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                Apparence
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('preferences_produits')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'preferences_produits'
-                    ? 'bg-green-50 text-green-700 border-green-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                Préférences produits
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('ordre_categories')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'ordre_categories'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <ListOrdered className="w-3.5 h-3.5" />
-                Ordre d&apos;affichage
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestionsSpSubTab('libelles')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  questionsSpSubTab === 'libelles'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Type className="w-3.5 h-3.5" />
-                Libellés
-              </button>
+              {clientConfigPermissions.sp_questions && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('questions')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'questions'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Questions
+                </button>
+              )}
+              {clientConfigPermissions.sp_mode_direct && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('mode_direct')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'mode_direct'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Mode direct
+                </button>
+              )}
+              {clientConfigPermissions.sp_objectifs && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('objectifs')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'objectifs'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Objectifs
+                </button>
+              )}
+              {clientConfigPermissions.sp_reference && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('reference')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'reference'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Référence
+                </button>
+              )}
+              {clientConfigPermissions.sp_mode_client && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('mode_client')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'mode_client'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  Mode Client
+                </button>
+              )}
+              {clientConfigPermissions.sp_apparence && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('apparence')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'apparence'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  Apparence
+                </button>
+              )}
+              {clientConfigPermissions.sp_preferences_produits && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('preferences_produits')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'preferences_produits'
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  Préférences produits
+                </button>
+              )}
+              {clientConfigPermissions.sp_ordre_categories && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('ordre_categories')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'ordre_categories'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  Ordre d&apos;affichage
+                </button>
+              )}
+              {clientConfigPermissions.sp_libelles && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionsSpSubTab('libelles')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    questionsSpSubTab === 'libelles'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <Type className="w-3.5 h-3.5" />
+                  Libellés
+                </button>
+              )}
             </div>
 
-            {questionsSpSubTab === 'questions' && <SpQuestionsManager templates={templates} />}
-            {questionsSpSubTab === 'mode_direct' && <SpModeDirectManager templates={templates} />}
-            {questionsSpSubTab === 'objectifs' && <SpObjectifsManager templates={templates} />}
-            {questionsSpSubTab === 'reference' && <SpReferenceManager templates={templates} />}
-            {questionsSpSubTab === 'mode_client' && <SpModeClientManager templates={templates} />}
-            {questionsSpSubTab === 'preferences_produits' && <SpProduitPreferencesManager templates={templates} />}
-            {questionsSpSubTab === 'ordre_categories' && <SpCategoriesOrderManager templates={templates} />}
-            {questionsSpSubTab === 'libelles' && <SpLibellesManager templates={templates} />}
-            {questionsSpSubTab === 'apparence' && (
+            {questionsSpSubTab === 'questions' && clientConfigPermissions.sp_questions && <SpQuestionsManager templates={templates} />}
+            {questionsSpSubTab === 'mode_direct' && clientConfigPermissions.sp_mode_direct && <SpModeDirectManager templates={templates} />}
+            {questionsSpSubTab === 'objectifs' && clientConfigPermissions.sp_objectifs && <SpObjectifsManager templates={templates} />}
+            {questionsSpSubTab === 'reference' && clientConfigPermissions.sp_reference && <SpReferenceManager templates={templates} />}
+            {questionsSpSubTab === 'mode_client' && clientConfigPermissions.sp_mode_client && <SpModeClientManager templates={templates} />}
+            {questionsSpSubTab === 'preferences_produits' && clientConfigPermissions.sp_preferences_produits && <SpProduitPreferencesManager templates={templates} />}
+            {questionsSpSubTab === 'ordre_categories' && clientConfigPermissions.sp_ordre_categories && <SpCategoriesOrderManager templates={templates} />}
+            {questionsSpSubTab === 'libelles' && clientConfigPermissions.sp_libelles && <SpLibellesManager templates={templates} />}
+            {questionsSpSubTab === 'apparence' && clientConfigPermissions.sp_apparence && (
               <div className="space-y-6">
                 <div className="border border-gray-100 rounded-xl p-5 space-y-4">
                   <div>
@@ -2895,31 +2947,35 @@ export default function SettingsPage({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setCalculsSubTab('loyer')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  calculsSubTab === 'loyer'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Calcul loyer
-              </button>
-              <button
-                type="button"
-                onClick={() => setCalculsSubTab('resiliation')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  calculsSubTab === 'resiliation'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Calcul indemnité de résiliation
-              </button>
+              {clientConfigPermissions.sp_calcul_loyer && (
+                <button
+                  type="button"
+                  onClick={() => setCalculsSubTab('loyer')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    calculsSubTab === 'loyer'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Calcul loyer
+                </button>
+              )}
+              {clientConfigPermissions.sp_calcul_resiliation && (
+                <button
+                  type="button"
+                  onClick={() => setCalculsSubTab('resiliation')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    calculsSubTab === 'resiliation'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Calcul indemnité de résiliation
+                </button>
+              )}
             </div>
 
-            {calculsSubTab === 'loyer' ? (
+            {calculsSubTab === 'loyer' && clientConfigPermissions.sp_calcul_loyer && (
               <div className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Barèmes de calcul de loyer</h3>
@@ -2929,7 +2985,8 @@ export default function SettingsPage({
                 </div>
                 <SpLoyerManager templates={templates} />
               </div>
-            ) : (
+            )}
+            {calculsSubTab === 'resiliation' && clientConfigPermissions.sp_calcul_resiliation && (
               <div className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Calcul indemnité de résiliation</h3>
@@ -2953,31 +3010,35 @@ export default function SettingsPage({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setRemisesSubTab('regles_remise')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  remisesSubTab === 'regles_remise'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Remises opérateurs
-              </button>
-              <button
-                type="button"
-                onClick={() => setRemisesSubTab('codes_promo')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
-                  remisesSubTab === 'codes_promo'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                Codes promo
-              </button>
+              {clientConfigPermissions.sp_remises_operateurs && (
+                <button
+                  type="button"
+                  onClick={() => setRemisesSubTab('regles_remise')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    remisesSubTab === 'regles_remise'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Remises opérateurs
+                </button>
+              )}
+              {clientConfigPermissions.sp_codes_promo && (
+                <button
+                  type="button"
+                  onClick={() => setRemisesSubTab('codes_promo')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                    remisesSubTab === 'codes_promo'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  Codes promo
+                </button>
+              )}
             </div>
 
-            {remisesSubTab === 'regles_remise' && (
+            {remisesSubTab === 'regles_remise' && clientConfigPermissions.sp_remises_operateurs && (
               <SpDiscountRulesManager
                 templates={templates}
                 fallbackRules={organization.preferences?.sp_regles_remise ?? []}
@@ -2985,7 +3046,7 @@ export default function SettingsPage({
                 questions={discountQuestions}
               />
             )}
-            {remisesSubTab === 'codes_promo' && (
+            {remisesSubTab === 'codes_promo' && clientConfigPermissions.sp_codes_promo && (
               <SpCodesPromoManager
                 templates={templates}
                 fallbackConfig={{
@@ -3003,6 +3064,7 @@ export default function SettingsPage({
         {activeTab === 'equipe' && role === 'owner' && (
           <EquipeTab
             isMixte={organization.secteur === 'mixte'}
+            hideManageTemplatesPermission={!clientConfigPermissions.templates}
             initialDefaultPermissions={{
               view_all_propositions: organization.commercial_default_permissions?.view_all_propositions ?? false,
               manage_catalogue: organization.commercial_default_permissions?.manage_catalogue ?? false,

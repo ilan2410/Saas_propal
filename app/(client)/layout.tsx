@@ -1,4 +1,4 @@
-import { clientOrganization } from '@/lib/security/client-data';
+import { clientOrganization, resolveClientConfigPermissions } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { ClientSidebar } from '@/components/client/ClientSidebar';
@@ -45,9 +45,15 @@ export default async function ClientLayout({
     redirect('/onboarding');
   }
 
+  const configPerms = resolveClientConfigPermissions(organization?.preferences);
+  const effectivePermissions = {
+    ...ctx.permissions,
+    manage_templates: configPerms.templates && (ctx.role === 'owner' || ctx.permissions.manage_templates),
+  };
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <ClientSidebar user={{ email: user.email }} organization={clientOrganization(organization, ctx) as unknown as typeof organization} role={ctx.role} permissions={ctx.permissions} memberSecteur={ctx.secteur} />
+      <ClientSidebar user={{ email: user.email }} organization={clientOrganization(organization, ctx) as unknown as typeof organization} role={ctx.role} permissions={effectivePermissions} memberSecteur={ctx.secteur} />
       <main className="md:ml-64 p-4 md:p-8 pt-16 md:pt-8">{children}</main>
     </div>
   );

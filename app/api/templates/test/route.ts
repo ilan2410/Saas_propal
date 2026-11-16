@@ -35,7 +35,6 @@ export async function POST(request: NextRequest) {
       success: true,
       fieldsExtracted: champsActifs.length,
       confidence: Math.floor(Math.random() * 15) + 85, // 85-100%
-      tokensUsed: Math.floor(Math.random() * 1000) + 500,
       extractedData: champsActifs.reduce<Record<string, string>>((acc, field) => {
         acc[field] = `[Valeur extraite pour ${field}]`;
         return acc;

@@ -33,11 +33,9 @@ import {
   MERGEABLE_CATEGORIES,
   getSelectedTelecomCategories,
   getMergeLabel,
-  generateMergedPrompt,
   normalizeTemplateFieldPaths,
   type ViewMode,
 } from '@/components/admin/organizationFormConfig';
-import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
 interface Props {
@@ -158,30 +156,9 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
 
   const customFieldsList = [...customFieldDefinitions.map((d) => d.fieldPath), ...legacyCustomFields].filter(Boolean);
 
-  const allSelectedFieldsForJson = getAllSelectedFields(
-    viewMode,
-    selectedQuestions,
-    currentQuestions,
-    selectedFields,
-    customFieldsList
-  );
-
-  // Le prompt n'est plus éditable côté client (réservé à l'admin). On le garde
-  // simplement synchronisé avec les champs choisis : il ne sert qu'aux templates
-  // hors pipeline SA (bureautique), le pipeline SA utilisant ses prompts codés en dur.
-  const buildSyncedPrompt = (fields: string[], merges: string[]) => {
-    const current = templateData.prompt_template || '';
-    let next = updateExpectedJsonStructureFromFields(current, fields, { prune: true });
-    if (merges.length > 1) next = generateMergedPrompt(next, merges);
-    return next;
-  };
-
+  // Le prompt est généré et synchronisé exclusivement côté serveur.
   const applyActiveMerges = (nextActiveMerges: string[]) => {
     setActiveMerges(nextActiveMerges);
-    const nextPrompt = buildSyncedPrompt(allSelectedFieldsForJson, nextActiveMerges);
-    if (nextPrompt !== (templateData.prompt_template || '')) {
-      updateTemplateData({ prompt_template: nextPrompt });
-    }
   };
 
   const fieldsCount = getFieldsCount(viewMode, selectedQuestions, currentQuestions, selectedFields, customFieldsList);
@@ -281,7 +258,6 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
       description: description.trim(),
       champs_actifs: allFields,
       merge_config: activeMerges,
-      prompt_template: buildSyncedPrompt(allFields, activeMerges),
     });
 
     return true;
@@ -377,35 +353,7 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
           </div>
         </div>
 
-        {/* Toggle Simple/Avancé */}
-        <div className="flex gap-2 mb-6 p-1.5 bg-gray-100 rounded-xl w-fit">
-          <button
-            type="button"
-            onClick={() => handleViewModeChange('simple')}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-              viewMode === 'simple' 
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-500/30' 
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            Vue Simple
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewModeChange('advanced')}
-            className={`px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-              viewMode === 'advanced' 
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-500/30' 
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Vue Avancée
-          </button>
-        </div>
-
-        {/* Vue Simple */}
+        {/* Vue Simple uniquement côté client (la Vue Avancée, la fusion et les champs custom sont réservés à l'Admin) */}
         {viewMode === 'simple' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -469,95 +417,6 @@ export function Step1SelectFields({ templateData, updateTemplateData, onNext, on
                 );
               })}
             </div>
-
-            {/* Fusion de catégories */}
-            {(() => {
-              const selectedTelecomCats = getSelectedTelecomCategories(selectedQuestions);
-              if (selectedTelecomCats.length >= 2) {
-                return (
-                  <div className="border-2 border-purple-300 rounded-xl p-6 bg-gradient-to-r from-purple-50 to-pink-50">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <Link2 className="w-5 h-5 text-white" />
-                      </div>
-                      <h3 className="font-bold text-purple-900 text-lg">
-                        Fusion de catégories
-                      </h3>
-                    </div>
-                    <p className="text-sm text-purple-700 mb-4">
-                      Fusionnez plusieurs catégories dans un tableau unique (minimum 2 catégories requises)
-                    </p>
-                    
-                    <div className="space-y-2.5 mb-4">
-                      {selectedTelecomCats.map((catId) => {
-                        const cat = MERGEABLE_CATEGORIES.find((c) => c.id === catId);
-                        const isChecked = activeMerges.includes(catId);
-                        return (
-                          <label key={catId} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 cursor-pointer hover:bg-purple-50 transition-all">
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                              isChecked 
-                                ? 'bg-purple-600 border-purple-600' 
-                                : 'border-purple-300'
-                            }`}>
-                              {isChecked && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  applyActiveMerges([...activeMerges, catId]);
-                                } else {
-                                  const newMerges = activeMerges.filter(id => id !== catId);
-                                  applyActiveMerges(newMerges.length >= 2 ? newMerges : []);
-                                }
-                              }}
-                              className="sr-only"
-                            />
-                            <span className="text-sm font-semibold text-purple-800">{cat?.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    {activeMerges.length >= 2 && (
-                      <div className="p-4 bg-white rounded-lg border-2 border-purple-300">
-                        <p className="text-sm text-purple-900 font-semibold mb-2 flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                          Fusion active : <strong>{getMergeLabel(activeMerges)}</strong>
-                        </p>
-                        {selectedTelecomCats.filter(c => !activeMerges.includes(c)).length > 0 && (
-                          <p className="text-xs text-purple-700 mt-2 flex items-start gap-2">
-                            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                            <span>Non fusionné(s) : {getMergeLabel(selectedTelecomCats.filter(c => !activeMerges.includes(c)))} → tableaux séparés</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {activeMerges.length === 1 && (
-                      <div className="flex items-start gap-2 text-xs text-orange-700 bg-orange-50 border border-orange-300 rounded-lg px-3 py-2.5">
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>Sélectionnez au moins 2 catégories pour activer la fusion.</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            <CustomFieldsEditor
-              secteur={secteur}
-              activeMerges={activeMerges}
-              selectedCategory="all"
-              reservedFieldPaths={getAllSelectedFields(viewMode, selectedQuestions, currentQuestions, selectedFields, [])}
-              customFieldDefinitions={customFieldDefinitions}
-              legacyCustomFields={legacyCustomFields}
-              customCategories={customCategories}
-              customArrayCategories={customArrayCategories}
-              onChange={handleCustomFieldsChange}
-            />
           </div>
         )}
 

@@ -67,7 +67,28 @@ export interface Organization {
   updated_at: string;
 }
 
+export interface ClientConfigPermissions {
+  templates: boolean;
+  sp_questions: boolean;
+  sp_mode_direct: boolean;
+  sp_objectifs: boolean;
+  sp_reference: boolean;
+  sp_mode_client: boolean;
+  sp_apparence: boolean;
+  sp_preferences_produits: boolean;
+  sp_ordre_categories: boolean;
+  sp_libelles: boolean;
+  sp_calcul_loyer: boolean;
+  sp_calcul_resiliation: boolean;
+  sp_remises_operateurs: boolean;
+  sp_codes_promo: boolean;
+}
+
 export interface OrganizationPreferences {
+  /** Autorise le client à accéder aux écrans de configuration Templates & SP (faux par défaut = mode clé en main). */
+  client_config_enabled?: boolean;
+  /** Permissions granulaires par onglet / sous-onglet de configuration côté client. */
+  client_config_permissions?: Partial<ClientConfigPermissions>;
   theme?: 'light' | 'dark' | 'system';
   densite?: 'compact' | 'confortable';
   page_accueil?: '/dashboard' | '/templates' | '/propositions';

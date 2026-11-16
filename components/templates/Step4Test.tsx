@@ -13,7 +13,6 @@ interface Props {
 type TemplateTestResult = {
   fieldsExtracted: number;
   confidence: number;
-  tokensUsed: number;
   previewUrl?: string;
 };
 
@@ -175,9 +174,6 @@ export function Step4Test({ templateData, onComplete, onPrev }: Props) {
             </p>
             <p className="text-sm text-green-800">
               <strong>Confiance moyenne :</strong> {testResult.confidence}%
-            </p>
-            <p className="text-sm text-green-800">
-              <strong>Tokens utilisés :</strong> {testResult.tokensUsed}
             </p>
           </div>
           {testResult.previewUrl && (

@@ -94,7 +94,7 @@ export function ClientSidebar({ user, organization, role, permissions, memberSec
             <span className="font-medium">Dashboard</span>
           </Link>
 
-          {(role === 'owner' || permissions?.manage_templates) && (
+          {permissions?.manage_templates && (
             <Link
               href="/templates"
               onClick={closeSidebar}

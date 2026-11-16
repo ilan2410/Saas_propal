@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Save, Settings, Sparkles } from 'lucide-react';
 import { TestExtractionIA } from './TestExtractionIA';
+import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import {
   ALL_FIELDS,
   SECTEURS,
-  CLAUDE_MODELS,
-  DEFAULT_CLAUDE_MODEL,
   getCategoryLabel,
   getQuestionsForSecteur,
   syncSimpleToAdvanced,

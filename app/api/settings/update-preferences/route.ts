@@ -25,7 +25,11 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const newPreferences = body as Partial<OrganizationPreferences>;
+    const newPreferences = { ...(body as Partial<OrganizationPreferences>) };
+    if (user.app_metadata?.role !== 'admin') {
+      delete newPreferences.client_config_enabled;
+      delete newPreferences.client_config_permissions;
+    }
 
     // Cette route sert plusieurs onglets aux permissions différentes :
     // - `notifications` (préférences de notification) et `apparence` (theme/densite/page_accueil)

@@ -1,10 +1,9 @@
 import { subTemplateFiles, removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
 import { organizationStoragePath } from '@/lib/security/storage-access';
-import { generateMergedPrompt } from '@/components/admin/organizationFormConfig';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientFileConfig, clientTemplate } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
+import { updateExpectedJsonStructureFromFields, generateMergedPrompt } from '@/lib/utils/prompt';
 import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 
@@ -26,7 +25,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const ctx = await resolveOrgContext(supabase, user);
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data: template, error } = await supabase
+    const db = user.app_metadata?.role === 'admin' ? createServiceClient() : supabase;
+    const { data: template, error } = await db
       .from('proposition_templates')
       .select(CLIENT_TEMPLATE_COLUMNS)
       .eq('id', id)
@@ -35,10 +35,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+      console.error('Erreur Supabase GET template:', error);
+      return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
     }
 
-    return NextResponse.json({ template });
+    return NextResponse.json({ template: clientTemplate(template) });
   } catch (error) {
     console.error('Error fetching template:', error);
     return NextResponse.json(
@@ -90,7 +91,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       .in('secteur', allowedSecteurs(ctx));
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Erreur Supabase DELETE template:', error);
+      return NextResponse.json({ error: 'Impossible de supprimer le template' }, { status: 500 });
     }
 
     await removeSubTemplateFiles(annexFiles, ctx.organizationId);
@@ -194,6 +196,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     const { data: current } = await createServiceClient().from('proposition_templates').select('*').eq('id', id).eq('organization_id', ctx.organizationId).in('secteur', allowedSecteurs(ctx)).single();
     if (!current) return NextResponse.json({ error: 'Template introuvable' }, { status: 404 });
+    if (body.file_config !== undefined && body.file_config && typeof body.file_config === 'object' && !Array.isArray(body.file_config)) {
+      const sanitizedConfig = clientFileConfig(body.file_config);
+      const currentConfig = current.file_config && typeof current.file_config === 'object' && !Array.isArray(current.file_config)
+        ? (current.file_config as Record<string, unknown>)
+        : {};
+      if (typeof currentConfig.claude_effort === 'string') {
+        sanitizedConfig.claude_effort = currentConfig.claude_effort;
+      }
+      body.file_config = sanitizedConfig;
+    }
     if (body.champs_actifs !== undefined) {
       if (!Array.isArray(body.champs_actifs) || body.champs_actifs.some((field) => typeof field !== 'string')) return NextResponse.json({ error: 'Champs invalides' }, { status: 400 });
       body.champs_actifs = withRequiredTemplateFields(current.secteur ?? 'telephonie', body.champs_actifs as string[]);
@@ -249,10 +261,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Erreur Supabase PATCH template:', error);
+      return NextResponse.json({ error: 'Impossible de mettre à jour le template' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, template });
+    return NextResponse.json({ success: true, template: clientTemplate(template) });
   } catch (error) {
     console.error('Error updating template:', error);
     return NextResponse.json(

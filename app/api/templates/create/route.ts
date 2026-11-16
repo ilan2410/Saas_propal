@@ -1,12 +1,12 @@
 import { DEFAULT_PROMPT } from '@/lib/templates/default-prompt';
 import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientFileConfig, clientTemplate } from '@/lib/security/client-data';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { ensureChampsActifsPlaceholder, updateExpectedJsonStructureFromFields } from '@/lib/utils/prompt';
-import { DEFAULT_CLAUDE_MODEL, generateMergedPrompt } from '@/components/admin/organizationFormConfig';
+import { ensureChampsActifsPlaceholder, updateExpectedJsonStructureFromFields, generateMergedPrompt } from '@/lib/utils/prompt';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import { canAccessSecteur, resolveOrgContext, SECTEUR_FORBIDDEN_MESSAGE } from '@/lib/auth/org-context';
 import { defaultSecteur, isAllowedSecteur } from '@/lib/sectors';
 import type { Secteur } from '@/types';
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     const champsActifs = withRequiredTemplateFields(secteur, requestedFields);
     const fileConfig =
       body.file_config && typeof body.file_config === 'object' && !Array.isArray(body.file_config)
-        ? body.file_config
+        ? clientFileConfig(body.file_config)
         : {};
 
     const insertData: Record<string, unknown> = {
@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Erreur Supabase:', error);
       return NextResponse.json(
-        { error: 'Erreur base de données', details: error.message, code: error.code },
+        { error: 'Erreur lors de la création du template' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, template });
+    return NextResponse.json({ success: true, template: clientTemplate(template) });
   } catch (error) {
     console.error('Error creating template:', error);
     return NextResponse.json(

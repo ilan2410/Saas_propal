@@ -1,5 +1,5 @@
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
-import { createClient } from '@/lib/supabase/server';
+import { CLIENT_TEMPLATE_COLUMNS, clientTemplate, resolveClientConfigPermissions } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, FileText, Settings, TrendingUp, CheckCircle2, Clock, Sparkles } from 'lucide-react';
@@ -50,17 +50,28 @@ export default async function TemplatesPage() {
 
   const ctx = user ? await resolveOrgContext(supabase, user) : null;
 
-  if (ctx && ctx.role !== 'owner' && !ctx.permissions.manage_templates) {
+  if (!ctx || (ctx.role !== 'owner' && !ctx.permissions.manage_templates)) {
+    redirect('/dashboard');
+  }
+
+  const { data: organization } = await createServiceClient()
+    .from('organizations')
+    .select('preferences')
+    .eq('id', ctx.organizationId)
+    .single();
+
+  if (!resolveClientConfigPermissions(organization?.preferences).templates) {
     redirect('/dashboard');
   }
 
   // Récupérer tous les templates
-  const { data: templates, error: templatesError } = await supabase
+  const { data: rawTemplates, error: templatesError } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
-    .eq('organization_id', ctx?.organizationId)
-    .in('secteur', ctx ? allowedSecteurs(ctx) : ['telephonie', 'bureautique'])
+    .eq('organization_id', ctx.organizationId)
+    .in('secteur', allowedSecteurs(ctx))
     .order('created_at', { ascending: false });
+  const templates = rawTemplates?.map((t) => clientTemplate(t));
 
   if (templatesError) {
     console.error('Erreur chargement templates:', templatesError);

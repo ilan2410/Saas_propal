@@ -1,9 +1,9 @@
 import { duplicateSubTemplates } from '@/lib/templates/sub-template-server';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientTemplate } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 import { safeStorageFileName } from '@/lib/security/validate-upload';
 import { withRequiredTemplateFields } from '@/lib/templates/required-fields';
 import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
@@ -271,14 +271,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           {
             error: 'Template créé mais les réglages SP n\'ont pas pu être copiés',
             details: orgError.message,
-            template: newTemplate,
+            template: clientTemplate(newTemplate),
           },
           { status: 500 }
         );
       }
     }
 
-    return NextResponse.json({ success: true, template: newTemplate });
+    return NextResponse.json({ success: true, template: clientTemplate(newTemplate) });
   } catch (error) {
     console.error('Erreur duplication template:', error);
     return NextResponse.json(

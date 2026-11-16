@@ -1,4 +1,4 @@
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientTemplate } from '@/lib/security/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
@@ -48,10 +48,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Erreur Supabase PATCH statut template:', error);
+      return NextResponse.json({ error: 'Impossible de mettre à jour le statut' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, template });
+    return NextResponse.json({ success: true, template: clientTemplate(template) });
   } catch (error) {
     console.error('Error updating template status:', error);
     return NextResponse.json(

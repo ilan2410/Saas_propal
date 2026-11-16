@@ -32,7 +32,9 @@ export async function POST(
       );
     }
 
-    const { data: member, error: memberError } = await supabase
+    const supabaseAdmin = createServiceClient();
+    const db = user.app_metadata?.role === 'admin' ? supabaseAdmin : supabase;
+    const { data: member, error: memberError } = await db
       .from('organization_members')
       .select('id, user_id, organization_id')
       .eq('id', id)
@@ -46,7 +48,6 @@ export async function POST(
       return NextResponse.json({ error: 'Membre introuvable' }, { status: 404 });
     }
 
-    const supabaseAdmin = createServiceClient();
     const { error } = await supabaseAdmin.auth.admin.updateUserById(member.user_id, { password });
 
     if (error) {

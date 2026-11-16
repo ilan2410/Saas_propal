@@ -1,4 +1,4 @@
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientProposition, clientTemplate } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
@@ -55,8 +55,8 @@ export async function GET() {
     const exportData = {
       export_date: new Date().toISOString(),
       organization,
-      templates: templates || [],
-      propositions: propositions || [],
+      templates: (templates || []).map((t) => clientTemplate(t)),
+      propositions: (propositions || []).map((p) => clientProposition(p)),
       transactions: transactions || []
     };
 

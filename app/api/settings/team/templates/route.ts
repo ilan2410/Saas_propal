@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 // GET /api/settings/team/templates — templates actifs de l'organisation (pour la modale de permissions, propriétaire uniquement)
@@ -18,7 +18,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data, error } = await supabase
+    const db = user.app_metadata?.role === 'admin' ? createServiceClient() : supabase;
+    const { data, error } = await db
       .from('proposition_templates')
       .select('id, nom')
       .eq('organization_id', ctx.organizationId)

@@ -82,7 +82,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001)",
       "Bash(git checkout *)",
       "Bash(docker volume *)",
-      "Bash(docker system *)"
+      "Bash(docker system *)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "\\tmp",

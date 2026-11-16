@@ -2,7 +2,9 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, CreditCard, FileText, BarChart, Plus, Settings, Eye } from 'lucide-react';
 import { AdminClientActions } from '@/components/admin/AdminClientActions';
+import { AdminClientConfigWorkspace } from '@/components/admin/AdminClientConfigWorkspace';
 import { TeleprosManager } from '@/components/settings/TeleprosManager';
+import type { Organization, PropositionTemplate } from '@/types';
 import {
   formatCurrency,
   formatDate,
@@ -253,6 +255,12 @@ export default async function ClientDetailPage({
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <TeleprosManager endpoint={`/api/admin/organizations/${id}/telepros`} compact />
       </div>
+
+      {/* Configuration clé en main (SP, Calculs, Remises, Équipe & Visibilité client) */}
+      <AdminClientConfigWorkspace
+        organization={org as Organization}
+        templates={(templates ?? []) as PropositionTemplate[]}
+      />
 
       {/* Templates */}
       <div className="bg-white rounded-lg border border-gray-200">

@@ -15,14 +15,16 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const categories = searchParams.get('categories')?.split(',').filter(Boolean) ?? [];
-    const { data: organization } = await createServiceClient().from('organizations')
+    const service = createServiceClient();
+    const db = user.app_metadata?.role === 'admin' ? service : supabase;
+    const { data: organization } = await service.from('organizations')
       .select('secteur').eq('id', ctx.organizationId).single();
     const orgSecteur = organization?.secteur as Secteur;
     if (!orgSecteur) return NextResponse.json({ error: 'Organisation introuvable' }, { status: 404 });
     let secteur: unknown = searchParams.get('secteur') ?? ctx.secteur ?? defaultSecteur(orgSecteur);
     const templateId = searchParams.get('template_id');
     if (templateId) {
-      const { data: template } = await supabase.from('proposition_templates')
+      const { data: template } = await db.from('proposition_templates')
         .select('secteur').eq('id', templateId).eq('organization_id', ctx.organizationId).single();
       if (!template || (searchParams.has('secteur') && secteur !== template.secteur)) {
         return NextResponse.json({ error: 'Template ou secteur invalide' }, { status: 400 });
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (!isAllowedSecteur(orgSecteur, secteur)) return NextResponse.json({ error: 'Secteur invalide' }, { status: 400 });
     if (!canAccessSecteur(ctx, secteur)) return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
 
-    let query = supabase
+    let query = db
       .from('catalogues_produits')
       .select('fournisseur')
       .eq('actif', true)

@@ -1,5 +1,6 @@
 import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
 import { variantClientData } from '@/lib/propositions/sp-variants';
+import { clientProposition } from '@/lib/security/client-data';
 import { validateSourceDocuments } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -148,9 +149,7 @@ export async function PATCH(
     if (error) {
       console.error('Erreur Supabase:', error);
       return NextResponse.json({
-        error: 'Erreur base de données',
-        details: error.message,
-        code: error.code
+        error: 'Erreur lors de la mise à jour de la proposition',
       }, { status: 500 });
     }
 
@@ -167,7 +166,7 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ success: true, proposition });
+    return NextResponse.json({ success: true, proposition: clientProposition(proposition) });
   } catch (error) {
     console.error('Error updating proposition:', error);
     return NextResponse.json(

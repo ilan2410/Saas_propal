@@ -1,6 +1,6 @@
 import { SubTemplatesManager } from '@/components/templates/SubTemplatesManager';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
-import { createClient } from '@/lib/supabase/server';
+import { CLIENT_TEMPLATE_COLUMNS, clientTemplate, resolveClientConfigPermissions } from '@/lib/security/client-data';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { allowedSecteurs, resolveOrgContext } from '@/lib/auth/org-context';
 import Link from 'next/link';
@@ -42,8 +42,18 @@ export default async function TemplateDetailPage({ params }: Props) {
     redirect('/login');
   }
 
+  const { data: organization } = await createServiceClient()
+    .from('organizations')
+    .select('preferences')
+    .eq('id', ctx.organizationId)
+    .single();
+
+  if (!resolveClientConfigPermissions(organization?.preferences).templates) {
+    redirect('/dashboard');
+  }
+
   // Récupérer le template (limité au secteur du commercial le cas échéant)
-  const { data: template, error } = await supabase
+  const { data: rawTemplate, error } = await supabase
     .from('proposition_templates')
     .select(CLIENT_TEMPLATE_COLUMNS)
     .eq('id', id)
@@ -51,9 +61,10 @@ export default async function TemplateDetailPage({ params }: Props) {
     .in('secteur', allowedSecteurs(ctx))
     .single();
 
-  if (error || !template) {
+  if (error || !rawTemplate) {
     redirect('/templates');
   }
+  const template = clientTemplate(rawTemplate);
 
   const getFileIcon = (fileType: string) => {
     switch (fileType) {
@@ -192,130 +203,27 @@ export default async function TemplateDetailPage({ params }: Props) {
               </div>
             </div>
 
-            {/* Champs actifs */}
+            {/* Champs actifs (résumé simplifié sans chemins JSON techniques) */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
                     <FileSearch className="w-5 h-5 text-white" />
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    Champs à extraire
-                  </h2>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Données configurées pour l&apos;extraction
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      Informations extraites automatiquement lors de la création d&apos;une proposition
+                    </p>
+                  </div>
                 </div>
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-                  {champsActifs.length} champs
+                  {champsActifs.length} champs actifs
                 </span>
               </div>
-
-              {champsActifs.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {champsActifs.map((champ: string) => (
-                    <span
-                      key={champ}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 rounded-xl text-sm font-medium border border-blue-200 hover:shadow-md transition-all"
-                    >
-                      {champ}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <FileSearch className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <p className="text-gray-500">Aucun champ configuré</p>
-                </div>
-              )}
             </div>
-
-            {/* Configuration du mapping */}
-            {fileConfig.sheetMappings && fileConfig.sheetMappings.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
-                    <Grid3x3 className="w-5 h-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    Configuration du mapping
-                  </h2>
-                </div>
-
-                <div className="space-y-4">
-                  {fileConfig.sheetMappings.map((sheetMapping: Record<string, unknown>, idx: number) => (
-                    <div key={idx} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all bg-gradient-to-r from-gray-50 to-white">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-gray-600" />
-                        Feuille : {String(sheetMapping.sheetName ?? '')}
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {Object.entries(
-                          sheetMapping.mapping && typeof sheetMapping.mapping === 'object' && !Array.isArray(sheetMapping.mapping)
-                            ? (sheetMapping.mapping as Record<string, unknown>)
-                            : {}
-                        ).map(([field, cell]) => (
-                          <div key={field} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                            <span className="text-sm text-gray-600 font-medium">{field}:</span>
-                            <span className="font-mono text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-200 font-semibold">
-                              {Array.isArray(cell) ? cell.join(', ') : String(cell)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Mapping des tableaux */}
-            {fileConfig.arrayMappings && fileConfig.arrayMappings.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
-                    <Package className="w-5 h-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    Tableaux configurés
-                  </h2>
-                </div>
-
-                <div className="space-y-4">
-                  {fileConfig.arrayMappings.map((arrayMapping: Record<string, unknown>, idx: number) => (
-                    <div key={idx} className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 hover:shadow-lg transition-all">
-                      <h3 className="font-bold text-purple-900 text-lg mb-3 flex items-center gap-2">
-                        <Grid3x3 className="w-5 h-5" />
-                        {String(arrayMapping.arrayId ?? '')}
-                      </h3>
-                      <div className="flex items-center gap-4 mb-4">
-                        <span className="px-3 py-1 bg-white text-purple-700 rounded-lg text-sm font-medium border border-purple-200">
-                          📄 Feuille: {String(arrayMapping.sheetName ?? '')}
-                        </span>
-                        <span className="px-3 py-1 bg-white text-purple-700 rounded-lg text-sm font-medium border border-purple-200">
-                          📍 Ligne: {String(arrayMapping.startRow ?? '')}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {Object.entries(
-                          arrayMapping.columnMapping &&
-                            typeof arrayMapping.columnMapping === 'object' &&
-                            !Array.isArray(arrayMapping.columnMapping)
-                            ? (arrayMapping.columnMapping as Record<string, unknown>)
-                            : {}
-                        ).map(([field, col]) => (
-                          <div key={field} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200">
-                            <span className="text-sm text-purple-700 font-medium">{field}:</span>
-                            <span className="font-mono text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-md border border-purple-300 font-semibold">
-                              Colonne {String(col)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -387,62 +295,6 @@ export default async function TemplateDetailPage({ params }: Props) {
                   </dd>
                 </div>
               </dl>
-            </div>
-
-            {/* Résultat du test */}
-            {template.test_result && (
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg">
-                    <CheckCircle2 className="w-5 h-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-bold text-green-900">
-                    Dernier test
-                  </h2>
-                </div>
-
-                <dl className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-green-200">
-                    <dt className="text-sm font-medium text-green-700">Champs extraits</dt>
-                    <dd className="text-lg font-bold text-green-900">
-                      {template.test_result.fieldsExtracted}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-green-200">
-                    <dt className="text-sm font-medium text-green-700">Confiance</dt>
-                    <dd className="text-lg font-bold text-green-900">
-                      {template.test_result.confidence}%
-                    </dd>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-white rounded-lg border border-green-200">
-                    <dt className="text-sm font-medium text-green-700">Tokens utilisés</dt>
-                    <dd className="text-lg font-bold text-green-900">
-                      {template.test_result.tokensUsed}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            )}
-
-            {/* Statistiques d'utilisation */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
-                  <TrendingUp className="w-5 h-5 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-gray-900">
-                  Utilisation
-                </h2>
-              </div>
-
-              <div className="text-center py-6">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <TrendingUp className="w-8 h-8 text-gray-400" />
-                </div>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Les statistiques seront disponibles après la création de propositions avec ce template
-                </p>
-              </div>
             </div>
           </div>
         </div>

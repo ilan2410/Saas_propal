@@ -1,3 +1,70 @@
+import { MERGEABLE_CATEGORIES, getMergeLabel } from '@/components/admin/organizationFormConfig';
+
+export function generateMergedPrompt(
+  basePrompt: string,
+  mergedCategories: string[]
+): string {
+  const promptWithoutPreviousMergeRule = basePrompt
+    .replace(/\n{0,2}RÈGLE DE FUSION TÉLÉCOM:\n(?:- .*\n?)+/g, '')
+    .trim();
+
+  const includesMateriel = mergedCategories.includes('location_materiel');
+  const mergedTypes = mergedCategories
+    .map((cat) => MERGEABLE_CATEGORIES.find((m) => m.id === cat)?.type)
+    .filter((t): t is string => Boolean(t));
+
+  if (promptWithoutPreviousMergeRule.includes('"situation_actuelle"')) {
+    return `${promptWithoutPreviousMergeRule}
+
+RÈGLE DE FUSION TÉLÉCOM:
+- Les catégories fusionnées (${getMergeLabel(mergedCategories)}) doivent être extraites dans situation_actuelle.lignes uniquement.
+- Utilise situation_actuelle.lignes[].type pour distinguer les valeurs parmi : ${mergedTypes.join(', ')}.
+- Ne crée pas de tableaux racine séparés lignes_mobiles, lignes_fixes, lignes_internet${includesMateriel ? ' ou location_materiel' : ''} lorsque situation_actuelle est présente.${includesMateriel ? `
+- Pour les éléments de type "materiel", remplis libellé/matériel, quantité, tarif/loyer, leaser si présent, et date de fin d'engagement dans situation_actuelle.lignes.` : ''}
+`;
+  }
+
+  const types = mergedTypes.length > 0 ? mergedTypes : mergedCategories;
+  const mergedRowFields = includesMateriel
+    ? `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "libelle": "Ligne ou matériel", "forfait": "Nom forfait", "materiel": "Description matériel", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`
+    : `"numero_ligne": "0XXXXXXXXX", "type": "${types.join('|')}", "forfait": "Nom forfait", "quantite": "1", "tarif": "XX.XX", "date_fin_engagement": "JJ/MM/AAAA"`;
+  const mergedStructure = `"lignes": [
+    {${mergedRowFields}}
+  ]`;
+
+  let modifiedPrompt = basePrompt;
+
+  for (const cat of mergedCategories) {
+    const regex = new RegExp(`"${cat}":\\s*\\[[^\\]]*\\],?\\s*`, 'g');
+    modifiedPrompt = modifiedPrompt.replace(regex, '');
+  }
+
+  if (mergedCategories.includes('location_materiel')) {
+    modifiedPrompt = modifiedPrompt.replace(
+      /("client":\s*\{[^}]*\}),?\s*/,
+      `$1,\n  ${mergedStructure},\n  `
+    );
+  } else {
+    const beforeInsert = modifiedPrompt;
+    modifiedPrompt = modifiedPrompt.replace(
+      /("client":\s*\{[^}]*\}),?\s*("lignes_|"location_)/,
+      `$1,\n  ${mergedStructure},\n  $2`
+    );
+
+    if (modifiedPrompt === beforeInsert) {
+      modifiedPrompt = modifiedPrompt.replace(
+        /("client":\s*\{[^}]*\}),?\s*/,
+        `$1,\n  ${mergedStructure},\n  `
+      );
+    }
+  }
+
+  modifiedPrompt = modifiedPrompt.replace(/,(\s*[}\]])/g, '$1');
+  modifiedPrompt = modifiedPrompt.replace(/,\s*,/g, ',');
+
+  return modifiedPrompt;
+}
+
 export function ensureChampsActifsPlaceholder(prompt: string): string {
   if (!prompt) return 'CHAMPS À EXTRAIRE:\n{liste_champs_actifs}';
   if (prompt.includes('{liste_champs_actifs}')) return prompt;

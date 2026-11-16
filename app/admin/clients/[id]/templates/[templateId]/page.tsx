@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Edit, FileText, Settings, Download } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatting';
-import { DEFAULT_CLAUDE_MODEL } from '@/components/admin/organizationFormConfig';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/ai/claude-models';
 
 export default async function TemplateDetailPage({
   params,

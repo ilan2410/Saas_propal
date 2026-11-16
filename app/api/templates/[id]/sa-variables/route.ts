@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -9,7 +9,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data: template } = await supabase
+  const db = user.app_metadata?.role === 'admin' ? createServiceClient() : supabase;
+  const { data: template } = await db
     .from('proposition_templates')
     .select('champs_actifs')
     .eq('id', id)

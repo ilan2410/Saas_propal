@@ -69,6 +69,8 @@ interface EquipeTabProps {
   initialDefaultPermissions: PermissionsRecord;
   /** Organisation « mixte » : affiche le choix du secteur des commerciaux */
   isMixte?: boolean;
+  /** Masque la permission « Gérer les templates » lorsque le mode clé en main est actif */
+  hideManageTemplatesPermission?: boolean;
 }
 
 const SECTEUR_LABELS = { telephonie: 'Téléphonie', bureautique: 'Bureautique' } as const;
@@ -146,7 +148,10 @@ function permissionsSummary(member: TeamMember, defaults: PermissionsRecord): st
   return `${active.length} permission${active.length > 1 ? 's' : ''} active${active.length > 1 ? 's' : ''}`;
 }
 
-export function EquipeTab({ initialDefaultPermissions, isMixte = false }: EquipeTabProps) {
+export function EquipeTab({ initialDefaultPermissions, isMixte = false, hideManageTemplatesPermission = false }: EquipeTabProps) {
+  const visiblePermissionKeys = hideManageTemplatesPermission
+    ? PERMISSION_KEYS.filter((k) => k !== 'manage_templates')
+    : PERMISSION_KEYS;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
 
@@ -262,7 +267,7 @@ export function EquipeTab({ initialDefaultPermissions, isMixte = false }: Equipe
           </p>
         </div>
         <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200">
-          {PERMISSION_KEYS.map((key) => (
+          {visiblePermissionKeys.map((key) => (
             <div key={key} className="flex items-center justify-between px-4 py-3">
               <span className="text-sm text-gray-700">{PERMISSION_LABELS[key]}</span>
               <ToggleSwitch
@@ -416,6 +421,7 @@ export function EquipeTab({ initialDefaultPermissions, isMixte = false }: Equipe
         <PermissionsModal
           member={permissionsMember}
           defaults={defaults}
+          visiblePermissionKeys={visiblePermissionKeys}
           onClose={() => setPermissionsMember(null)}
           onSaved={(updated) => {
             setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -728,11 +734,13 @@ function triStateToOverride(value: TriState): boolean | undefined {
 function PermissionsModal({
   member,
   defaults,
+  visiblePermissionKeys = PERMISSION_KEYS,
   onClose,
   onSaved,
 }: {
   member: TeamMember;
   defaults: PermissionsRecord;
+  visiblePermissionKeys?: PermissionKey[];
   onClose: () => void;
   onSaved: (member: TeamMember) => void;
 }) {
@@ -809,7 +817,7 @@ function PermissionsModal({
   return (
     <ModalShell title="Permissions du commercial" onClose={onClose}>
       <div className="space-y-4">
-        {PERMISSION_KEYS.map((key) => (
+        {visiblePermissionKeys.map((key) => (
           <div key={key} className="space-y-1.5">
             <p className="text-sm font-medium text-gray-700">{PERMISSION_LABELS[key]}</p>
             <p className="text-xs text-gray-400">

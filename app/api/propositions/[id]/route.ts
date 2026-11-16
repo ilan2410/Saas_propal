@@ -1,5 +1,5 @@
 import { removeSubTemplateFiles } from '@/lib/templates/sub-template-server';
-import { CLIENT_TEMPLATE_COLUMNS } from '@/lib/security/client-data';
+import { CLIENT_TEMPLATE_COLUMNS, clientProposition } from '@/lib/security/client-data';
 import { organizationStoragePath } from '@/lib/security/storage-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -50,7 +50,7 @@ export async function GET(
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ proposition });
+    return NextResponse.json({ proposition: clientProposition(proposition) });
   } catch (error) {
     console.error('Error fetching proposition:', error);
     return NextResponse.json(

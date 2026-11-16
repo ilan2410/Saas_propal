@@ -29,7 +29,9 @@ export async function POST(
       return NextResponse.json({ error: 'Champ actif (boolean) requis' }, { status: 400 });
     }
 
-    const { data: member, error: memberError } = await supabase
+    const supabaseAdmin = createServiceClient();
+    const db = user.app_metadata?.role === 'admin' ? supabaseAdmin : supabase;
+    const { data: member, error: memberError } = await db
       .from('organization_members')
       .select('id, user_id, organization_id')
       .eq('id', id)
@@ -42,8 +44,6 @@ export async function POST(
     if (!member) {
       return NextResponse.json({ error: 'Membre introuvable' }, { status: 404 });
     }
-
-    const supabaseAdmin = createServiceClient();
 
     // Bloque réellement la connexion côté Supabase Auth (pas seulement un flag DB masqué côté UI)
     const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(member.user_id, {
