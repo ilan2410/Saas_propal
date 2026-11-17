@@ -14,6 +14,8 @@ export interface OrgPermissions {
   view_credits_billing: boolean;
   download_proposition: boolean;
   download_comparatif_sa_sp: boolean;
+  /** Envoyer une proposition en signature électronique (DocuSeal), si l'intégration est activée. */
+  send_signature: boolean;
 }
 
 export interface OrgContext {
@@ -46,6 +48,7 @@ const ALL_PERMISSIONS_TRUE: OrgPermissions = {
   view_credits_billing: true,
   download_proposition: true,
   download_comparatif_sa_sp: true,
+  send_signature: true,
 };
 
 // Valeur retenue pour un commercial quand ni l'override membre ni le défaut
@@ -59,6 +62,7 @@ export const PERMISSION_DEFAULTS: OrgPermissions = {
   view_credits_billing: false,
   download_proposition: true,
   download_comparatif_sa_sp: true,
+  send_signature: true,
 };
 
 const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
@@ -68,6 +72,7 @@ const PERMISSION_KEYS: (keyof OrgPermissions)[] = [
   'view_credits_billing',
   'download_proposition',
   'download_comparatif_sa_sp',
+  'send_signature',
 ];
 
 export function ownBooleanPermission(value: unknown, key: keyof OrgPermissions): boolean | undefined {

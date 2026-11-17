@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileSpreadsheet, Loader2, ChevronDown } from 'lucide-react';
+import { downloadPropositionDocument } from '@/lib/propositions/download-document';
 import { usePropositionGeneration, loadGenerationDocuments, type GenerationDocuments, type GenerationResult } from './usePropositionGeneration';
 interface GenerateButtonProps {
  propositionId: string; spVariantId?: string; variant?: 'primary' | 'secondary' | 'small'; className?: string;
@@ -19,7 +20,7 @@ export function GenerateButton({ propositionId, spVariantId, variant = 'primary'
    const failed = result.sub_templates?.filter(c => c.status === 'error') ?? [];
    if (failed.length) setError(failed.map(c => c.nom + ' : ' + c.error).join(' ; '));
    const url = target ? result.sub_templates.find(c => c.id === target)?.file_url : result.file_url;
-   if (download && url) window.open(url, '_blank', 'noopener,noreferrer');
+   if (download && url) await downloadPropositionDocument(propositionId, { variantId: spVariantId, annexId: target });
    onGenerated?.(result); router.refresh(); setDocs(await loadGenerationDocuments(propositionId, spVariantId));
   } catch(e) { setError(e instanceof Error ? e.message : 'Erreur de génération'); } finally { setBusy(false); }
  }

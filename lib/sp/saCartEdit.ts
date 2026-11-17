@@ -229,7 +229,7 @@ function readLine(
  *  - sinon → on liste les items `lignes` comptés.
  * Plus les éventuelles lignes résiduelles non encore matérialisées.
  */
-export function getSaEditableLines(situationActuelle: unknown): SaEditableLine[] {
+export function getSaEditableLines(situationActuelle: unknown, includeZeroAmounts = false): SaEditableLine[] {
   const sa = isRecord(situationActuelle) ? situationActuelle : {};
   const summary = calculateSaCartSummary({ situation_actuelle: sa });
   const pure = pureSummary(sa);
@@ -246,7 +246,7 @@ export function getSaEditableLines(situationActuelle: unknown): SaEditableLine[]
   } else {
     records(sa.lignes).forEach((item, i) => {
       const montant = pickMontant(item, ABO_PRICE_KEYS);
-      if (montant <= 0 && item._sa_residual !== true) return;
+      if (!includeZeroAmounts && montant <= 0 && item._sa_residual !== true) return;
       lines.push(readLine(item, `lignes:${i}`, 'abonnement', montant, sa));
       if (item._sa_residual === true) hasMaterializedAbo = true;
     });
@@ -408,6 +408,7 @@ function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
       montant,
       precision_montant: 'HT',
       _sa_uid: uid(),
+      _sa_added: true,
     });
     return;
   }
@@ -419,6 +420,7 @@ function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
       quantite,
       loyer_net_mensuel: montant,
       _sa_uid: uid(),
+      _sa_added: true,
     });
     return;
   }
@@ -433,6 +435,7 @@ function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
     tarif_net_mensuel: montant,
     _sa_uid: uid(),
     _sa_line_uid: linkUid,
+    _sa_added: true,
   });
   // En régime aboPrimary, la ligne ci-dessus est informative → on ajoute un item
   // `abonnements` lié pour que le montant soit bien compté dans le total.
@@ -444,6 +447,7 @@ function addLine(sa: Record<string, unknown>, input: SaAddInput): void {
       tarif_net_mensuel: montant,
       _sa_uid: uid(),
       _sa_line_uid: linkUid,
+      _sa_added: true,
     });
   }
 }
@@ -491,13 +495,19 @@ function applyPatchToItem(
   if (patch.quantite !== undefined && !isCharge) item.quantite = Math.max(1, Math.round(patch.quantite) || 1);
   if (patch.montant !== undefined) {
     const value = Math.max(0, patch.montant) || 0;
-    if (array === 'locations') item.loyer_net_mensuel = value;
+    if (array === 'locations') {
+      item.loyer_net_mensuel = value;
+      if (value === 0) delete item.loyer_brut_mensuel;
+    }
     else if (isCharge) {
       item.montant = value;
       // Les clés alternatives masqueraient la nouvelle valeur (`pickMontant`
       // ignore les montants nuls et passerait à la suivante).
       for (const key of CHARGE_PRICE_KEYS.slice(1)) delete item[key];
-    } else item.tarif_net_mensuel = value;
+    } else {
+      item.tarif_net_mensuel = value;
+      if (value === 0) delete item.tarif_brut_mensuel;
+    }
   }
   // Une fois éditée, une ligne résiduelle devient une ligne normale.
   if (item._sa_residual === true) delete item._sa_residual;
@@ -551,12 +561,19 @@ function deleteLine(sa: Record<string, unknown>, id: string): void {
     if (!Array.isArray(arr)) continue;
     for (const idx of indexes) arr.splice(idx, 1);
   }
+  // Extracted phone rows are informative while subscriptions are primary.
+  // Removing the last subscription must not resurrect those original prices.
+  if (target.array === 'abonnements' && rawArray(sa.abonnements).length === 0) sa.lignes = [];
 }
 
-/**
- * Applique une opération d'édition au panier SA et retourne le nouvel objet
- * `situation_actuelle` (immuable : l'entrée n'est pas modifiée).
- */
+/** Materialize aggregate amounts so editable row IDs remain stable on first input. */
+export function prepareSaForEditing(situationActuelle: unknown): Record<string, unknown> {
+  const sa = isRecord(situationActuelle) ? clone(situationActuelle) : {};
+  materializeResiduals(sa);
+  return sa;
+}
+
+/** Apply an edit immutably and synchronize all monthly total variables. */
 export function applySaEdit(
   situationActuelle: unknown,
   op: SaEditOp,

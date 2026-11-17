@@ -1,5 +1,6 @@
 'use client';
 
+import { isSaConfirmed } from '@/lib/sa/direct-confirmation';
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Bot, User, ChevronLeft, ChevronRight, ChevronDown, Pencil, Check, X, Loader2, GripHorizontal, Eye, EyeOff, Info, ExternalLink } from 'lucide-react';
@@ -3832,8 +3833,8 @@ export function SpQuestionnaireUI({
             <SaRealTimeCart
               donneesExtraites={donneesExtraites}
               spTotalMensuel={spReference}
-              onUpdateSaData={handleUpdateSaData}
-              onResetSaData={handleResetSaData}
+              onUpdateSaData={isSaConfirmed(donneesExtraites) ? undefined : handleUpdateSaData}
+              onResetSaData={isSaConfirmed(donneesExtraites) ? undefined : handleResetSaData}
             />
             <SpRealTimeCart
               reponses={reponses}

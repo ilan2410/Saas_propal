@@ -21,6 +21,8 @@ import { PropositionData } from './PropositionWizard';
 import { SaResumeRenderer } from '@/components/propositions/SaResumeRenderer';
 import { SaExtractionReview } from '@/components/propositions/SaExtractionReview';
 import type { InvoiceAnalysisReport } from '@/lib/sa/invoice-analysis';
+import { DirectSaEditor } from './DirectSaEditor';
+import { isSaConfirmed } from '@/lib/sa/direct-confirmation';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -44,8 +46,9 @@ interface Props {
   secteur: string;
   propositionData: Partial<PropositionData>;
   updatePropositionData: (data: Partial<PropositionData>) => void;
-  onNext: () => void;
+  onNext: (data?: UnknownRecord) => void;
   onPrev: () => void;
+  isModeDirect?: boolean;
 }
 
 // Compte le nombre total de champs (récursivement)
@@ -63,6 +66,7 @@ export function Step3ExtractData({
   updatePropositionData,
   onNext,
   onPrev,
+  isModeDirect = false,
 }: Props) {
   const initialExtractedData = isPlainObject(propositionData.donnees_extraites)
     && Object.keys(propositionData.donnees_extraites).length > 0
@@ -180,7 +184,7 @@ export function Step3ExtractData({
       alert('Veuillez d\'abord lancer l\'extraction');
       return;
     }
-    onNext();
+    onNext(extractedData ?? undefined);
   };
 
   const resume =
@@ -208,10 +212,13 @@ export function Step3ExtractData({
   // que les questions SP sont terminées (suggestions calculées sur ces données)
   // ou qu'une proposition de site a déjà été générée en mode multisite.
   const isReviewLocked =
+    isSaConfirmed(extractedData)
+    ||
     Boolean(propositionData.suggestions_sp_completes)
     || Boolean(propositionData.multisite_propositions?.some((entry) => entry.generated));
-  const canReview = Boolean(invoiceAnalysis && propositionData.proposition_id) && !isReviewLocked;
+  const canReview = !isModeDirect && Boolean(invoiceAnalysis && propositionData.proposition_id) && !isReviewLocked;
   const isReviewOpen = canReview && (requiresReview || reviewRequestedManually);
+  const showDirectEditor = isModeDirect && !isReviewLocked && Boolean(propositionData.proposition_id);
 
   return (
     <div className="space-y-8">
@@ -420,7 +427,18 @@ export function Step3ExtractData({
               </div>
             )}
 
+            {showDirectEditor && propositionData.proposition_id && <DirectSaEditor
+              propositionId={propositionData.proposition_id}
+              data={extractedData}
+              onConfirmed={next => {
+                setExtractedData(next);
+                updatePropositionData({ donnees_extraites: next });
+                onNext(next);
+              }}
+            />}
+
             {/* Message de confirmation */}
+            {!showDirectEditor && <>
             <div className={`${requiresReview && !isReviewLocked ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-xl p-4 max-w-2xl mx-auto`}>
               <div className="flex items-start gap-3">
                 {requiresReview && !isReviewLocked
@@ -445,7 +463,7 @@ export function Step3ExtractData({
                   {isReviewLocked && invoiceAnalysis && (
                     <p className="mt-3 flex items-center gap-2 text-xs text-green-700">
                       <Lock className="w-3.5 h-3.5 flex-shrink-0" />
-                      La vérification n&apos;est plus disponible : les questions SP sont terminées.
+                      La situation actuelle est confirmée et ne peut plus être modifiée.
                     </p>
                   )}
                 </div>
@@ -472,6 +490,7 @@ export function Step3ExtractData({
                 </div>
               </div>
             )}
+            </>}
           </div>
         )}
 
@@ -548,7 +567,7 @@ export function Step3ExtractData({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 mt-0.5">✏️</span>
-                <span>Vous pourrez vérifier et modifier toutes les données à l&apos;étape suivante</span>
+                <span>{isModeDirect ? 'Après extraction, corrigez la SA avant de la confirmer définitivement.' : 'Vous pourrez vérifier et modifier les données à l’étape suivante.'}</span>
               </li>
             </ul>
           </div>
@@ -566,7 +585,7 @@ export function Step3ExtractData({
           Précédent
         </button>
 
-        <div className="flex items-center gap-4">
+        {!showDirectEditor && <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">
             Étape 3 sur 3
           </span>
@@ -578,7 +597,7 @@ export function Step3ExtractData({
             Terminer
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

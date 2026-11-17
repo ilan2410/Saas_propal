@@ -51,7 +51,7 @@ export async function startCalendarOAuth(provider: CalendarProvider) {
 
 export async function finishCalendarOAuth(request: NextRequest, provider: CalendarProvider) {
   const baseUrl = process.env.NEXT_PUBLIC_URL || request.nextUrl.origin;
-  const settingsUrl = new URL('/settings?tab=calendriers', baseUrl);
+  const settingsUrl = new URL('/settings?tab=integrations&sub=calendriers', baseUrl);
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');
   const nonce = request.cookies.get(cookieName(provider))?.value;

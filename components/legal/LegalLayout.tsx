@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import Image from 'next/image';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import type { ReactNode } from 'react';
 
 export function LegalSection({
@@ -31,8 +31,7 @@ export function LegalLayout({
       <header className="border-b border-gray-200 bg-white">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="Logo" width={32} height={32} />
-            <span className="font-bold text-gray-900">Proboost</span>
+            <BrandLogo className="w-[200px]" />
           </Link>
         </div>
       </header>

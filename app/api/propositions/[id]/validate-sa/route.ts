@@ -7,6 +7,7 @@ import { InvoiceAnalysisReportSchema, calculateCanonicalSaAnalysis, hasTotalBloc
 import { StructuredSaSchema, buildLegacySaData } from '@/lib/sa/structure-sa';
 import { estimateResiliationFromSA, replaceIndemnitesSectionInResume } from '@/lib/sp/resiliation';
 import type { SpConfigResiliation } from '@/types';
+import { isSaConfirmed } from '@/lib/sa/direct-confirmation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .from('propositions')
     .select('id', { count: 'exact', head: true })
     .eq('parent_proposition_id', id);
-  if (proposition.suggestions_sp_completes || (childCount ?? 0) > 0) {
+  if (isSaConfirmed(proposition.filled_data) || proposition.suggestions_sp_completes || (childCount ?? 0) > 0) {
     return NextResponse.json(
       { error: "La vérification n'est plus possible : les questions SP sont terminées." },
       { status: 409 },

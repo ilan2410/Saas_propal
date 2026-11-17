@@ -36,11 +36,11 @@ import {
   ListOrdered,
   Type,
   Users,
-  CalendarDays,
+  Plug,
   Zap
 } from 'lucide-react';
 import { EquipeTab } from '@/components/client/settings/EquipeTab';
-import { CalendriersTab } from '@/components/client/settings/CalendriersTab';
+import { IntegrationsTab } from '@/components/client/settings/IntegrationsTab';
 import { SpQuestionsManager } from '@/components/settings/SpQuestionsManager';
 import { SpProduitPreferencesManager } from '@/components/settings/SpProduitPreferencesManager';
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
@@ -87,7 +87,7 @@ interface SettingsPageProps {
   };
 }
 
-type TabId = 'profil' | 'securite' | 'notifications' | 'calendriers' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
+type TabId = 'profil' | 'securite' | 'notifications' | 'integrations' | 'facturation' | 'donnees' | 'apparence' | 'sp' | 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
 
 const SP_QUESTIONS_SUBTAB_MAP: Array<{ id: QuestionsSpSubTabId; perm: keyof ClientConfigPermissions }> = [
   { id: 'questions', perm: 'sp_questions' },
@@ -101,13 +101,19 @@ const SP_QUESTIONS_SUBTAB_MAP: Array<{ id: QuestionsSpSubTabId; perm: keyof Clie
   { id: 'libelles', perm: 'sp_libelles' },
 ];
 
+/** `?tab=calendriers` (anciens liens) ouvre désormais l'onglet Intégrations. */
+function normalizeTabParam(value: string | null): TabId {
+  if (!value) return 'profil';
+  return (value === 'calendriers' ? 'integrations' : value) as TabId;
+}
+
 function getVisibleTabs(
   role?: OrgRole,
   permissions?: OrgPermissions,
   configPerms: ClientConfigPermissions = DEFAULT_CLIENT_CONFIG_PERMISSIONS,
 ): TabId[] {
   const isOwner = role === 'owner';
-  const base: TabId[] = ['profil', 'securite', 'calendriers'];
+  const base: TabId[] = ['profil', 'securite', 'integrations'];
   if (isOwner || permissions?.view_credits_billing) {
     base.push('facturation', 'donnees');
   }
@@ -296,7 +302,7 @@ export default function SettingsPage({
   const canShowSpQuestionsTab = visibleTabs.includes('sp-questions');
   const canShowSpCalculsTab = visibleTabs.includes('sp-calculs');
   const canShowSpRemisesTab = visibleTabs.includes('sp-remises');
-  const requestedTab = (searchParams.get('tab') as TabId) || 'profil';
+  const requestedTab = normalizeTabParam(searchParams.get('tab'));
   const currentTab = visibleTabs.includes(requestedTab) ? requestedTab : 'profil';
   // Un commercial n'a pas la main sur les champs société (nom, logo, siret, adresse, code postal,
   // ville, email) : ils sont gérés par le compte principal (propriétaire) et affichés en lecture seule.
@@ -476,7 +482,7 @@ export default function SettingsPage({
   }>({ propositionsCount: null, transactionsCount: null, isLoading: false });
 
   useEffect(() => {
-    const tab = searchParams.get('tab') as TabId;
+    const tab = normalizeTabParam(searchParams.get('tab'));
     const nextTab = tab && visibleTabs.includes(tab) ? tab : 'profil';
     if (nextTab !== activeTab) {
       setActiveTab(nextTab);
@@ -1169,7 +1175,7 @@ export default function SettingsPage({
         >
           <option value="profil">Profil & Entreprise</option>
           <option value="securite">Sécurité</option>
-          <option value="calendriers">Calendriers</option>
+          <option value="integrations">Intégrations</option>
           {canViewBilling && <option value="facturation">Facturation</option>}
           {canViewBilling && <option value="donnees">Données</option>}
           {canShowSpQuestionsTab && <option value="sp-questions">SP situation proposée</option>}
@@ -1183,7 +1189,7 @@ export default function SettingsPage({
       <div className="hidden md:flex flex-wrap gap-2 border-b border-gray-200 pb-2">
         <TabButton id="profil" label="Profil & Entreprise" icon={Building} />
         <TabButton id="securite" label="Sécurité" icon={Shield} />
-        <TabButton id="calendriers" label="Calendriers" icon={CalendarDays} />
+        <TabButton id="integrations" label="Intégrations" icon={Plug} />
         {canViewBilling && <TabButton id="facturation" label="Facturation" icon={CreditCard} />}
         {canViewBilling && <TabButton id="donnees" label="Données" icon={Database} />}
         {canShowSpQuestionsTab && <TabButton id="sp-questions" label="SP situation proposée" icon={Bot} />}
@@ -1194,7 +1200,7 @@ export default function SettingsPage({
 
       {/* Content Area */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm min-h-[400px]">
-        {activeTab === 'calendriers' && <CalendriersTab />}
+        {activeTab === 'integrations' && <IntegrationsTab isOwner={role === 'owner'} />}
         
         {/* SECTION 1: PROFIL */}
         {activeTab === 'profil' && (
@@ -3072,6 +3078,7 @@ export default function SettingsPage({
               view_credits_billing: organization.commercial_default_permissions?.view_credits_billing ?? false,
               download_proposition: organization.commercial_default_permissions?.download_proposition ?? true,
               download_comparatif_sa_sp: organization.commercial_default_permissions?.download_comparatif_sa_sp ?? true,
+              send_signature: organization.commercial_default_permissions?.send_signature ?? true,
             }}
           />
         )}

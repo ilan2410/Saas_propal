@@ -51,6 +51,7 @@ prompt.md
 # fichier md
 *.md
 !PRODUCT.md
+!docs/landing-product-review.md
 
 # MCP config (contient des clés API en clair)
 /.mcp.json
@@ -61,6 +62,7 @@ prompt.md
 /outputs/
 /output/
 /tmp/
+/.tmp/
 /demo-template-work/
 /.dbg/
 /.claude/settings.local.json
@@ -68,6 +70,8 @@ __pycache__/
 *.py[cod]
 /lint.json
 /lint_report*.txt
+# Obsolete source backups
+*.ts.new
 /proposition-commerciale-demo-novalis.docx
 /file_000000001ba881f5b293b5430903f82c.png
 /C*scratchpadverification_checklist.txt

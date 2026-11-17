@@ -10,6 +10,7 @@ const PERMISSION_KEYS = [
   'view_credits_billing',
   'download_proposition',
   'download_comparatif_sa_sp',
+  'send_signature',
 ] as const;
 
 // PATCH /api/settings/team/members/[id] — édition des infos + permissions d'un commercial (propriétaire uniquement)

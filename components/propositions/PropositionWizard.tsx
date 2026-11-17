@@ -199,8 +199,8 @@ export function PropositionWizard({
   };
 
   // Called after Step3 extraction succeeds
-  const handleAfterExtraction = async () => {
-    const donnees = propositionData.donnees_extraites ?? {};
+  const handleAfterExtraction = async (confirmedData?: Record<string, unknown>) => {
+    const donnees = confirmedData ?? propositionData.donnees_extraites ?? {};
     const sites = extractSiteStats(donnees);
 
     if (sites.length > 1) {
@@ -461,6 +461,7 @@ export function PropositionWizard({
         {currentStep === 3 && (
           <div id="step3-extracted-data">
             <Step3ExtractData
+              isModeDirect={isSelectedTemplateModeDirect()}
               secteur={selectedSecteur}
               propositionData={propositionData}
               updatePropositionData={updatePropositionData}

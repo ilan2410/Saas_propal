@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requiresSaConfirmation, isSaConfirmed } from '@/lib/sa/direct-confirmation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { SuggestionsSpCompletes, SpLigneMobile, SpLigneFixe, SpInternet, SpMateriel, SpQuestionReponse, SpAdresse, WordConfig, CatalogueProduit, SpTauxDuree, SpSituationProposeeLigne, SpMaterielDetail, SpBdcOperateurLigne, SpBdcInternetLigne, SpBdcMaterielLigne, SpCadeauLigne, SpQuestion, SpConfigLoyer, SpConfigResiliation, SpProduitLibre, SpConfigMoisOfferts, SpCategorie, SpTableProductOrders } from '@/types';
 import { orderProductBuckets } from '@/lib/sp/categoryOrder';
@@ -1040,7 +1041,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const {
-      situation_actuelle,
       catalogue,
       preferences,
       proposition_id,
@@ -1048,6 +1048,7 @@ export async function POST(request: NextRequest) {
       force_regenerate,
       sp_fas_total,
     } = body ?? {};
+    let situation_actuelle = body?.situation_actuelle;
 
     if (typeof proposition_id === 'string' && proposition_id.length > 0 && await propositionSecteurBlocked(ctx, proposition_id)) {
       return NextResponse.json({ error: SECTEUR_FORBIDDEN_MESSAGE }, { status: 403 });
@@ -1062,13 +1063,20 @@ export async function POST(request: NextRequest) {
       const { data: proposition, error: propError } = await scopePropositionsQuery(
         supabase
           .from('propositions')
-          .select('id, suggestions_sp_completes')
+          .select('id, suggestions_sp_completes, extracted_data, filled_data')
           .eq('id', proposition_id),
         ctx
       ).single();
 
       if (propError || !proposition) {
         return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+      }
+
+      if (requiresSaConfirmation({ ...proposition.extracted_data, ...proposition.filled_data })) {
+        return NextResponse.json({ error: 'Veuillez valider et confirmer la SA avant de préparer la SP.' }, { status: 409 });
+      }
+      if (isSaConfirmed(proposition.filled_data)) {
+        situation_actuelle = { ...proposition.extracted_data, ...proposition.filled_data };
       }
 
       if (proposition.suggestions_sp_completes && !force_regenerate) {

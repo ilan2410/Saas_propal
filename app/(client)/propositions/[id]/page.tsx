@@ -5,6 +5,7 @@ import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
 import { CLIENT_TEMPLATE_COLUMNS, clientExtractedData } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
+import { requiresSaConfirmation } from '@/lib/sa/direct-confirmation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -23,6 +24,7 @@ import {
 import { formatDate } from '@/lib/utils/formatting';
 import { SuggestionsPanel } from '@/components/propositions/PropositionDetailClient';
 import { GenerateButton } from '@/components/propositions/GenerateButton';
+import { PropositionSignature } from '@/components/propositions/PropositionSignature';
 import { PropositionRowMenu } from '@/components/propositions/PropositionRowMenu';
 import { PropositionStatusBadge } from '@/components/propositions/PropositionStatusBadge';
 import { StatutCommercialSelect } from '@/components/propositions/StatutCommercialSelect';
@@ -157,7 +159,10 @@ export default async function PropositionDetailPage({
   const spProposition = selectedVariant ? applySpVariant(proposition, selectedVariant) : proposition;
 
   const extractedDataRaw = proposition.extracted_data || proposition.donnees_extraites || {};
-  const extractedDataRecord: Record<string, unknown> = isRecord(extractedDataRaw) ? extractedDataRaw : {};
+  const extractedDataRecord: Record<string, unknown> = {
+    ...(isRecord(extractedDataRaw) ? extractedDataRaw : {}),
+    ...(isRecord(proposition.filled_data) ? proposition.filled_data : {}),
+  };
   const normalizeKey = (k: string) =>
     k
       .trim()
@@ -284,6 +289,7 @@ export default async function PropositionDetailPage({
     ? (templateFileCfg.sp_config_mode_direct as unknown as SpConfigModeDirect)
     : undefined;
   const isModeDirect = spConfigModeDirect?.actif === true;
+  if (requiresSaConfirmation(donneesExtraitesForCalc)) redirect(`/propositions/${id}/resume`);
   const hasGeneratedFile = Boolean(spProposition.duplicated_template_url || spProposition.fichier_genere_url);
   const showSpResumeSection = Boolean(suggestionsSpCompletes || spReponses.length > 0 || isModeDirect);
 
@@ -389,6 +395,10 @@ export default async function PropositionDetailPage({
                   label="Télécharger"
                   icon={<Download className="h-4 w-4" />}
                 />
+              )}
+
+              {hasGeneratedFile && template?.file_type === 'word' && (
+                <PropositionSignature key={variantId ?? 'principale'} propositionId={proposition.id} spVariantId={variantId} />
               )}
 
               {canDownloadComparatifSaSp && (proposition.suggestions_sp_completes || isModeDirect) && (

@@ -9,12 +9,13 @@ import { resolveDynamicWordVar } from './dynamic-vars';
 import { buildPropositionBaseData, type GenerateOptions } from './base-data';
 import { isPlainObject, setNestedValue, findValueInData, type UnknownRecord } from './data-utils';
 import { formatValueForWord } from './word-data-utils';
+import { PARAPHE_CLIENT_VARIABLE, PARAPHE_PLACEHOLDER, SIGNATURE_CLIENT_VARIABLE, SIGNATURE_PLACEHOLDER } from '@/lib/docuseal/signature-tags';
 
 /**
  * Génère un fichier Word (placeholder pour l'instant)
  */
-export async function generateWordFile(options: GenerateOptions): Promise<string> {
-  const { template, donnees, organization_id } = options;
+async function fetchWordTemplate(options: GenerateOptions): Promise<ArrayBuffer> {
+  const { template, organization_id } = options;
 
   if (!template.file_url) {
     throw new Error('URL du template manquante. Le fichier template n\'a pas été uploadé correctement.');
@@ -29,13 +30,17 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
     throw new Error(`Impossible de télécharger le template (${response.status}). Vérifiez que le fichier existe dans le storage.`);
   }
 
-  const templateBuffer = await response.arrayBuffer();
+  return response.arrayBuffer();
+}
 
-  const uint8Array = await renderWordProposition(templateBuffer, options);
-  const baseData = isPlainObject(donnees) ? donnees : {};
+/** Rend la proposition Word en mémoire, sans l'enregistrer dans le storage. */
+export async function renderWordPropositionFromTemplate(options: GenerateOptions): Promise<Uint8Array> {
+  return renderWordProposition(await fetchWordTemplate(options), options);
+}
 
-  const supabase = createServiceClient();
-
+/** Nom de fichier lisible pour la proposition générée (ex: ACME_Proposition.docx). */
+export function wordPropositionFileName(options: GenerateOptions): string {
+  const baseData = isPlainObject(options.donnees) ? options.donnees : {};
   let clientName = 'Proposition';
   const raisonSociale =
     findValueInData(baseData, 'raison_sociale') ||
@@ -51,7 +56,15 @@ export async function generateWordFile(options: GenerateOptions): Promise<string
       .replace(/\s+/g, '_');
   }
 
-  const fileName = generatedFileName(clientName, 'docx', options.document_name, options.variant_name);
+  return generatedFileName(clientName, 'docx', options.document_name, options.variant_name);
+}
+
+export async function generateWordFile(options: GenerateOptions): Promise<string> {
+  const { template, organization_id } = options;
+
+  const uint8Array = await renderWordPropositionFromTemplate(options);
+  const supabase = createServiceClient();
+  const fileName = wordPropositionFileName(options);
   const filePath = `generated/${organization_id}/${options.proposition_id}/${template.id}/${crypto.randomUUID()}/${fileName}`;
 
   const { error: uploadError } = await supabase.storage.from('templates').upload(filePath, uint8Array, {
@@ -96,6 +109,12 @@ export async function renderWordProposition(templateBuffer: ArrayBuffer, options
   // Ordre de priorité : base (flat SA < SA < SP < clauses < référence) < mapping utilisateur.
   const propositionBase = buildPropositionBaseData(options);
   const finalData = orderTablePhoneRows(withTableTotals({ ...propositionBase, ...mappedData }), fileConfig.prioriserLignesAvecNumero === true);
+  // {{signature_client}} : vide dans le document téléchargé ; en mode signature, un
+  // marqueur neutre (insensible au mode majuscules) remplacé ensuite par la balise
+  // DocuSeal (cf. lib/docuseal/signature-tags.ts).
+  finalData[SIGNATURE_CLIENT_VARIABLE] = options.signatureMode ? SIGNATURE_PLACEHOLDER : '';
+  // {{paraphe_client}} (pied de page → chaque page) : même principe.
+  finalData[PARAPHE_CLIENT_VARIABLE] = options.signatureMode ? PARAPHE_PLACEHOLDER : '';
 
   // Date de référence des variables dynamiques {{sp_date_limite_souscription[-N]}}.
   const propositionCreatedAt = options.proposition_created_at ?? new Date();

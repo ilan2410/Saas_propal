@@ -1,6 +1,7 @@
 'use client';
 
 import { GenerateButton } from './GenerateButton';
+import { PropositionSignature } from './PropositionSignature';
 import { usePropositionGeneration } from './usePropositionGeneration';
 
 import { useState } from 'react';
@@ -169,6 +170,9 @@ export function Step5Generate({
             <p className="text-gray-600 mb-6">Votre fichier est prêt à être téléchargé</p>
             <div className="flex flex-wrap gap-3 justify-center">
               <GenerateButton propositionId={propositionData.proposition_id!} label="Télécharger" variant="secondary" />
+              {propositionData.proposition_id && (
+                <PropositionSignature propositionId={propositionData.proposition_id} buttonClassName="h-auto px-4 py-3" />
+              )}
               {canDownloadComparatifSaSp && propositionData.suggestions_sp_completes && propositionData.proposition_id && (
                 <>
                   <a

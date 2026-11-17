@@ -34,6 +34,8 @@ export interface GenerateOptions {
   sp_reference?: string | null;
   /** Profil Entreprise (organizations) → variables Word {{entreprise_*}}. */
   organization_profile?: EntrepriseOrgFields | null;
+  /** Rendu destiné à la signature électronique : {{signature_client}} reçoit le marqueur DocuSeal. */
+  signatureMode?: boolean;
 }
 
 /**

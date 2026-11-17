@@ -203,7 +203,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
       getStr(raw, 'libelle') || getStr(raw, 'materiel') || getStr(raw, 'libelle_contrat') || 'Location';
     const operateur = getStr(raw, 'leaser') || getStr(raw, 'operateur');
     const key = dedupeKey(libelle, montant);
-    if (locationKeys.has(key)) continue;
+    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    if (locationKeys.has(rowKey)) continue;
+    locationKeys.add(rowKey);
     locationKeys.add(key);
     const montantKey = montant.toFixed(2);
     const set = locationLibellesByMontant.get(montantKey) ?? new Set<string>();
@@ -227,10 +229,11 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     const libelle = getStr(raw, 'libelle') || getStr(raw, 'libelle_contrat') || 'Abonnement';
     const operateur = getStr(raw, 'operateur');
     const key = dedupeKey(libelle, montant);
-    if (seenAbo.has(key)) continue;
-    seenAbo.add(key);
+    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    if (seenAbo.has(rowKey)) continue;
+    seenAbo.add(rowKey);
     // Exclu si chevauchement avec une location (= matériel loué déjà compté ailleurs)
-    if (isOverlap(key, libelle, montant, locationKeys, locationLibellesByMontant)) continue;
+    if (raw._sa_added !== true && isOverlap(key, libelle, montant, locationKeys, locationLibellesByMontant)) continue;
     abonnementsTotal += montant;
     details.push({ libelle, categorie: 'abonnement', operateur, montant });
   }
@@ -247,7 +250,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   let lignesInternet = 0;
   for (const raw of lignes) {
     if (!isRecord(raw)) continue;
-    const montant = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
+    const montant = round2(pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']) * pickQuantite(raw));
     if (montant === 0) continue;
     const type = (getStr(raw, 'type') ?? '').toLowerCase();
     const libelle =
@@ -257,8 +260,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
       'Ligne';
     const operateur = getStr(raw, 'operateur');
     const key = dedupeKey(libelle, montant);
-    if (seenLigne.has(key)) continue;
-    seenLigne.add(key);
+    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    if (seenLigne.has(rowKey)) continue;
+    seenLigne.add(rowKey);
     let categorie: SaCartLine['categorie'] = 'autre';
     if (type === 'fixe') {
       lignesFixes += montant;
@@ -324,8 +328,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
       getStr(raw, 'libelle') || getStr(raw, 'type') || 'Charge variable';
     const operateur = getStr(raw, 'operateur') || getStr(raw, 'document');
     const key = dedupeKey(libelle, montant);
-    if (seenCharge.has(key)) continue;
-    seenCharge.add(key);
+    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    if (seenCharge.has(rowKey)) continue;
+    seenCharge.add(rowKey);
     chargesVariables += montant;
     details.push({ libelle, categorie: 'variable', operateur, montant: round2(montant) });
   }

@@ -18,6 +18,7 @@ import { validateDeepSeekApiKey } from '@/lib/ai/deepseek';
 import { runAndLogAiUsage } from '@/lib/ai/usage-log';
 import { buildExtractionQuote, getUsdToEurRate, resolveExtractionSetup } from '@/lib/propositions/extraction-quote';
 import { BUREAUTIQUE_DEFAULT_PROMPT } from '@/lib/templates/bureautique-prompt';
+import { isSaConfirmed } from '@/lib/sa/direct-confirmation';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -580,6 +581,10 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
         return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
       }
 
+      if (isSaConfirmed(existingProp.filled_data)) {
+        return NextResponse.json({ error: 'La SA est confirmée et ne peut plus être modifiée.' }, { status: 409 });
+      }
+
       const { data: updated, error: updateDraftError } = await serviceSupabase
         .from('propositions')
         .update({
@@ -744,6 +749,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       secteurTemplate === 'bureautique'
         ? ensureBureautiqueArraysCount(enrichedExtractedData, copieursCount)
         : enrichedExtractedData;
+    if (templateWordConfig.sp_config_mode_direct?.actif === true) {
+      extractedDataFinal._sa_confirmation_required = true;
+      extractedDataFinal._sa_edit_context = {
+        resiliation_config: resiliationConfig ?? null, reference_date: propositionCreatedAt,
+        revision: crypto.randomUUID(),
+      };
+    }
     const extractionControl = isRecord(extractedDataFinal._extraction_control)
       ? extractedDataFinal._extraction_control
       : null;
@@ -822,7 +834,7 @@ Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
       .update({
         extracted_data: extractedDataFinal,
         statut: requiresReview ? 'extracted' : 'ready',
-        current_step: requiresReview ? 3 : 4,
+        current_step: requiresReview || extractedDataFinal._sa_confirmation_required ? 3 : 4,
       })
       .eq('id', proposition.id);
 

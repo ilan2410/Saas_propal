@@ -8,6 +8,9 @@ import { canUseTemplate, resolveOrgContext, TEMPLATE_FORBIDDEN_MESSAGE, SECTEUR_
 import { scopePropositionsQuery, propositionSecteurBlocked } from '@/lib/propositions/visibility';
 import { isStatutCommercial } from '@/lib/propositions/status';
 import { syncSourceDocumentsAsAttachments } from '@/lib/propositions/source-documents';
+import { isSaConfirmed, isRecord } from '@/lib/sa/direct-confirmation';
+import { clientExtractedData } from '@/lib/security/client-data';
+import { isDeepStrictEqual } from 'node:util';
 
 export async function PATCH(
   request: NextRequest,
@@ -59,9 +62,34 @@ export async function PATCH(
     // Construire l'objet de mise à jour (sans updated_at car la colonne n'existe pas)
     const updateData: Record<string, unknown> = {};
 
+    const { data: currentSaProposal } = await scopePropositionsQuery(
+      supabase.from('propositions').select('filled_data, extracted_data, template_id').eq('id', id), ctx,
+    ).maybeSingle();
+    if (!currentSaProposal) return NextResponse.json({ error: 'Proposition introuvable' }, { status: 404 });
+    const confirmed = isSaConfirmed(currentSaProposal.filled_data);
+    if (confirmed && (body.extracted_data !== undefined
+      || (body.template_id !== undefined && body.template_id !== currentSaProposal.template_id))) {
+      return NextResponse.json({ error: 'La SA est confirmée et ne peut plus être modifiée.' }, { status: 409 });
+    }
+
     // Mapper les champs selon le schéma de la BDD
     if (body.filled_data !== undefined) {
-      updateData.filled_data = body.filled_data;
+      if (!isRecord(body.filled_data)) return NextResponse.json({ error: 'Données invalides' }, { status: 400 });
+      if (confirmed) {
+        const stored = { ...currentSaProposal.extracted_data, ...currentSaProposal.filled_data };
+        const visible = clientExtractedData(stored);
+        const supplied = clientExtractedData(body.filled_data);
+        // Billing identity belongs to the SP; all supplied SA values must match.
+        const changed = Object.keys(supplied).some(key => !key.startsWith('_')
+          && key !== 'client' && !key.startsWith('client.')
+          && !isDeepStrictEqual(supplied[key], visible[key]));
+        if (changed) return NextResponse.json({ error: 'La SA est confirmée et ne peut plus être modifiée.' }, { status: 409 });
+        updateData.filled_data = { ...stored, ...variantClientData(body.filled_data) };
+      } else {
+        const next = { ...body.filled_data };
+        delete next._sa_confirmation; // Only confirm-sa may create a confirmation.
+        updateData.filled_data = next;
+      }
     }
     if (body.extracted_data !== undefined) {
       updateData.extracted_data = body.extracted_data;

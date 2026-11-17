@@ -61,6 +61,7 @@ export interface Organization {
     view_credits_billing: boolean;
     download_proposition: boolean;
     download_comparatif_sa_sp: boolean;
+    send_signature?: boolean;
   };
 
   created_at: string;

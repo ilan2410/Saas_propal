@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 
@@ -55,16 +55,8 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <Image
-              src="/logo.png"
-              alt="Logo"
-              width={56}
-              height={56}
-              className="mx-auto mb-4"
-            />
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Proboost
-            </h1>
+            <BrandLogo className="mx-auto mb-4 block w-full max-w-[280px]" priority />
+            <h1 className="sr-only">Proboost</h1>
             <p className="text-gray-600">
               Connectez-vous à votre compte
             </p>

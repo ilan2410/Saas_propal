@@ -1,6 +1,7 @@
 import { CLIENT_TEMPLATE_COLUMNS, clientExtractedData, clientTemplate } from '@/lib/security/client-data';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect, notFound } from 'next/navigation';
+import { requiresSaConfirmation } from '@/lib/sa/direct-confirmation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { PropositionWizard } from '@/components/propositions/PropositionWizard';
@@ -69,7 +70,7 @@ export default async function ResumePropositionPage({
     ? sourceDocuments.filter((url): url is string => typeof url === 'string')
     : [];
 
-  const dataRaw = proposition.filled_data ?? proposition.extracted_data ?? {};
+  const dataRaw = { ...(proposition.extracted_data ?? {}), ...(proposition.filled_data ?? {}) };
   const dataToEdit: Record<string, unknown> =
     dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw)
       ? clientExtractedData(dataRaw as Record<string, unknown>)
@@ -110,7 +111,8 @@ export default async function ResumePropositionPage({
 
   // En Mode direct, si l'extraction est déjà disponible et qu'il n'y a pas de revue SA bloquante,
   // toute l'édition se passe directement dans le Résumé SP de la fiche détail.
-  if (isModeDirect && !requiresExtractionReview && (hasExtractedData || hasFilledData)) {
+  const pendingSaConfirmation = requiresSaConfirmation(dataToEdit);
+  if (isModeDirect && !pendingSaConfirmation && !requiresExtractionReview && (hasExtractedData || hasFilledData)) {
     redirect(`/propositions/${id}`);
   }
 
@@ -139,7 +141,7 @@ export default async function ResumePropositionPage({
   // ramène sur l'étape 3 tant que l'utilisateur n'a pas avancé, mais `baseStep`
   // (max avec current_step persisté) le laisse repartir plus loin s'il a choisi
   // de continuer sans corriger.
-  const initialStep = Math.max(
+  const initialStep = pendingSaConfirmation ? 3 : Math.max(
     1,
     Math.min(5, Number.isFinite(stepFromQuery) ? stepFromQuery : baseStep)
   );

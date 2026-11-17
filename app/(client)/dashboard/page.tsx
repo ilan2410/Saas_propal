@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
 import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
+import { TutorialVideoDialog } from '@/components/shared/TutorialVideo';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
 import { resolvePropositionClientName } from '@/lib/propositions/clientName';
@@ -167,7 +168,8 @@ export default async function ClientDashboard() {
                 })}
               </p>
             </div>
-            <div className="flex gap-3 items-center">
+            <div className="flex flex-col items-start md:items-end">
+              <div className="flex flex-wrap gap-3 items-center">
               <Link
                 href="/templates"
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-all font-medium"
@@ -181,6 +183,8 @@ export default async function ClientDashboard() {
                 <Sparkles className="w-4 h-4" />
                 Nouvelle proposition
               </Link>
+              </div>
+              <TutorialVideoDialog />
             </div>
           </div>
         </div>

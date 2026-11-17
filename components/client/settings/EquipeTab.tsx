@@ -24,7 +24,8 @@ export type PermissionKey =
   | 'manage_templates'
   | 'view_credits_billing'
   | 'download_proposition'
-  | 'download_comparatif_sa_sp';
+  | 'download_comparatif_sa_sp'
+  | 'send_signature';
 
 export const PERMISSION_KEYS: PermissionKey[] = [
   'view_all_propositions',
@@ -33,6 +34,7 @@ export const PERMISSION_KEYS: PermissionKey[] = [
   'view_credits_billing',
   'download_proposition',
   'download_comparatif_sa_sp',
+  'send_signature',
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -42,6 +44,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   view_credits_billing: 'Voir crédits & facturation',
   download_proposition: 'Télécharger la proposition',
   download_comparatif_sa_sp: 'Télécharger les comparatifs SA/SP',
+  send_signature: 'Envoyer en signature électronique',
 };
 
 export type PermissionsRecord = Record<PermissionKey, boolean>;
@@ -102,6 +105,7 @@ const EMPTY_DEFAULTS: PermissionsRecord = {
   view_credits_billing: false,
   download_proposition: true,
   download_comparatif_sa_sp: true,
+  send_signature: true,
 };
 
 function ToggleSwitch({

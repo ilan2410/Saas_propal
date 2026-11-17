@@ -456,7 +456,7 @@ export function PropositionNoteDialog({
                           return <button key={`${agenda.connectionId}:${agenda.id}`} type="button" onClick={() => toggleAgenda(key)} className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"><span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', checked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white')}><Check className={cn('h-3 w-3', !checked && 'opacity-0')} /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm text-slate-800">{agenda.name}</span><span className="block truncate text-xs text-slate-500">{agenda.provider === 'google' ? 'Google' : 'Outlook'} · {agenda.accountLabel}</span></span></button>;
                         })}
                       </div>
-                    ) : <a href="/settings?tab=calendriers" className="inline-flex text-sm font-medium text-blue-700 underline-offset-4 hover:underline">Connecter Google ou Outlook</a>}
+                    ) : <a href="/settings?tab=integrations&sub=calendriers" className="inline-flex text-sm font-medium text-blue-700 underline-offset-4 hover:underline">Connecter Google ou Outlook</a>}
                     {preservedTargets.length > 0 && <p className="text-xs text-slate-500">Les agendas du créateur resteront synchronisés.</p>}
                   </div>
                 </div>

@@ -40,6 +40,19 @@ function previewKind(mimeType: string): PreviewKind {
   return 'unsupported';
 }
 
+/** Aperçu Word fidèle via Google Docs Viewer (l'URL doit être accessible publiquement, idéalement signée et courte). */
+export function WordViewerFrame({ url, title }: { url: string; title: string }) {
+  const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <iframe src={viewerUrl} title={title} className="min-h-0 w-full flex-1 rounded-md border border-slate-200" />
+      <p className="shrink-0 text-xs text-slate-500">
+        Aperçu généré par Google Docs Viewer : le document est transmis à Google pour l’affichage.
+      </p>
+    </div>
+  );
+}
+
 function AttachmentPreviewBody({ attachment, url }: { attachment: PropositionAttachment; url: string }) {
   const kind = previewKind(attachment.mimeType);
   if (kind === 'image') {
@@ -49,15 +62,7 @@ function AttachmentPreviewBody({ attachment, url }: { attachment: PropositionAtt
     return <iframe src={url} title={attachment.originalName} className="h-full w-full rounded-md border border-slate-200" />;
   }
   if (kind === 'word') {
-    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <iframe src={viewerUrl} title={attachment.originalName} className="min-h-0 w-full flex-1 rounded-md border border-slate-200" />
-        <p className="shrink-0 text-xs text-slate-500">
-          Aperçu généré par Google Docs Viewer : le document est transmis à Google pour l’affichage.
-        </p>
-      </div>
-    );
+    return <WordViewerFrame url={url} title={attachment.originalName} />;
   }
   if (kind === 'excel') {
     return (

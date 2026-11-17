@@ -19,6 +19,7 @@ import {
   Loader2,
   CheckCircle2,
   Lock,
+  Plug,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
@@ -46,8 +47,9 @@ import { SpResiliationManager } from '@/components/settings/SpResiliationManager
 import { SpDiscountRulesManager } from '@/components/settings/SpDiscountRulesManager';
 import { SpCodesPromoManager } from '@/components/settings/SpCodesPromoManager';
 import { EquipeTab } from '@/components/client/settings/EquipeTab';
+import { SignatureTab } from '@/components/client/settings/SignatureTab';
 
-type AdminConfigTabId = 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe';
+type AdminConfigTabId = 'sp-questions' | 'sp-calculs' | 'sp-remises' | 'equipe' | 'integrations';
 type CalculsSubTabId = 'loyer' | 'resiliation';
 type RemisesSubTabId = 'regles_remise' | 'codes_promo';
 type QuestionsSpSubTabId =
@@ -494,7 +496,7 @@ export function AdminClientConfigWorkspace({
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-200 bg-gray-50/60">
           <h2 className="text-xl font-bold text-gray-900">
-            Configuration complète du client (SP, Calculs, Remises &amp; Équipe)
+            Configuration complète du client (SP, Calculs, Remises, Équipe &amp; Intégrations)
           </h2>
           <p className="text-sm text-gray-600 mt-1">
             Paramétrez l&apos;intégralité du moteur SP et de l&apos;équipe pour{' '}
@@ -549,6 +551,18 @@ export function AdminClientConfigWorkspace({
             >
               <Users className="w-4 h-4" />
               Équipe commerciale &amp; Télépros
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('integrations')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'integrations'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <Plug className="w-4 h-4" />
+              Intégrations
             </button>
           </div>
         </div>
@@ -902,6 +916,15 @@ export function AdminClientConfigWorkspace({
             </div>
           )}
 
+          {activeTab === 'integrations' && (
+            <div>
+              <SignatureTab key={organization.id} isOwner adminOrgId={organization.id} />
+              <p className="px-6 pb-6 text-xs text-gray-500">
+                Les connexions calendrier (Google, Outlook) sont personnelles à chaque utilisateur et se gèrent uniquement depuis son propre compte.
+              </p>
+            </div>
+          )}
+
           {activeTab === 'equipe' && (
             <EquipeTab
               isMixte={organization.secteur === 'mixte'}
@@ -918,6 +941,8 @@ export function AdminClientConfigWorkspace({
                   organization.commercial_default_permissions?.download_proposition ?? true,
                 download_comparatif_sa_sp:
                   organization.commercial_default_permissions?.download_comparatif_sa_sp ?? true,
+                send_signature:
+                  organization.commercial_default_permissions?.send_signature ?? true,
               }}
             />
           )}

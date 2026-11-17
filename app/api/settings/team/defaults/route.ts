@@ -9,6 +9,7 @@ const PERMISSION_KEYS = [
   'view_credits_billing',
   'download_proposition',
   'download_comparatif_sa_sp',
+  'send_signature',
 ] as const;
 
 // PATCH /api/settings/team/defaults — permissions par défaut appliquées à tous les commerciaux de l'organisation

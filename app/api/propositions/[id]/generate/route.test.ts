@@ -57,6 +57,34 @@ vi.mock('@/lib/excel/comparatif-sa-sp-generator', () => ({ generateComparatifSaS
 vi.mock('@/lib/word/comparatif-sa-sp-generator', () => ({ generateComparatifSaSpWord: async () => Buffer.from('word') }));
 vi.mock('@/lib/sp/buildExportSaSpData', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/sp/buildExportSaSpData')>(), buildExportSaSpData: (...args: unknown[]) => state.exportData(...args) }));
 const params = { params: Promise.resolve({ id: 'proposal' }) };
+describe('confirmed SA guards', () => {
+ it('requires confirmation before document generation', async () => {
+  state.tables.propositions[0].extracted_data._sa_confirmation_required = true;
+  expect((await POST(request('POST'), params)).status).toBe(409);
+  expect(state.generate).not.toHaveBeenCalled();
+ });
+ it('rejects SA edits after confirmation', async () => {
+  state.tables.propositions[0].filled_data = {
+   _sa_confirmation: { confirmed_at: '2026-11-17T10:00:00Z' }, situation_actuelle: { total_loyer_mensuel: 100 },
+  };
+  expect((await updateProposition(request('PATCH', { filled_data: { situation_actuelle: { total_loyer_mensuel: 1 } } }), params)).status).toBe(409);
+  expect(state.tables.propositions[0].filled_data.situation_actuelle.total_loyer_mensuel).toBe(100);
+ });
+ it('allows SP billing edits while preserving the SA confirmation and totals', async () => {
+  state.tables.propositions[0].filled_data = {
+   _sa_confirmation: { confirmed_at: '2026-11-17T10:00:00Z' }, situation_actuelle: { total_loyer_mensuel: 100 },
+  };
+  expect((await updateProposition(request('PATCH', { filled_data: { client: { raison_sociale: 'Nouveau nom' } } }), params)).status).toBe(200);
+  expect(state.tables.propositions[0].filled_data).toMatchObject({
+   client: { raison_sociale: 'Nouveau nom' }, situation_actuelle: { total_loyer_mensuel: 100 },
+   _sa_confirmation: { confirmed_at: '2026-11-17T10:00:00Z' },
+  });
+ });
+ it('rejects replacing the original extraction after confirmation', async () => {
+  state.tables.propositions[0].filled_data._sa_confirmation = { confirmed_at: '2026-11-17T10:00:00Z' };
+  expect((await updateProposition(request('PATCH', { extracted_data: {} }), params)).status).toBe(409);
+ });
+});
 function request(method = 'POST', body?: unknown, url = 'https://app.test/api/propositions/proposal/generate') { return new NextRequest(url, { method, ...(body !== undefined ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}) }); }
 beforeEach(() => {
  state.compare = true; state.exportData.mockReset().mockImplementation(data => ({ ...data, clientRaisonSociale: 'Martin' }));

@@ -3,6 +3,13 @@ import { cookies } from 'next/headers';
 
 import { createClient } from '@/lib/supabase/server';
 import { LandingPage } from '@/components/marketing/LandingPage';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Proboost — Vos propositions commerciales, vos modèles',
+  description:
+    'Préparez vos propositions en téléphonie et bureautique : import de documents clients, extraction assistée, modèles Word et Excel, suivi des dossiers et options adaptées à votre équipe.',
+};
 
 export default async function Home() {
   const supabase = await createClient();

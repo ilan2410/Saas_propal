@@ -1,4 +1,5 @@
 import { loadSpVariant } from '@/lib/propositions/sp-variant-server';
+import { requiresSaConfirmation } from '@/lib/sa/direct-confirmation';
 import { applySpVariant } from '@/lib/propositions/sp-variants';
 import { preparePropositionGeneration } from '@/lib/generators/prepare-proposition';
 import { resolveSubTemplateSelection, subTemplateConfig, subTemplatesEnabled, type SubTemplateGenerationResult } from '@/lib/templates/sub-templates';
@@ -56,6 +57,10 @@ export async function POST(
 
     if (propError || !parentProposition) {
       return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
+    }
+
+    if (requiresSaConfirmation({ ...parentProposition.extracted_data, ...parentProposition.filled_data })) {
+      return NextResponse.json({ error: 'Veuillez valider et confirmer la SA avant de générer la proposition.' }, { status: 409 });
     }
 
     const variantId = request.nextUrl.searchParams.get('variant');

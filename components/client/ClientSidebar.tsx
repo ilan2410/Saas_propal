@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { LayoutDashboard, FileText, Zap, CreditCard, Settings, Package, Menu, X, ChartBar, Users, ChevronDown } from 'lucide-react';
@@ -47,13 +48,13 @@ export function ClientSidebar({ user, organization, role, permissions, memberSec
           >
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={organization.logo_url || '/logo.png'}
-            alt="Logo"
-            className="h-7 w-7 object-contain shrink-0"
-          />
-          <span className="font-bold text-gray-900 truncate max-w-[200px]">{organization.nom}</span>
+          {organization.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={organization.logo_url} alt={organization.nom} className="h-7 w-7 object-contain shrink-0" />
+          ) : (
+            <BrandLogo className="w-[120px]" />
+          )}
+          <span className="font-bold text-gray-900 truncate max-w-[120px]">{organization.nom}</span>
         </div>
       </div>
 
@@ -76,8 +77,7 @@ export function ClientSidebar({ user, organization, role, permissions, memberSec
             // eslint-disable-next-line @next/next/no-img-element
             <img src={organization.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain" />
+            <BrandLogo variant="auto" className="w-full max-w-[208px]" />
           )}
           <p className="text-sm text-gray-500 mt-1 truncate" title={organization.nom}>{organization.nom}</p>
         </div>
