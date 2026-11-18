@@ -44,7 +44,6 @@ export interface SpQuestionnaireUIProps {
   simulationPropositionId?: string;
   simulationExportStatus?: 'idle' | 'preparing' | 'ready' | 'error';
   simulationExportError?: string;
-  siteLabel?: string;
   startFromQuestionId?: string;
   spConfigLoyer?: SpConfigLoyer;
   spConfigResiliation?: SpConfigResiliation;
@@ -964,7 +963,6 @@ export function SpQuestionnaireUI({
   simulationPropositionId,
   simulationExportStatus = 'idle',
   simulationExportError,
-  siteLabel,
   startFromQuestionId,
   spConfigLoyer,
   spConfigResiliation,
@@ -1132,7 +1130,7 @@ export function SpQuestionnaireUI({
     }));
   }, []);
 
-  // Reset when questions change (e.g. switching sites in multisite)
+  // Reset when questions change
   useEffect(() => {
     // Cancel any pending show animation to prevent ghost messages
     if (showTimerRef.current) {
@@ -2210,12 +2208,6 @@ export function SpQuestionnaireUI({
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
           <EyeOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
           <span className="text-xs font-medium text-amber-700">Mode client actif — tarifs masqués</span>
-        </div>
-      )}
-
-      {siteLabel && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200">
-          <span className="text-sm font-medium text-purple-800">{siteLabel}</span>
         </div>
       )}
 

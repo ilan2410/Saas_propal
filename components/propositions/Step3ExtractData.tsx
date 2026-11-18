@@ -209,13 +209,11 @@ export function Step3ExtractData({
   const includeVariableCharges = saTotaux ? saTotaux.charges_variables_incluses !== false : true;
 
   // La vérification réécrit la situation actuelle : elle n'est plus permise dès
-  // que les questions SP sont terminées (suggestions calculées sur ces données)
-  // ou qu'une proposition de site a déjà été générée en mode multisite.
+  // que les questions SP sont terminées (suggestions calculées sur ces données).
   const isReviewLocked =
     isSaConfirmed(extractedData)
     ||
-    Boolean(propositionData.suggestions_sp_completes)
-    || Boolean(propositionData.multisite_propositions?.some((entry) => entry.generated));
+    Boolean(propositionData.suggestions_sp_completes);
   const canReview = !isModeDirect && Boolean(invoiceAnalysis && propositionData.proposition_id) && !isReviewLocked;
   const isReviewOpen = canReview && (requiresReview || reviewRequestedManually);
   const showDirectEditor = isModeDirect && !isReviewLocked && Boolean(propositionData.proposition_id);

@@ -24,49 +24,11 @@ interface Props {
   updatePropositionData: (data: Partial<PropositionData>) => void;
   onNext: () => void;
   onPrev: () => void;
-  // Multisite: label shown above the chat (e.g. "Site 1 sur 3 — Paris")
-  siteLabel?: string;
-  currentSiteName?: string;
-  // Multisite: when provided, bypasses generer-suggestions and returns raw reponses
-  onMultisiteComplete?: (reponses: SpQuestionReponse[]) => void;
 }
 
-type SiteActuelle = { nom: string; [key: string]: unknown };
-type LigneActuelle = { site?: string; [key: string]: unknown };
 type ExitIntent = 'close-modal' | 'browser-back';
 
-function filterExtractedDataForSite(
-  extractedData: Record<string, unknown>,
-  siteNom?: string,
-): Record<string, unknown> {
-  if (!siteNom) return extractedData;
-
-  const sa = extractedData.situation_actuelle as Record<string, unknown> | undefined;
-  if (!sa) return extractedData;
-
-  const sites = (sa.sites as SiteActuelle[] | undefined) ?? [];
-  const filteredSite = sites.filter((site) => site.nom === siteNom);
-
-  const filterBySite = (arr: unknown[]): unknown[] =>
-    arr.filter((item) => {
-      const line = item as LigneActuelle;
-      return !line.site || line.site === siteNom;
-    });
-
-  return {
-    ...extractedData,
-    situation_actuelle: {
-      ...sa,
-      sites: filteredSite,
-      lignes: filterBySite((sa.lignes as unknown[]) ?? []),
-      abonnements: filterBySite((sa.abonnements as unknown[]) ?? []),
-      locations: filterBySite((sa.locations as unknown[]) ?? []),
-      engagements: filterBySite((sa.engagements as unknown[]) ?? []),
-    },
-  };
-}
-
-export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev, siteLabel, currentSiteName, onMultisiteComplete }: Props) {
+export function Step5SpQuestions({ propositionData, updatePropositionData, onNext, onPrev }: Props) {
   const [questions, setQuestions] = useState<SpQuestion[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueProduit[]>([]);
   const [preferences, setPreferences] = useState<OrganizationPreferences>({});
@@ -130,7 +92,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     setIsQuestionnaireOpen(true);
     setShowSaResume(false);
     setShowCoordonnees(false);
-  }, [templateId, propositionData.proposition_id, siteLabel]);
+  }, [templateId, propositionData.proposition_id]);
 
   // Persistance (debouncée) des éditions du panier SA dans `filled_data`.
   const saPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,12 +243,6 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     // S'assurer que les dernières éditions du panier SA sont persistées avant la suite.
     flushSaPersist();
 
-    // In multisite mode, bypass generer-suggestions — parent handles the clone flow
-    if (onMultisiteComplete) {
-      onMultisiteComplete(reponses);
-      return;
-    }
-
     setIsGenerating(true);
     setGenerateError('');
     updatePropositionData({ sp_reponses: reponses });
@@ -384,10 +340,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
     );
   }
 
-  const saResumeBase = (propositionData.donnees_extraites as Record<string, unknown> | undefined);
-  const saResume = saResumeBase
-    ? filterExtractedDataForSite(saResumeBase, currentSiteName)
-    : undefined;
+  const saResume = propositionData.donnees_extraites;
   const saResumeText = saResume
     ? ((saResume.resume as string) || (saResume['résumé'] as string) || '')
     : '';
@@ -420,9 +373,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
           <div>
             <p className="text-sm font-medium text-gray-800">Le questionnaire SP s&apos;ouvre maintenant dans un modal.</p>
             <p className="text-sm text-gray-500 mt-1">
-              {siteLabel
-                ? `Vous pouvez rouvrir la fenêtre pour continuer le parcours de ${siteLabel}.`
-                : 'Vous pouvez rouvrir la fenêtre à tout moment pour continuer le parcours.'}
+              Vous pouvez rouvrir la fenêtre à tout moment pour continuer le parcours.
             </p>
           </div>
           <div className="flex gap-3">
@@ -453,7 +404,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   <div>
                     <h2 className="text-sm font-semibold text-gray-900">Construction de la proposition</h2>
                     <p className="text-xs text-gray-400">
-                      {siteLabel || 'Renseignez la situation proposée du client'}
+                      Renseignez la situation proposée du client
                     </p>
                   </div>
                 </div>
@@ -499,7 +450,7 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
             footer={
               <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
                 <p className="text-xs text-gray-400">
-                  {siteLabel || `${questions.length} question(s) configurée(s)`}
+                  {questions.length} question(s) configurée(s)
                 </p>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={onPrev} disabled={isGenerating}>
@@ -542,7 +493,6 @@ export function Step5SpQuestions({ propositionData, updatePropositionData, onNex
                   onReponsesChange={handleReponsesChange}
                   onComplete={handleComplete}
                   onUpdateDonneesExtraites={handleUpdateDonneesExtraites}
-                  siteLabel={siteLabel}
                   spConfigLoyer={spConfigLoyer}
                   spConfigResiliation={spConfigResiliation}
                   spIndemnitesReferenceDate={propositionData.suggestions_sp_completes?.sp_indemnites_calcul?.date_reference}

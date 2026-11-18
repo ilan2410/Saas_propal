@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import {
-  ArrowDown, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronDown,
-  FileCheck2, FileInput, FileSpreadsheet, FileText, FolderOpen, Layers3,
+  ArrowDown, ArrowRight, CalendarClock, Check, ChevronDown, Clock3, TrendingUp,
+  FileCheck2, FileInput, FileSpreadsheet, FileText, FolderOpen,
   ListChecks, Package, PenLine, Radio, SlidersHorizontal, Users, WandSparkles,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
@@ -15,9 +15,9 @@ const sectionTitle = 'text-balance text-3xl font-semibold leading-[1.1] tracking
 const eyebrow = 'text-xs font-bold uppercase tracking-[0.16em] text-blue-700';
 
 const steps = [
-  { icon: Layers3, title: 'Choisissez votre modèle', description: 'Sélectionnez le modèle Word ou Excel préparé pour votre activité et votre organisation.' },
-  { icon: FileInput, title: 'Ajoutez les pièces du client', description: 'Importez les factures et contrats en PDF ou en photo, dans le même dossier.' },
+  { icon: FileInput, title: 'Importez les factures opérateurs', description: 'Importez les factures opérateurs et contrats en PDF ou en photo, dans le même dossier.' },
   { icon: WandSparkles, title: 'Vérifiez les données extraites', description: 'L’IA lit les documents et structure les informations. Vous contrôlez et corrigez les données avant de poursuivre.' },
+  { icon: SlidersHorizontal, title: 'Construisez votre nouvelle offre', description: 'Préparez la situation proposée avec des questions guidées ou directement en remplissant les cases.' },
   { icon: FileCheck2, title: 'Générez vos documents', description: 'Retrouvez les informations dans votre modèle, téléchargez votre proposition et conservez le dossier pour la suite.' },
 ];
 
@@ -26,15 +26,15 @@ const features = [
   { icon: Users, title: 'Des accès par commercial', description: 'Définissez qui peut consulter les dossiers, gérer les modèles ou le catalogue et télécharger les documents.' },
   { icon: CalendarClock, title: 'Des notes et des rappels', description: 'Conservez les échanges et préparez la prochaine action. Reliez les rappels à Google ou Microsoft si vous connectez votre agenda.' },
   { icon: FolderOpen, title: 'Un dossier qui reste accessible', description: 'Retrouvez les pièces jointes, reprenez un brouillon et suivez le statut commercial depuis la liste des propositions.' },
-  { icon: ListChecks, title: 'Plusieurs sites, plusieurs offres', description: 'Selon le dossier et le parcours configuré, préparez des propositions par site ou créez des variantes de votre offre.' },
-  { icon: PenLine, title: 'La signature, si vous l’activez', description: 'Avec l’intégration DocuSeal configurée, envoyez un document Word en signature et retrouvez le document signé dans le dossier.' },
+  { icon: ListChecks, title: 'Plusieurs variantes de votre offre', description: 'Créez des variantes de votre proposition pour présenter plusieurs scénarios au prospect.' },
+  { icon: PenLine, title: 'La signature, si vous l’activez', description: 'DocuSeal est actuellement intégré pour la signature électronique. D’autres plateformes de signature électronique viendront s’ajouter à la liste.' },
 ];
 
 const questions = [
   { question: 'À qui s’adresse Proboost ?', answer: 'Aux équipes commerciales en téléphonie et en bureautique. Une organisation peut travailler dans l’une de ces activités ou dans les deux, avec des modèles et des catalogues adaptés.' },
-  { question: 'Est-ce que je garde mes modèles Word et Excel ?', answer: 'Oui. Vos fichiers Word et Excel servent de base aux modèles configurés dans Proboost. Les champs, tableaux et documents complémentaires sont préparés pour que les données du dossier alimentent vos documents.' },
-  { question: 'La Situation proposée (SP) est-elle obligatoire ?', answer: 'Non. La SP est un module optionnel pour construire et chiffrer une nouvelle offre. Selon vos besoins et la configuration de votre modèle, vous pouvez travailler avec un questionnaire ou directement dans le panier. Le parcours présenté dans la vidéo illustre un exemple avec cette option.' },
-  { question: 'Quels documents puis-je importer ?', answer: 'Les documents sources peuvent être des PDF ou des images JPEG, PNG, GIF et WebP. Vous pouvez notamment importer des factures, des contrats ou des photos de documents. Les informations extraites restent à vérifier avant de les utiliser.' },
+  { question: 'Est-ce que je garde mes modèles Word et Excel ?', answer: 'Oui. Nous importons vos propres modèles Word ou Excel, ceux que votre entreprise utilise déjà au quotidien, puis nous les configurons pour qu’ils se remplissent automatiquement à chaque proposition.' },
+  { question: 'Faut-il répondre à des questions pour construire la SP ?', answer: 'Non. Seules les questions SP sont optionnelles. Vous construisez votre situation proposée soit avec un questionnaire qui guide vos choix, soit en mode direct en remplissant les cases. Le mode est défini dans la configuration du modèle.' },
+  { question: 'Quels documents puis-je importer ?', answer: 'Les documents sources peuvent être des PDF ou des images JPEG, PNG, GIF et WebP. Vous pouvez notamment importer des factures opérateurs, des contrats ou des photos de documents. Les informations extraites restent à vérifier avant de les utiliser.' },
   { question: 'Comment démarrer ?', answer: 'Présentez-nous votre activité et les documents que vous utilisez. Nous échangeons sur vos modèles, vos données à reprendre et les options utiles à votre équipe avant de configurer votre espace.' },
 ];
 
@@ -56,36 +56,39 @@ export function LandingPage() {
           <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/login" className={`rounded-lg px-2 py-2 text-xs font-semibold text-slate-700 hover:text-blue-700 sm:px-3 sm:text-sm ${focusRing}`}>Se connecter</Link>
             <a href="#contact" className="hidden min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-4 sm:inline-flex">
-              Parlons de votre projet <ArrowRight className="size-4" aria-hidden="true" />
+              Demander une démonstration <ArrowRight className="size-4" aria-hidden="true" />
             </a>
           </div>
         </nav>
       </header>
 
       <main id="contenu">
-        <section className="overflow-hidden bg-[linear-gradient(135deg,#fff_40%,#eff4ff_100%)]">
-          <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 sm:py-20 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14 lg:px-8 lg:py-24">
-            <div>
+        <section aria-labelledby="hero-title" className="overflow-hidden bg-[radial-gradient(ellipse_at_top,#eaf1ff_0%,#fff_70%)]">
+          <div className="mx-auto max-w-7xl px-4 pb-14 pt-12 sm:px-6 sm:pt-20 lg:px-8">
+            <div className="mx-auto max-w-5xl text-center">
               <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 sm:text-sm">
-                <Radio className="size-4" aria-hidden="true" /> Téléphonie & bureautique
+                <Radio className="size-4" aria-hidden="true" /> Pour les équipes commerciales en téléphonie
               </p>
-              <h1 className="max-w-[17ch] text-balance text-[clamp(2.65rem,4.8vw,4.6rem)] font-semibold leading-[1.03] tracking-[-0.045em]">
-                Vos propositions.<br />Vos modèles.<br /><span className="text-blue-600">Moins de ressaisie.</span>
+              <h1 id="hero-title" className="text-balance text-[clamp(2.3rem,4.7vw,4.15rem)] font-semibold leading-[1.09] tracking-[-0.045em]">
+                Combien de temps consacrez-vous à chaque proposition commerciale <span className="text-blue-600">en téléphonie ?</span>
               </h1>
-              <p className="mt-7 max-w-xl text-pretty text-lg leading-8 text-slate-600">
-                Importez les documents du client, vérifiez les informations extraites et générez votre proposition dans vos modèles Word ou Excel. Proboost réunit la préparation et le suivi dans un même espace.
+              <p className="mx-auto mt-7 max-w-3xl text-pretty text-lg leading-8 text-slate-600">
+                Analyser les factures opérateurs, construire l’offre, remplir vos documents… La préparation prend du temps à vos commerciaux.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <a href="#contact" className={primaryButton}>Parlons de votre projet <ArrowRight className="size-4" aria-hidden="true" /></a>
-                <a href="#demo" className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-blue-400 hover:bg-blue-50 ${focusRing}`}>
-                  Voir la démo · 1 min 38 <ArrowDown className="size-4" aria-hidden="true" />
+              <p className="mx-auto mt-4 max-w-3xl text-pretty text-base leading-7 text-slate-700 sm:text-lg">
+                Avec Proboost, automatisez la préparation de vos propositions dans les modèles Word ou Excel que vous utilisez déjà.
+              </p>
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <a href="#contact" className={primaryButton}>Demander une démonstration <ArrowRight className="size-4" aria-hidden="true" /></a>
+                <a href="#fonctionnement" className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-blue-400 hover:bg-blue-50 ${focusRing}`}>
+                  Voir comment ça fonctionne <ArrowDown className="size-4" aria-hidden="true" />
                 </a>
               </div>
-              <p className="mt-6 flex items-center gap-2 text-sm text-slate-500"><CheckCircle2 className="size-4 shrink-0 text-blue-600" aria-hidden="true" />Vos fichiers habituels, préparés pour votre équipe.</p>
+              <p className="mt-6 text-sm font-medium text-slate-600">Moins de ressaisie. Plus de temps pour vos clients.</p>
             </div>
-            <div className="min-w-0">
-              <div className="mb-4 flex items-center gap-2 text-xs font-semibold text-slate-600"><span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />Dans la plateforme : vos propositions et leur suivi</div>
-              <ProductScreenshot src="/marketing/suivi-propositions.webp" alt="La liste des propositions dans Proboost" caption="Capture réelle du compte de démonstration. Données clients masquées ; chiffres et montants illustratifs." width={1440} height={702} priority />
+            <div className="mx-auto mt-12 max-w-6xl sm:mt-16">
+              <div className="mb-4 flex items-center gap-2 text-xs font-semibold text-slate-600"><span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />Votre catalogue, votre offre, vos marges</div>
+              <ProductScreenshot src="/marketing/promo-offre.webp" alt="Illustration de la construction d’une offre avec le catalogue et les marges" caption="Extrait de la présentation animée Proboost : construction de l’offre à partir du catalogue. Données et marges illustratives." width={1440} height={667} priority />
             </div>
           </div>
         </section>
@@ -93,7 +96,7 @@ export function LandingPage() {
         <div className="border-y border-slate-200 bg-white">
           <div className="mx-auto grid max-w-7xl divide-y divide-slate-200 px-4 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-6 lg:px-8">
             {[
-              { icon: FileInput, title: 'Vos pièces client', text: 'Factures, contrats, PDF et photos' },
+              { icon: FileInput, title: 'Vos pièces client', text: 'Factures opérateurs, contrats, PDF et photos' },
               { icon: FileSpreadsheet, title: 'Vos modèles', text: 'Propositions Word et Excel' },
               { icon: FolderOpen, title: 'Votre suivi', text: 'Dossiers, statuts, notes et rappels' },
             ].map((item) => (
@@ -105,33 +108,11 @@ export function LandingPage() {
           </div>
         </div>
 
-        <section id="demo" aria-labelledby="demo-title" className="scroll-mt-20 bg-[#edf3ff] py-20 sm:py-28">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-10 text-center">
-              <p className="mb-4 text-sm font-bold uppercase tracking-widest text-[#2f6fe9]">La démo en 1 min 38</p>
-              <h2 id="demo-title" className="text-balance text-[clamp(2.25rem,4vw,4.25rem)] font-bold leading-[1.02] tracking-[-0.04em] text-slate-950">
-                Découvrez Proboost en action
-              </h2>
-              <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-600">
-                De la facture client à la proposition commerciale : le parcours complet en 1 min 38.
-              </p>
-            </div>
-            <TutorialVideo />
-            <div className="mt-8 text-center">
-              <a href="#contact" className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#3d7eff] px-6 py-3 font-bold text-white transition-colors hover:bg-[#2f6fe9] ${focusRing}`}>
-                Être recontacté
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </a>
-            </div>
-          </div>
-        </section>
-        <p className="bg-[#edf3ff] px-4 pb-8 text-center text-sm leading-6 text-slate-600">Cette démonstration présente un exemple en téléphonie avec l’option Situation proposée.</p>
-
         <section id="fonctionnement" className="scroll-mt-8 py-20 sm:py-28">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <p className={eyebrow}>De vos pièces client à votre document</p>
-            <h2 className={`mt-4 max-w-3xl ${sectionTitle}`}>Un dossier à préparer.<br />Un chemin clair pour avancer.</h2>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">Le modèle donne le cadre. Les documents apportent les données. Vous gardez la main sur les informations et la proposition finale.</p>
+            <p className={eyebrow}>De la facture opérateur à la proposition</p>
+            <h2 className={`mt-4 max-w-3xl ${sectionTitle}`}>Votre prochaine proposition,<br />avec moins de saisie.</h2>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">Choisissez votre modèle habituel, puis laissez les données du dossier alimenter votre proposition. Vous gardez la main à chaque étape.</p>
             <div className="mt-12 grid items-center gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
               <ol className="divide-y divide-slate-200 border-y border-slate-200">
                 {steps.map((step, index) => (
@@ -141,20 +122,20 @@ export function LandingPage() {
                   </li>
                 ))}
               </ol>
-              <ProductScreenshot src="/marketing/import-documents.webp" alt="L’import des documents clients dans Proboost" caption="L’écran d’import de la plateforme : PDF et photos réunis dans le dossier. Capture du compte de démonstration." width={1440} height={702} />
+              <ProductScreenshot src="/marketing/promo-analyse.webp" alt="Illustration de l’analyse des factures opérateurs et de la situation actuelle" caption="Extrait de la présentation animée : les données des factures et contrats alimentent la situation actuelle. Les informations extraites restent à vérifier." width={1440} height={667} />
             </div>
           </div>
         </section>
 
         <section id="modeles" className="scroll-mt-8 border-y border-slate-200 bg-slate-50 py-20 sm:py-28">
           <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:px-8">
-            <div className="order-2 lg:order-1">
-              <ProductScreenshot src="/marketing/choix-modele.webp" alt="Le choix d’un modèle Word ou Excel dans Proboost" caption="Deux modèles dans le compte de démonstration. Les étapes affichées dépendent du parcours configuré pour le modèle." width={1440} height={702} />
+            <div className="order-2 mx-auto w-full max-w-sm lg:order-1">
+              <ProductScreenshot src="/marketing/promo-document.webp" alt="Illustration d’une proposition commerciale aux couleurs de l’entreprise" caption="Exemple de document dans la présentation animée. Vos propres modèles Word ou Excel sont importés et configurés pour être remplis automatiquement." width={560} height={792} />
             </div>
             <div className="order-1 lg:order-2">
               <p className={eyebrow}>Vos modèles Word & Excel</p>
-              <h2 className={`mt-4 ${sectionTitle}`}>Votre document reste<br />votre document.</h2>
-              <p className="mt-6 text-lg leading-8 text-slate-600">Vos propositions ont déjà une présentation, des tableaux et une logique commerciale. Nous configurons vos modèles pour y intégrer les données du dossier.</p>
+              <h2 className={`mt-4 ${sectionTitle}`}>Vos modèles du quotidien.<br />Le remplissage en moins.</h2>
+              <p className="mt-6 text-lg leading-8 text-slate-600">Nous importons les modèles Word ou Excel que votre entreprise utilise déjà tous les jours, puis nous les configurons pour qu’ils se remplissent automatiquement à chaque proposition, avec votre présentation et vos tableaux.</p>
               <ul className="mt-7 space-y-4">
                 {['Vos fichiers Word ou Excel comme point de départ', 'Les champs et tableaux préparés pour vos données', 'Des documents complémentaires à générer, si configurés'].map((item) => (
                   <li key={item} className="flex items-start gap-3 text-sm leading-6 text-slate-700"><Check className="mt-0.5 size-5 shrink-0 text-blue-600" aria-hidden="true" />{item}</li>
@@ -169,23 +150,65 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid items-start gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">Un module optionnel</p>
-                <h2 className={`mt-4 ${sectionTitle}`}>Besoin de construire<br />la nouvelle offre ?</h2>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">Deux façons de construire votre offre</p>
+                <h2 className={`mt-4 ${sectionTitle}`}>Une offre adaptée au client.<br />Deux façons de la construire.</h2>
                 <p className="mt-6 text-lg leading-8 text-slate-300">La Situation proposée (SP) permet de composer et chiffrer une offre à partir de votre catalogue, puis de la comparer à l’existant.</p>
-                <p className="mt-4 leading-7 text-slate-300">Ce module s’ajoute selon vos besoins. <strong className="font-semibold text-white">Il n’est pas obligatoire pour utiliser Proboost.</strong></p>
+                <p className="mt-4 leading-7 text-slate-300"><strong className="font-semibold text-white">Seules les questions SP sont optionnelles.</strong> Construisez votre situation proposée avec un questionnaire ou en mode direct en remplissant les cases.</p>
                 <div className="mt-8 space-y-5 border-t border-white/15 pt-7">
                   <div><h3 className="flex items-center gap-2 font-semibold"><ListChecks className="size-4 text-blue-300" aria-hidden="true" />Avec un questionnaire</h3><p className="mt-2 text-sm leading-6 text-slate-300">Des questions préparées pour guider les choix du commercial.</p></div>
                   <div><h3 className="flex items-center gap-2 font-semibold"><SlidersHorizontal className="size-4 text-blue-300" aria-hidden="true" />En mode direct</h3><p className="mt-2 text-sm leading-6 text-slate-300">Le panier de l’offre se construit et s’ajuste directement dans le dossier.</p></div>
                 </div>
-                <p className="mt-5 text-xs leading-6 text-slate-400">Le mode et les règles de calcul sont définis dans la configuration du modèle.</p>
+                <p className="mt-5 text-xs leading-6 text-slate-400">Les modes de préparation sont configurés avec vos modèles.</p>
               </div>
               <div className="min-w-0 rounded-2xl bg-white p-3 sm:p-5 lg:mt-4">
-                <ProductScreenshot src="/marketing/situation-proposee.jpg" alt="Le résumé d’une situation proposée dans Proboost" caption="Exemple en téléphonie avec l’option SP. Les montants illustrent ce dossier de démonstration ; ils ne constituent pas une promesse d’économie." width={1400} height={575} />
+                <ProductScreenshot src="/marketing/promo-comparaison.webp" alt="Illustration de deux variantes d’une situation proposée" caption="Extrait de la présentation animée : deux variantes pour ajuster l’offre. Les marges affichées sont illustratives." width={1440} height={667} />
                 <p className="mt-6 flex items-center gap-2 border-t border-slate-200 pt-4 text-xs leading-6 text-slate-600"><FileText className="size-4 shrink-0 text-blue-600" aria-hidden="true" />Comparatif SA/SP exportable en Word ou Excel selon les droits d’accès.</p>
               </div>
             </div>
           </div>
         </section>
+
+        <section aria-labelledby="benefices-title" className="py-20 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <p className={eyebrow}>Ce que votre équipe y gagne</p>
+            <h2 id="benefices-title" className={'mt-4 max-w-3xl ' + sectionTitle}>Du temps pour vendre.<br />Des offres plus faciles à défendre.</h2>
+            <div className="mt-12 grid gap-9 md:grid-cols-3 md:gap-10">
+              {[
+                { icon: Clock3, title: 'Allégez la préparation', text: 'Réduisez les ressaisies entre les factures opérateurs et vos documents commerciaux. Votre équipe se concentre sur le besoin du prospect.' },
+                { icon: FileSpreadsheet, title: 'Gardez une présentation cohérente', text: 'Chaque commercial s’appuie sur les modèles et le catalogue de votre entreprise. Vos propositions conservent votre présentation.' },
+                { icon: TrendingUp, title: 'Rendez la valeur de l’offre visible', text: 'Comparez la situation actuelle et la nouvelle offre, présentez les économies éventuelles et ajustez les paramètres de rentabilité selon votre configuration.' },
+              ].map((benefit) => (
+                <article key={benefit.title} className="border-t-2 border-blue-600 pt-6">
+                  <benefit.icon className="size-7 text-blue-600" aria-hidden="true" />
+                  <h3 className="mt-5 text-xl font-semibold tracking-tight">{benefit.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{benefit.text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="demo" aria-labelledby="demo-title" className="scroll-mt-20 bg-[#edf3ff] py-20 sm:py-28">
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-10 text-center">
+              <p className="mb-4 text-sm font-bold uppercase tracking-widest text-[#2f6fe9]">Proboost en 1 min 12</p>
+              <h2 id="demo-title" className="text-balance text-[clamp(2.25rem,4vw,4.25rem)] font-bold leading-[1.02] tracking-[-0.04em] text-slate-950">
+                Découvrez Proboost en action
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-600">
+                De la lecture des factures opérateurs à votre document commercial : découvrez l’analyse, le catalogue, les marges et les variantes en 1 min 12.
+              </p>
+            </div>
+            <TutorialVideo />
+            <div className="mt-8 text-center">
+              <a href="#contact" className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#3d7eff] px-6 py-3 font-bold text-white transition-colors hover:bg-[#2f6fe9] ${focusRing}`}>
+                Demander une démonstration
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+        </section>
+        <p className="bg-[#edf3ff] px-4 pb-8 text-center text-sm leading-6 text-slate-600">Présentation animée du parcours en téléphonie. Les visuels et les données sont illustratifs.</p>
 
         <section id="equipe" className="scroll-mt-8 py-20 sm:py-28">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -207,7 +230,7 @@ export function LandingPage() {
 
         <section aria-labelledby="faq-title" className="border-y border-slate-200 bg-slate-50 py-20 sm:py-24">
           <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:gap-20 lg:px-8">
-            <div><p className={eyebrow}>Avant de démarrer</p><h2 id="faq-title" className={`mt-4 ${sectionTitle}`}>Quelques réponses concrètes.</h2></div>
+            <div><p className={eyebrow}>Avant de démarrer</p><h2 id="faq-title" className={`mt-4 ${sectionTitle}`}>Vos questions avant de démarrer.</h2></div>
             <div className="divide-y divide-slate-200 border-y border-slate-200">
               {questions.map((item) => (
                 <details key={item.question} className="group py-5">
@@ -224,9 +247,9 @@ export function LandingPage() {
         <section id="contact" className="scroll-mt-8 bg-[#edf3ff] py-20 sm:py-28">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20 lg:px-8">
             <div>
-              <p className={eyebrow}>Parlons de votre projet</p>
-              <h2 className={`mt-4 ${sectionTitle}`}>Partons de votre façon de travailler.</h2>
-              <p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">Vos modèles, votre activité, votre équipe : dites-nous ce que vous souhaitez simplifier. Nous vous recontactons pour préparer un espace adapté à vos besoins.</p>
+              <p className={eyebrow}>Demander une démonstration</p>
+              <h2 className={`mt-4 ${sectionTitle}`}>Et si votre prochaine proposition<br />vous prenait moins de temps ?</h2>
+              <p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">Montrez-nous les modèles Word ou Excel que vous utilisez déjà. Nous vous présentons comment Proboost peut les remplir à partir de vos dossiers et accompagner votre équipe.</p>
               <ol className="mt-9 space-y-5 border-t border-blue-200 pt-7">
                 {['Un échange sur vos usages et vos documents', 'Les modèles et options utiles à votre activité', 'Un espace configuré pour votre organisation'].map((item, index) => (
                   <li key={item} className="flex gap-4 text-sm leading-6 text-slate-700"><span className="font-mono text-blue-700">0{index + 1}</span>{item}</li>

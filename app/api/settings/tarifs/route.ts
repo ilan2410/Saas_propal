@@ -19,13 +19,12 @@ export async function GET() {
     if (!ctx.permissions.view_credits_billing) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { data: org } = await createServiceClient().from('organizations')
-      .select('tarif_par_proposition, tarif_clone_site, credits')
+      .select('tarif_par_proposition, credits')
       .eq('id', ctx.organizationId)
       .single();
 
     return NextResponse.json({
       tarif_par_proposition: org?.tarif_par_proposition ?? 5,
-      tarif_clone_site: org?.tarif_clone_site ?? 1,
       credits: org?.credits ?? 0,
     });
   } catch (error) {

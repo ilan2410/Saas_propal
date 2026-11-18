@@ -6,9 +6,9 @@ import { LandingPage } from '@/components/marketing/LandingPage';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Proboost — Vos propositions commerciales, vos modèles',
+  title: 'Proboost — Gagnez du temps sur vos propositions téléphonie',
   description:
-    'Préparez vos propositions en téléphonie et bureautique : import de documents clients, extraction assistée, modèles Word et Excel, suivi des dossiers et options adaptées à votre équipe.',
+    'Passez moins de temps à préparer vos propositions commerciales en téléphonie. Importez les factures opérateurs et automatisez le remplissage de vos propres modèles Word ou Excel.',
 };
 
 export default async function Home() {

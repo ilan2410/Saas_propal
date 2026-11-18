@@ -7,7 +7,6 @@ import { usePropositionGeneration } from './usePropositionGeneration';
 import { useState } from 'react';
 import { Loader2, CheckCircle, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
-import { Button } from '@/components/ui/button';
 
 interface Props {
   propositionData: Partial<PropositionData>;
@@ -31,48 +30,6 @@ export function Step5Generate({
   const [fileUrl, setFileUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
 
-  const isMultisiteParSite = propositionData.multisite_mode === 'par_site';
-  const multisitePropositions = propositionData.multisite_propositions ?? [];
-
-  // Multisite mode: all files already generated in Step5
-  if (isMultisiteParSite && multisitePropositions.length > 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Propositions générées</h2>
-          <p className="text-gray-600">Toutes les propositions par site ont été générées.</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
-          {multisitePropositions.map((sp) => (
-            <div key={sp.site_nom} className="flex items-center justify-between px-6 py-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
-                <span className="text-sm font-medium text-gray-900">
-                  Proposition {sp.site_nom}
-                </span>
-              </div>
-              {!canDownloadProposition ? (
-                <span className="text-xs text-gray-400">Téléchargement non autorisé</span>
-              ) : sp.file_url ? (
-                <GenerateButton propositionId={sp.proposition_id!} label="Télécharger" variant="secondary" />
-              ) : (
-                <span className="text-xs text-gray-400">Lien indisponible</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end pt-4 border-t border-gray-200">
-          <Button onClick={onComplete} className="bg-green-600 hover:bg-green-700">
-            Terminer
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Normal (single-site) mode
   const startGeneration = async () => {
     setGenerationStatus('generating');
     setError('');

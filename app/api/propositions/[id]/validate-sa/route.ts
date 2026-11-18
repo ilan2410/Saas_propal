@@ -32,12 +32,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!proposition) return NextResponse.json({ error: 'Proposition not found' }, { status: 404 });
 
   // La validation réécrit la situation actuelle : impossible une fois les
-  // questions SP terminées, ou si des propositions de site ont été clonées.
-  const { count: childCount } = await supabase
-    .from('propositions')
-    .select('id', { count: 'exact', head: true })
-    .eq('parent_proposition_id', id);
-  if (isSaConfirmed(proposition.filled_data) || proposition.suggestions_sp_completes || (childCount ?? 0) > 0) {
+  // questions SP terminées.
+  if (isSaConfirmed(proposition.filled_data) || proposition.suggestions_sp_completes) {
     return NextResponse.json(
       { error: "La vérification n'est plus possible : les questions SP sont terminées." },
       { status: 409 },

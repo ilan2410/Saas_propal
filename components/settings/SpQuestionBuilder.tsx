@@ -211,7 +211,7 @@ const BLOCK_TOOLTIPS: Record<Block, string> = {
   2: "Définissez sous quelles conditions cette question s'affiche (réponses précédentes, données SA…).",
   3: "Comment la question est présentée à l'utilisateur : type d'interface, libellé, aide.",
   4: "Variable SP remplie, conséquences (afficher/masquer/sauter), et priorité de réponse.",
-  5: "Optionnel — rattacher cette question à une boucle (multisite, multi-ligne…).",
+  5: "Optionnel — rattacher cette question à une boucle de plusieurs lignes.",
 };
 
 const CONSEQUENCE_TYPES: { value: SpConsequence['type']; label: string; desc: string }[] = [
@@ -1573,7 +1573,7 @@ export function SpQuestionBuilder({ templateId, onSaved, onCancel, initial, onTi
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-gray-900">Bloc 5 — Boucle <span className="text-gray-400 font-normal">(optionnel)</span></h3>
-            <InfoIcon tooltip="Rattachez cette question à un groupe de boucle pour la répéter N fois (par site, par ligne…). Laissez vide si ce n'est pas une question en boucle." />
+            <InfoIcon tooltip="Rattachez cette question à un groupe de boucle pour la répéter N fois (par ligne…). Laissez vide si ce n'est pas une question en boucle." />
           </div>
 
           <div className="space-y-3">
