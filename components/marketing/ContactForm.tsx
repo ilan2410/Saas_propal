@@ -3,7 +3,12 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
-import { CONTACT_SECTORS, CONTACT_TEAM_SIZES } from '@/lib/contact/schema';
+import {
+  CONTACT_DISABLED_SECTORS,
+  CONTACT_PREFERENCES,
+  CONTACT_SECTORS,
+  CONTACT_TEAM_SIZES,
+} from '@/lib/contact/schema';
 
 const field =
   'w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-[#3d7eff] focus:outline-none focus:ring-2 focus:ring-[#3d7eff]/30';
@@ -13,6 +18,7 @@ export function ContactForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [preference, setPreference] = useState<'email' | 'phone'>('email');
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -28,8 +34,8 @@ export function ContactForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: text('full_name'),
-          email: text('email'),
-          phone: text('phone'),
+          contact_preference: preference,
+          ...(preference === 'email' ? { email: text('email') } : { phone: text('phone') }),
           company: text('company'),
           sector: text('sector'),
           team_size: text('team_size') || undefined,
@@ -87,18 +93,48 @@ export function ContactForm() {
           </label>
           <input id="cf-company" name="company" type="text" required minLength={2} maxLength={160} autoComplete="organization" className={field} placeholder="Nom de votre société" />
         </div>
-        <div>
-          <label htmlFor="cf-email" className={label}>
-            Email professionnel <span className="text-red-600">*</span>
-          </label>
-          <input id="cf-email" name="email" type="email" required maxLength={254} autoComplete="email" className={field} placeholder="vous@entreprise.fr" />
-        </div>
-        <div>
-          <label htmlFor="cf-phone" className={label}>
-            Téléphone <span className="text-red-600">*</span>
-          </label>
-          <input id="cf-phone" name="phone" type="tel" required minLength={6} maxLength={30} autoComplete="tel" className={field} placeholder="06 12 34 56 78" />
-        </div>
+        <fieldset>
+          <legend className={label}>
+            Comment préférez-vous être recontacté ? <span className="text-red-600">*</span>
+          </legend>
+          <div className="grid grid-cols-2 gap-2">
+            {CONTACT_PREFERENCES.map((p) => (
+              <label
+                key={p.value}
+                className={`flex min-h-[3rem] cursor-pointer items-center justify-center rounded-lg border px-3 py-3 text-[15px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-[#3d7eff]/30 ${
+                  preference === p.value
+                    ? 'border-[#2768e3] bg-[#2768e3]/10 text-[#2768e3]'
+                    : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="contact_preference"
+                  value={p.value}
+                  checked={preference === p.value}
+                  onChange={() => setPreference(p.value)}
+                  className="sr-only"
+                />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {preference === 'email' ? (
+          <div key="email">
+            <label htmlFor="cf-email" className={label}>
+              Email professionnel <span className="text-red-600">*</span>
+            </label>
+            <input id="cf-email" name="email" type="email" required maxLength={254} autoComplete="email" className={field} placeholder="vous@entreprise.fr" />
+          </div>
+        ) : (
+          <div key="phone">
+            <label htmlFor="cf-phone" className={label}>
+              Téléphone <span className="text-red-600">*</span>
+            </label>
+            <input id="cf-phone" name="phone" type="tel" required minLength={6} maxLength={30} autoComplete="tel" className={field} placeholder="06 12 34 56 78" />
+          </div>
+        )}
         <div>
           <label htmlFor="cf-sector" className={label}>
             Secteur d&apos;activité <span className="text-red-600">*</span>
@@ -108,8 +144,9 @@ export function ContactForm() {
               Choisir…
             </option>
             {CONTACT_SECTORS.map((s) => (
-              <option key={s.value} value={s.value}>
+              <option key={s.value} value={s.value} disabled={CONTACT_DISABLED_SECTORS.includes(s.value)}>
                 {s.label}
+                {CONTACT_DISABLED_SECTORS.includes(s.value) ? ' — arrive prochainement' : ''}
               </option>
             ))}
           </select>
@@ -143,10 +180,12 @@ export function ContactForm() {
       </div>
 
       <div className="mt-6 space-y-3">
-        <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
-          <input type="checkbox" name="send_confirmation" className="mt-1 size-4 rounded border-slate-300 text-[#2768e3] focus:ring-[#3d7eff]" />
-          <span>Je souhaite recevoir un email de confirmation d&apos;envoi.</span>
-        </label>
+        {preference === 'email' && (
+          <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
+            <input type="checkbox" name="send_confirmation" className="mt-1 size-4 rounded border-slate-300 text-[#2768e3] focus:ring-[#3d7eff]" />
+            <span>Je souhaite recevoir un email de confirmation d&apos;envoi.</span>
+          </label>
+        )}
         <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
           <input type="checkbox" name="consent" required className="mt-1 size-4 rounded border-slate-300 text-[#2768e3] focus:ring-[#3d7eff]" />
           <span>

@@ -27,7 +27,9 @@ export async function POST(request: NextRequest) {
     );
   }
   const data = parsed.data;
-  const email = data.email.toLowerCase();
+  const email = data.contact_preference === 'email' ? (data.email?.toLowerCase() ?? null) : null;
+  const phone = data.contact_preference === 'phone' ? (data.phone ?? null) : null;
+  const contactKey = email ?? (phone ?? '').replace(/\D/g, '');
 
   const ipLimit = rateLimit(`contact:ip:${getClientIp(request)}`, MAX_PER_IP, WINDOW_MS);
   if (!ipLimit.allowed) {
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Même adresse déjà utilisée récemment : succès silencieux (évite le spam d'une boîte mail).
-  if (!rateLimit(`contact:email:${email}`, MAX_PER_EMAIL, WINDOW_MS).allowed) {
+  if (!rateLimit(`contact:email:${contactKey}`, MAX_PER_EMAIL, WINDOW_MS).allowed) {
     return NextResponse.json({ success: true });
   }
 
@@ -51,12 +53,13 @@ export async function POST(request: NextRequest) {
   const { error: insertError } = await supabaseAdmin.from('contact_requests').insert({
     full_name: data.full_name,
     email,
-    phone: data.phone,
+    phone,
+    contact_preference: data.contact_preference,
     company: data.company,
     sector: data.sector,
     team_size: data.team_size ?? null,
     message: data.message || null,
-    confirmation_requested: data.send_confirmation,
+    confirmation_requested: Boolean(email) && data.send_confirmation,
   });
 
   if (insertError) {
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest) {
   const emailData = {
     fullName: data.full_name,
     email,
-    phone: data.phone,
+    phone,
     company: data.company,
     sectorLabel: sectorLabel(data.sector),
     teamSizeLabel: teamSizeLabel(data.team_size),
@@ -80,11 +83,11 @@ export async function POST(request: NextRequest) {
   const tasks: Promise<unknown>[] = [
     sendEmail({
       to: receiver,
-      replyTo: email,
+      ...(email ? { replyTo: email } : {}),
       ...contactNotificationEmail(emailData, new URL('/admin/demandes', origin).toString(), { origin }),
     }),
   ];
-  if (data.send_confirmation) {
+  if (email && data.send_confirmation) {
     tasks.push(
       sendEmail({
         to: email,

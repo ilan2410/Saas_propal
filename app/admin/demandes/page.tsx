@@ -9,8 +9,8 @@ type ContactRequest = {
   id: string;
   created_at: string;
   full_name: string;
-  email: string;
-  phone: string;
+  email: string | null;
+  phone: string | null;
   company: string;
   sector: string;
   team_size: string | null;
@@ -72,24 +72,28 @@ export default async function ContactRequestsPage() {
           <dt className="sr-only">Équipe commerciale</dt>
           <dd>{teamSizeLabel(r.team_size)}</dd>
         </div>
-        <div className="flex items-center gap-2">
-          <Mail className="h-4 w-4 text-gray-400" />
-          <dt className="sr-only">Email</dt>
-          <dd>
-            <a href={`mailto:${r.email}`} className="text-blue-600 hover:underline">
-              {r.email}
-            </a>
-          </dd>
-        </div>
-        <div className="flex items-center gap-2">
-          <Phone className="h-4 w-4 text-gray-400" />
-          <dt className="sr-only">Téléphone</dt>
-          <dd>
-            <a href={`tel:${r.phone.replace(/[^0-9+]/g, '')}`} className="text-blue-600 hover:underline">
-              {r.phone}
-            </a>
-          </dd>
-        </div>
+        {r.email && (
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-gray-400" />
+            <dt className="sr-only">Email (préféré)</dt>
+            <dd>
+              <a href={`mailto:${r.email}`} className="text-blue-600 hover:underline">
+                {r.email}
+              </a>
+            </dd>
+          </div>
+        )}
+        {r.phone && (
+          <div className="flex items-center gap-2">
+            <Phone className="h-4 w-4 text-gray-400" />
+            <dt className="sr-only">Téléphone (préféré)</dt>
+            <dd>
+              <a href={`tel:${r.phone.replace(/[^0-9+]/g, '')}`} className="text-blue-600 hover:underline">
+                {r.phone}
+              </a>
+            </dd>
+          </div>
+        )}
       </dl>
 
       {r.message && (

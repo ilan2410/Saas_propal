@@ -207,8 +207,9 @@ export function resetPasswordEmail(actionUrl: string, ctx: EmailContext): Render
 
 export type ContactEmailData = {
   fullName: string;
-  email: string;
-  phone: string;
+  /** Un seul des deux est renseigné, selon la préférence de contact. */
+  email: string | null;
+  phone: string | null;
   company: string;
   sectorLabel: string;
   teamSizeLabel: string;
@@ -229,15 +230,18 @@ export function contactNotificationEmail(
       paragraphs: [`${data.fullName} (${data.company}) souhaite être recontacté(e) depuis la page d'accueil.`],
       details: [
         { label: 'Nom', value: data.fullName },
-        { label: 'Email', value: data.email },
-        { label: 'Téléphone', value: data.phone },
+        data.email
+          ? { label: 'Préférence de contact', value: `Par email : ${data.email}` }
+          : { label: 'Préférence de contact', value: `Par téléphone : ${data.phone ?? '—'}` },
         { label: 'Entreprise', value: data.company },
         { label: "Secteur d'activité", value: data.sectorLabel },
         { label: 'Équipe commerciale', value: data.teamSizeLabel },
         { label: 'Message', value: data.message?.trim() || '—' },
       ],
       cta: { label: 'Ouvrir dans l’espace admin', url: adminUrl },
-      notice: 'Répondez directement à cet email pour écrire au demandeur.',
+      notice: data.email
+        ? 'Répondez directement à cet email pour écrire au demandeur.'
+        : 'Le demandeur souhaite être rappelé par téléphone.',
       footerNote: 'Notification automatique du formulaire de contact.',
     },
     ctx
@@ -258,7 +262,6 @@ export function contactConfirmationEmail(data: ContactEmailData, ctx: EmailConte
       details: [
         { label: 'Entreprise', value: data.company },
         { label: "Secteur d'activité", value: data.sectorLabel },
-        { label: 'Téléphone', value: data.phone },
       ],
       notice: `Vous recevez cet email car vous avez demandé à être recontacté sur ${APP_NAME}. Si vous n'êtes pas à l'origine de cette demande, vous pouvez l'ignorer.`,
       footerNote: 'Une question ? Répondez directement à cet email.',
