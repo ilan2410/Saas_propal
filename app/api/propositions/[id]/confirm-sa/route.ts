@@ -51,18 +51,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     data._extraction_control = { ...data._extraction_control, status: 'valid_forced' };
   }
   data._sa_confirmation = { confirmed_at: new Date().toISOString(), confirmed_by: user.id };
-  // Optimistic concurrency: a second tab cannot overwrite a confirmation or review.
+  // Optimistic concurrency: a second tab cannot overwrite a confirmation or a new extraction.
+  // Never put the whole JSON documents in the URL (PostgREST answers "URI too long"):
+  // compare only the extraction revision and the absence of a confirmation marker.
   let query = scopePropositionsQuery(createServiceClient().from('propositions').update({
     filled_data: data, statut: 'ready', current_step: 4,
   }).eq('id', id), ctx)
     .eq('template_id', proposition.template_id)
     .eq('statut', proposition.statut)
-    .eq('extracted_data', JSON.stringify(proposition.extracted_data));
-  query = proposition.filled_data == null
-    ? query.is('filled_data', null)
-    : query.eq('filled_data', JSON.stringify(proposition.filled_data));
+    .is('filled_data->_sa_confirmation', null);
+  if (typeof context.revision === 'string') {
+    query = query.eq('extracted_data->_sa_edit_context->>revision', context.revision);
+  }
   const { data: saved, error } = await query.select('id').maybeSingle();
-  if (error) return NextResponse.json({ error: "L'enregistrement de la SA a échoué." }, { status: 500 });
+  if (error) {
+    console.error('[confirm-sa] update failed', { propositionId: id, code: error.code, message: error.message, details: error.details, hint: error.hint });
+    return NextResponse.json({ error: "L'enregistrement de la SA a échoué." }, { status: 500 });
+  }
   if (!saved) return NextResponse.json({ error: 'La proposition a changé. Rechargez la page avant de confirmer.' }, { status: 409 });
   return NextResponse.json({ success: true, donnees_extraites: clientExtractedData(data) });
 }

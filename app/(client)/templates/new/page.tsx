@@ -1,12 +1,9 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Suspense } from 'react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveClientConfigPermissions } from '@/lib/security/client-data';
 import { TemplateWizard } from '@/components/templates/TemplateWizard';
-import { TemplatePageTourTrigger } from '@/components/onboarding/TemplatePageTourTrigger';
-import type { Secteur } from '@/lib/onboarding/onboarding.types';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 
 export const revalidate = 0;
@@ -37,11 +34,6 @@ export default async function NewTemplatePage() {
 
   return (
     <div className="space-y-6">
-      {/* Tour guide trigger (activated via ?tour=template in URL) */}
-      <Suspense fallback={null}>
-        <TemplatePageTourTrigger secteur={secteur as Secteur} />
-      </Suspense>
-
       {/* Header */}
       <div>
         <Link

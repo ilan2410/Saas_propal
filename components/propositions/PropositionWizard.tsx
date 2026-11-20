@@ -64,12 +64,20 @@ export function PropositionWizard({
   canDownloadComparatifSaSp = true,
 }: Props) {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(Math.max(1, Number(initialStep || 1)));
-  const [propositionData, setPropositionData] = useState<Partial<PropositionData>>({
-    documents_urls: [],
-    donnees_extraites: {},
-    copieurs_count: 1,
-    ...(initialData || {}),
+  const singleTemplateId = templates.length === 1 ? templates[0]?.id : undefined;
+  const minStep = singleTemplateId ? 2 : 1;
+  const [currentStep, setCurrentStep] = useState(
+    Math.max(minStep, Number(initialStep || (singleTemplateId ? 2 : 1)))
+  );
+  const [propositionData, setPropositionData] = useState<Partial<PropositionData>>(() => {
+    const initial = initialData || {};
+    return {
+      documents_urls: [],
+      donnees_extraites: {},
+      copieurs_count: 1,
+      ...initial,
+      template_id: initial.template_id || singleTemplateId,
+    };
   });
   const selectedSecteur = templates.find((template) => template.id === propositionData.template_id)?.secteur ?? (secteur === 'bureautique' ? 'bureautique' : 'telephonie');
   const updatePropositionData = useCallback((data: Partial<PropositionData>) => {
@@ -98,7 +106,7 @@ export function PropositionWizard({
   };
 
   const prevStep = () => {
-    if (currentStep > 1) {
+    if (currentStep > minStep) {
       const prev = currentStep - 1;
       setCurrentStep(prev);
       persistProgress({ current_step: prev, statut: 'draft' });
@@ -191,7 +199,8 @@ export function PropositionWizard({
               propositionData={propositionData}
               updatePropositionData={updatePropositionData}
               onNext={nextStep}
-              onPrev={prevStep}
+              onPrev={templates.length > 1 ? prevStep : undefined}
+              showCopieursCount={Boolean(singleTemplateId) && selectedSecteur === 'bureautique'}
             />
           </div>
         )}

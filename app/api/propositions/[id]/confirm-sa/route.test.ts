@@ -72,8 +72,16 @@ describe('confirm direct SA API', () => {
     expect(result.donnees_extraites._structured_sa).toBeUndefined();
     expect(result.donnees_extraites._sa_confirmation.confirmed_at).toBeTruthy();
     expect(state.filters).toContainEqual(['organization_id', 'org-a']);
-    expect(state.filters).toContainEqual(['filled_data', null]);
-    expect(state.filters).toContainEqual(['extracted_data', JSON.stringify(state.proposal.extracted_data)]);
+    expect(state.filters).toContainEqual(['filled_data->_sa_confirmation', null]);
+  });
+  it('never puts whole JSON documents in the filters (URI too long) and guards on the extraction revision', async () => {
+    (state.proposal.extracted_data as Record<string, unknown>)._sa_edit_context = { revision: 'rev-1' };
+    const response = await POST(new NextRequest('https://app.test/api/propositions/proposal-a/confirm-sa', {
+      method: 'POST', body: JSON.stringify({ operations: [], revision: 'rev-1' }),
+    }), { params: Promise.resolve({ id: 'proposal-a' }) });
+    expect(response.status).toBe(200);
+    expect(state.filters).toContainEqual(['extracted_data->_sa_edit_context->>revision', 'rev-1']);
+    for (const [, value] of state.filters) expect(String(value).length).toBeLessThan(200);
   });
   it('refuses a second confirmation', async () => {
     state.proposal.filled_data = { _sa_confirmation: { confirmed_at: '2026-11-17T10:00:00Z' } };

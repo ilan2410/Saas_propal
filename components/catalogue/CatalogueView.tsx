@@ -2,14 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Package, Pencil, Search, LayoutGrid, List, Filter, ChevronLeft, ChevronRight, ImageIcon, Trash2, X, Copy } from 'lucide-react';
 import { CatalogueProduit, CatalogueCategorie, CatalogueSecteur } from '@/types';
 import { CatalogueHeader } from './CatalogueHeader';
 import { BulkEditModal } from './BulkEditModal';
-import { OnboardingGuide } from '@/components/onboarding/OnboardingGuide';
-import { OnboardingSuccessModal } from '@/components/onboarding/OnboardingSuccessModal';
-import { getCatalogueTourSteps } from '@/lib/onboarding/tourSteps.catalogue';
 
 interface CatalogueViewProps {
   initialProducts: CatalogueProduit[];
@@ -34,8 +31,6 @@ const PAGE_SIZE_OPTIONS = [10, 50, 100, 200];
 
 export function CatalogueView({ initialProducts, showHeader = true, isAdmin = false, secteur }: CatalogueViewProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const tourParam = searchParams.get('tour');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CatalogueCategorie | 'all'>('all');
@@ -46,7 +41,6 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const showTour = tourParam === 'catalogue';
 
   // Extract unique suppliers for filter
   const suppliers = useMemo(() => {
@@ -218,7 +212,6 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
 
   return (
     <div className="space-y-6">
-      {showTour && <CatalogueTourSession key="catalogue" />}
       {showHeader && <CatalogueHeader secteur={secteur} />}
 
       {/* Filters Bar */}
@@ -610,50 +603,5 @@ export function CatalogueView({ initialProducts, showHeader = true, isAdmin = fa
         }}
       />
     </div>
-  );
-}
-
-function CatalogueTourSession() {
-  const [guideActive, setGuideActive] = useState(true);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const steps = useMemo(() => getCatalogueTourSteps(), []);
-
-  async function markSeen() {
-    try {
-      await fetch('/api/onboarding/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tour: 'catalogue' }),
-      });
-    } catch {}
-  }
-
-  function handleComplete() {
-    setGuideActive(false);
-    void markSeen();
-    setShowSuccess(true);
-  }
-
-  function handleSkip() {
-    setGuideActive(false);
-  }
-
-  if (showSuccess) {
-    return (
-      <OnboardingSuccessModal
-        tourName="Configurer le catalogue"
-        onClose={() => setShowSuccess(false)}
-      />
-    );
-  }
-
-  if (!guideActive) return null;
-
-  return (
-    <OnboardingGuide
-      steps={steps}
-      onComplete={handleComplete}
-      onSkip={handleSkip}
-    />
   );
 }

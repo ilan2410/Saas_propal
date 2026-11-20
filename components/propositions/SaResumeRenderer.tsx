@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Wallet, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatting';
 import { calculateSaCartSummary, type SaCartLine, type SaCartSummary } from '@/lib/sp/calculateSaCart';
@@ -12,6 +12,8 @@ interface Props {
   /** Structured SA data used to highlight the monthly cost the client pays. */
   donneesExtraites?: unknown;
   className?: string;
+  /** Optional control displayed at the right of the monthly-rent card. */
+  action?: ReactNode;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -452,7 +454,7 @@ function MonthlyBreakdown({
   );
 }
 
-export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, className = '' }: Props) {
+export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, className = '', action }: Props) {
   const blocks = useMemo(() => parseResume(text), [text]);
   const monthly = useMemo(() => resolveMonthlyTotal(donneesExtraites), [donneesExtraites]);
   const compact = variant === 'compact';
@@ -485,6 +487,7 @@ export function SaResumeRenderer({ text, variant = 'default', donneesExtraites, 
           {monthly.rows.length > 0 && (
             <MonthlyBreakdown rows={monthly.rows} total={monthly.amount} compact={compact} />
           )}
+          {action && <div className="shrink-0 sm:ml-auto">{action}</div>}
         </div>
       )}
       {blocks.map((block, i) => {

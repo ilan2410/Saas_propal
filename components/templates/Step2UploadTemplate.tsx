@@ -893,7 +893,6 @@ export function Step2UploadTemplate({
       updateTemplateData({ file_type: 'excel', file_config: config });
       setRetainedExcelMappings(keepMappings);
       setIsReplacingFile(false);
-      window.dispatchEvent(new CustomEvent('template:file-type-selected', { detail: { fileType: 'excel' } }));
       setStep('map-sheets');
     } catch (error) {
       console.error('Erreur parsing Excel:', error);
@@ -938,9 +937,7 @@ export function Step2UploadTemplate({
     }
 
     updateExcelState({ file: selectedFile, fileName: selectedFile.name, sheets: [], mappings: [], arrayMappings: [] });
-    // Notify onboarding tour of the selected file type
     if (type === 'word') {
-      window.dispatchEvent(new CustomEvent('template:file-type-selected', { detail: { fileType: type } }));
       await parseWordToPreview(selectedFile);
     } else {
       handleUploadFile(selectedFile, type);

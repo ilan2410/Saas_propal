@@ -18,7 +18,6 @@ import {
   Download
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils/formatting';
-import { DashboardOnboarding } from '@/components/onboarding/DashboardOnboarding';
 import { TutorialVideoDialog } from '@/components/shared/TutorialVideo';
 import { resolveOrgContext } from '@/lib/auth/org-context';
 import { scopePropositionsQuery } from '@/lib/propositions/visibility';
@@ -135,21 +134,8 @@ export default async function ClientDashboard() {
   // permission view_credits_billing. Le reste du dashboard reste inchangé.
   const canViewBilling = ctx.role === 'owner' || ctx.permissions.view_credits_billing;
 
-  // Onboarding state
-  const onboardingCompleted = organization?.onboarding_completed ?? false;
-  const toursSeen: string[] = Array.isArray(organization?.onboarding_tours_seen)
-    ? organization.onboarding_tours_seen
-    : [];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
-      {/* Onboarding — welcome modal + restart button */}
-      <DashboardOnboarding
-        onboardingCompleted={onboardingCompleted}
-        organizationName={organization?.nom}
-        toursSeen={toursSeen}
-      />
-
       {/* Hero Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-8">

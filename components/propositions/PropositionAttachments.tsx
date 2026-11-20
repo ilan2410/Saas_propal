@@ -148,6 +148,8 @@ export function AttachmentPreviewDialog({ preview }: { preview: ReturnType<typeo
 
 function AttachmentManager({ propositionId, onCountChange }: { propositionId: string; onCountChange?: (count: number, changed: boolean) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const onCountChangeRef = useRef(onCountChange);
+  onCountChangeRef.current = onCountChange;
   const [attachments, setAttachments] = useState<PropositionAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -162,13 +164,13 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       if (!response.ok) throw new Error(data.error || 'Chargement impossible');
       const next = Array.isArray(data.attachments) ? data.attachments : [];
       setAttachments(next);
-      onCountChange?.(next.length, false);
+      onCountChangeRef.current?.(next.length, false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Chargement impossible');
     } finally {
       setLoading(false);
     }
-  }, [onCountChange, propositionId]);
+  }, [propositionId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -184,7 +186,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       const added = Array.isArray(data.attachments) ? data.attachments : [];
       setAttachments((previous) => {
         const next = [...added, ...previous];
-        onCountChange?.(next.length, true);
+        onCountChangeRef.current?.(next.length, true);
         return next;
       });
       toast.success(`${added.length} pièce${added.length > 1 ? 's' : ''} jointe${added.length > 1 ? 's' : ''} ajoutée${added.length > 1 ? 's' : ''}`);
@@ -205,7 +207,7 @@ function AttachmentManager({ propositionId, onCountChange }: { propositionId: st
       if (!response.ok) throw new Error(data.details || data.error || 'Suppression impossible');
       setAttachments((previous) => {
         const next = previous.filter((item) => item.id !== attachment.id);
-        onCountChange?.(next.length, true);
+        onCountChangeRef.current?.(next.length, true);
         return next;
       });
       toast.success('Pièce jointe supprimée');

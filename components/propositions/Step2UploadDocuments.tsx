@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useRef, DragEvent } from 'react';
-import { Upload, X, FileText, Loader2, CheckCircle2, ArrowRight, ArrowLeft, Cloud, File, AlertCircle, Image } from 'lucide-react';
+import { Upload, X, FileText, Loader2, CheckCircle2, ArrowRight, ArrowLeft, Cloud, File, AlertCircle, Image, Hash } from 'lucide-react';
 import { PropositionData } from './PropositionWizard';
 import { friendlyFileNameFromUrl } from '@/lib/utils/storage-filename';
 import { checkDocumentLimits, CLAUDE_DOCUMENT_LIMITS, formatMB, type DocumentInfo } from '@/lib/ai/document-limits';
@@ -11,7 +11,8 @@ interface Props {
   propositionData: Partial<PropositionData>;
   updatePropositionData: (data: Partial<PropositionData>) => void;
   onNext: () => void;
-  onPrev: () => void;
+  onPrev?: () => void;
+  showCopieursCount?: boolean;
 }
 
 export function Step2UploadDocuments({
@@ -19,6 +20,7 @@ export function Step2UploadDocuments({
   updatePropositionData,
   onNext,
   onPrev,
+  showCopieursCount = false,
 }: Props) {
   const [entries, setEntries] = useState<{ file: File; info: DocumentInfo }[]>([]);
   const [rejections, setRejections] = useState<string[]>([]);
@@ -33,9 +35,9 @@ export function Step2UploadDocuments({
       : [];
   }, [propositionData.documents_urls]);
 
-  const persistSourceDocuments = (urls: string[]) => {
-    if (!propositionData.proposition_id) return;
-    fetch(`/api/propositions/${propositionData.proposition_id}/update`, {
+  const persistSourceDocuments = (urls: string[], propositionId = propositionData.proposition_id) => {
+    if (!propositionId) return;
+    fetch(`/api/propositions/${propositionId}/update`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -44,6 +46,35 @@ export function Step2UploadDocuments({
         statut: 'draft',
       }),
     }).catch(() => {});
+  };
+
+  const ensureDraftPropositionId = async (): Promise<string | undefined> => {
+    if (propositionData.proposition_id) return propositionData.proposition_id;
+    if (!propositionData.template_id) return undefined;
+
+    sessionStorage.setItem('propal:proposition-wizard:createdAt', String(Date.now()));
+    const res = await fetch('/api/propositions/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template_id: propositionData.template_id,
+        current_step: 2,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.details || json?.error || 'Erreur création du brouillon');
+    }
+
+    const nextId = typeof json?.proposition?.id === 'string' ? json.proposition.id : '';
+    if (!nextId) {
+      throw new Error('Réponse invalide: id de proposition manquant');
+    }
+
+    sessionStorage.setItem('propal:proposition-wizard:draftId', nextId);
+    updatePropositionData({ proposition_id: nextId });
+    return nextId;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,12 +169,14 @@ export function Step2UploadDocuments({
     setIsUploading(true);
 
     try {
+      const activePropositionId = await ensureDraftPropositionId();
+
       const formData = new FormData();
       files.forEach((file) => {
         formData.append('files', file);
       });
-      if (propositionData.proposition_id) {
-        formData.append('proposition_id', propositionData.proposition_id);
+      if (activePropositionId) {
+        formData.append('proposition_id', activePropositionId);
       }
 
       // L'API backend enverra directement les fichiers à l'ia (PDF et images supportés nativement)
@@ -167,10 +200,10 @@ export function Step2UploadDocuments({
         documents_urls: [...uploadedUrls, ...(result.urls || [])],
       });
 
-      persistSourceDocuments([...uploadedUrls, ...(result.urls || [])]);
+      persistSourceDocuments([...uploadedUrls, ...(result.urls || [])], activePropositionId);
 
-      if (propositionData.proposition_id) {
-        fetch(`/api/propositions/${propositionData.proposition_id}/update`, {
+      if (activePropositionId) {
+        fetch(`/api/propositions/${activePropositionId}/update`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ current_step: 3, statut: 'draft' }),
@@ -282,6 +315,36 @@ export function Step2UploadDocuments({
           {"Importez vos documents sources pour l'extraction automatique des données"}
         </p>
       </div>
+
+      {showCopieursCount && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/30">
+              <Hash className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-base font-semibold text-blue-900 mb-3">
+                Nombre de copieurs
+              </label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={Math.max(1, Number(propositionData.copieurs_count || 1))}
+                onChange={(e) => {
+                  const n = Math.max(1, Number(e.target.value || 1));
+                  updatePropositionData({ copieurs_count: n });
+                }}
+                className="w-full max-w-xs px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-semibold text-lg shadow-sm"
+              />
+              <p className="text-sm text-blue-700 mt-3 flex items-start gap-2">
+                <span className="text-blue-500 mt-0.5">ℹ️</span>
+                Cette information structure la proposition selon le nombre de matériels à inclure
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Zone avec Drag & Drop */}
       <div
@@ -583,14 +646,18 @@ export function Step2UploadDocuments({
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-8 border-t-2 border-gray-200">
-        <button
-          onClick={onPrev}
-          disabled={isUploading}
-          className="group px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-          Précédent
-        </button>
+        {onPrev ? (
+          <button
+            onClick={onPrev}
+            disabled={isUploading}
+            className="group px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            Précédent
+          </button>
+        ) : (
+          <div />
+        )}
 
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">
