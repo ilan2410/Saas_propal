@@ -5,8 +5,9 @@ import { createPortal } from 'react-dom';
 import { SaResumeRenderer } from './SaResumeRenderer';
 import { buildEditedSaData, isRecord } from '@/lib/sa/direct-confirmation';
 import { getSaEditableLines, prepareSaForEditing, type SaEditOp, type SaLinePatch, type SaSection } from '@/lib/sp/saCartEdit';
-import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
+import { calculateSaCartSummary, type SaCartSummary } from '@/lib/sp/calculateSaCart';
 import { formatEuro } from '@/lib/sp/calculLoyer';
+import { maskPhoneInput, normalizePhoneNumber } from '@/lib/utils/formatting';
 import type { SpConfigResiliation } from '@/types';
 
 const SECTION_STYLES: Record<SaSection, { label: string; defaultName: string; card: string; badge: string; dot: string; action: string }> = {
@@ -14,6 +15,14 @@ const SECTION_STYLES: Record<SaSection, { label: string; defaultName: string; ca
   location: { label: 'Locations matériel', defaultName: 'Location', card: 'border-emerald-300 bg-emerald-50/60', badge: 'bg-emerald-100 text-emerald-900', dot: 'bg-emerald-600', action: 'text-emerald-800' },
   variable: { label: 'Charges variables', defaultName: 'Charge variable', card: 'border-orange-300 bg-orange-50/60', badge: 'bg-orange-100 text-orange-900', dot: 'bg-orange-500', action: 'text-orange-800' },
 };
+
+function getSectionTotal(summary: SaCartSummary, section: SaSection): number {
+  if (section === 'location') return summary.locations;
+  if (section === 'variable') return summary.chargesVariables;
+  return summary.totalFromOfficiel
+    ? summary.abonnements
+    : Math.round((summary.lignesFixes + summary.lignesMobiles + summary.lignesInternet + summary.abonnements) * 100) / 100;
+}
 
 export function DirectSaEditor({ propositionId, data, resiliationConfig, referenceDate, onConfirmed }: {
   propositionId: string;
@@ -65,11 +74,14 @@ export function DirectSaEditor({ propositionId, data, resiliationConfig, referen
     ? Math.round((cents(monthlyIssue.actual)! - cents(monthlyIssue.expected)!) * 100) / 100 : 0;
   const [error, setError] = useState('');
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const initialSummary = useMemo(() => calculateSaCartSummary(data), [data]);
   const preview = useMemo(() => buildEditedSaData(data, operations, resiliationConfig, referenceDate),
     [data, operations, resiliationConfig, referenceDate]);
   const lines = getSaEditableLines(prepareSaForEditing(preview.situation_actuelle), true);
   const summary = calculateSaCartSummary(preview);
-  const edit = (id: string, field: keyof SaLinePatch, value: string) => {
+  const totalChanged = Math.abs(summary.totalMensuel - initialSummary.totalMensuel) > 0.005;
+  const edit = (id: string, field: keyof SaLinePatch, rawValue: string) => {
+    const value = field === 'numero' ? maskPhoneInput(rawValue) : rawValue;
     setDrafts(previous => ({ ...previous, [id]: { ...previous[id], [field]: value } }));
     const patch = field === 'montant' ? { montant: Math.max(0, Number(value) || 0) }
       : field === 'quantite' ? { quantite: Math.max(1, Math.round(Number(value)) || 1) }
@@ -136,11 +148,18 @@ export function DirectSaEditor({ propositionId, data, resiliationConfig, referen
           {(['abonnement', 'location', 'variable'] as SaSection[]).map(section => {
             const style = SECTION_STYLES[section];
             const sectionLines = lines.filter(line => line.section === section);
+            const sectionTotal = getSectionTotal(summary, section);
+            const initialSectionTotal = getSectionTotal(initialSummary, section);
+            const sectionChanged = Math.abs(sectionTotal - initialSectionTotal) > 0.005;
             return <section key={section} className={`space-y-3 rounded-xl border-2 ${style.card} p-4`}>
               <div className="flex items-center justify-between gap-3">
-                <h4 className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold ${style.badge}`}>
-                  <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />{style.label}
-                </h4>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold ${style.badge}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />{style.label}
+                  </h4>
+                  <span className="text-sm font-semibold text-gray-900 tabular-nums">{formatEuro(sectionTotal)} HT</span>
+                  {sectionChanged && <span className="text-xs font-medium text-emerald-700 tabular-nums">(initial : {formatEuro(initialSectionTotal)} HT)</span>}
+                </div>
                 <span className="text-xs text-gray-500">{sectionLines.length} ligne{sectionLines.length > 1 ? 's' : ''}</span>
               </div>
               {section === 'variable' && !summary.chargesVariablesIncluses && <p className="text-xs text-gray-500">Ces charges sont exclues du total mensuel selon la configuration du modèle.</p>}
@@ -149,12 +168,15 @@ export function DirectSaEditor({ propositionId, data, resiliationConfig, referen
                 const field = (key: keyof SaLinePatch, title: string, value: string | number) => <label className="block min-w-0 text-xs text-gray-600">
                   {title}
                   <input aria-label={`${title} — ${line.designation}`} className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900"
-                    type={key === 'montant' || key === 'quantite' ? 'number' : 'text'}
+                    type={key === 'montant' || key === 'quantite' ? 'number' : key === 'numero' ? 'tel' : 'text'}
+                    placeholder={key === 'numero' ? '01 23 45 67 89' : undefined}
                     min={key === 'quantite' ? 1 : key === 'montant' ? 0 : undefined}
                     max={key === 'quantite' ? 1e6 : key === 'montant' ? 1e9 : undefined}
                     maxLength={key === 'designation' ? 2000 : key === 'numero' ? 100 : undefined}
                     step={key === 'quantite' ? 1 : key === 'montant' ? '0.01' : undefined}
-                    value={drafts[line.id]?.[key] ?? value} onChange={event => edit(line.id, key, event.target.value)} />
+                    value={drafts[line.id]?.[key] ?? value}
+                    onChange={event => edit(line.id, key, event.target.value)}
+                    onBlur={key === 'numero' ? event => edit(line.id, 'numero', normalizePhoneNumber(event.target.value)) : undefined} />
                 </label>;
                 return <div key={line.id} className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -177,7 +199,10 @@ export function DirectSaEditor({ propositionId, data, resiliationConfig, referen
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-6 py-4">
           <div>
-            <p aria-live="polite" className="text-sm font-semibold text-gray-900">Total mensuel SA : {formatEuro(summary.totalMensuel)} HT</p>
+            <p aria-live="polite" className="text-sm font-semibold text-gray-900">
+              Total mensuel SA : {formatEuro(summary.totalMensuel)} HT
+              {totalChanged && <span className="ml-2 text-xs font-medium text-emerald-700 tabular-nums">(initial : {formatEuro(initialSummary.totalMensuel)} HT)</span>}
+            </p>
             <button type="button" className="text-xs text-gray-600 hover:underline" onClick={() => { setDrafts({}); setOperations([]); }}>Annuler toutes les corrections</button>
           </div>
           <button type="button" onClick={() => setOpen(false)}

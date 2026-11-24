@@ -23,6 +23,7 @@ import type {
   SpCategorie,
   SpConfigLoyer,
   SpConfigModeDirect,
+  SpConfigResiliation,
   SpConfigMoisOfferts,
   SpConfigRemises,
   SpLibelleKey,
@@ -59,6 +60,7 @@ import { isLibelleVisible, resolveLibelle } from '@/lib/sp/libelles';
 import { repairSpCompletesFromQuestionnaire } from '@/lib/sp/repairSpCompletes';
 import { evaluateObjectifsForRender } from '@/lib/sp/evaluateObjectifs';
 import SpObjectifsAccomplis from '@/components/sp/SpObjectifsAccomplis';
+import { SpIndemniteWidget } from '@/components/sp/SpIndemniteWidget';
 import {
   ClientCoordonneesFields,
   type ClientEdit,
@@ -696,6 +698,9 @@ export interface EditableSpResumePanelProps {
   spConfigRemises?: SpConfigRemises;
   discountRules?: SpRegleRemise[];
   spConfigModeDirect?: SpConfigModeDirect;
+  spConfigResiliation?: SpConfigResiliation;
+  /** Date de référence du calcul d'indemnité (format de `sp_indemnites_calcul.date_reference`). */
+  indemnitesReferenceDate?: string;
   spLibelles?: SpLibellesConfig;
   spCategoriesOrder?: SpCategorie[];
   spTableProductOrders?: SpTableProductOrders;
@@ -718,6 +723,8 @@ export function EditableSpResumePanel({
   spConfigRemises,
   discountRules = [],
   spConfigModeDirect,
+  spConfigResiliation,
+  indemnitesReferenceDate,
   spLibelles,
   spCategoriesOrder,
   spTableProductOrders,
@@ -2200,8 +2207,23 @@ export function EditableSpResumePanel({
         visible('marge') ||
         eligibleDiscountProducts.length > 0) && (
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
             <h3 className="font-semibold text-slate-900 text-sm">Indemnités &amp; remises</h3>
+            {/* Calculette d'indemnité : indépendante du libellé affiché sur la ligne (« Rachat », etc.) */}
+            {spConfigModeDirect?.actif === true && visible('indemnites') && (
+              <SpIndemniteWidget
+                inline
+                spLibelles={spLibelles}
+                reponses={reponses}
+                questions={questions}
+                donneesExtraites={donneesExtraites}
+                spConfigResiliation={spConfigResiliation}
+                referenceDate={indemnitesReferenceDate}
+                montantActuel={indemnitesTotalFinal}
+                onMontantChange={handleUpdateIndemnites}
+                onUpdateReponses={applyReponsesUpdate}
+              />
+            )}
           </div>
           <div className="divide-y divide-slate-100">
             {visible('indemnites') && (
@@ -2258,7 +2280,7 @@ export function EditableSpResumePanel({
             {visible('loyer_mensuel') && loyerModifiable && cart.loyer && (
               <div className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
                 <div className="min-w-0">
-                  <span className="text-slate-600">{lbl('loyer_mensuel')} (forcé manuellement)</span>
+                  <span className="text-slate-600">{lbl('loyer_mensuel')}</span>
                   {cart.loyer.loyer_calcule != null && (
                     <span className="ml-2 text-xs text-blue-600">
                       (calculé : {formatEuroValue(cart.loyer.loyer_calcule)})

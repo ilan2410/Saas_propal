@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, X, Calculator } from 'lucide-react';
+import { useMemo, useState, useEffect, useRef, useId, type ReactNode } from 'react';
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, X, Calculator, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type {
   SpConfigResiliation,
   SpQuestion,
@@ -10,7 +10,13 @@ import type {
 } from '@/types';
 import { estimateResiliationFromSA } from '@/lib/sp/resiliation';
 import { calculateSaCartSummary } from '@/lib/sp/calculateSaCart';
-import { calculerIndemnite } from '@/lib/sp/indemnite-calculette';
+import {
+  addMonthsIso,
+  calculerIndemniteEngagements,
+  computeEngagementEnd,
+  computeMoisRestants,
+  DUREE_ENGAGEMENT_DEFAUT_MOIS,
+} from '@/lib/sp/indemnite-calculette';
 import { resolveWidgetLibelle } from '@/lib/sp/libelles';
 import { DraggablePanel } from '@/components/ui/DraggablePanel';
 
@@ -22,6 +28,15 @@ interface SpIndemniteWidgetProps {
   spConfigResiliation?: SpConfigResiliation;
   referenceDate?: string;
   onUpdateReponses: (nextReponses: SpQuestionReponse[]) => void;
+  /**
+   * Mode intégré (mode direct) : le widget est affiché dans le flux de la page
+   * au lieu d'être flottant, et ne duplique pas le champ montant — celui de la
+   * page fait foi. Le montant courant et son écriture passent par les props
+   * ci-dessous.
+   */
+  inline?: boolean;
+  montantActuel?: number;
+  onMontantChange?: (montant: number) => void;
   gardeFouActif?: boolean;
   gardeFouVisible?: boolean;
 }
@@ -49,13 +64,88 @@ function formatResiliationRemainingMonths(
   return `${moisRestants} mois restants`;
 }
 
-function monthsBetweenNowAnd(dateStr: string): number | null {
-  if (!dateStr) return null;
-  const end = new Date(dateStr);
-  if (!Number.isFinite(end.getTime())) return null;
-  const now = new Date();
-  return (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+function formatIsoFr(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+interface CalcEngagement {
+  id: string;
+  libelle: string;
+  mensuel: string;
+  dateDebut: string;
+  duree: string;
+  /** Date de fin saisie à la main ou issue de la SA ; prioritaire sur début + durée. */
+  dateFinManuelle: string;
+  fromSa: boolean;
+}
+
+interface CalcFrais {
+  fraisFixes: string;
+  penalites: string;
+  fraisMateriel: string;
+  servicesAnnexes: string;
+}
+
+interface CalcDefaults {
+  refIso: string;
+  preavis: string;
+  engagements: CalcEngagement[];
+  frais: CalcFrais;
+}
+
+let engagementSeq = 0;
+function newEngagementId(): string {
+  engagementSeq += 1;
+  return `eng_${engagementSeq}`;
+}
+
+function emptyEngagement(): CalcEngagement {
+  return {
+    id: newEngagementId(),
+    libelle: 'Engagement',
+    mensuel: '',
+    dateDebut: '',
+    duree: String(DUREE_ENGAGEMENT_DEFAUT_MOIS),
+    dateFinManuelle: '',
+    fromSa: false,
+  };
+}
+
+function engagementDateFin(e: CalcEngagement): string {
+  if (e.dateFinManuelle) return e.dateFinManuelle;
+  return e.dateDebut ? computeEngagementEnd(e.dateDebut, parseNum(e.duree)) ?? '' : '';
+}
+
+/** Petit badge indiquant si une valeur vient de la SA ou a été modifiée à la main. */
+function SourceBadge({ current, original }: { current: string; original: string }) {
+  if (!original) return null;
+  const same = parseNum(current) === parseNum(original) && current !== '';
+  return (
+    <span className={`ml-1.5 rounded px-1 py-px text-[10px] font-medium ${same ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+      {same ? 'SA' : 'modifié'}
+    </span>
+  );
+}
+
+function CalcField({ id, label, badge, children }: { id: string; label: string; badge?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="flex items-center text-xs text-gray-500">
+        {label}
+        {badge}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const INPUT_CLASS = 'h-8 w-full text-sm border border-gray-300 rounded px-2 focus:outline-none focus:ring-1 focus:ring-orange-400';
 
 function parseNum(value: string): number {
   const n = Number(value.replace(',', '.'));
@@ -71,8 +161,7 @@ function toDateInputValue(raw: unknown): string | null {
   return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : null;
 }
 
-/** Date de fin d'engagement la plus tardive trouvée dans la SA (format input date). */
-function findLatestEngagementEnd(donneesExtraites?: Record<string, unknown>): string | null {
+/** Date de fin d'engagement la plus tardive trouvée dans la SA (format input date). */function findLatestEngagementEnd(donneesExtraites?: Record<string, unknown>): string | null {
   const root = donneesExtraites?.situation_actuelle ?? donneesExtraites;
   const engagements = (root as { engagements?: unknown } | undefined)?.engagements;
   if (!Array.isArray(engagements)) return null;
@@ -111,6 +200,9 @@ export function SpIndemniteWidget({
   spConfigResiliation,
   referenceDate,
   onUpdateReponses,
+  inline = false,
+  montantActuel,
+  onMontantChange,
   gardeFouActif,
   gardeFouVisible,
 }: SpIndemniteWidgetProps) {
@@ -119,15 +211,14 @@ export function SpIndemniteWidget({
   const [showCalculator, setShowCalculator] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const prevVisible = useRef(false);
-  const calcPrefilled = useRef(false);
+  const calcTouched = useRef(false);
+  const uid = useId();
 
-  const [calcDateFin, setCalcDateFin] = useState('');
   const [calcPreavis, setCalcPreavis] = useState('3');
-  const [calcMontantMensuel, setCalcMontantMensuel] = useState('');
-  const [calcFraisFixes, setCalcFraisFixes] = useState('');
-  const [calcPenalites, setCalcPenalites] = useState('');
-  const [calcFraisMateriel, setCalcFraisMateriel] = useState('');
-  const [calcServicesAnnexes, setCalcServicesAnnexes] = useState('');
+  const [calcEngagements, setCalcEngagements] = useState<CalcEngagement[]>(() => [emptyEngagement()]);
+  const [calcFrais, setCalcFrais] = useState<CalcFrais>({
+    fraisFixes: '', penalites: '', fraisMateriel: '', servicesAnnexes: '',
+  });
 
   useEffect(() => {
     if (gardeFouVisible && !prevVisible.current) {
@@ -164,10 +255,15 @@ export function SpIndemniteWidget({
   const targetQuestionId = indemQuestion?.id ?? 'sp_total_indemnites';
 
   const currentRep = reponses.find((r) => r.question_id === targetQuestionId);
-  const inputValue = currentRep ? (Number(currentRep.valeur) > 0 ? String(Number(currentRep.valeur)) : '') : '';
+  const currentMontantNum = montantActuel ?? (Number(currentRep?.valeur) || 0);
+  const inputValue = currentMontantNum > 0 ? String(currentMontantNum) : '';
 
   const handleChange = (value: string) => {
     const num = Number(value) || 0;
+    if (onMontantChange) {
+      onMontantChange(num);
+      return;
+    }
     const filtered = reponses.filter((r) => r.question_id !== targetQuestionId);
     onUpdateReponses([...filtered, { question_id: targetQuestionId, valeur: String(num) }]);
   };
@@ -177,38 +273,96 @@ export function SpIndemniteWidget({
 
   const showGardeFou = gardeFouActif && gardeFouVisible && !dismissed;
 
-  const calcMoisAvantPreavis = calcDateFin !== '' ? monthsBetweenNowAnd(calcDateFin) : null;
-  const calcMoisRestants = calcMoisAvantPreavis !== null
-    ? Math.max(0, calcMoisAvantPreavis - parseNum(calcPreavis))
-    : null;
-  const { lignes: calcLignes, total: calcTotal } = calculerIndemnite(calcMoisRestants, {
-    mensuel: parseNum(calcMontantMensuel),
-    fraisFixes: parseNum(calcFraisFixes),
-    penalites: parseNum(calcPenalites),
-    fraisMateriel: parseNum(calcFraisMateriel),
-    servicesAnnexes: parseNum(calcServicesAnnexes),
-  });
+  // Valeurs issues de la SA : sert au préremplissage, au badge « SA / modifié »
+  // et au bouton « Réinitialiser ». Recalculé quand la SA change.
+  const saDefaults = useMemo<CalcDefaults>(() => {
+    const refIso = toDateInputValue(estimation?.date_reference) ?? toDateInputValue(referenceDate) ?? todayIso();
+    const root = donneesExtraites?.situation_actuelle ? donneesExtraites : { situation_actuelle: donneesExtraites };
 
-  // Pré-remplit la calculette depuis la SA à la première ouverture ; les champs
-  // restent ensuite librement modifiables.
-  const openCalculator = () => {
-    if (!calcPrefilled.current) {
-      calcPrefilled.current = true;
-      const totalSa = calculateSaCartSummary(
-        donneesExtraites?.situation_actuelle ? donneesExtraites : { situation_actuelle: donneesExtraites },
-      ).totalMensuel;
-      setCalcMontantMensuel(formatInputNumber(totalSa));
-      setCalcDateFin(findLatestEngagementEnd(donneesExtraites) ?? '');
-      if (estimation) {
-        setCalcPreavis(String(estimation.preavis_mois));
-        setCalcFraisFixes(formatInputNumber(estimation.frais_resiliation_fixes));
-        setCalcPenalites(formatInputNumber(estimation.penalites));
-        setCalcFraisMateriel(formatInputNumber(estimation.frais_materiel));
-        setCalcServicesAnnexes(formatInputNumber(estimation.services_annexes));
-      }
+    const groupes = (estimation?.groupes_calcul ?? []).filter((g) => g.sous_total !== null);
+    let engagements: CalcEngagement[] = groupes.map((g) => ({
+      id: newEngagementId(),
+      libelle: g.libelle,
+      mensuel: formatInputNumber(g.base_mensuelle),
+      dateDebut: '',
+      duree: String(DUREE_ENGAGEMENT_DEFAUT_MOIS),
+      dateFinManuelle: g.mois_avant_preavis != null ? addMonthsIso(refIso, g.mois_avant_preavis) ?? '' : '',
+      fromSa: true,
+    }));
+    if (engagements.length === 0) {
+      const totalSa = calculateSaCartSummary(root).totalMensuel;
+      const dateFin = findLatestEngagementEnd(donneesExtraites) ?? '';
+      engagements = [{
+        ...emptyEngagement(),
+        mensuel: formatInputNumber(totalSa),
+        dateFinManuelle: dateFin,
+        fromSa: Boolean(totalSa || dateFin),
+      }];
     }
+    return {
+      refIso,
+      preavis: String(estimation?.preavis_mois ?? 3),
+      engagements,
+      frais: {
+        fraisFixes: formatInputNumber(estimation?.frais_resiliation_fixes),
+        penalites: formatInputNumber(estimation?.penalites),
+        fraisMateriel: formatInputNumber(estimation?.frais_materiel),
+        servicesAnnexes: formatInputNumber(estimation?.services_annexes),
+      },
+    };
+  }, [donneesExtraites, estimation, referenceDate]);
+
+  const applyDefaults = () => {
+    calcTouched.current = false;
+    setCalcPreavis(saDefaults.preavis);
+    setCalcEngagements(saDefaults.engagements.map((e) => ({ ...e, id: newEngagementId() })));
+    setCalcFrais(saDefaults.frais);
+  };
+
+  // À l'ouverture, on repréremplit depuis la SA tant que l'utilisateur n'a rien
+  // modifié (évite une calculette périmée si la SA a changé entre-temps).
+  const openCalculator = () => {
+    if (!calcTouched.current) applyDefaults();
     setShowCalculator(true);
   };
+
+  const touch = () => {
+    calcTouched.current = true;
+  };
+  const updateEngagement = (id: string, patch: Partial<CalcEngagement>) => {
+    touch();
+    setCalcEngagements((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  };
+  const updateFrais = (patch: Partial<CalcFrais>) => {
+    touch();
+    setCalcFrais((prev) => ({ ...prev, ...patch }));
+  };
+
+  const calcRefIso = saDefaults.refIso;
+  const calcPreavisNum = parseNum(calcPreavis);
+  const calcDetailEngagements = calcEngagements.map((e) => {
+    const dateFin = engagementDateFin(e);
+    const mois = dateFin ? computeMoisRestants(calcRefIso, dateFin, calcPreavisNum) : null;
+    return { e, dateFin, mois };
+  });
+  const { lignes: calcLignes, total: calcTotal } = calculerIndemniteEngagements(
+    calcDetailEngagements.map(({ e, mois }) => ({
+      libelle: e.libelle || 'Engagement',
+      mensuel: parseNum(e.mensuel),
+      moisRestants: mois ? mois.moisRestants : null,
+    })),
+    {
+      fraisFixes: parseNum(calcFrais.fraisFixes),
+      penalites: parseNum(calcFrais.penalites),
+      fraisMateriel: parseNum(calcFrais.fraisMateriel),
+      servicesAnnexes: parseNum(calcFrais.servicesAnnexes),
+    },
+  );
+
+  const currentIndemniteNum = currentMontantNum;
+  const remplaceExistant = currentIndemniteNum > 0 && Math.abs(currentIndemniteNum - calcTotal) >= 0.005;
+  const ecartEstimation = estimation?.montant_retenu != null ? calcTotal - estimation.montant_retenu : null;
+  const fraisOuverts = Object.values(calcFrais).some((v) => parseNum(v) !== 0);
 
   const handleReporterMontant = () => {
     handleChange(calcTotal.toFixed(2));
@@ -241,7 +395,17 @@ export function SpIndemniteWidget({
         `}</style>
       )}
 
-      <div className={`relative w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showGardeFou ? 'gf-i-widget border-orange-400' : 'border-gray-200'}`}>
+      {inline ? (
+        <button
+          type="button"
+          onClick={openCalculator}
+          title="Calculette indemnité de résiliation"
+          aria-label="Calculette indemnité de résiliation"
+          className="flex items-center justify-center h-8 w-8 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+        >
+          <Calculator className="h-4 w-4" />
+        </button>
+      ) : (<div className={`relative rounded-xl border bg-white w-72 max-w-[calc(100vw-2rem)] shadow-xl ${showGardeFou ? 'gf-i-widget border-orange-400' : 'border-gray-200'}`}>
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
@@ -304,8 +468,8 @@ export function SpIndemniteWidget({
               <p className="text-xs text-gray-500">Aucune estimation disponible depuis la SA.</p>
             ) : null}
 
-            {/* Champ montant */}
-            <div className="flex items-center gap-2">
+            {/* Champ montant (absent en mode intégré : le champ de la page fait foi) */}
+            {!inline && <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 shrink-0">Montant :</label>
               <input
                 type="number"
@@ -317,7 +481,7 @@ export function SpIndemniteWidget({
                 className="h-8 w-24 text-sm border border-gray-300 rounded px-2"
               />
               <span className="text-xs text-gray-500">€</span>
-            </div>
+            </div>}
 
             {/* Lien détail + calculette */}
             <div className="flex items-center justify-between gap-2">
@@ -342,7 +506,7 @@ export function SpIndemniteWidget({
             </div>
           </div>
         )}
-      </div>
+      </div>)}
 
       {/* Popup détail déplaçable */}
       <DraggablePanel
@@ -496,106 +660,249 @@ export function SpIndemniteWidget({
         isOpen={showCalculator}
         onClose={() => setShowCalculator(false)}
         title="Calculette — Indemnité de résiliation"
-        defaultWidth={340}
-        defaultHeight={520}
-      >
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Date de fin d&apos;engagement</label>
-            <input
-              type="date"
-              value={calcDateFin}
-              onChange={(e) => setCalcDateFin(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Préavis (mois)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcPreavis}
-              onChange={(e) => setCalcPreavis(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Montant mensuel actuel (€)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcMontantMensuel}
-              onChange={(e) => setCalcMontantMensuel(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Frais fixes de résiliation (€)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcFraisFixes}
-              onChange={(e) => setCalcFraisFixes(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Pénalités (€)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcPenalites}
-              onChange={(e) => setCalcPenalites(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Frais matériel (€)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcFraisMateriel}
-              onChange={(e) => setCalcFraisMateriel(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Services annexes (€)</label>
-            <input
-              type="number"
-              min="0"
-              value={calcServicesAnnexes}
-              onChange={(e) => setCalcServicesAnnexes(e.target.value)}
-              className="h-8 w-full text-sm border border-gray-300 rounded px-2"
-            />
-          </div>
-
-          {calcMoisRestants !== null && (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-orange-950">Mois restants après préavis</span>
-                <span className="shrink-0 text-base font-bold tabular-nums text-orange-900">
-                  {calcMoisRestants} mois
-                </span>
+        defaultWidth={440}
+        defaultHeight={620}
+        footer={
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] text-amber-700">Total calculé</p>
+                <p className="text-xl font-semibold tabular-nums text-amber-950">{calcTotal.toFixed(2)} €</p>
+                {ecartEstimation !== null && estimation?.montant_retenu != null && (
+                  <p className="text-[11px] text-gray-500">
+                    Estimation SA : {estimation.montant_retenu.toFixed(2)} € ({ecartEstimation >= 0 ? '+' : '−'}
+                    {Math.abs(ecartEstimation).toFixed(2)} €)
+                  </p>
+                )}
               </div>
-              <p className="mt-1 text-xs text-orange-800">
-                {calcMoisAvantPreavis} mois jusqu&apos;à la fin − {parseNum(calcPreavis)} mois de préavis
-              </p>
+              <button
+                type="button"
+                onClick={handleReporterMontant}
+                className="shrink-0 px-3 py-2 rounded-md bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors"
+              >
+                Reporter le montant
+              </button>
             </div>
-          )}
+            {remplaceExistant && (
+              <p className="text-[11px] text-orange-700">
+                Remplacera le montant déjà saisi ({currentIndemniteNum.toFixed(2)} €).
+              </p>
+            )}
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[11px] text-gray-500">
+              Calcul au {formatIsoFr(calcRefIso)} · mois complets · préavis déduit.
+            </p>
+            <button
+              type="button"
+              onClick={applyDefaults}
+              className="shrink-0 flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Réinitialiser depuis la SA
+            </button>
+          </div>
+
+          <CalcField id={`${uid}-preavis`} label="Préavis (mois)" badge={<SourceBadge current={calcPreavis} original={saDefaults.preavis} />}>
+            <input
+              id={`${uid}-preavis`}
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={calcPreavis}
+              onChange={(e) => {
+                touch();
+                setCalcPreavis(e.target.value);
+              }}
+              className={INPUT_CLASS}
+            />
+          </CalcField>
+
+          {calcDetailEngagements.map(({ e, dateFin, mois }, index) => {
+            const original = saDefaults.engagements.find((d) => d.libelle === e.libelle);
+            const finDeduite = !e.dateFinManuelle && dateFin;
+            return (
+              <div key={e.id} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  {calcEngagements.length > 1 ? (
+                    <input
+                      aria-label={`Libellé de l'engagement ${index + 1}`}
+                      value={e.libelle}
+                      onChange={(ev) => updateEngagement(e.id, { libelle: ev.target.value })}
+                      className="h-7 min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-xs font-semibold text-gray-800 hover:border-gray-300 focus:border-gray-300 focus:bg-white focus:outline-none"
+                    />
+                  ) : (
+                    <p className="text-xs font-semibold text-gray-800">Engagement</p>
+                  )}
+                  {calcEngagements.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        touch();
+                        setCalcEngagements((prev) => prev.filter((x) => x.id !== e.id));
+                      }}
+                      className="shrink-0 text-gray-400 hover:text-red-600"
+                      aria-label={`Supprimer l'engagement ${index + 1}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <CalcField
+                  id={`${uid}-${e.id}-mensuel`}
+                  label="Montant mensuel (€)"
+                  badge={<SourceBadge current={e.mensuel} original={original?.mensuel ?? ''} />}
+                >
+                  <input
+                    id={`${uid}-${e.id}-mensuel`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={e.mensuel}
+                    onChange={(ev) => updateEngagement(e.id, { mensuel: ev.target.value })}
+                    className={INPUT_CLASS}
+                  />
+                </CalcField>
+
+                <div className="grid grid-cols-[1fr_5.5rem] gap-2">
+                  <CalcField id={`${uid}-${e.id}-debut`} label="Début d'engagement (signature)">
+                    <input
+                      id={`${uid}-${e.id}-debut`}
+                      type="date"
+                      value={e.dateDebut}
+                      onChange={(ev) => updateEngagement(e.id, { dateDebut: ev.target.value, dateFinManuelle: '' })}
+                      className={INPUT_CLASS}
+                    />
+                  </CalcField>
+                  <CalcField id={`${uid}-${e.id}-duree`} label="Durée (mois)">
+                    <input
+                      id={`${uid}-${e.id}-duree`}
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      value={e.duree}
+                      onChange={(ev) => updateEngagement(e.id, { duree: ev.target.value, dateFinManuelle: '' })}
+                      className={INPUT_CLASS}
+                    />
+                  </CalcField>
+                </div>
+
+                <CalcField
+                  id={`${uid}-${e.id}-fin`}
+                  label="Fin d'engagement"
+                  badge={
+                    finDeduite ? (
+                      <span className="ml-1.5 rounded bg-gray-100 px-1 py-px text-[10px] font-medium text-gray-600">
+                        début + {parseNum(e.duree)} mois
+                      </span>
+                    ) : e.dateFinManuelle ? (
+                      <span className={`ml-1.5 rounded px-1 py-px text-[10px] font-medium ${e.fromSa && e.dateFinManuelle === original?.dateFinManuelle ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {e.fromSa && e.dateFinManuelle === original?.dateFinManuelle ? 'SA' : 'saisie'}
+                      </span>
+                    ) : null
+                  }
+                >
+                  <input
+                    id={`${uid}-${e.id}-fin`}
+                    type="date"
+                    value={dateFin}
+                    onChange={(ev) => updateEngagement(e.id, { dateFinManuelle: ev.target.value })}
+                    className={INPUT_CLASS}
+                  />
+                </CalcField>
+
+                {mois ? (
+                  <div
+                    className={`rounded-md border px-3 py-2 text-xs ${
+                      mois.depasse || mois.preavisCouvreTout
+                        ? 'border-amber-300 bg-amber-50 text-amber-900'
+                        : 'border-orange-200 bg-orange-50 text-orange-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">Mois restants après préavis</span>
+                      <span className="text-base font-bold tabular-nums">{mois.moisRestants} mois</span>
+                    </div>
+                    <p className="mt-0.5 text-orange-800">
+                      {Math.max(0, mois.moisAvantPreavis)} mois jusqu&apos;à la fin − {calcPreavisNum} mois de préavis
+                    </p>
+                    {mois.depasse && (
+                      <p className="mt-1 flex items-center gap-1 font-medium">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        La date de fin est dépassée : aucune mensualité n&apos;est due.
+                      </p>
+                    )}
+                    {mois.preavisCouvreTout && (
+                      <p className="mt-1 flex items-center gap-1 font-medium">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        Le préavis couvre toute la période restante : aucune mensualité due.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-500">
+                    Renseignez la date de début (la durée par défaut est de {DUREE_ENGAGEMENT_DEFAUT_MOIS} mois) ou directement la fin d&apos;engagement.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => {
+              touch();
+              setCalcEngagements((prev) => [...prev, { ...emptyEngagement(), libelle: `Engagement ${prev.length + 1}` }]);
+            }}
+            className="flex items-center gap-1 text-xs font-medium text-orange-700 hover:text-orange-900"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Ajouter un engagement
+          </button>
+
+          <details open={fraisOuverts} className="rounded-lg border border-gray-200 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-gray-700">Frais additionnels</summary>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {([
+                ['fraisFixes', 'Frais fixes (€)'],
+                ['penalites', 'Pénalités (€)'],
+                ['fraisMateriel', 'Frais matériel (€)'],
+                ['servicesAnnexes', 'Services annexes (€)'],
+              ] as const).map(([key, label]) => (
+                <CalcField
+                  key={key}
+                  id={`${uid}-${key}`}
+                  label={label}
+                  badge={<SourceBadge current={calcFrais[key]} original={saDefaults.frais[key]} />}
+                >
+                  <input
+                    id={`${uid}-${key}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={calcFrais[key]}
+                    onChange={(ev) => updateFrais({ [key]: ev.target.value })}
+                    className={INPUT_CLASS}
+                  />
+                </CalcField>
+              ))}
+            </div>
+          </details>
 
           <div className="space-y-2" aria-label="Détail du calcul">
             <p className="text-xs font-semibold text-gray-800">Détail du calcul</p>
             {calcLignes.length > 0 ? (
               <div className="space-y-2 text-xs text-gray-700">
                 {calcLignes.map((ligne, index) => (
-                  <div key={ligne.libelle} className="flex items-start justify-between gap-3">
+                  <div key={`${ligne.libelle}-${index}`} className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
                       <span className="block">{index > 0 ? '+ ' : ''}{ligne.libelle}</span>
                       {ligne.calcul && <span className="block text-gray-500">{ligne.calcul} =</span>}
@@ -607,22 +914,8 @@ export function SpIndemniteWidget({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-500">Renseignez la date de fin et les montants pour voir le calcul.</p>
+              <p className="text-xs text-gray-500">Renseignez les dates et les montants pour voir le calcul.</p>
             )}
-          </div>
-
-          <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 flex items-center justify-between gap-2">
-            <div>
-              <p className="text-[11px] text-amber-700">Total calculé</p>
-              <p className="text-lg font-semibold text-amber-950">{calcTotal.toFixed(2)} €</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleReporterMontant}
-              className="shrink-0 px-3 py-1.5 rounded-md bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors"
-            >
-              Reporter le montant
-            </button>
           </div>
         </div>
       </DraggablePanel>

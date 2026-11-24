@@ -71,7 +71,11 @@ export function buildEditedSaData(
   // Never leave the source-document prose displaying the previous prices.
   result.resume = replaceIndemnitesSectionInResume([
     '**Situation actuelle corrigée**',
-    ...summary.details.map(line => `- ${line.libelle} : ${line.montant.toFixed(2)} € HT/mois`),
+    ...summary.details.map(line => {
+      const qty = line.categorie !== 'variable' ? ` ×${line.quantite ?? 1}` : '';
+      const num = line.numero ? ` (${line.numero})` : '';
+      return `- ${line.libelle}${qty}${num} : ${line.montant.toFixed(2)} € HT/mois`;
+    }),
     `**Total mensuel : ${summary.totalMensuel.toFixed(2)} € HT/mois**`,
   ].join('\n\n'), estimation);
   // Some templates store dotted aliases alongside the nested SA.

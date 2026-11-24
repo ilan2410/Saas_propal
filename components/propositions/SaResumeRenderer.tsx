@@ -422,17 +422,37 @@ function MonthlyBreakdown({
 
               {open && (
                 <ul className={`space-y-0.5 pb-1 pl-5 pr-1 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
-                  {row.lines.map((line, i) => (
-                    <li key={`${row.key}-${i}`} className="flex items-baseline gap-2 text-indigo-900/70">
-                      <span className="min-w-0 flex-1 truncate" title={line.libelle}>
-                        {line.libelle}
-                        {line.operateur ? (
-                          <span className="text-indigo-500/70"> · {line.operateur}</span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 tabular-nums">{formatCurrency(line.montant)}</span>
-                    </li>
-                  ))}
+                  {row.lines.map((line, i) => {
+                    const showQty = row.key !== 'variable';
+                    const qty = line.quantite ?? 1;
+                    return (
+                      <li key={`${row.key}-${i}`} className="flex items-baseline gap-2 text-indigo-900/70">
+                        <span
+                          className="min-w-0 flex-1 truncate"
+                          title={[
+                            line.libelle,
+                            showQty ? `Qté : ${qty}` : null,
+                            line.numero ? `N° ${line.numero}` : null,
+                            line.operateur ?? null,
+                          ].filter(Boolean).join(' · ')}
+                        >
+                          {line.libelle}
+                          {showQty && (
+                            <span className="ml-1 font-semibold text-indigo-700">×{qty}</span>
+                          )}
+                          {line.numero ? (
+                            <span className="ml-1.5 rounded bg-indigo-100 px-1 py-0.5 font-medium text-indigo-800 tabular-nums">
+                              {line.numero}
+                            </span>
+                          ) : null}
+                          {line.operateur ? (
+                            <span className="text-indigo-500/70"> · {line.operateur}</span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 tabular-nums">{formatCurrency(line.montant)}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

@@ -37,6 +37,7 @@ import type {
   SpCategorie,
   SpConfigLoyer,
   SpConfigModeDirect,
+  SpConfigResiliation,
   SpConfigRemises,
   SpLibellesConfig,
   SpPreferencesProduits,
@@ -288,6 +289,15 @@ export default async function PropositionDetailPage({
   const spConfigModeDirect: SpConfigModeDirect | undefined = isRecord(templateFileCfg.sp_config_mode_direct)
     ? (templateFileCfg.sp_config_mode_direct as unknown as SpConfigModeDirect)
     : undefined;
+  const spConfigResiliation: SpConfigResiliation | undefined = isRecord(templateFileCfg.sp_config_resiliation)
+    ? (templateFileCfg.sp_config_resiliation as unknown as SpConfigResiliation)
+    : isRecord(prefs.sp_config_resiliation)
+      ? (prefs.sp_config_resiliation as unknown as SpConfigResiliation)
+      : undefined;
+  const indemnitesReferenceDate =
+    typeof suggestionsSpCompletes?.sp_indemnites_calcul?.date_reference === 'string'
+      ? suggestionsSpCompletes.sp_indemnites_calcul.date_reference
+      : undefined;
   const isModeDirect = spConfigModeDirect?.actif === true;
   if (requiresSaConfirmation(donneesExtraitesForCalc)) redirect(`/propositions/${id}/resume`);
   const hasGeneratedFile = Boolean(spProposition.duplicated_template_url || spProposition.fichier_genere_url);
@@ -515,6 +525,8 @@ export default async function PropositionDetailPage({
                 spConfigRemises={spConfigRemises}
                 discountRules={discountRules}
                 spConfigModeDirect={spConfigModeDirect}
+                spConfigResiliation={spConfigResiliation}
+                indemnitesReferenceDate={indemnitesReferenceDate}
                 spLibelles={spLibelles}
                 spCategoriesOrder={spCategoriesOrder}
                 spTableProductOrders={spTableProductOrders}

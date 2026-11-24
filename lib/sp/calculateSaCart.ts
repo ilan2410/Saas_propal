@@ -1,10 +1,14 @@
 // Aggrège la situation actuelle (SA) extraite des documents pour affichage
 // dans un panier temps réel comparable au panier SP.
 
+import { normalizePhoneNumber } from '@/lib/utils/formatting';
+
 export interface SaCartLine {
   libelle: string;
   categorie: 'fixe' | 'mobile' | 'internet' | 'abonnement' | 'location' | 'variable' | 'autre';
   operateur?: string;
+  quantite?: number;
+  numero?: string;
   montant: number;
 }
 
@@ -154,6 +158,33 @@ function getStr(item: Record<string, unknown>, key: string): string | undefined 
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
 }
 
+/**
+ * Résout le numéro de ligne réel d'un item (abonnement/location/ligne) :
+ *  1. `numero_ligne` direct s'il existe déjà dessus (ou s'il a été édité) ;
+ *  2. sinon, le `numero_ligne` d'un item de `lignes` rattaché au même contrat
+ *     (`engagement_ref` ou `reference_contrat`).
+ */
+export function resolveSaLineNumero(item: Record<string, unknown>, sa: Record<string, unknown>): string {
+  const direct = getStr(item, 'numero_ligne');
+  if (direct) return direct;
+  if (item._sa_numero_edited === true) return '';
+
+  const engagementRef = getStr(item, 'engagement_ref');
+  const referenceContrat = getStr(item, 'reference_contrat');
+  if (!engagementRef && !referenceContrat) return '';
+
+  const lignes = Array.isArray(sa.lignes) ? sa.lignes : [];
+  for (const raw of lignes) {
+    if (!isRecord(raw)) continue;
+    const num = getStr(raw, 'numero_ligne');
+    if (!num) continue;
+    const sameEngagement = !!engagementRef && getStr(raw, 'engagement_ref') === engagementRef;
+    const sameContrat = !!referenceContrat && getStr(raw, 'reference_contrat') === referenceContrat;
+    if (sameEngagement || sameContrat) return num;
+  }
+  return '';
+}
+
 function normalizeLabel(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, ' ');
 }
@@ -198,12 +229,14 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     if (!isRecord(raw)) continue;
     const montantUnitaire = pickMontant(raw, ['loyer_net_mensuel', 'loyer_brut_mensuel']);
     if (montantUnitaire <= 0) continue;
-    const montant = round2(montantUnitaire * pickQuantite(raw));
+    const quantite = pickQuantite(raw);
+    const montant = round2(montantUnitaire * quantite);
     const libelle =
       getStr(raw, 'libelle') || getStr(raw, 'materiel') || getStr(raw, 'libelle_contrat') || 'Location';
     const operateur = getStr(raw, 'leaser') || getStr(raw, 'operateur');
+    const numero = normalizePhoneNumber(resolveSaLineNumero(raw, sa)) || undefined;
     const key = dedupeKey(libelle, montant);
-    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    const rowKey = typeof raw._sa_uid === 'string' ? raw._sa_uid : numero ? `${key}|${numero}` : key;
     if (locationKeys.has(rowKey)) continue;
     locationKeys.add(rowKey);
     locationKeys.add(key);
@@ -212,7 +245,7 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     set.add(normalizeLabel(libelle));
     locationLibellesByMontant.set(montantKey, set);
     locationsTotal += montant;
-    details.push({ libelle, categorie: 'location', operateur, montant });
+    details.push({ libelle, categorie: 'location', operateur, quantite, numero, montant });
   }
 
   // ── 2. Abonnements (source principale des récurrents mensuels) ────
@@ -225,17 +258,19 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     if (!isRecord(raw)) continue;
     const montantUnitaire = pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']);
     if (montantUnitaire === 0) continue;
-    const montant = round2(montantUnitaire * pickQuantite(raw));
+    const quantite = pickQuantite(raw);
+    const montant = round2(montantUnitaire * quantite);
     const libelle = getStr(raw, 'libelle') || getStr(raw, 'libelle_contrat') || 'Abonnement';
     const operateur = getStr(raw, 'operateur');
+    const numero = normalizePhoneNumber(resolveSaLineNumero(raw, sa)) || undefined;
     const key = dedupeKey(libelle, montant);
-    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    const rowKey = typeof raw._sa_uid === 'string' ? raw._sa_uid : numero ? `${key}|${numero}` : key;
     if (seenAbo.has(rowKey)) continue;
     seenAbo.add(rowKey);
     // Exclu si chevauchement avec une location (= matériel loué déjà compté ailleurs)
     if (raw._sa_added !== true && isOverlap(key, libelle, montant, locationKeys, locationLibellesByMontant)) continue;
     abonnementsTotal += montant;
-    details.push({ libelle, categorie: 'abonnement', operateur, montant });
+    details.push({ libelle, categorie: 'abonnement', operateur, quantite, numero, montant });
   }
 
   // ── 3. Lignes (fixe / mobile / internet) ───────────────────────────
@@ -250,7 +285,8 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
   let lignesInternet = 0;
   for (const raw of lignes) {
     if (!isRecord(raw)) continue;
-    const montant = round2(pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']) * pickQuantite(raw));
+    const quantite = pickQuantite(raw);
+    const montant = round2(pickMontant(raw, ['tarif_net_mensuel', 'tarif_brut_mensuel']) * quantite);
     if (montant === 0) continue;
     const type = (getStr(raw, 'type') ?? '').toLowerCase();
     const libelle =
@@ -259,8 +295,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
       getStr(raw, 'numero_ligne') ||
       'Ligne';
     const operateur = getStr(raw, 'operateur');
+    const numero = normalizePhoneNumber(resolveSaLineNumero(raw, sa)) || undefined;
     const key = dedupeKey(libelle, montant);
-    const rowKey = raw._sa_added === true && typeof raw._sa_uid === 'string' ? raw._sa_uid : key;
+    const rowKey = typeof raw._sa_uid === 'string' ? raw._sa_uid : numero ? `${key}|${numero}` : key;
     if (seenLigne.has(rowKey)) continue;
     seenLigne.add(rowKey);
     let categorie: SaCartLine['categorie'] = 'autre';
@@ -280,9 +317,9 @@ export function calculateSaCartSummary(donneesExtraites: unknown): SaCartSummary
     // (pour information) sans recompter ; sinon on les ajoute aux totaux.
     if (!aboPrimary) {
       if (categorie === 'autre') abonnementsTotal += montant;
-      details.push({ libelle, categorie, operateur, montant });
+      details.push({ libelle, categorie, operateur, quantite, numero, montant });
     } else {
-      details.push({ libelle, categorie, operateur, montant });
+      details.push({ libelle, categorie, operateur, quantite, numero, montant });
     }
   }
 

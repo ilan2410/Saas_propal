@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Upload, Library } from 'lucide-react';
+import { Plus, Upload } from 'lucide-react';
 import { ImportProductModal } from './ImportProductModal';
-import { ProductLibraryModal } from './ProductLibraryModal';
 import type { CatalogueSecteur } from '@/types';
 
 interface CatalogueHeaderProps {
@@ -16,7 +15,6 @@ interface CatalogueHeaderProps {
 
 export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl, secteur }: CatalogueHeaderProps) {
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const defaultCreateUrl = isAdmin ? "/admin/catalogue/new" : "/catalogue/new";
   const targetCreateUrl = createUrl || `${defaultCreateUrl}${secteur ? `?secteur=${secteur}` : ''}`;
 
@@ -34,8 +32,6 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl, 
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        {!isAdmin && secteur && <button onClick={() => setIsLibraryOpen(true)} className="px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 font-semibold flex items-center gap-2"><Library className="w-5 h-5" /> Bibliothèque</button>}
-
         <button
           onClick={() => setIsImportOpen(true)}
           className="px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm flex items-center gap-2"
@@ -56,7 +52,6 @@ export function CatalogueHeader({ showTitle = true, isAdmin = false, createUrl, 
       </div>
 
       <ImportProductModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} isAdmin={isAdmin} secteur={secteur} />
-      {secteur && <ProductLibraryModal isOpen={isLibraryOpen} onClose={() => setIsLibraryOpen(false)} secteur={secteur} />}
     </div>
   );
 }

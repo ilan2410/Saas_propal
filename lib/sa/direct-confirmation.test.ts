@@ -20,14 +20,18 @@ describe('direct SA confirmation', () => {
   it('recalculates the preview, export aliases and Word rows after price and quantity edits', () => {
     const original = base();
     const result = buildEditedSaData(original, [
-      { kind: 'update', id: 'abonnements:0', patch: { montant: 40, quantite: 2 } },
+      { kind: 'update', id: 'abonnements:0', patch: { montant: 40, quantite: 2, numero: '0123456789' } },
     ]);
-    expect(calculateSaCartSummary(result).totalMensuel).toBe(85);
+    const summary = calculateSaCartSummary(result);
+    expect(summary.totalMensuel).toBe(85);
+    expect(summary.details.find(line => line.libelle === 'Fibre')).toMatchObject({ quantite: 2, numero: '01 23 45 67 89', montant: 80 });
     expect(result['situation_actuelle.total_loyer_mensuel']).toBe(85);
     expect(result._extraction_control).toMatchObject({ total_ht_mensuel_client: 85 });
     expect(result.situation_actuelle).toMatchObject({ total_ht_mensuel_client: 85, total_abonnements: 80, total_materiel: 5 });
     expect(JSON.stringify(buildSaWordData(result))).toContain('40');
     expect(result.resume).toContain('85.00');
+    expect(result.resume).toContain('×2');
+    expect(result.resume).toContain('01 23 45 67 89');
     expect(result.resume).not.toContain('105 €');
     expect(original.situation_actuelle.abonnements[0].tarif_net_mensuel).toBe(100);
   });

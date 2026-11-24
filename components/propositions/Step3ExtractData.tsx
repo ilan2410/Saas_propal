@@ -12,7 +12,6 @@ import {
   FileText,
   FileSearch,
   Zap,
-  CreditCard,
   AlertTriangle,
   ListChecks,
   Lock
@@ -49,15 +48,6 @@ interface Props {
   onNext: (data?: UnknownRecord) => void;
   onPrev: () => void;
   isModeDirect?: boolean;
-}
-
-// Compte le nombre total de champs (récursivement)
-function countTotalFields(data: unknown): number {
-  if (data === null || data === undefined) return 0;
-  if (Array.isArray(data)) return data.reduce<number>((acc, v) => acc + countTotalFields(v), 0);
-  if (!isPlainObject(data)) return 1;
-
-  return Object.values(data).reduce<number>((acc, v) => acc + countTotalFields(v), 0);
 }
 
 export function Step3ExtractData({
@@ -355,51 +345,18 @@ export function Step3ExtractData({
 
         {/* État Success */}
         {extractionStatus === 'success' && extractedData && (
-          <div className="p-12">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl mb-6 shadow-lg shadow-green-500/30 animate-in zoom-in duration-500">
-                <CheckCircle2 className="w-12 h-12 text-white" />
+          <div className="p-8 sm:p-10">
+            <div className="mx-auto mb-6 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+                <span className="text-sm font-medium text-emerald-950">
+                  Documents analysés
+                </span>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                Extraction réussie ! 🎉
-              </h3>
-              <p className="text-gray-600 text-lg mb-6">
-                le système a extrait toutes les informations de vos documents
-              </p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 max-w-2xl mx-auto">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                    <FileSearch className="w-5 h-5 text-white" />
-                  </div>
-                  <p className="text-sm font-medium text-blue-900">Données extraites</p>
-                </div>
-                <p className="text-3xl font-bold text-blue-900">
-                  {countTotalFields(extractedData)}
-                </p>
-                <p className="text-sm text-blue-700 mt-1">
-                  dans {Object.keys(extractedData).length} section{Object.keys(extractedData).length > 1 ? 's' : ''}
-                </p>
-              </div>
-
               {creditsInfo && (
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      <CreditCard className="w-5 h-5 text-white" />
-                    </div>
-                    <p className="text-sm font-medium text-purple-900">Crédits</p>
-                  </div>
-                  <p className="text-3xl font-bold text-purple-900">
-                    {creditsInfo.restants.toFixed(2)}€
-                  </p>
-                  <p className="text-sm text-purple-700 mt-1">
-                    -{creditsInfo.debite.toFixed(2)}€ débités
-                  </p>
-                </div>
+                <span className="text-xs font-medium text-emerald-800/80 tabular-nums">
+                  -{formatEur(creditsInfo.debite)} · Solde : {formatEur(creditsInfo.restants)}
+                </span>
               )}
             </div>
 

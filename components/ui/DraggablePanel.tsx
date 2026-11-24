@@ -8,6 +8,8 @@ interface DraggablePanelProps {
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
+  /** Zone fixe sous le contenu défilant (ex. total + action principale). */
+  footer?: ReactNode;
   defaultWidth?: number;
   defaultHeight?: number;
 }
@@ -30,6 +32,7 @@ export function DraggablePanel({
   onClose,
   title,
   children,
+  footer,
   defaultWidth = 560,
   defaultHeight = 480,
 }: DraggablePanelProps) {
@@ -83,6 +86,9 @@ export function DraggablePanel({
     <div
       ref={panelRef}
       className="fixed z-[70] flex flex-col rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
       style={{ left, top, width: defaultWidth, height: defaultHeight }}
     >
       <div
@@ -113,6 +119,11 @@ export function DraggablePanel({
       <div className="flex-1 overflow-y-auto min-h-0 p-4">
         {children}
       </div>
+      {footer && (
+        <div className="shrink-0 border-t border-gray-200 bg-white p-3 shadow-[0_-4px_8px_-6px_rgba(0,0,0,0.15)]">
+          {footer}
+        </div>
+      )}
     </div>
   );
 }

@@ -22,7 +22,7 @@
 // `_sa_line_uid`. Si la SA est basée-lignes, on n'écrit que dans `lignes` (déjà
 // compté) afin de ne pas faire basculer le régime de comptage.
 
-import { calculateSaCartSummary, SA_RESIDUAL_LABEL, SA_VARIABLE_AGGREGATE_LABEL } from './calculateSaCart';
+import { calculateSaCartSummary, resolveSaLineNumero, SA_RESIDUAL_LABEL, SA_VARIABLE_AGGREGATE_LABEL } from './calculateSaCart';
 import { normalizePhoneNumber } from '@/lib/utils/formatting';
 
 export type SaSection = 'abonnement' | 'location' | 'variable';
@@ -166,35 +166,6 @@ function pureSummary(sa: Record<string, unknown>) {
 
 // ── Construction de la vue éditable ──────────────────────────────────
 
-/**
- * Résout le numéro de ligne réel d'un item (abonnement/location) :
- *  1. `numero_ligne` direct s'il existe déjà dessus ;
- *  2. sinon, le `numero_ligne` d'un item de `lignes` rattaché au même contrat
- *     (même `engagement_ref` ou `reference_contrat`) — cas fréquent où la
- *     facture détaille le numéro sur une ligne « chapeau » et regroupe les
- *     options (extensions, SDA, etc.) sous le même engagement sans le répéter ;
- *  3. sinon '' — `reference_contrat` n'est PAS un numéro de ligne/téléphone,
- *     on ne l'affiche jamais sous ce label pour éviter de le faire passer
- *     pour un numéro.
- */
-function resolveNumero(item: Record<string, unknown>, sa: Record<string, unknown>): string {
-  const direct = getStr(item, 'numero_ligne');
-  if (direct) return direct;
-
-  const engagementRef = getStr(item, 'engagement_ref');
-  const referenceContrat = getStr(item, 'reference_contrat');
-  if (!engagementRef && !referenceContrat) return '';
-
-  for (const raw of records(sa.lignes)) {
-    const num = getStr(raw, 'numero_ligne');
-    if (!num) continue;
-    const sameEngagement = !!engagementRef && getStr(raw, 'engagement_ref') === engagementRef;
-    const sameContrat = !!referenceContrat && getStr(raw, 'reference_contrat') === referenceContrat;
-    if (sameEngagement || sameContrat) return num;
-  }
-  return '';
-}
-
 function readLine(
   item: Record<string, unknown>,
   id: string,
@@ -213,7 +184,7 @@ function readLine(
     id,
     section,
     designation: designation || DEFAULT_LABELS[section],
-    numero: section === 'variable' ? '' : normalizePhoneNumber(resolveNumero(item, sa)),
+    numero: section === 'variable' ? '' : normalizePhoneNumber(resolveSaLineNumero(item, sa)),
     quantite: Math.max(1, toNumber(item.quantite) || 1),
     montant,
     isResidual: item._sa_residual === true,
@@ -490,8 +461,12 @@ function applyPatchToItem(
   array: string,
 ): void {
   const isCharge = array === 'charges_variables';
+  if (typeof item._sa_uid !== 'string') item._sa_uid = uid();
   if (patch.designation !== undefined) item.libelle = patch.designation;
-  if (patch.numero !== undefined && !isCharge) item.numero_ligne = normalizePhoneNumber(patch.numero);
+  if (patch.numero !== undefined && !isCharge) {
+    item.numero_ligne = normalizePhoneNumber(patch.numero);
+    item._sa_numero_edited = true;
+  }
   if (patch.quantite !== undefined && !isCharge) item.quantite = Math.max(1, Math.round(patch.quantite) || 1);
   if (patch.montant !== undefined) {
     const value = Math.max(0, patch.montant) || 0;
